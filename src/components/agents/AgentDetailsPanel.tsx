@@ -2,7 +2,7 @@
 
 import { X } from 'lucide-react';
 
-import { getAvatarColor } from '@/components/office/avatar-colors';
+import { getAvatarColor } from '@/lib/agents/avatar-colors';
 import { cn } from '@/lib/utils';
 import {
   selectSelectedAgent,

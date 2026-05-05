@@ -128,3 +128,60 @@
     @apply font-sans;
   }
 }
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--glow-color, rgba(0, 0, 0, 0));
+  }
+  50% {
+    box-shadow: 0 0 32px 6px var(--glow-color, rgba(0, 0, 0, 0));
+  }
+}
+
+@keyframes dashflow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@keyframes dashflow-fast {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+@keyframes work-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.agent-card-active {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.flow-line {
+  animation: dashflow 1.6s linear infinite;
+}
+
+.flow-line-active {
+  animation: dashflow-fast 0.9s linear infinite;
+}
+
+.work-dot {
+  animation: work-bounce 1.2s ease-in-out infinite;
+}
+.work-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.work-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
