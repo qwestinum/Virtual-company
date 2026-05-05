@@ -5,7 +5,7 @@ Prototype d'entreprise virtuelle avec agents IA représentés par des employés 
 Le MVP couvre le département RH avec un manager et des agents spécialisés.
 
 ## Stack
-- Framework : Next.js 15 (App Router, TypeScript)
+- Framework : Next.js 16 (App Router, TypeScript)
 - UI : Tailwind CSS + shadcn/ui
 - 3D : Three.js via React Three Fiber + Drei
 - State : Zustand
