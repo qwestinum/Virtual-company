@@ -32,6 +32,7 @@ export type AgentsState = {
   agentOrder: string[];
   activeTaskByAgent: Record<string, string | null>;
   events: AgentEvent[];
+  selectedAgentId: string | null;
 
   setAgentStatus: (id: string, status: AgentStatus) => void;
   toggleAgentEnabled: (id: string) => void;
@@ -40,12 +41,13 @@ export type AgentsState = {
   markAgentIdle: (id: string) => void;
   pushEvent: (event: Omit<AgentEvent, 'id' | 'createdAt'>) => void;
   clearEvents: () => void;
+  selectAgent: (id: string | null) => void;
   resetToRegistry: () => void;
 };
 
 function buildInitialState(): Pick<
   AgentsState,
-  'agents' | 'agentOrder' | 'activeTaskByAgent' | 'events'
+  'agents' | 'agentOrder' | 'activeTaskByAgent' | 'events' | 'selectedAgentId'
 > {
   const agents = getAgentDataSnapshot();
   const agentOrder = getAgentOrder();
@@ -53,7 +55,13 @@ function buildInitialState(): Pick<
   for (const id of agentOrder) {
     activeTaskByAgent[id] = null;
   }
-  return { agents, agentOrder, activeTaskByAgent, events: [] };
+  return {
+    agents,
+    agentOrder,
+    activeTaskByAgent,
+    events: [],
+    selectedAgentId: null,
+  };
 }
 
 function generateEventId(): string {
@@ -147,6 +155,12 @@ export const useAgentsStore = create<AgentsState>()((set) => ({
 
   clearEvents: () => set((state) => ({ ...state, events: [] })),
 
+  selectAgent: (id) =>
+    set((state) => {
+      if (id !== null && !state.agents[id]) return state;
+      return { ...state, selectedAgentId: id };
+    }),
+
   resetToRegistry: () => set((state) => ({ ...state, ...buildInitialState() })),
 }));
 
@@ -159,3 +173,8 @@ export const selectAgentById = (id: string) =>
   (state: AgentsState): AgentContractData | undefined => state.agents[id];
 
 export const selectEvents = (state: AgentsState): AgentEvent[] => state.events;
+
+export const selectSelectedAgent = (
+  state: AgentsState,
+): AgentContractData | null =>
+  state.selectedAgentId ? state.agents[state.selectedAgentId] ?? null : null;

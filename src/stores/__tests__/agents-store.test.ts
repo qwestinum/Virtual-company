@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   selectAgentById,
   selectAgents,
+  selectSelectedAgent,
   useAgentsStore,
 } from '@/stores/agents-store';
 
@@ -102,10 +103,34 @@ describe('agents-store', () => {
   it('resetToRegistry restores defaults after mutations', () => {
     useAgentsStore.getState().setAgentStatus('agent.cv-analyzer', 'active');
     useAgentsStore.getState().toggleAgentEnabled('agent.mail-composer');
+    useAgentsStore.getState().selectAgent('agent.mail-composer');
     useAgentsStore.getState().resetToRegistry();
     const state = useAgentsStore.getState();
     expect(state.agents['agent.cv-analyzer']?.status).toBe('idle');
     expect(state.agents['agent.mail-composer']?.enabled).toBe(true);
     expect(state.events).toEqual([]);
+    expect(state.selectedAgentId).toBeNull();
+  });
+
+  describe('selection', () => {
+    it('selectAgent sets and clears selectedAgentId', () => {
+      useAgentsStore.getState().selectAgent('agent.cv-analyzer');
+      expect(useAgentsStore.getState().selectedAgentId).toBe('agent.cv-analyzer');
+      useAgentsStore.getState().selectAgent(null);
+      expect(useAgentsStore.getState().selectedAgentId).toBeNull();
+    });
+
+    it('selectAgent on unknown id is a no-op', () => {
+      useAgentsStore.getState().selectAgent('agent.cv-analyzer');
+      useAgentsStore.getState().selectAgent('nope');
+      expect(useAgentsStore.getState().selectedAgentId).toBe('agent.cv-analyzer');
+    });
+
+    it('selectSelectedAgent returns the resolved agent or null', () => {
+      expect(selectSelectedAgent(useAgentsStore.getState())).toBeNull();
+      useAgentsStore.getState().selectAgent('agent.scheduler');
+      const resolved = selectSelectedAgent(useAgentsStore.getState());
+      expect(resolved?.id).toBe('agent.scheduler');
+    });
   });
 });
