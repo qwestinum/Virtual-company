@@ -10,6 +10,10 @@ import { AIProviderError } from '@/lib/ai/errors';
 import { FDPInProgressSchema } from '@/types/field-collection';
 
 export const runtime = 'nodejs';
+// runManagerTurn enchaîne 2 appels OpenAI (classification + conversation),
+// chacun avec un timeout client de 30s — budget pire cas = 60s. Sans effet
+// en `next dev` ; appliqué en serverless / Vercel et certains adapters.
+export const maxDuration = 60;
 
 const TurnSchema = z.object({
   role: z.enum(['user', 'manager']),

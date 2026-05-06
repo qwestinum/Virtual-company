@@ -21,7 +21,7 @@ if (typeof window !== 'undefined') {
 
 const DEFAULT_CHAT_MODEL = 'gpt-4o-mini';
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1';
-const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 let cachedClient: OpenAI | null = null;
 
