@@ -10,6 +10,7 @@ import { ChatChips } from '@/components/chat/ChatChips';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { FieldChecklist } from '@/components/chat/FieldChecklist';
 import { TypingDots } from '@/components/chat/TypingDots';
+import { ValidateFDPButton } from '@/components/chat/ValidateFDPButton';
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
 import { postManagerChat, postTranscribe } from '@/lib/chat/api-client';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
   const fdp = useFdpStore((s) => s.fdp);
   const createFDP = useFdpStore((s) => s.createFDP);
   const applyExtractions = useFdpStore((s) => s.applyExtractions);
+  const validateFDP = useFdpStore((s) => s.validateFDP);
   const resetFdp = useFdpStore((s) => s.reset);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -196,6 +198,16 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
           />
         );
       })()}
+
+      {fdp ? (
+        <ValidateFDPButton
+          campaignId={fdp.campaignId}
+          isComplete={fdp.isComplete}
+          isValidated={fdp.isValidated}
+          disabled={isSending || isTranscribing}
+          onValidate={validateFDP}
+        />
+      ) : null}
 
       <ChatInput
         disabled={isSending || isTranscribing}
