@@ -147,7 +147,14 @@ export async function runManagerTurn(
     preSearchHits,
   });
 
+  // Le tour conversationnel passe sur gpt-4o (vs gpt-4o-mini pour la
+  // classification) car il doit suivre un prompt à instructions denses
+  // (mode proposition, double écriture fieldExtractions/message, chips
+  // selon nature du champ). gpt-4o-mini omettait des extractions
+  // critiques en démo. Coût ≈ 5-15× supérieur — acceptable pour le MVP
+  // démo, à reconsidérer en Session 5+ si volume.
   const responseCompletion = await chatComplete({
+    model: 'gpt-4o',
     jsonMode: true,
     temperature: 0.4,
     messages: [
