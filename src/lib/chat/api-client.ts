@@ -1,6 +1,11 @@
 import type { JobDescription } from '@/lib/storage/job-descriptions';
+import type {
+  CVAnalysisCriteria,
+  CVAnalysisResult,
+} from '@/types/cv-analysis';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { IntentClassification } from '@/types/intent';
+import type { JobAdResult } from '@/types/job-writer';
 import type { ManagerResponse } from '@/types/manager-response';
 
 export type ManagerChatTurn = {
@@ -53,4 +58,56 @@ export async function postTranscribe(audio: File): Promise<string> {
   if (!res.ok) throw new Error(await readError(res));
   const data = (await res.json()) as TranscribeResponse;
   return data.text;
+}
+
+export type JobWriterResult = {
+  ad: JobAdResult;
+  markdown: string;
+  fileName: string;
+  metrics: {
+    durationMs: number;
+    tokensUsed: number;
+    costEstimate: number;
+  };
+};
+
+export async function postJobWriter(params: {
+  fdp: FDPInProgress;
+  taskId?: string;
+}): Promise<JobWriterResult> {
+  const res = await fetch('/api/job-writer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as JobWriterResult;
+}
+
+export type CVAnalyzerResult = {
+  result: CVAnalysisResult;
+  threshold: number;
+  metrics: {
+    durationMs: number;
+    tokensUsed: number;
+    costEstimate: number;
+  };
+};
+
+export async function postCVAnalyzer(params: {
+  file: File;
+  criteria: CVAnalysisCriteria;
+  threshold: number;
+  taskId?: string;
+  campaignId?: string;
+}): Promise<CVAnalyzerResult> {
+  const form = new FormData();
+  form.append('cv', params.file);
+  form.append('criteria', JSON.stringify(params.criteria));
+  form.append('threshold', String(params.threshold));
+  if (params.taskId) form.append('taskId', params.taskId);
+  if (params.campaignId) form.append('campaignId', params.campaignId);
+  const res = await fetch('/api/cv-analyzer', { method: 'POST', body: form });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as CVAnalyzerResult;
 }

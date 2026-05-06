@@ -14,14 +14,24 @@ import { FieldChecklist } from '@/components/chat/FieldChecklist';
 import { TypingDots } from '@/components/chat/TypingDots';
 import { ValidateFDPButton } from '@/components/chat/ValidateFDPButton';
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
+import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import { postManagerChat, postTranscribe } from '@/lib/chat/api-client';
+import {
+  consumePendingIsolatedTask,
+  dispatchCVBatch,
+  dispatchIsolatedCVTask,
+  dispatchJobWriter,
+  getPendingIsolatedTask,
+} from '@/lib/chat/manager-flow';
 import { cn } from '@/lib/utils';
+import { useArtifactsStore } from '@/stores/artifacts-store';
 import {
   selectMessages,
   useChatStore,
   type ChatMessage,
 } from '@/stores/chat-store';
 import { useFdpStore } from '@/stores/fdp-store';
+import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
 
 const MANAGER_ID = 'agent.manager-rh';
 
@@ -31,6 +41,7 @@ export function ManagerChat() {
   const isTranscribing = useChatStore((s) => s.isTranscribing);
   const error = useChatStore((s) => s.error);
   const appendMessage = useChatStore((s) => s.appendMessage);
+  const updateMessage = useChatStore((s) => s.updateMessage);
   const setSending = useChatStore((s) => s.setSending);
   const setTranscribing = useChatStore((s) => s.setTranscribing);
   const setError = useChatStore((s) => s.setError);
@@ -40,12 +51,14 @@ export function ManagerChat() {
   const resetChat = useChatStore((s) => s.reset);
 
   const [inputFocusToken, setInputFocusToken] = useState(0);
+  const [isAgentBusy, setAgentBusy] = useState(false);
 
   const fdp = useFdpStore((s) => s.fdp);
   const createFDP = useFdpStore((s) => s.createFDP);
   const applyExtractions = useFdpStore((s) => s.applyExtractions);
   const validateFDP = useFdpStore((s) => s.validateFDP);
   const resetFdp = useFdpStore((s) => s.reset);
+  const resetArtifacts = useArtifactsStore((s) => s.reset);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
@@ -58,19 +71,94 @@ export function ManagerChat() {
   function handleReset() {
     resetChat();
     resetFdp();
+    resetArtifacts();
   }
 
-  function handleValidateFDP() {
+  async function handleValidateFDP() {
     const current = useFdpStore.getState().fdp;
     if (!current || !current.isComplete || current.isValidated) return;
     validateFDP();
-    const isTask = current.campaignId.startsWith('TASK-');
-    const noun = isTask ? 'sollicitation' : 'campagne';
+    const validated = useFdpStore.getState().fdp;
+    if (!validated) return;
+    setAgentBusy(true);
+    try {
+      await dispatchJobWriter(validated);
+    } finally {
+      setAgentBusy(false);
+    }
+  }
+
+  function handleSourcePick(source: 'manuel') {
+    if (source !== 'manuel') return;
+    const last = [...useChatStore.getState().messages]
+      .reverse()
+      .find((m) => m.block?.kind === 'source-picker');
+    if (last && last.block?.kind === 'source-picker') {
+      updateMessage(last.id, {
+        block: { kind: 'source-picker', selected: 'manuel' },
+      });
+    }
+    appendMessage({
+      role: 'user',
+      source: 'text',
+      content: 'Source : manuel.',
+    });
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `Tout est en ordre — ${noun} ${current.campaignId} lancée. Je vous tiens au courant des prochaines étapes, et vous pouvez aussi suivre l'avancement dans le dashboard.`,
+      content:
+        "Parfait. Utilisez le trombone ci-dessous pour me téléverser un ou plusieurs CV — j'enchaîne dès qu'ils arrivent.",
     });
+  }
+
+  async function handleFilesSelected(files: File[]) {
+    if (files.length === 0 || isAgentBusy) return;
+    const current = useFdpStore.getState().fdp;
+    const sourceSelected = lastSourcePickerSelected();
+
+    if (current?.isValidated && sourceSelected === 'manuel') {
+      const userBubble =
+        files.length === 1
+          ? `J'ai joint un CV : ${files[0].name}.`
+          : `J'ai joint ${files.length} CV : ${files.map((f) => f.name).join(', ')}.`;
+      appendMessage({ role: 'user', source: 'text', content: userBubble });
+      setAgentBusy(true);
+      try {
+        await dispatchCVBatch({
+          files,
+          criteria: fdpToCVCriteria(current),
+          threshold: DEFAULT_CV_THRESHOLD,
+          campaignId: current.campaignId,
+        });
+      } finally {
+        setAgentBusy(false);
+      }
+      return;
+    }
+
+    if (current?.isValidated && sourceSelected !== 'manuel') {
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content:
+          'Choisissez d\'abord une source dans la liste ci-dessus avant de me transmettre les CV.',
+      });
+      return;
+    }
+
+    // Hors campagne → tâche isolée TASK-XXXX.
+    dispatchIsolatedCVTask(files);
+  }
+
+  function lastSourcePickerSelected(): 'manuel' | null {
+    const list = useChatStore.getState().messages;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i];
+      if (m.block?.kind === 'source-picker') {
+        return m.block.selected;
+      }
+    }
+    return null;
   }
 
   async function sendToManager(history: ChatMessage[]) {
@@ -113,6 +201,19 @@ export function ManagerChat() {
     source: 'text' | 'voice' = 'text',
   ) {
     appendMessage({ role: 'user', source, content: text });
+
+    // Si une tâche isolée CV attend l'instruction libre du DRH, on
+    // consomme sa réponse au lieu d'envoyer un tour Manager classique.
+    if (getPendingIsolatedTask()) {
+      setAgentBusy(true);
+      try {
+        await consumePendingIsolatedTask(text);
+      } finally {
+        setAgentBusy(false);
+      }
+      return;
+    }
+
     void sendToManager(useChatStore.getState().messages);
   }
 
@@ -172,13 +273,15 @@ export function ManagerChat() {
               <ChatBubble
                 message={message}
                 onChipSelect={handleChipSelect}
-                chipsDisabled={isSending || isTranscribing}
+                chipsDisabled={isSending || isTranscribing || isAgentBusy}
+                onSourcePick={handleSourcePick}
+                blocksDisabled={isSending || isTranscribing || isAgentBusy}
               />
               {showBelow && message.chips ? (
                 <ChatChips
                   chips={message.chips}
                   onSelect={handleChipSelect}
-                  disabled={isSending || isTranscribing}
+                  disabled={isSending || isTranscribing || isAgentBusy}
                 />
               ) : null}
             </div>
@@ -220,10 +323,11 @@ export function ManagerChat() {
       ) : null}
 
       <ChatInput
-        disabled={isSending || isTranscribing}
+        disabled={isSending || isTranscribing || isAgentBusy}
         onSendText={handleSendText}
         onTranscribe={handleTranscribe}
         focusToken={inputFocusToken}
+        onFilesSelected={handleFilesSelected}
       />
     </div>
   );

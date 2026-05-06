@@ -3,8 +3,12 @@
 import { Mic } from 'lucide-react';
 import Image from 'next/image';
 
+import { AttachmentChip } from '@/components/chat/AttachmentChip';
 import { ChatChips } from '@/components/chat/ChatChips';
+import { CVBatchSummaryBlock } from '@/components/chat/CVBatchSummaryBlock';
+import { CVProgressBlock } from '@/components/chat/CVProgressBlock';
 import { parseMessageToBlocks } from '@/components/chat/chat-message-renderer';
+import { SourcePicker } from '@/components/chat/SourcePicker';
 import {
   DRH_COLOR,
   DRH_INITIALS,
@@ -27,6 +31,8 @@ export type ChatBubbleProps = {
   showInlineChips?: boolean;
   onChipSelect?: (option: string) => void;
   chipsDisabled?: boolean;
+  onSourcePick?: (source: 'manuel') => void;
+  blocksDisabled?: boolean;
 };
 
 export function ChatBubble({
@@ -34,6 +40,8 @@ export function ChatBubble({
   showInlineChips = true,
   onChipSelect,
   chipsDisabled,
+  onSourcePick,
+  blocksDisabled,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const isVoice = message.source === 'voice';
@@ -88,6 +96,28 @@ export function ChatBubble({
             </span>
           ) : null}
           <RenderedContent content={message.content} />
+          {message.block?.kind === 'source-picker' && onSourcePick ? (
+            <SourcePicker
+              selected={message.block.selected}
+              disabled={blocksDisabled}
+              onPick={onSourcePick}
+            />
+          ) : null}
+          {message.block?.kind === 'cv-progress' ? (
+            <CVProgressBlock
+              processed={message.block.processed}
+              total={message.block.total}
+            />
+          ) : null}
+          {message.block?.kind === 'cv-batch-summary' ? (
+            <CVBatchSummaryBlock summary={message.block.summary} />
+          ) : null}
+          {message.attachment ? (
+            <AttachmentChip
+              attachment={message.attachment}
+              disabled={blocksDisabled}
+            />
+          ) : null}
           {inlineChips && onChipSelect ? (
             <ChatChips
               chips={inlineChips}

@@ -1,6 +1,6 @@
 'use client';
 
-import { Mic, Send, X } from 'lucide-react';
+import { Mic, Paperclip, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { VoiceTranscript } from '@/components/chat/VoiceTranscript';
@@ -24,7 +24,10 @@ export type ChatInputProps = {
    * d'ajustement (cf. dismissLastManagerChips dans chat-store).
    */
   focusToken?: number;
+  onFilesSelected?: (files: File[]) => void;
 };
+
+const ACCEPTED_FILE_TYPES = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
 
 type VoiceMode = 'idle' | 'recording' | 'transcribing';
 
@@ -33,6 +36,7 @@ export function ChatInput({
   onSendText,
   onTranscribe,
   focusToken,
+  onFilesSelected,
 }: ChatInputProps) {
   const [draft, setDraft] = useState('');
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('idle');
@@ -40,6 +44,7 @@ export function ChatInput({
   const [draftFromVoice, setDraftFromVoice] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorder = useMicRecorder();
 
   useEffect(() => {
@@ -112,6 +117,19 @@ export function ChatInput({
     requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
+  function handleAttachClick() {
+    if (disabled || !onFilesSelected) return;
+    fileInputRef.current?.click();
+  }
+
+  function handleFilesPicked(event: React.ChangeEvent<HTMLInputElement>) {
+    const list = event.target.files;
+    if (!list || list.length === 0) return;
+    const files = Array.from(list);
+    event.target.value = '';
+    onFilesSelected?.(files);
+  }
+
   const micErrorLabel = recorder.error
     ? MIC_ERROR_LABEL[recorder.error]
     : null;
@@ -168,6 +186,9 @@ export function ChatInput({
               <X className="h-4 w-4" aria-hidden />
             </button>
           ) : null}
+          {onFilesSelected ? (
+            <AttachButton disabled={disabled} onClick={handleAttachClick} />
+          ) : null}
           <MicButton disabled={disabled} onClick={handleStartRecord} />
           <SendButton
             disabled={sendDisabled}
@@ -175,6 +196,15 @@ export function ChatInput({
           />
         </div>
       )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ACCEPTED_FILE_TYPES}
+        className="hidden"
+        onChange={handleFilesPicked}
+      />
 
       <p
         className={cn(
@@ -212,6 +242,31 @@ function MicButton({
       )}
     >
       <Mic className="h-4 w-4" aria-hidden />
+    </button>
+  );
+}
+
+function AttachButton({
+  disabled,
+  onClick,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label="Joindre des fichiers (CV, .pdf .txt .md)"
+      title="Joindre des CV"
+      className={cn(
+        'h-9 w-9 grid place-items-center rounded-xl shrink-0 transition-all',
+        'bg-stone-100 text-stone-600 hover:bg-stone-200',
+        'disabled:opacity-40 disabled:pointer-events-none',
+      )}
+    >
+      <Paperclip className="h-4 w-4" aria-hidden />
     </button>
   );
 }

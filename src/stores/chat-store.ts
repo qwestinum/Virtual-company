@@ -14,10 +14,32 @@
 
 import { create } from 'zustand';
 
+import type { CVBatchSummary } from '@/types/cv-analysis';
 import type { ChipSet } from '@/types/manager-response';
 
 export type ChatRole = 'user' | 'manager' | 'system';
 export type ChatMessageSource = 'text' | 'voice';
+
+/**
+ * Pièce jointe rattachée à une bulle Manager (annonce, rapport CV…).
+ * `artifactId` pointe vers `artifacts-store`. La bulle reste textuelle
+ * — l'attachement est rendu juste en dessous comme un chip cliquable.
+ */
+export type ChatAttachment = {
+  artifactId: string;
+  label: string;
+  fileName: string;
+  mime: string;
+};
+
+/**
+ * Bulles structurées rendues par des composants dédiés plutôt que par
+ * le rendu texte standard. Chaque type a ses props payload spécifiques.
+ */
+export type ChatBlock =
+  | { kind: 'source-picker'; selected: 'manuel' | null }
+  | { kind: 'cv-progress'; processed: number; total: number }
+  | { kind: 'cv-batch-summary'; summary: CVBatchSummary };
 
 export type ChatMessage = {
   id: string;
@@ -34,6 +56,8 @@ export type ChatMessage = {
    * dès qu'un message est envoyé »).
    */
   chips?: ChipSet;
+  attachment?: ChatAttachment;
+  block?: ChatBlock;
 };
 
 export type ChatState = {
@@ -46,6 +70,15 @@ export type ChatState = {
   appendMessage: (
     message: Omit<ChatMessage, 'id' | 'createdAt'>,
   ) => ChatMessage;
+  /**
+   * Met à jour un message existant (par id). Utilisé pour la bulle de
+   * progression CV, dont l'id est connu et qu'on édite à chaque CV
+   * traité ; permet aussi de remplacer un block à la fin d'un batch.
+   */
+  updateMessage: (
+    id: string,
+    patch: Partial<Omit<ChatMessage, 'id' | 'createdAt'>>,
+  ) => void;
   setSending: (value: boolean) => void;
   setTranscribing: (value: boolean) => void;
   setError: (message: string | null) => void;
@@ -114,6 +147,15 @@ export const useChatStore = create<ChatState>()((set) => ({
     set((state) => ({ ...state, messages: [...state.messages, full] }));
     return full;
   },
+
+  updateMessage: (id, patch) =>
+    set((state) => {
+      const idx = state.messages.findIndex((m) => m.id === id);
+      if (idx < 0) return state;
+      const messages = [...state.messages];
+      messages[idx] = { ...messages[idx], ...patch } as ChatMessage;
+      return { ...state, messages };
+    }),
 
   setSending: (value) => set((state) => ({ ...state, isSending: value })),
   setTranscribing: (value) =>
