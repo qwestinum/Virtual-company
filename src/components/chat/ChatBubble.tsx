@@ -4,6 +4,7 @@ import { Mic } from 'lucide-react';
 import Image from 'next/image';
 
 import { ChatChips } from '@/components/chat/ChatChips';
+import { parseMessageToBlocks } from '@/components/chat/chat-message-renderer';
 import {
   DRH_COLOR,
   DRH_INITIALS,
@@ -86,7 +87,7 @@ export function ChatBubble({
               <Mic className="h-3 w-3" /> Vocal
             </span>
           ) : null}
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <RenderedContent content={message.content} />
           {inlineChips && onChipSelect ? (
             <ChatChips
               chips={inlineChips}
@@ -96,6 +97,40 @@ export function ChatBubble({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function RenderedContent({ content }: { content: string }) {
+  const blocks = parseMessageToBlocks(content);
+  if (blocks.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {blocks.map((block, index) => {
+        if (block.kind === 'paragraph') {
+          return (
+            <p key={index} className="whitespace-pre-wrap">
+              {block.text}
+            </p>
+          );
+        }
+        const ListTag = block.ordered ? 'ol' : 'ul';
+        return (
+          <ListTag
+            key={index}
+            className={cn(
+              'mt-1 ml-1 space-y-1 pl-4',
+              block.ordered ? 'list-decimal' : 'list-disc',
+            )}
+          >
+            {block.items.map((item, i) => (
+              <li key={i} className="leading-snug pl-1">
+                {item}
+              </li>
+            ))}
+          </ListTag>
+        );
+      })}
     </div>
   );
 }
