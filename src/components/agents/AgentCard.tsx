@@ -71,7 +71,7 @@ export function AgentCard({
         'hover:-translate-y-0.5',
         sizeClass,
         isSelected && 'ring-2 ring-cyan-500 ring-offset-2 ring-offset-stone-50',
-        isActive && 'agent-card-active',
+        (isActive || isManager) && 'agent-card-active',
         !agent.enabled && 'opacity-60',
       )}
     >

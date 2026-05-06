@@ -235,3 +235,18 @@
     Menlo, Consolas, monospace;
   font-feature-settings: "tnum", "ss01";
 }
+
+/*
+ * Motif de fond du bureau — dots subtils sur grille 24px, opacité ~10%
+ * de slate-900. Se superpose au radial-gradient stone du <section>
+ * parent et reste lisible en accompagnement des cartes d'agents sans
+ * « cager » la composition.
+ */
+.bg-grid-dots {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(15, 23, 42, 0.1) 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
+}

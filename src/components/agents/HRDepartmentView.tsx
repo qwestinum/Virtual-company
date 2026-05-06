@@ -35,7 +35,7 @@ export function HRDepartmentView() {
 
   return (
     <div
-      className="relative w-full h-full overflow-hidden"
+      className="relative w-full h-full overflow-hidden bg-grid-dots"
       onPointerDown={() => selectAgent(null)}
     >
       <header className="absolute top-6 left-1/2 -translate-x-1/2 z-10 text-center pointer-events-none">
