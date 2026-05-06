@@ -6,12 +6,16 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { FIELD_KEYS, type FDPInProgress } from '@/types/field-collection';
 
-export type CampaignTrackerProps = {
+export type FieldChecklistProps = {
   fdp: FDPInProgress;
+  defaultCollapsed?: boolean;
 };
 
-export function CampaignTracker({ fdp }: CampaignTrackerProps) {
-  const [collapsed, setCollapsed] = useState(false);
+export function FieldChecklist({
+  fdp,
+  defaultCollapsed = false,
+}: FieldChecklistProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const total = FIELD_KEYS.length;
   const filledCount = FIELD_KEYS.filter(
     (k) => fdp.fields[k]?.status === 'filled',
@@ -23,16 +27,22 @@ export function CampaignTracker({ fdp }: CampaignTrackerProps) {
       <button
         type="button"
         onClick={() => setCollapsed((c) => !c)}
-        className="w-full px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-stone-100/60 transition-colors"
+        className="w-full px-4 py-2 flex items-center justify-between gap-3 hover:bg-stone-100/60 transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0">
           {fdp.isComplete ? (
-            <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            <Check
+              className="h-3.5 w-3.5 text-emerald-600 shrink-0"
+              aria-hidden
+            />
           ) : (
-            <Loader2 className="h-3.5 w-3.5 text-stone-500 animate-spin shrink-0" />
+            <Loader2
+              className="h-3.5 w-3.5 text-stone-500 animate-spin shrink-0"
+              aria-hidden
+            />
           )}
           <span className="font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-700 truncate">
-            {fdp.campaignId}
+            Fiche de poste
           </span>
           <span className="font-body text-[11px] text-stone-500 shrink-0">
             {filledCount}/{total}
@@ -43,6 +53,7 @@ export function CampaignTracker({ fdp }: CampaignTrackerProps) {
             'h-3.5 w-3.5 text-stone-500 transition-transform',
             collapsed ? '-rotate-90' : '',
           )}
+          aria-hidden
         />
       </button>
 
@@ -85,6 +96,7 @@ export function CampaignTracker({ fdp }: CampaignTrackerProps) {
                           ? 'bg-amber-400'
                           : 'bg-stone-300',
                     )}
+                    aria-hidden
                   />
                   {field?.label ?? key}
                 </span>

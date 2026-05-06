@@ -4,9 +4,10 @@ import { ChevronRight, RotateCcw } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useRef } from 'react';
 
-import { CampaignTracker } from '@/components/chat/CampaignTracker';
+import { CampaignHeader } from '@/components/chat/CampaignHeader';
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatMessageBubble } from '@/components/chat/ChatMessageBubble';
+import { FieldChecklist } from '@/components/chat/FieldChecklist';
 import { TypingDots } from '@/components/chat/TypingDots';
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
 import { postManagerChat, postTranscribe } from '@/lib/chat/api-client';
@@ -122,7 +123,15 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
       aria-hidden={!open}
     >
       <ChatHeader onClose={onClose} onReset={handleReset} />
-      {fdp ? <CampaignTracker fdp={fdp} /> : null}
+      {fdp ? (
+        <>
+          <CampaignHeader campaignId={fdp.campaignId} />
+          <FieldChecklist
+            fdp={fdp}
+            defaultCollapsed={fdp.campaignId.startsWith('TASK-')}
+          />
+        </>
+      ) : null}
 
       <div
         ref={scrollerRef}
