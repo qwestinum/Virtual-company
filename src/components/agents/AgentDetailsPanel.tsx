@@ -33,7 +33,7 @@ export function AgentDetailsPanel() {
     <aside
       aria-hidden={!isOpen}
       className={cn(
-        'fixed right-0 top-0 h-full w-96 max-w-[90vw] z-10',
+        'absolute right-0 top-0 h-full w-96 max-w-[90vw] z-10',
         'bg-white/95 dark:bg-zinc-900/95 backdrop-blur',
         'border-l border-zinc-200 dark:border-zinc-800 shadow-2xl',
         'transition-transform duration-300 ease-out',

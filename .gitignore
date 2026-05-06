@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+# WSL/Windows alternate data stream markers on copied files
+*:Zone.Identifier
 
 # debug
 npm-debug.log*
