@@ -109,15 +109,6 @@ export function HRDepartmentView() {
         aria-hidden
       />
 
-      <header className="absolute top-6 left-1/2 -translate-x-1/2 z-10 text-center pointer-events-none">
-        <p className="text-[11px] uppercase tracking-[0.2em] text-stone-600 font-semibold">
-          Département
-        </p>
-        <h1 className="text-2xl font-semibold text-stone-900 mt-1">
-          Ressources Humaines
-        </h1>
-      </header>
-
       <FlowLines manager={manager} others={others} unit={unit} />
 
       {agents.map((agent) => (

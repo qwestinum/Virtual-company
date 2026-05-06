@@ -1,6 +1,5 @@
-import { AgentDetailsPanel } from '@/components/agents/AgentDetailsPanel';
-import { HRDepartmentView } from '@/components/agents/HRDepartmentView';
 import { ManagerChat } from '@/components/chat/ManagerChat';
+import { WorkspacePane } from '@/components/workspace/WorkspacePane';
 
 export default function Home() {
   return (
@@ -12,8 +11,7 @@ export default function Home() {
             'radial-gradient(ellipse at top, #fdfcf9 0%, #f3f1ec 70%, #ebe8e1 100%)',
         }}
       >
-        <HRDepartmentView />
-        <AgentDetailsPanel />
+        <WorkspacePane />
       </section>
       <aside
         className="h-full shrink-0 border-l border-stone-200 bg-stone-50/70 backdrop-blur-sm"
