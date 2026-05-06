@@ -230,3 +230,8 @@
 .font-display {
   font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
 }
+.font-data {
+  font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular,
+    Menlo, Consolas, monospace;
+  font-feature-settings: "tnum", "ss01";
+}

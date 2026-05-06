@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import {
   Geist,
   Geist_Mono,
+  JetBrains_Mono,
   Nunito,
   Plus_Jakarta_Sans,
 } from "next/font/google";
@@ -29,6 +30,12 @@ const plusJakarta = Plus_Jakarta_Sans({
   weight: ["500", "600", "700"],
 });
 
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+});
+
 export const metadata: Metadata = {
   title: "Virtual Enterprise — QWESTINUM",
   description: "Bureau virtuel avec agents IA pour le département RH.",
@@ -42,7 +49,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${geistSans.variable} ${geistMono.variable} ${nunito.variable} ${plusJakarta.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${nunito.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full m-0">{children}</body>
     </html>

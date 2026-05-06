@@ -34,7 +34,9 @@ export function CampaignHeader({ campaignId, status }: CampaignHeaderProps) {
           {kind}
         </span>
         <span className="font-body text-[12px] text-stone-800 truncate">
-          <span className="font-semibold">{campaignId}</span>
+          <span className="font-data font-semibold tracking-tight">
+            {campaignId}
+          </span>
           <span className="font-normal text-stone-500"> — {sub}</span>
         </span>
       </div>

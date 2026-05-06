@@ -44,7 +44,7 @@ export function FieldChecklist({
           <span className="font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-700 truncate">
             Fiche de poste
           </span>
-          <span className="font-body text-[11px] text-stone-500 shrink-0">
+          <span className="font-data text-[11px] text-stone-500 shrink-0 tabular-nums">
             {filledCount}/{total}
           </span>
         </div>

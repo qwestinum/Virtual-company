@@ -4,6 +4,8 @@ import { Check } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+
+
 /**
  * Nom de l'événement DOM émis quand le donneur d'ordre valide la FDP.
  * Cet événement matérialise le jalon R1 → R2 (cf. spec §3.1) et sera
@@ -60,7 +62,10 @@ export function ValidateFDPButton({
         )}
       >
         <Check className="h-4 w-4" aria-hidden />
-        <span>{formatValidateLabel(campaignId)}</span>
+        <span>
+          {splitValidateLabel(campaignId).prefix}
+          <span className="font-data tracking-tight ml-1.5">{campaignId}</span>
+        </span>
       </button>
     </div>
   );
@@ -71,4 +76,20 @@ export function formatValidateLabel(campaignId: string): string {
     return `Valider la fiche — ${campaignId}`;
   }
   return `Valider la fiche de poste — ${campaignId}`;
+}
+
+/**
+ * Variante segmentée — exposée pour permettre au rendu d'appliquer
+ * font-data au campaignId tout en gardant la phrase en font-display.
+ */
+export function splitValidateLabel(campaignId: string): {
+  prefix: string;
+  campaignId: string;
+} {
+  return {
+    prefix: campaignId.startsWith('TASK-')
+      ? 'Valider la fiche'
+      : 'Valider la fiche de poste',
+    campaignId,
+  };
 }
