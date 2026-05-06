@@ -60,6 +60,19 @@ export function ManagerChat() {
     resetFdp();
   }
 
+  function handleValidateFDP() {
+    const current = useFdpStore.getState().fdp;
+    if (!current || !current.isComplete || current.isValidated) return;
+    validateFDP();
+    const isTask = current.campaignId.startsWith('TASK-');
+    const noun = isTask ? 'sollicitation' : 'campagne';
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Tout est en ordre — ${noun} ${current.campaignId} lancée. Je vous tiens au courant des prochaines étapes, et vous pouvez aussi suivre l'avancement dans le dashboard.`,
+    });
+  }
+
   async function sendToManager(history: ChatMessage[]) {
     setSending(true);
     setError(null);
@@ -202,7 +215,7 @@ export function ManagerChat() {
           isComplete={fdp.isComplete}
           isValidated={fdp.isValidated}
           disabled={isSending || isTranscribing}
-          onValidate={validateFDP}
+          onValidate={handleValidateFDP}
         />
       ) : null}
 
