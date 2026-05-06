@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useRef } from 'react';
 
@@ -23,12 +23,7 @@ import { useFdpStore } from '@/stores/fdp-store';
 
 const MANAGER_ID = 'agent.manager-rh';
 
-export type ManagerChatProps = {
-  open: boolean;
-  onClose: () => void;
-};
-
-export function ManagerChat({ open, onClose }: ManagerChatProps) {
+export function ManagerChat() {
   const messages = useChatStore(selectMessages);
   const isSending = useChatStore((s) => s.isSending);
   const isTranscribing = useChatStore((s) => s.isTranscribing);
@@ -48,11 +43,10 @@ export function ManagerChat({ open, onClose }: ManagerChatProps) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!open) return;
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [messages.length, isSending, isTranscribing, open]);
+  }, [messages.length, isSending, isTranscribing]);
 
   function handleReset() {
     resetChat();
@@ -123,14 +117,8 @@ export function ManagerChat({ open, onClose }: ManagerChatProps) {
   }
 
   return (
-    <div
-      className={cn(
-        'h-full w-full flex flex-col',
-        'border-l border-stone-200 bg-stone-50/70 backdrop-blur-sm',
-      )}
-      aria-hidden={!open}
-    >
-      <ChatHeader onClose={onClose} onReset={handleReset} />
+    <div className="h-full w-full flex flex-col">
+      <ChatHeader onReset={handleReset} />
       {fdp ? (
         <>
           <CampaignHeader campaignId={fdp.campaignId} />
@@ -214,13 +202,7 @@ export function ManagerChat({ open, onClose }: ManagerChatProps) {
   );
 }
 
-function ChatHeader({
-  onClose,
-  onReset,
-}: {
-  onClose: () => void;
-  onReset: () => void;
-}) {
+function ChatHeader({ onReset }: { onReset: () => void }) {
   const url = getAvatarUrl(MANAGER_ID);
   const color = getAvatarColor(MANAGER_ID);
   return (
@@ -259,9 +241,6 @@ function ChatHeader({
           onClick={onReset}
         >
           <RotateCcw className="h-4 w-4" />
-        </HeaderIconButton>
-        <HeaderIconButton ariaLabel="Réduire le panneau" onClick={onClose}>
-          <ChevronRight className="h-4 w-4" />
         </HeaderIconButton>
       </div>
     </header>
