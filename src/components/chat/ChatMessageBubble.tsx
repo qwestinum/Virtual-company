@@ -30,7 +30,9 @@ export function ChatMessageBubble({ message }: { message: ChatMessage }) {
       >
         <span className="font-display text-[11px] font-semibold text-stone-500 mb-1 px-1">
           {isUser ? 'Vous' : 'Manager RH'}
-          <span className="ml-2 font-normal text-stone-400">{time}</span>
+          {time ? (
+            <span className="ml-2 font-normal text-stone-400">{time}</span>
+          ) : null}
         </span>
         <div
           className={cn(
@@ -95,6 +97,7 @@ function UserAvatar() {
 function formatTime(iso: string): string {
   try {
     const d = new Date(iso);
+    if (Number.isNaN(d.getTime()) || d.getTime() === 0) return '';
     return d.toLocaleTimeString('fr-FR', {
       hour: '2-digit',
       minute: '2-digit',

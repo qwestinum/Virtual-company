@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { useChatStore } from '@/stores/chat-store';
+import {
+  GREETING_MESSAGE_CREATED_AT,
+  GREETING_MESSAGE_ID,
+  useChatStore,
+} from '@/stores/chat-store';
 
 describe('chat-store (Session 3)', () => {
   beforeEach(() => {
@@ -14,6 +18,19 @@ describe('chat-store (Session 3)', () => {
     expect(messages[0]?.role).toBe('manager');
     expect(messages[0]?.source).toBe('text');
     expect(messages[0]?.content.length).toBeGreaterThan(0);
+  });
+
+  it('greeting message has deterministic id and createdAt (SSR safety)', () => {
+    const { messages } = useChatStore.getState();
+    expect(messages[0]?.id).toBe(GREETING_MESSAGE_ID);
+    expect(messages[0]?.createdAt).toBe(GREETING_MESSAGE_CREATED_AT);
+    // Re-rebuilding the store must keep the greeting deterministic, otherwise
+    // server-rendered HTML and client hydration produce different DOM and
+    // React throws a hydration mismatch.
+    useChatStore.getState().reset();
+    const after = useChatStore.getState();
+    expect(after.messages[0]?.id).toBe(GREETING_MESSAGE_ID);
+    expect(after.messages[0]?.createdAt).toBe(GREETING_MESSAGE_CREATED_AT);
   });
 
   it('appendMessage assigns id and createdAt and appends in order', () => {

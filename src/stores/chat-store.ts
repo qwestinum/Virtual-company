@@ -44,6 +44,16 @@ export type ChatState = {
 const GREETING =
   "Bonjour, je suis votre Manager RH. Décrivez-moi votre demande — recrutement, fiche isolée, point sur une campagne — et je m'occupe du reste.";
 
+/**
+ * Identifiant et timestamp déterministes du message d'accueil. Sans
+ * cette stabilité, l'évaluation du store côté SSR puis côté client
+ * produirait des valeurs différentes et casserait l'hydratation React.
+ * Le timestamp epoch est interprété comme "pas d'heure à afficher" par
+ * le rendu (cf. ChatMessageBubble.formatTime).
+ */
+export const GREETING_MESSAGE_ID = 'msg_greeting_seed';
+export const GREETING_MESSAGE_CREATED_AT = '1970-01-01T00:00:00.000Z';
+
 function generateId(prefix: string): string {
   if (
     typeof globalThis.crypto !== 'undefined' &&
@@ -62,10 +72,10 @@ function buildInitialState(): Pick<
     conversationId: generateId('conv'),
     messages: [
       {
-        id: generateId('msg'),
+        id: GREETING_MESSAGE_ID,
         role: 'manager',
         source: 'text',
-        createdAt: new Date().toISOString(),
+        createdAt: GREETING_MESSAGE_CREATED_AT,
         content: GREETING,
       },
     ],
