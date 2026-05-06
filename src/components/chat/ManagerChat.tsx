@@ -206,10 +206,15 @@ function ChatHeader({ onReset }: { onReset: () => void }) {
   const url = getAvatarUrl(MANAGER_ID);
   const color = getAvatarColor(MANAGER_ID);
   return (
-    <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-stone-200 bg-white/85 backdrop-blur">
+    <header
+      className="relative flex items-center justify-between gap-3 px-4 py-3.5 border-b border-stone-200 text-white"
+      style={{
+        background: `linear-gradient(135deg, ${color} 0%, ${color}dd 100%)`,
+      }}
+    >
       <div className="flex items-center gap-3 min-w-0">
         <div
-          className="relative h-9 w-9 shrink-0 rounded-full overflow-hidden ring-2 ring-white shadow-sm"
+          className="relative h-11 w-11 shrink-0 rounded-full overflow-hidden ring-2 ring-white/80 shadow-md"
           style={{ backgroundColor: color }}
         >
           {url ? (
@@ -217,22 +222,26 @@ function ChatHeader({ onReset }: { onReset: () => void }) {
               src={url}
               alt="Manager RH"
               fill
-              sizes="36px"
+              sizes="44px"
               className="object-cover"
             />
           ) : null}
           <span
-            className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white"
+            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-white"
             aria-hidden
           />
         </div>
         <div className="min-w-0">
-          <p className="font-display text-[10px] uppercase tracking-[0.2em] text-stone-500">
+          <p className="font-display text-[10px] uppercase tracking-[0.22em] text-white/70 font-medium">
             Conversation
           </p>
-          <h2 className="font-display text-[15px] font-semibold text-stone-900 leading-tight">
+          <h2 className="font-display text-[15px] font-semibold leading-tight">
             Manager RH
           </h2>
+          <p className="font-body text-[10.5px] text-white/80 mt-0.5 flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" aria-hidden />
+            En ligne · prêt à cadrer une demande
+          </p>
         </div>
       </div>
       <div className="flex items-center gap-1">
@@ -262,8 +271,8 @@ function HeaderIconButton({
       aria-label={ariaLabel}
       onClick={onClick}
       className={cn(
-        'h-8 w-8 grid place-items-center rounded-lg text-stone-500',
-        'hover:bg-stone-100 hover:text-stone-900 transition-colors',
+        'h-8 w-8 grid place-items-center rounded-lg text-white/85',
+        'hover:bg-white/15 hover:text-white transition-colors',
       )}
     >
       {children}

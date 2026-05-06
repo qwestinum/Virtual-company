@@ -18,26 +18,46 @@ export function CampaignHeader({ campaignId, status }: CampaignHeaderProps) {
   return (
     <div
       className={cn(
-        'flex items-center gap-2.5 px-4 py-2.5 border-b border-stone-200',
-        isTask ? 'bg-amber-50/70' : 'bg-stone-50/80',
+        'flex items-center gap-2.5 px-4 py-2.5 border-b',
+        isTask
+          ? 'bg-amber-50 border-amber-200'
+          : 'bg-indigo-50 border-indigo-200',
       )}
     >
       <Icon
         className={cn(
           'h-3.5 w-3.5 shrink-0',
-          isTask ? 'text-amber-700' : 'text-stone-600',
+          isTask ? 'text-amber-700' : 'text-indigo-700',
         )}
         aria-hidden
       />
       <div className="min-w-0 flex flex-col leading-tight">
-        <span className="font-display text-[10px] uppercase tracking-[0.18em] text-stone-500">
+        <span
+          className={cn(
+            'font-display text-[10px] uppercase tracking-[0.18em] font-semibold',
+            isTask ? 'text-amber-700' : 'text-indigo-700',
+          )}
+        >
           {kind}
         </span>
-        <span className="font-body text-[12px] text-stone-800 truncate">
-          <span className="font-data font-semibold tracking-tight">
+        <span className="font-body text-[12px] truncate">
+          <span
+            className={cn(
+              'font-data font-semibold tracking-tight',
+              isTask ? 'text-amber-900' : 'text-indigo-900',
+            )}
+          >
             {campaignId}
           </span>
-          <span className="font-normal text-stone-500"> — {sub}</span>
+          <span
+            className={cn(
+              'font-normal',
+              isTask ? 'text-amber-700/80' : 'text-indigo-700/80',
+            )}
+          >
+            {' '}
+            — {sub}
+          </span>
         </span>
       </div>
     </div>

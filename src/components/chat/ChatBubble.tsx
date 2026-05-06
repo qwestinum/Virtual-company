@@ -4,11 +4,17 @@ import { Mic } from 'lucide-react';
 import Image from 'next/image';
 
 import { ChatChips } from '@/components/chat/ChatChips';
-import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
+import {
+  DRH_COLOR,
+  DRH_INITIALS,
+  getAvatarColor,
+  getAvatarUrl,
+} from '@/lib/agents/avatar-colors';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/stores/chat-store';
 
 const MANAGER_ID = 'agent.manager-rh';
+const MANAGER_COLOR = getAvatarColor(MANAGER_ID);
 
 export type ChatBubbleProps = {
   message: ChatMessage;
@@ -53,7 +59,10 @@ export function ChatBubble({
           isUser ? 'items-end' : 'items-start',
         )}
       >
-        <span className="font-display text-[11px] font-semibold text-stone-500 mb-1 px-1">
+        <span
+          className="font-display text-[11px] font-semibold mb-1 px-1"
+          style={{ color: isUser ? DRH_COLOR : MANAGER_COLOR }}
+        >
           {isUser ? 'Vous' : 'Manager RH'}
           {time ? (
             <span className="ml-2 font-normal text-stone-400">{time}</span>
@@ -63,9 +72,14 @@ export function ChatBubble({
           className={cn(
             'font-body text-[14px] leading-relaxed px-3.5 py-2.5 shadow-sm',
             isUser
-              ? 'bg-stone-900 text-stone-50 rounded-2xl rounded-br-md'
-              : 'bg-white text-stone-900 border border-stone-200 rounded-2xl rounded-bl-md',
+              ? 'text-white rounded-2xl rounded-br-md'
+              : 'bg-white text-stone-900 border border-stone-200 border-l-[3px] rounded-2xl rounded-bl-md',
           )}
+          style={
+            isUser
+              ? { backgroundColor: DRH_COLOR }
+              : { borderLeftColor: MANAGER_COLOR }
+          }
         >
           {isVoice ? (
             <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider opacity-60 mb-1 font-display font-semibold">
@@ -88,11 +102,10 @@ export function ChatBubble({
 
 function ManagerAvatar() {
   const url = getAvatarUrl(MANAGER_ID);
-  const color = getAvatarColor(MANAGER_ID);
   return (
     <div
       className="relative h-8 w-8 shrink-0 rounded-full overflow-hidden ring-2 ring-white shadow-sm"
-      style={{ backgroundColor: color }}
+      style={{ backgroundColor: MANAGER_COLOR }}
     >
       {url ? (
         <Image
@@ -117,11 +130,12 @@ function UserAvatar() {
     <div
       className={cn(
         'h-8 w-8 shrink-0 rounded-full grid place-items-center',
-        'bg-stone-900 text-stone-50 font-display text-[11px] font-semibold',
+        'text-white font-display text-[11px] font-semibold',
         'ring-2 ring-white shadow-sm',
       )}
+      style={{ backgroundColor: DRH_COLOR }}
     >
-      DRH
+      {DRH_INITIALS}
     </div>
   );
 }

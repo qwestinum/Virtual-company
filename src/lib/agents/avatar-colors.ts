@@ -15,6 +15,16 @@ const AVATAR_META: Record<string, AvatarMeta> = {
 const FALLBACK_COLOR = '#64748b';
 const FALLBACK_INITIALS = '??';
 
+/**
+ * Couleur signature du donneur d'ordre (DRH humain). Distincte des
+ * agents IA pour qu'il soit identifiable d'un coup d'œil dans le chat
+ * (avatar, label, accent). Emerald-600 — cf. directive utilisateur
+ * Session 3 / refonte design.
+ */
+export const DRH_COLOR = '#059669';
+export const DRH_INITIALS = 'DRH';
+export const MANAGER_AGENT_ID = 'agent.manager-rh';
+
 export function getAvatarColor(agentId: string): string {
   return AVATAR_META[agentId]?.color ?? FALLBACK_COLOR;
 }

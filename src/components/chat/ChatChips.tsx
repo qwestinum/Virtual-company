@@ -1,5 +1,6 @@
 'use client';
 
+import { chipPaletteByIndex } from '@/components/chat/chip-palette';
 import { cn } from '@/lib/utils';
 import type { ChipPlacement, ChipSet } from '@/types/manager-response';
 
@@ -20,23 +21,29 @@ export function ChatChips({ chips, onSelect, disabled }: ChatChipsProps) {
         placementContainerClass(chips.placement),
       )}
     >
-      {chips.options.map((opt) => (
-        <button
-          key={opt}
-          type="button"
-          disabled={disabled}
-          onClick={() => onSelect(opt)}
-          className={cn(
-            'font-body text-[12px] leading-tight',
-            'px-3 py-1.5 rounded-full transition-all shadow-sm',
-            'bg-white border border-stone-200 text-stone-800',
-            'hover:bg-stone-100 hover:border-stone-300 hover:shadow',
-            'disabled:opacity-50 disabled:pointer-events-none',
-          )}
-        >
-          {opt}
-        </button>
-      ))}
+      {chips.options.map((opt, index) => {
+        const palette = chipPaletteByIndex(index);
+        return (
+          <button
+            key={opt}
+            type="button"
+            disabled={disabled}
+            onClick={() => onSelect(opt)}
+            className={cn(
+              'font-body font-medium text-[12px] leading-tight',
+              'px-3 py-1.5 rounded-full transition-all shadow-sm border',
+              palette.bg,
+              palette.text,
+              palette.border,
+              palette.hover,
+              'hover:shadow',
+              'disabled:opacity-50 disabled:pointer-events-none',
+            )}
+          >
+            {opt}
+          </button>
+        );
+      })}
     </div>
   );
 }

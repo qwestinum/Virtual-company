@@ -41,10 +41,15 @@ export function FieldChecklist({
               aria-hidden
             />
           )}
-          <span className="font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-700 truncate">
+          <span className="font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-700 truncate">
             Fiche de poste
           </span>
-          <span className="font-data text-[11px] text-stone-500 shrink-0 tabular-nums">
+          <span
+            className={cn(
+              'font-data text-[11px] shrink-0 tabular-nums',
+              fdp.isComplete ? 'text-emerald-700' : 'text-indigo-600',
+            )}
+          >
             {filledCount}/{total}
           </span>
         </div>
@@ -58,11 +63,11 @@ export function FieldChecklist({
       </button>
 
       <div className="px-4">
-        <div className="h-1 w-full rounded-full bg-stone-200 overflow-hidden">
+        <div className="h-1 w-full rounded-full bg-indigo-100 overflow-hidden">
           <div
             className={cn(
               'h-full rounded-full transition-all duration-500',
-              fdp.isComplete ? 'bg-emerald-500' : 'bg-stone-700',
+              fdp.isComplete ? 'bg-emerald-500' : 'bg-indigo-500',
             )}
             style={{ width: `${progressPct}%` }}
           />
@@ -84,7 +89,11 @@ export function FieldChecklist({
                 <span
                   className={cn(
                     'flex items-center gap-1.5 font-display font-medium shrink-0',
-                    filled ? 'text-stone-800' : 'text-stone-400',
+                    filled
+                      ? 'text-indigo-800'
+                      : inProgress
+                        ? 'text-amber-700'
+                        : 'text-stone-500',
                   )}
                 >
                   <span
@@ -103,7 +112,11 @@ export function FieldChecklist({
                 <span
                   className={cn(
                     'font-body text-right truncate min-w-0',
-                    filled ? 'text-stone-700' : 'text-stone-400 italic',
+                    filled
+                      ? 'text-stone-800'
+                      : inProgress
+                        ? 'text-amber-700'
+                        : 'text-stone-400 italic',
                   )}
                 >
                   {filled ? value : inProgress ? 'en cours…' : 'à préciser'}
