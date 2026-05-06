@@ -106,22 +106,30 @@ function guessMimeFromName(name: string): string {
  *
  * Pourquoi : Turbopack ne sait pas résoudre le `pdf.worker.mjs` quand
  * pdf-parse v2 le demande à la volée (« Cannot find module
- * .next/dev/server/chunks/pdf.worker.mjs »). On force GlobalWorkerOptions
- * vers le fichier physique présent dans `node_modules/pdfjs-dist/legacy/build`.
+ * .next/dev/server/chunks/pdf.worker.mjs »). On force
+ * GlobalWorkerOptions.workerSrc vers le fichier physique sur disque.
  *
- * Idempotent : un seul setWorker par process Node, même si plusieurs
- * CV sont analysés en série.
+ * On NE PASSE PAS par `require.resolve()` : Next refuse d'externaliser
+ * pdfjs-dist (module ESM), donc require() casse. On construit le
+ * chemin à partir de `process.cwd()` — c'est suffisant pour dev et
+ * prod (le worker est toujours dans node_modules à l'exécution).
+ *
+ * Idempotent : un seul setWorker par process Node.
  */
 let pdfWorkerConfigured = false;
 async function ensurePdfWorkerConfigured(
   PDFParse: { setWorker: (src: string) => string },
 ): Promise<void> {
   if (pdfWorkerConfigured) return;
-  const { createRequire } = await import('node:module');
+  const path = await import('node:path');
   const { pathToFileURL } = await import('node:url');
-  const requireFromHere = createRequire(import.meta.url);
-  const workerPath = requireFromHere.resolve(
-    'pdfjs-dist/legacy/build/pdf.worker.mjs',
+  const workerPath = path.join(
+    process.cwd(),
+    'node_modules',
+    'pdfjs-dist',
+    'legacy',
+    'build',
+    'pdf.worker.mjs',
   );
   PDFParse.setWorker(pathToFileURL(workerPath).href);
   pdfWorkerConfigured = true;
