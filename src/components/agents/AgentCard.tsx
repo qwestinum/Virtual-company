@@ -45,12 +45,13 @@ export function AgentCard({
   const avatarUrl = getAvatarUrl(agent.id);
   const isActive = agent.status === 'active';
 
-  const sizeClass = isManager ? 'w-48 h-48' : 'w-40 h-40';
-  const avatarSize = isManager ? 72 : 56;
+  const circleSize = isManager ? 144 : 120;
 
-  const style: CSSProperties = {
+  const buttonStyle: CSSProperties = {
     ['--glow-color' as string]: `${accent}66`,
     borderColor: accent,
+    width: circleSize,
+    height: circleSize,
   };
 
   const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
@@ -64,64 +65,38 @@ export function AgentCard({
         type="button"
         aria-label={`Ouvrir ${agent.name}`}
         onClick={handleClick}
-        style={style}
+        style={buttonStyle}
         className={cn(
-          'group relative bg-white rounded-full border-2',
-          'shadow-sm hover:shadow-lg',
+          'group relative rounded-full overflow-hidden border-[3px] bg-white',
+          'shadow-md hover:shadow-xl',
           'transition-all duration-200 ease-out',
           'hover:-translate-y-0.5',
-          sizeClass,
           isSelected &&
             'ring-2 ring-cyan-500 ring-offset-2 ring-offset-stone-50',
           (isActive || isManager) && 'agent-card-active',
           !agent.enabled && 'opacity-60',
         )}
       >
-        <div className="flex flex-col items-center justify-center h-full px-3">
+        {avatarUrl ? (
+          <Image
+            src={avatarUrl}
+            alt={agent.name}
+            fill
+            sizes={`${circleSize}px`}
+            priority={isManager}
+            className="object-cover"
+          />
+        ) : (
           <div
-            className="relative rounded-full overflow-hidden ring-2 ring-white shadow"
-            style={{ width: avatarSize, height: avatarSize }}
+            className="w-full h-full flex items-center justify-center text-white font-bold text-2xl"
+            style={{ backgroundColor: accent }}
           >
-            {avatarUrl ? (
-              <Image
-                src={avatarUrl}
-                alt={agent.name}
-                width={avatarSize}
-                height={avatarSize}
-                priority={isManager}
-              />
-            ) : (
-              <div
-                className="w-full h-full flex items-center justify-center text-white font-bold text-base"
-                style={{ backgroundColor: accent }}
-              >
-                {initials}
-              </div>
-            )}
+            {initials}
           </div>
-
-          <h3
-            className={cn(
-              'font-display font-semibold text-stone-900 text-center leading-tight px-1',
-              isManager ? 'mt-2.5 text-[14px]' : 'mt-2 text-[13px]',
-            )}
-          >
-            {agent.name}
-          </h3>
-
-          <div className="mt-1.5 flex items-center gap-1">
-            <span
-              className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[agent.status])}
-              aria-hidden
-            />
-            <span className="font-body text-[10px] font-medium text-stone-600">
-              {STATUS_LABEL[agent.status]}
-            </span>
-          </div>
-        </div>
+        )}
 
         {isWorking ? (
-          <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 shadow-lg">
+          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-stone-900/90 shadow-lg">
             <span
               className="work-dot h-1.5 w-1.5 rounded-full"
               style={{ backgroundColor: accent }}
@@ -138,18 +113,24 @@ export function AgentCard({
         ) : null}
       </button>
 
-      {isManager ? (
+      <h3
+        className={cn(
+          'mt-2.5 font-display font-semibold text-stone-900 text-center leading-tight',
+          isManager ? 'text-[14px]' : 'text-[13px]',
+        )}
+      >
+        {agent.name}
+      </h3>
+
+      <div className="mt-1 flex items-center gap-1.5">
         <span
-          className="mt-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-[0.16em] text-white shadow-sm"
-          style={{ backgroundColor: accent }}
-        >
-          Manager
+          className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[agent.status])}
+          aria-hidden
+        />
+        <span className="font-body text-[10.5px] font-medium text-stone-600">
+          {STATUS_LABEL[agent.status]}
         </span>
-      ) : (
-        <p className="mt-2 text-[10.5px] font-body text-stone-600 text-center leading-tight max-w-[160px] line-clamp-2">
-          {agent.role}
-        </p>
-      )}
+      </div>
     </div>
   );
 }
