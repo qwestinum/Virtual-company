@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react';
 
 import { CampaignHeader } from '@/components/chat/CampaignHeader';
 import { ChatBubble } from '@/components/chat/ChatBubble';
+import { ChatChips } from '@/components/chat/ChatChips';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { FieldChecklist } from '@/components/chat/FieldChecklist';
 import { TypingDots } from '@/components/chat/TypingDots';
@@ -82,6 +83,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
         role: 'manager',
         source: 'text',
         content: result.response.message,
+        chips: result.response.chips,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur Manager.');
@@ -93,6 +95,11 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
   async function handleSendText(text: string) {
     appendMessage({ role: 'user', source: 'text', content: text });
     void sendToManager(useChatStore.getState().messages);
+  }
+
+  function handleChipSelect(option: string) {
+    if (isSending || isTranscribing) return;
+    void handleSendText(option);
   }
 
   async function handleSendVoice(audio: File) {
@@ -137,9 +144,31 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
         ref={scrollerRef}
         className="flex-1 overflow-y-auto px-4 py-5 space-y-4"
       >
-        {messages.map((message) => (
-          <ChatBubble key={message.id} message={message} />
-        ))}
+        {messages.map((message, index) => {
+          const isLast = index === messages.length - 1;
+          const showBelow =
+            isLast &&
+            message.role === 'manager' &&
+            message.chips?.placement === 'below_bubble' &&
+            !isSending &&
+            !isTranscribing;
+          return (
+            <div key={message.id}>
+              <ChatBubble
+                message={message}
+                onChipSelect={handleChipSelect}
+                chipsDisabled={isSending || isTranscribing}
+              />
+              {showBelow && message.chips ? (
+                <ChatChips
+                  chips={message.chips}
+                  onSelect={handleChipSelect}
+                  disabled={isSending || isTranscribing}
+                />
+              ) : null}
+            </div>
+          );
+        })}
         {isTranscribing ? (
           <StatusLine label="Transcription en cours…" />
         ) : null}
@@ -148,6 +177,25 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
           <p className="font-body text-[11.5px] text-red-600 px-1">{error}</p>
         ) : null}
       </div>
+
+      {(() => {
+        const last = messages[messages.length - 1];
+        if (
+          !last ||
+          last.role !== 'manager' ||
+          last.chips?.placement !== 'above_input' ||
+          isSending ||
+          isTranscribing
+        )
+          return null;
+        return (
+          <ChatChips
+            chips={last.chips}
+            onSelect={handleChipSelect}
+            disabled={isSending || isTranscribing}
+          />
+        );
+      })()}
 
       <ChatInput
         disabled={isSending || isTranscribing}

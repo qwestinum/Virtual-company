@@ -3,16 +3,41 @@
 import { Mic } from 'lucide-react';
 import Image from 'next/image';
 
+import { ChatChips } from '@/components/chat/ChatChips';
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/stores/chat-store';
 
 const MANAGER_ID = 'agent.manager-rh';
 
-export function ChatBubble({ message }: { message: ChatMessage }) {
+export type ChatBubbleProps = {
+  message: ChatMessage;
+  /**
+   * Si `true` et que le message a des chips inline, ils sont rendus
+   * dans la bulle. Les autres placements (below_bubble, above_input)
+   * sont la responsabilité du parent.
+   */
+  showInlineChips?: boolean;
+  onChipSelect?: (option: string) => void;
+  chipsDisabled?: boolean;
+};
+
+export function ChatBubble({
+  message,
+  showInlineChips = true,
+  onChipSelect,
+  chipsDisabled,
+}: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const isVoice = message.source === 'voice';
   const time = formatTime(message.createdAt);
+  const inlineChips =
+    showInlineChips &&
+    message.chips &&
+    message.chips.placement === 'inline' &&
+    onChipSelect
+      ? message.chips
+      : null;
 
   return (
     <div
@@ -48,6 +73,13 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
             </span>
           ) : null}
           <p className="whitespace-pre-wrap">{message.content}</p>
+          {inlineChips && onChipSelect ? (
+            <ChatChips
+              chips={inlineChips}
+              onSelect={onChipSelect}
+              disabled={chipsDisabled}
+            />
+          ) : null}
         </div>
       </div>
     </div>

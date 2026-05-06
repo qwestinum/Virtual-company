@@ -14,6 +14,8 @@
 
 import { create } from 'zustand';
 
+import type { ChipSet } from '@/types/manager-response';
+
 export type ChatRole = 'user' | 'manager' | 'system';
 export type ChatMessageSource = 'text' | 'voice';
 
@@ -23,6 +25,15 @@ export type ChatMessage = {
   content: string;
   source: ChatMessageSource;
   createdAt: string;
+  /**
+   * Chips proposés par le Manager avec ce tour. Attachés au message
+   * pour permettre au rendu de les afficher selon `chips.placement`
+   * (inline dans la bulle, below_bubble juste après, above_input
+   * au-dessus de l'input). Effacés visuellement dès qu'un message
+   * suivant arrive (cf. brief Session 3 §3 — « Les chips disparaissent
+   * dès qu'un message est envoyé »).
+   */
+  chips?: ChipSet;
 };
 
 export type ChatState = {
