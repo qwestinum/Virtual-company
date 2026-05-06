@@ -81,6 +81,14 @@ export class ManagerError extends Error {
   }
 }
 
+/**
+ * Backlog Session 5 : la suite NNN sur 3 chiffres random a un risque
+ * de collision non négligeable dès qu'on dépasse une vingtaine de
+ * campagnes/tasks la même année (anniversaire ~50 % autour de 35
+ * éléments). Acceptable pour le MVP mono-utilisateur Session 3, à
+ * remplacer par un compteur monotone Supabase (table sequence par
+ * type+année) au moment du câblage storage hybride en Session 5.
+ */
 export function generateCampaignId(intent: Intent): string {
   const prefix = intent === 'out_of_campaign_task' ? 'TASK' : 'CAMP';
   const year = new Date().getFullYear();
