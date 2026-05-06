@@ -9,7 +9,7 @@ import type { ChatMessage } from '@/stores/chat-store';
 
 const MANAGER_ID = 'agent.manager-rh';
 
-export function ChatMessageBubble({ message }: { message: ChatMessage }) {
+export function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
   const isVoice = message.source === 'voice';
   const time = formatTime(message.createdAt);

@@ -13,17 +13,17 @@ const MIC_ERROR_LABEL: Record<string, string> = {
   unknown: 'Erreur micro.',
 };
 
-export type ChatComposerProps = {
+export type ChatInputProps = {
   disabled: boolean;
   onSendText: (text: string) => Promise<void>;
   onSendVoice: (audio: File) => Promise<void>;
 };
 
-export function ChatComposer({
+export function ChatInput({
   disabled,
   onSendText,
   onSendVoice,
-}: ChatComposerProps) {
+}: ChatInputProps) {
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const recorder = useMicRecorder();

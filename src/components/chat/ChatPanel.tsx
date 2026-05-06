@@ -5,8 +5,8 @@ import Image from 'next/image';
 import { useEffect, useRef } from 'react';
 
 import { CampaignHeader } from '@/components/chat/CampaignHeader';
-import { ChatComposer } from '@/components/chat/ChatComposer';
-import { ChatMessageBubble } from '@/components/chat/ChatMessageBubble';
+import { ChatBubble } from '@/components/chat/ChatBubble';
+import { ChatInput } from '@/components/chat/ChatInput';
 import { FieldChecklist } from '@/components/chat/FieldChecklist';
 import { TypingDots } from '@/components/chat/TypingDots';
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
@@ -138,7 +138,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
         className="flex-1 overflow-y-auto px-4 py-5 space-y-4"
       >
         {messages.map((message) => (
-          <ChatMessageBubble key={message.id} message={message} />
+          <ChatBubble key={message.id} message={message} />
         ))}
         {isTranscribing ? (
           <StatusLine label="Transcription en cours…" />
@@ -149,7 +149,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
         ) : null}
       </div>
 
-      <ChatComposer
+      <ChatInput
         disabled={isSending || isTranscribing}
         onSendText={handleSendText}
         onSendVoice={handleSendVoice}
