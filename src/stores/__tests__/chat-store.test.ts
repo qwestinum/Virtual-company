@@ -101,4 +101,40 @@ describe('chat-store (Session 3)', () => {
     expect(state.setCampaign).toBeUndefined();
     expect(state.setLastIntent).toBeUndefined();
   });
+
+  it('dismissLastManagerChips clears chips on the last manager bubble only', () => {
+    const { appendMessage, dismissLastManagerChips } =
+      useChatStore.getState();
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: 'Q1',
+      chips: { placement: 'below_bubble', options: ['junior', 'senior'] },
+    });
+    appendMessage({ role: 'user', source: 'text', content: 'something' });
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: 'Q2',
+      chips: { placement: 'inline', options: ['Utiliser', 'Plus haut'] },
+    });
+
+    dismissLastManagerChips();
+    const msgs = useChatStore.getState().messages;
+    expect(msgs.at(-1)?.chips).toBeUndefined();
+    // L'ancienne bulle Manager (avant la user) garde ses chips.
+    const earlierManager = msgs.find(
+      (m) => m.role === 'manager' && m.content === 'Q1',
+    );
+    expect(earlierManager?.chips?.options).toEqual(['junior', 'senior']);
+  });
+
+  it('dismissLastManagerChips is a no-op when no manager bubble has chips', () => {
+    const { appendMessage, dismissLastManagerChips } =
+      useChatStore.getState();
+    const before = useChatStore.getState().messages.length;
+    appendMessage({ role: 'user', source: 'text', content: 'hi' });
+    dismissLastManagerChips();
+    expect(useChatStore.getState().messages).toHaveLength(before + 1);
+  });
 });

@@ -2,7 +2,9 @@
 
 import { RotateCcw } from 'lucide-react';
 import Image from 'next/image';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+import { isAdjustmentSignal } from '@/components/chat/adjustment-signal';
 
 import { CampaignHeader } from '@/components/chat/CampaignHeader';
 import { ChatBubble } from '@/components/chat/ChatBubble';
@@ -32,7 +34,12 @@ export function ManagerChat() {
   const setSending = useChatStore((s) => s.setSending);
   const setTranscribing = useChatStore((s) => s.setTranscribing);
   const setError = useChatStore((s) => s.setError);
+  const dismissLastManagerChips = useChatStore(
+    (s) => s.dismissLastManagerChips,
+  );
   const resetChat = useChatStore((s) => s.reset);
+
+  const [inputFocusToken, setInputFocusToken] = useState(0);
 
   const fdp = useFdpStore((s) => s.fdp);
   const createFDP = useFdpStore((s) => s.createFDP);
@@ -98,6 +105,12 @@ export function ManagerChat() {
 
   function handleChipSelect(option: string) {
     if (isSending || isTranscribing) return;
+    if (isAdjustmentSignal(option)) {
+      // Pas de tour LLM : le DRH veut juste reprendre la main.
+      dismissLastManagerChips();
+      setInputFocusToken((token) => token + 1);
+      return;
+    }
     void handleSendText(option, 'text');
   }
 
@@ -197,6 +210,7 @@ export function ManagerChat() {
         disabled={isSending || isTranscribing}
         onSendText={handleSendText}
         onTranscribe={handleTranscribe}
+        focusToken={inputFocusToken}
       />
     </div>
   );

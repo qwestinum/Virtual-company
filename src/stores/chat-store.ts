@@ -49,6 +49,12 @@ export type ChatState = {
   setSending: (value: boolean) => void;
   setTranscribing: (value: boolean) => void;
   setError: (message: string | null) => void;
+  /**
+   * Retire le champ `chips` de la dernière bulle Manager. Utilisé
+   * quand le DRH clique un chip d'ajustement vague — on rend la main
+   * au textarea sans déclencher un tour LLM.
+   */
+  dismissLastManagerChips: () => void;
   reset: () => void;
 };
 
@@ -113,6 +119,20 @@ export const useChatStore = create<ChatState>()((set) => ({
   setTranscribing: (value) =>
     set((state) => ({ ...state, isTranscribing: value })),
   setError: (message) => set((state) => ({ ...state, error: message })),
+
+  dismissLastManagerChips: () =>
+    set((state) => {
+      const messages = [...state.messages];
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i];
+        if (message.role === 'manager' && message.chips) {
+          const { chips: _chips, ...rest } = message;
+          messages[i] = rest;
+          return { ...state, messages };
+        }
+      }
+      return state;
+    }),
 
   reset: () => set(() => ({ ...buildInitialState() })),
 }));

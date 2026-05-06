@@ -18,6 +18,12 @@ export type ChatInputProps = {
   disabled: boolean;
   onSendText: (text: string, source: 'text' | 'voice') => Promise<void>;
   onTranscribe: (audio: File) => Promise<string>;
+  /**
+   * Token incrémental qui force le focus du textarea quand il change.
+   * Utilisé par le parent pour reprendre la main après un clic chip
+   * d'ajustement (cf. dismissLastManagerChips dans chat-store).
+   */
+  focusToken?: number;
 };
 
 type VoiceMode = 'idle' | 'recording' | 'transcribing';
@@ -26,6 +32,7 @@ export function ChatInput({
   disabled,
   onSendText,
   onTranscribe,
+  focusToken,
 }: ChatInputProps) {
   const [draft, setDraft] = useState('');
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('idle');
@@ -41,6 +48,11 @@ export function ChatInput({
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
   }, [draft]);
+
+  useEffect(() => {
+    if (focusToken === undefined) return;
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [focusToken]);
 
   function handleDraftChange(value: string) {
     setDraft(value);
