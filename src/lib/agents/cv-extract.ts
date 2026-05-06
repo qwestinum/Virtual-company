@@ -50,6 +50,7 @@ export async function extractCVText(file: File): Promise<ExtractedCV> {
     try {
       const data = new Uint8Array(await file.arrayBuffer());
       const { PDFParse } = await import('pdf-parse');
+      await ensurePdfWorkerConfigured(PDFParse);
       const instance = new PDFParse({ data });
       parser = instance;
       const result = await instance.getText();
@@ -98,4 +99,30 @@ function guessMimeFromName(name: string): string {
   if (lower.endsWith('.md')) return 'text/markdown';
   if (lower.endsWith('.txt')) return 'text/plain';
   return '';
+}
+
+/**
+ * Configure le worker pdfjs-dist avec un chemin absolu sur disque.
+ *
+ * Pourquoi : Turbopack ne sait pas résoudre le `pdf.worker.mjs` quand
+ * pdf-parse v2 le demande à la volée (« Cannot find module
+ * .next/dev/server/chunks/pdf.worker.mjs »). On force GlobalWorkerOptions
+ * vers le fichier physique présent dans `node_modules/pdfjs-dist/legacy/build`.
+ *
+ * Idempotent : un seul setWorker par process Node, même si plusieurs
+ * CV sont analysés en série.
+ */
+let pdfWorkerConfigured = false;
+async function ensurePdfWorkerConfigured(
+  PDFParse: { setWorker: (src: string) => string },
+): Promise<void> {
+  if (pdfWorkerConfigured) return;
+  const { createRequire } = await import('node:module');
+  const { pathToFileURL } = await import('node:url');
+  const requireFromHere = createRequire(import.meta.url);
+  const workerPath = requireFromHere.resolve(
+    'pdfjs-dist/legacy/build/pdf.worker.mjs',
+  );
+  PDFParse.setWorker(pathToFileURL(workerPath).href);
+  pdfWorkerConfigured = true;
 }
