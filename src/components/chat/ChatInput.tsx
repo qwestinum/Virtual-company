@@ -1,8 +1,9 @@
 'use client';
 
-import { Loader2, Mic, Send, Square } from 'lucide-react';
+import { Mic, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { VoiceTranscript } from '@/components/chat/VoiceTranscript';
 import { useMicRecorder } from '@/lib/chat/use-mic-recorder';
 import { cn } from '@/lib/utils';
 
@@ -15,22 +16,24 @@ const MIC_ERROR_LABEL: Record<string, string> = {
 
 export type ChatInputProps = {
   disabled: boolean;
-  onSendText: (text: string) => Promise<void>;
-  onSendVoice: (audio: File) => Promise<void>;
+  onSendText: (text: string, source: 'text' | 'voice') => Promise<void>;
+  onTranscribe: (audio: File) => Promise<string>;
 };
+
+type VoiceMode = 'idle' | 'recording' | 'transcribing';
 
 export function ChatInput({
   disabled,
   onSendText,
-  onSendVoice,
+  onTranscribe,
 }: ChatInputProps) {
   const [draft, setDraft] = useState('');
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('idle');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [draftFromVoice, setDraftFromVoice] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const recorder = useMicRecorder();
-  const isRecording = recorder.state === 'recording';
-  const isStopping = recorder.state === 'stopping';
-  const isRequesting = recorder.state === 'requesting';
-  const isMicBusy = isRequesting || isStopping;
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -39,87 +42,148 @@ export function ChatInput({
     ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
   }, [draft]);
 
+  function handleDraftChange(value: string) {
+    setDraft(value);
+    if (draftFromVoice) setDraftFromVoice(false);
+  }
+
   async function handleSubmit() {
     const text = draft.trim();
     if (!text || disabled) return;
+    const source: 'text' | 'voice' = draftFromVoice ? 'voice' : 'text';
     setDraft('');
-    await onSendText(text);
+    setDraftFromVoice(false);
+    await onSendText(text, source);
   }
 
-  async function handleMicClick() {
-    if (disabled && !isRecording) return;
-    if (isRecording) {
-      const file = await recorder.stop();
-      if (file) await onSendVoice(file);
+  async function handleStartRecord() {
+    if (disabled || voiceMode !== 'idle') return;
+    setVoiceError(null);
+    setVoiceMode('recording');
+    await recorder.start();
+  }
+
+  async function handleStopRecord() {
+    if (recorder.state !== 'recording') return;
+    setVoiceMode('transcribing');
+    const file = await recorder.stop();
+    if (!file) {
+      setVoiceError(
+        MIC_ERROR_LABEL[recorder.error ?? 'unknown'] ?? 'Erreur micro.',
+      );
+      setVoiceMode('idle');
       return;
     }
-    if (recorder.state === 'idle') await recorder.start();
+    try {
+      const text = await onTranscribe(file);
+      const trimmed = text.trim();
+      if (!trimmed) {
+        setVoiceError('Transcription vide.');
+        setVoiceMode('idle');
+        return;
+      }
+      setDraft(trimmed);
+      setDraftFromVoice(true);
+      setVoiceMode('idle');
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    } catch (err) {
+      setVoiceError(
+        err instanceof Error ? err.message : 'Transcription échouée.',
+      );
+      setVoiceMode('idle');
+    }
   }
 
-  const micErrorLabel = recorder.error ? MIC_ERROR_LABEL[recorder.error] : null;
-  const sendDisabled = disabled || draft.trim().length === 0 || isRecording;
+  function handleClearDraft() {
+    setDraft('');
+    setDraftFromVoice(false);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
+  const micErrorLabel = recorder.error
+    ? MIC_ERROR_LABEL[recorder.error]
+    : null;
+  const errorLabel = voiceError ?? micErrorLabel;
+  const sendDisabled =
+    disabled || draft.trim().length === 0 || voiceMode !== 'idle';
 
   return (
     <div className="border-t border-stone-200 bg-white/85 backdrop-blur px-3 py-3">
-      {micErrorLabel ? (
+      {errorLabel ? (
         <p className="font-body text-[11px] text-red-600 mb-1.5 px-1">
-          {micErrorLabel}
+          {errorLabel}
         </p>
       ) : null}
-      <div
+
+      {voiceMode !== 'idle' ? (
+        <VoiceTranscript
+          state={voiceMode}
+          onStop={voiceMode === 'recording' ? handleStopRecord : undefined}
+        />
+      ) : (
+        <div
+          className={cn(
+            'group flex items-end gap-2 rounded-2xl border bg-white pl-3 pr-2 py-2',
+            'transition-all duration-150',
+            'border-stone-200 focus-within:border-stone-400 focus-within:ring-2 focus-within:ring-stone-200',
+          )}
+        >
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => handleDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
+            placeholder="Décris ta demande au Manager RH"
+            disabled={disabled}
+            rows={1}
+            className={cn(
+              'font-body flex-1 resize-none bg-transparent text-[14px] leading-relaxed',
+              'outline-none placeholder:text-stone-400 disabled:opacity-60 py-1',
+            )}
+          />
+          {draftFromVoice && draft.length > 0 ? (
+            <button
+              type="button"
+              onClick={handleClearDraft}
+              aria-label="Effacer la transcription proposée"
+              className="h-9 w-9 grid place-items-center rounded-xl text-stone-500 hover:bg-stone-100 shrink-0 transition-all"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          ) : null}
+          <MicButton disabled={disabled} onClick={handleStartRecord} />
+          <SendButton
+            disabled={sendDisabled}
+            onClick={() => void handleSubmit()}
+          />
+        </div>
+      )}
+
+      <p
         className={cn(
-          'group flex items-end gap-2 rounded-2xl border bg-white pl-3 pr-2 py-2',
-          'transition-all duration-150',
-          isRecording
-            ? 'border-red-300 ring-2 ring-red-200/60'
-            : 'border-stone-200 focus-within:border-stone-400 focus-within:ring-2 focus-within:ring-stone-200',
+          'font-body text-[10.5px] mt-1.5 px-1.5',
+          draftFromVoice && draft.length > 0
+            ? 'text-amber-700'
+            : 'text-stone-400',
         )}
       >
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void handleSubmit();
-            }
-          }}
-          placeholder={
-            isRecording
-              ? 'Enregistrement en cours…'
-              : 'Décris ta demande au Manager RH'
-          }
-          disabled={disabled || isRecording}
-          rows={1}
-          className={cn(
-            'font-body flex-1 resize-none bg-transparent text-[14px] leading-relaxed',
-            'outline-none placeholder:text-stone-400 disabled:opacity-60 py-1',
-          )}
-        />
-        <MicButton
-          recording={isRecording}
-          busy={isMicBusy}
-          disabled={disabled && !isRecording}
-          onClick={handleMicClick}
-        />
-        <SendButton disabled={sendDisabled} onClick={() => void handleSubmit()} />
-      </div>
-      <p className="font-body text-[10.5px] text-stone-400 mt-1.5 px-1.5">
-        Entrée pour envoyer · Maj+Entrée pour aller à la ligne
+        {draftFromVoice && draft.length > 0
+          ? "Transcription proposée — édite si besoin avant l'envoi."
+          : 'Entrée pour envoyer · Maj+Entrée pour aller à la ligne'}
       </p>
     </div>
   );
 }
 
 function MicButton({
-  recording,
-  busy,
   disabled,
   onClick,
 }: {
-  recording: boolean;
-  busy: boolean;
   disabled: boolean;
   onClick: () => void;
 }) {
@@ -127,24 +191,15 @@ function MicButton({
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled || busy}
-      aria-label={recording ? 'Arrêter et envoyer' : 'Démarrer enregistrement'}
-      aria-pressed={recording}
+      disabled={disabled}
+      aria-label="Démarrer enregistrement"
       className={cn(
         'h-9 w-9 grid place-items-center rounded-xl shrink-0 transition-all',
-        recording
-          ? 'bg-red-500 text-white shadow-md hover:bg-red-600'
-          : 'bg-stone-100 text-stone-600 hover:bg-stone-200',
+        'bg-stone-100 text-stone-600 hover:bg-stone-200',
         'disabled:opacity-40 disabled:pointer-events-none',
       )}
     >
-      {busy ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : recording ? (
-        <Square className="h-3.5 w-3.5 fill-current" />
-      ) : (
-        <Mic className="h-4 w-4" />
-      )}
+      <Mic className="h-4 w-4" aria-hidden />
     </button>
   );
 }
@@ -168,7 +223,7 @@ function SendButton({
         'disabled:opacity-30 disabled:pointer-events-none',
       )}
     >
-      <Send className="h-4 w-4" />
+      <Send className="h-4 w-4" aria-hidden />
     </button>
   );
 }

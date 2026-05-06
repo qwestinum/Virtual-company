@@ -94,30 +94,29 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
     }
   }
 
-  async function handleSendText(text: string) {
-    appendMessage({ role: 'user', source: 'text', content: text });
+  async function handleSendText(
+    text: string,
+    source: 'text' | 'voice' = 'text',
+  ) {
+    appendMessage({ role: 'user', source, content: text });
     void sendToManager(useChatStore.getState().messages);
   }
 
   function handleChipSelect(option: string) {
     if (isSending || isTranscribing) return;
-    void handleSendText(option);
+    void handleSendText(option, 'text');
   }
 
-  async function handleSendVoice(audio: File) {
+  async function handleTranscribe(audio: File): Promise<string> {
     setTranscribing(true);
     setError(null);
     try {
-      const text = await postTranscribe(audio);
-      const trimmed = text.trim();
-      if (trimmed.length === 0) {
-        setError('Transcription vide.');
-        return;
-      }
-      appendMessage({ role: 'user', source: 'voice', content: trimmed });
-      void sendToManager(useChatStore.getState().messages);
+      return await postTranscribe(audio);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur transcription.');
+      const message =
+        err instanceof Error ? err.message : 'Erreur transcription.';
+      setError(message);
+      throw err;
     } finally {
       setTranscribing(false);
     }
@@ -171,9 +170,6 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
             </div>
           );
         })}
-        {isTranscribing ? (
-          <StatusLine label="Transcription en cours…" />
-        ) : null}
         {isSending ? <TypingPreview /> : null}
         {error ? (
           <p className="font-body text-[11.5px] text-red-600 px-1">{error}</p>
@@ -212,7 +208,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
       <ChatInput
         disabled={isSending || isTranscribing}
         onSendText={handleSendText}
-        onSendVoice={handleSendVoice}
+        onTranscribe={handleTranscribe}
       />
     </div>
   );
@@ -327,11 +323,3 @@ function TypingPreview() {
   );
 }
 
-function StatusLine({ label }: { label: string }) {
-  return (
-    <div className="font-body text-[11.5px] text-stone-500 flex items-center gap-2 px-1">
-      <TypingDots />
-      <span>{label}</span>
-    </div>
-  );
-}
