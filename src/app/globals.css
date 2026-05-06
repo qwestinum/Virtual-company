@@ -264,3 +264,44 @@
 .btn-validate-pulse {
   animation: btn-pulse 2.4s ease-in-out infinite;
 }
+
+/*
+ * Blobs animés du fond bureau — beige (amber-200), jaune (yellow-300)
+ * et gris (slate-200) flottants en arrière-plan, fortement floutés
+ * pour rester un décor (pas un élément lisible). Le motif dots passe
+ * par-dessus pour conserver le repère « papier millimétré ».
+ */
+@keyframes blob-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(40px, -30px) scale(1.05);
+  }
+  66% {
+    transform: translate(-30px, 30px) scale(0.95);
+  }
+}
+
+.bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.bg-blob-1 {
+  animation: blob-float 22s ease-in-out infinite;
+}
+
+.bg-blob-2 {
+  animation: blob-float 26s ease-in-out infinite reverse;
+  animation-delay: -4s;
+}
+
+.bg-blob-3 {
+  animation: blob-float 30s ease-in-out infinite;
+  animation-delay: -8s;
+}
