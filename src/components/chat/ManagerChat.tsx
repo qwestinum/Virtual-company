@@ -23,12 +23,12 @@ import { useFdpStore } from '@/stores/fdp-store';
 
 const MANAGER_ID = 'agent.manager-rh';
 
-export type ChatPanelProps = {
+export type ManagerChatProps = {
   open: boolean;
   onClose: () => void;
 };
 
-export function ChatPanel({ open, onClose }: ChatPanelProps) {
+export function ManagerChat({ open, onClose }: ManagerChatProps) {
   const messages = useChatStore(selectMessages);
   const isSending = useChatStore((s) => s.isSending);
   const isTranscribing = useChatStore((s) => s.isTranscribing);

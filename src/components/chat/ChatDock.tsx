@@ -3,7 +3,7 @@
 import { ChevronRight, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 
-import { ChatPanel } from '@/components/chat/ChatPanel';
+import { ManagerChat } from '@/components/chat/ManagerChat';
 import { cn } from '@/lib/utils';
 
 const PANEL_WIDTH = 'w-[440px] max-w-[92vw]';
@@ -25,7 +25,7 @@ export function ChatDock() {
           open ? 'opacity-100' : 'opacity-0 pointer-events-none',
         )}
       >
-        <ChatPanel open={open} onClose={() => setOpen(false)} />
+        <ManagerChat open={open} onClose={() => setOpen(false)} />
       </div>
 
       {!open ? <RailToggle onOpen={() => setOpen(true)} /> : null}

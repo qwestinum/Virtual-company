@@ -10,7 +10,7 @@
  * Ils existent dans le store comme cartes statiques mais ne sont pas
  * exécutables en Session 3 »).
  *
- * Aucun consommateur actif après C7 (refonte ChatPanel). Le type
+ * Aucun consommateur actif après la refonte du panel chat. Le type
  * `DispatchedTask` est défini localement ici pour rester auto-suffisant —
  * l'ancien export de chat-store a été retiré dans la Session 3.
  *
