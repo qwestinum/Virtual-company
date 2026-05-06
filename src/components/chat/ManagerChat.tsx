@@ -300,14 +300,19 @@ function TypingPreview() {
         ) : null}
       </div>
       <div className="flex flex-col items-start max-w-[78%]">
-        <span className="font-display text-[11px] font-semibold text-stone-500 mb-1 px-1">
+        <span
+          className="font-display text-[11px] font-semibold mb-1 px-1"
+          style={{ color }}
+        >
           Manager RH
         </span>
-        <div className="bg-white border border-stone-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
-          <TypingDots />
+        <div
+          className="bg-white border border-stone-200 border-l-[3px] rounded-2xl rounded-bl-md px-4 py-3 shadow-sm"
+          style={{ borderLeftColor: color }}
+        >
+          <TypingDots color={color} />
         </div>
       </div>
     </div>
   );
 }
-

@@ -59,6 +59,7 @@ export function ValidateFDPButton({
           'shadow-sm transition-all',
           'hover:bg-emerald-700 hover:shadow',
           'disabled:opacity-50 disabled:pointer-events-none',
+          !disabled && 'btn-validate-pulse',
         )}
       >
         <Check className="h-4 w-4" aria-hidden />

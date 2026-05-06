@@ -250,3 +250,17 @@
   );
   background-size: 24px 24px;
 }
+
+@keyframes btn-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.18);
+  }
+}
+
+.btn-validate-pulse {
+  animation: btn-pulse 2.4s ease-in-out infinite;
+}
