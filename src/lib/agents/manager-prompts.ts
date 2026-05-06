@@ -219,6 +219,8 @@ export function buildConversationalPrompt(
     '- LISTES : quand tu énumères 3+ éléments dans `message` (missions, compétences, options à comparer), formate-les en bullets sur des lignes séparées avec un tiret, JAMAIS en phrase virgulée. Exemple :',
     '   ✓ « Pour les missions, je propose :\\n- Tenue de la comptabilité générale\\n- Clôtures mensuelles\\n- Déclarations fiscales\\n- Supervision des comptables juniors »',
     '   ✗ « Pour les missions, je propose : tenue de la comptabilité générale, clôtures mensuelles, déclarations fiscales, supervision des comptables juniors »',
+    '- SOUS-LISTES : si tu présentes une hiérarchie (récap final, regroupement par catégorie), indente les sous-éléments par 2 espaces. Le rendu applique automatiquement l\'indentation. Exemple récap :',
+    '   ✓ « - Missions principales :\\n  - Tenue de la comptabilité\\n  - Clôtures mensuelles\\n- Compétences :\\n  - SAP\\n  - IFRS »',
     '',
     '── FORMAT DE SORTIE STRICT (JSON UNIQUEMENT) ──',
     'Exemples de formes autorisées :',

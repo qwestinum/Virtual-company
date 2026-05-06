@@ -124,8 +124,16 @@ function RenderedContent({ content }: { content: string }) {
             )}
           >
             {block.items.map((item, i) => (
-              <li key={i} className="leading-snug pl-1">
-                {item}
+              <li
+                key={i}
+                className="leading-snug pl-1"
+                style={
+                  item.level > 0
+                    ? { marginLeft: `${item.level * 18}px` }
+                    : undefined
+                }
+              >
+                {item.text}
               </li>
             ))}
           </ListTag>

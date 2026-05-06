@@ -15,12 +15,30 @@
  * via `whitespace-pre-wrap` côté composant).
  */
 
+export type ListItem = { text: string; level: number };
+
 export type RenderBlock =
   | { kind: 'paragraph'; text: string }
-  | { kind: 'list'; ordered: boolean; items: string[] };
+  | { kind: 'list'; ordered: boolean; items: ListItem[] };
 
-const BULLET_RE = /^\s*[-•*]\s+(.+)$/;
-const ORDERED_RE = /^\s*\d+[.)]\s+(.+)$/;
+const BULLET_RE = /^(\s*)[-•*]\s+(.+)$/;
+const ORDERED_RE = /^(\s*)\d+[.)]\s+(.+)$/;
+
+/**
+ * Convertit l'indentation de tête en niveau d'arborescence. Chaque
+ * groupe de 2 espaces (ou 1 tab) compte pour un niveau supplémentaire.
+ * Le niveau est plafonné à 4 pour éviter qu'une indentation excessive
+ * du LLM ne pousse le texte hors du conteneur.
+ */
+function indentLevel(leading: string): number {
+  if (leading.length === 0) return 0;
+  let cells = 0;
+  for (const ch of leading) {
+    if (ch === '\t') cells += 2;
+    else if (ch === ' ') cells += 1;
+  }
+  return Math.min(4, Math.floor(cells / 2));
+}
 
 export function parseMessageToBlocks(content: string): RenderBlock[] {
   if (!content || content.trim().length === 0) return [];
@@ -29,7 +47,7 @@ export function parseMessageToBlocks(content: string): RenderBlock[] {
   const blocks: RenderBlock[] = [];
 
   let paragraphBuffer: string[] = [];
-  let listBuffer: string[] = [];
+  let listBuffer: ListItem[] = [];
   let listOrdered: boolean | null = null;
 
   function flushParagraph(): void {
@@ -57,12 +75,18 @@ export function parseMessageToBlocks(content: string): RenderBlock[] {
       flushParagraph();
       if (listOrdered === true) flushList();
       listOrdered = false;
-      listBuffer.push(bullet[1].trim());
+      listBuffer.push({
+        text: bullet[2].trim(),
+        level: indentLevel(bullet[1]),
+      });
     } else if (ordered) {
       flushParagraph();
       if (listOrdered === false) flushList();
       listOrdered = true;
-      listBuffer.push(ordered[1].trim());
+      listBuffer.push({
+        text: ordered[2].trim(),
+        level: indentLevel(ordered[1]),
+      });
     } else {
       flushList();
       paragraphBuffer.push(line);

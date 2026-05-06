@@ -33,9 +33,9 @@ describe('parseMessageToBlocks', () => {
       kind: 'list',
       ordered: false,
       items: [
-        'Tenue de la comptabilité générale',
-        'Clôtures mensuelles',
-        'Déclarations fiscales',
+        { text: 'Tenue de la comptabilité générale', level: 0 },
+        { text: 'Clôtures mensuelles', level: 0 },
+        { text: 'Déclarations fiscales', level: 0 },
       ],
     });
     expect(blocks[2]).toEqual({ kind: 'paragraph', text: 'Ça te convient ?' });
@@ -47,7 +47,11 @@ describe('parseMessageToBlocks', () => {
       {
         kind: 'list',
         ordered: true,
-        items: ['Premier', 'Deuxième', 'Troisième'],
+        items: [
+          { text: 'Premier', level: 0 },
+          { text: 'Deuxième', level: 0 },
+          { text: 'Troisième', level: 0 },
+        ],
       },
     ]);
   });
@@ -62,8 +66,48 @@ describe('parseMessageToBlocks', () => {
   it('accepts bullet variants - * •', () => {
     const blocks = parseMessageToBlocks('- a\n* b\n• c');
     expect(blocks).toEqual([
-      { kind: 'list', ordered: false, items: ['a', 'b', 'c'] },
+      {
+        kind: 'list',
+        ordered: false,
+        items: [
+          { text: 'a', level: 0 },
+          { text: 'b', level: 0 },
+          { text: 'c', level: 0 },
+        ],
+      },
     ]);
+  });
+
+  it('captures indentation depth on nested bullets (2 spaces per level)', () => {
+    const text = [
+      '- Missions :',
+      '  - Tenue comptable',
+      '  - Clôtures',
+      '- Compétences :',
+      '    - SAP',
+      '    - Excel',
+    ].join('\n');
+    const blocks = parseMessageToBlocks(text);
+    expect(blocks).toHaveLength(1);
+    const list = blocks[0] as { items: { text: string; level: number }[] };
+    expect(list.items.map((it) => it.level)).toEqual([0, 1, 1, 0, 2, 2]);
+    expect(list.items[1].text).toBe('Tenue comptable');
+    expect(list.items[4].text).toBe('SAP');
+  });
+
+  it('treats one tab as two spaces of indent', () => {
+    const blocks = parseMessageToBlocks('- top\n\t- nested');
+    const list = blocks[0] as { items: { level: number }[] };
+    expect(list.items[0].level).toBe(0);
+    expect(list.items[1].level).toBe(1);
+  });
+
+  it('clamps indent levels above 4 (defensive)', () => {
+    const blocks = parseMessageToBlocks(
+      '- item\n              - very deep',
+    );
+    const list = blocks[0] as { items: { level: number }[] };
+    expect(list.items[1].level).toBe(4);
   });
 
   it('preserves multi-line paragraphs as a single block', () => {
