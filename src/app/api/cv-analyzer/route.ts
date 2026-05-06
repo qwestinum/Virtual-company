@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 
+import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
 import {
   CVAnalyzerError,
-  cvAnalyzerAgent,
-} from '@/lib/agents/contracts/cv-analyzer';
-import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
+  executeCVAnalyzer,
+} from '@/lib/agents/server/cv-analyzer-execute';
 import { AIProviderError } from '@/lib/ai/errors';
 import {
   CVAnalysisCriteriaSchema,
@@ -73,10 +73,10 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const extracted = await extractCVText(file);
-    const output = await cvAnalyzerAgent.execute({
+    const output = await executeCVAnalyzer({
       taskId,
       correlationId: taskId,
-      agentId: cvAnalyzerAgent.id,
+      agentId: 'agent.cv-analyzer',
       payload: {
         cvText: extracted.text,
         fileName: extracted.fileName,

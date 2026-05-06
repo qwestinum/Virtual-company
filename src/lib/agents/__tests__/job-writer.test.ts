@@ -5,13 +5,13 @@ vi.mock('@/lib/ai/provider', () => ({
 }));
 
 import {
-  JobWriterError,
-  jobWriterAgent,
-} from '@/lib/agents/contracts/job-writer';
-import {
   renderJobAdMarkdown,
   suggestJobAdFileName,
 } from '@/lib/agents/job-writer-render';
+import {
+  JobWriterError,
+  executeJobWriter,
+} from '@/lib/agents/server/job-writer-execute';
 import { chatComplete } from '@/lib/ai/provider';
 import { buildEmptyFDP } from '@/types/field-collection';
 
@@ -82,7 +82,7 @@ const VALID_AD = JSON.stringify({
   tags: ['Comptabilité', 'Senior', 'Paris', 'CDI'],
 });
 
-describe('jobWriterAgent.execute', () => {
+describe('executeJobWriter', () => {
   beforeEach(() => {
     chatCompleteMock.mockReset();
   });
@@ -91,10 +91,10 @@ describe('jobWriterAgent.execute', () => {
     chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_AD));
     const fdp = buildCompleteFDP();
 
-    const out = await jobWriterAgent.execute({
+    const out = await executeJobWriter({
       taskId: 't1',
       correlationId: 'c1',
-      agentId: jobWriterAgent.id,
+      agentId: 'agent.job-writer',
       payload: { fdp },
       context: {
         campaignId: fdp.campaignId,
@@ -113,10 +113,10 @@ describe('jobWriterAgent.execute', () => {
 
   it('throws JobWriterError on missing FDP payload', async () => {
     await expect(
-      jobWriterAgent.execute({
+      executeJobWriter({
         taskId: 't1',
         correlationId: 'c1',
-        agentId: jobWriterAgent.id,
+        agentId: 'agent.job-writer',
         payload: {},
         context: { priority: 'normal', requestedBy: 'agent.manager-rh' },
       }),
@@ -127,10 +127,10 @@ describe('jobWriterAgent.execute', () => {
     chatCompleteMock.mockResolvedValueOnce(fakeCompletion('not-json'));
     const fdp = buildCompleteFDP();
     await expect(
-      jobWriterAgent.execute({
+      executeJobWriter({
         taskId: 't1',
         correlationId: 'c1',
-        agentId: jobWriterAgent.id,
+        agentId: 'agent.job-writer',
         payload: { fdp },
         context: { priority: 'normal', requestedBy: 'agent.manager-rh' },
       }),

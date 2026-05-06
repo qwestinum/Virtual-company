@@ -5,10 +5,6 @@ vi.mock('@/lib/ai/provider', () => ({
 }));
 
 import {
-  CVAnalyzerError,
-  cvAnalyzerAgent,
-} from '@/lib/agents/contracts/cv-analyzer';
-import {
   buildCVAnalyzerSystemPrompt,
   buildCVAnalyzerUserPrompt,
 } from '@/lib/agents/cv-analyzer-prompts';
@@ -17,6 +13,10 @@ import {
   renderCVBatchMarkdown,
   suggestCVReportFileName,
 } from '@/lib/agents/cv-report-render';
+import {
+  CVAnalyzerError,
+  executeCVAnalyzer,
+} from '@/lib/agents/server/cv-analyzer-execute';
 import { chatComplete } from '@/lib/ai/provider';
 import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
 
@@ -45,17 +45,17 @@ const SAMPLE_RESULT = {
   aboveThreshold: true,
 };
 
-describe('cvAnalyzerAgent.execute', () => {
+describe('executeCVAnalyzer', () => {
   beforeEach(() => {
     chatCompleteMock.mockReset();
   });
 
   it('throws empty_cv when text is missing', async () => {
     await expect(
-      cvAnalyzerAgent.execute({
+      executeCVAnalyzer({
         taskId: 't1',
         correlationId: 'c1',
-        agentId: cvAnalyzerAgent.id,
+        agentId: 'agent.cv-analyzer',
         payload: { fileName: 'cv.txt', criteria: {} },
         context: { priority: 'normal', requestedBy: 'agent.manager-rh' },
       }),
@@ -64,10 +64,10 @@ describe('cvAnalyzerAgent.execute', () => {
 
   it('throws invalid_payload when fileName missing', async () => {
     await expect(
-      cvAnalyzerAgent.execute({
+      executeCVAnalyzer({
         taskId: 't1',
         correlationId: 'c1',
-        agentId: cvAnalyzerAgent.id,
+        agentId: 'agent.cv-analyzer',
         payload: { cvText: 'Hello world CV content here.' },
         context: { priority: 'normal', requestedBy: 'agent.manager-rh' },
       }),
@@ -79,10 +79,10 @@ describe('cvAnalyzerAgent.execute', () => {
       fakeCompletion(JSON.stringify(SAMPLE_RESULT)),
     );
 
-    const out = await cvAnalyzerAgent.execute({
+    const out = await executeCVAnalyzer({
       taskId: 't1',
       correlationId: 'c1',
-      agentId: cvAnalyzerAgent.id,
+      agentId: 'agent.cv-analyzer',
       payload: {
         cvText: 'Texte CV brut',
         fileName: 'cv-jeanne.pdf',
@@ -111,10 +111,10 @@ describe('cvAnalyzerAgent.execute', () => {
       ),
     );
 
-    const out = await cvAnalyzerAgent.execute({
+    const out = await executeCVAnalyzer({
       taskId: 't1',
       correlationId: 'c1',
-      agentId: cvAnalyzerAgent.id,
+      agentId: 'agent.cv-analyzer',
       payload: {
         cvText: 'Texte CV brut suffisant pour passer',
         fileName: 'cv.pdf',
@@ -131,10 +131,10 @@ describe('cvAnalyzerAgent.execute', () => {
   it('throws invalid_response on non-JSON LLM output', async () => {
     chatCompleteMock.mockResolvedValueOnce(fakeCompletion('plain text'));
     await expect(
-      cvAnalyzerAgent.execute({
+      executeCVAnalyzer({
         taskId: 't1',
         correlationId: 'c1',
-        agentId: cvAnalyzerAgent.id,
+        agentId: 'agent.cv-analyzer',
         payload: {
           cvText: 'Texte CV',
           fileName: 'cv.pdf',

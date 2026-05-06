@@ -2,13 +2,13 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import {
-  JobWriterError,
-  jobWriterAgent,
-} from '@/lib/agents/contracts/job-writer';
-import {
   renderJobAdMarkdown,
   suggestJobAdFileName,
 } from '@/lib/agents/job-writer-render';
+import {
+  JobWriterError,
+  executeJobWriter,
+} from '@/lib/agents/server/job-writer-execute';
 import { AIProviderError } from '@/lib/ai/errors';
 import { FDPInProgressSchema } from '@/types/field-collection';
 import { JobAdResultSchema } from '@/types/job-writer';
@@ -38,10 +38,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   const taskId = parsed.taskId ?? `task_${Date.now().toString(36)}`;
 
   try {
-    const output = await jobWriterAgent.execute({
+    const output = await executeJobWriter({
       taskId,
       correlationId: taskId,
-      agentId: jobWriterAgent.id,
+      agentId: 'agent.job-writer',
       payload: { fdp: parsed.fdp },
       context: {
         campaignId: parsed.fdp.campaignId,

@@ -33,7 +33,7 @@ describe('agent registry', () => {
     }
   });
 
-  it('execute() throws NOT_IMPLEMENTED for unimplemented agents (Session 4 baseline)', async () => {
+  it('execute() throws NOT_IMPLEMENTED for every agent', async () => {
     const taskInput = {
       taskId: 't1',
       correlationId: 'c1',
@@ -41,14 +41,10 @@ describe('agent registry', () => {
       payload: {},
       context: { priority: 'normal' as const, requestedBy: 'user-1' },
     };
-    // En Session 4, Job Writer et CV Analyzer sont implémentés et
-    // lancent leurs propres erreurs typées sur payload invalide. Les
-    // autres agents (Manager, Mail Composer, Scheduler) restent stubs.
-    const stillStubbed = AGENT_REGISTRY.filter(
-      (a) =>
-        a.id !== 'agent.cv-analyzer' && a.id !== 'agent.job-writer',
-    );
-    for (const agent of stillStubbed) {
+    // Les `execute()` côté contrat restent des stubs : la vraie
+    // exécution Session 4 vit dans `src/lib/agents/server/*-execute.ts`
+    // et n'est jamais exposée via le registry (server-only).
+    for (const agent of AGENT_REGISTRY) {
       await expect(agent.execute(taskInput)).rejects.toThrow('NOT_IMPLEMENTED');
     }
   });

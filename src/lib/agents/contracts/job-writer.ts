@@ -1,15 +1,8 @@
 import {
-  buildJobAdSystemPrompt,
-  buildJobAdUserPrompt,
-} from '@/lib/agents/job-writer-prompts';
-import { chatComplete } from '@/lib/ai/provider';
-import {
   AgentContractDataSchema,
   type AgentContract,
   type AgentContractData,
 } from '@/types/agent';
-import { FDPInProgressSchema } from '@/types/field-collection';
-import { JobAdResultSchema, type JobAdResult } from '@/types/job-writer';
 import type { TaskInput, TaskOutput } from '@/types/task';
 
 export const jobWriterData: AgentContractData = AgentContractDataSchema.parse({
@@ -91,60 +84,16 @@ export const jobWriterData: AgentContractData = AgentContractDataSchema.parse({
   ],
 });
 
-export class JobWriterError extends Error {
-  constructor(
-    public readonly code: 'invalid_payload' | 'invalid_response',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'JobWriterError';
-  }
-}
-
+/**
+ * Stub côté contrat. La vraie exécution vit dans
+ * `src/lib/agents/server/job-writer-execute.ts` (server-only) pour ne
+ * pas polluer le bundle client via la chaîne d'imports du registry.
+ * Les routes API (/api/job-writer) appellent directement
+ * `executeJobWriter`.
+ */
 export const jobWriterAgent: AgentContract = {
   ...jobWriterData,
-  execute: async (input: TaskInput): Promise<TaskOutput> => {
-    const fdpRaw = input.payload?.fdp;
-    let fdp;
-    try {
-      fdp = FDPInProgressSchema.parse(fdpRaw);
-    } catch (err) {
-      throw new JobWriterError(
-        'invalid_payload',
-        err instanceof Error ? err.message : 'Invalid FDP payload.',
-      );
-    }
-
-    const completion = await chatComplete({
-      model: 'gpt-4o',
-      jsonMode: true,
-      temperature: 0.5,
-      messages: [
-        { role: 'system', content: buildJobAdSystemPrompt() },
-        { role: 'user', content: buildJobAdUserPrompt(fdp) },
-      ],
-    });
-
-    let ad: JobAdResult;
-    try {
-      ad = JobAdResultSchema.parse(JSON.parse(completion.content));
-    } catch (err) {
-      throw new JobWriterError(
-        'invalid_response',
-        err instanceof Error ? err.message : 'Invalid Job Writer response.',
-      );
-    }
-
-    return {
-      taskId: input.taskId,
-      status: 'success',
-      data: { ad },
-      metrics: {
-        durationMs: completion.durationMs,
-        tokensUsed: completion.usage.totalTokens,
-        costEstimate: completion.costEstimate,
-      },
-      nextAgents: [],
-    };
+  execute: async (_input: TaskInput): Promise<TaskOutput> => {
+    throw new Error('NOT_IMPLEMENTED');
   },
 };
