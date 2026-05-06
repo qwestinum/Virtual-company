@@ -46,20 +46,28 @@ export function HRDepartmentView() {
   const others = agents.filter((a) => a.id !== MANAGER_ID);
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const [unit, setUnit] = useState<number>(UNIT_FALLBACK);
+  const [layout, setLayout] = useState<{
+    width: number;
+    height: number;
+    unit: number;
+  }>({ width: 0, height: 0, unit: UNIT_FALLBACK });
 
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    setUnit(clampUnit(el.clientWidth, el.clientHeight));
+    const update = (w: number, h: number) =>
+      setLayout({ width: w, height: h, unit: clampUnit(w, h) });
+    update(el.clientWidth, el.clientHeight);
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      setUnit(clampUnit(entry.contentRect.width, entry.contentRect.height));
+      update(entry.contentRect.width, entry.contentRect.height);
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  const { unit } = layout;
 
   return (
     <div
@@ -109,7 +117,13 @@ export function HRDepartmentView() {
         aria-hidden
       />
 
-      <FlowLines manager={manager} others={others} unit={unit} />
+      <FlowLines
+        manager={manager}
+        others={others}
+        unit={unit}
+        width={layout.width}
+        height={layout.height}
+      />
 
       {agents.map((agent) => (
         <div key={agent.id} style={cardStyleFor(agent, unit)}>
