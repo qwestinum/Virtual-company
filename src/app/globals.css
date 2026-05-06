@@ -169,11 +169,31 @@
 }
 
 .flow-line {
-  animation: dashflow 1.6s linear infinite;
+  animation: dashflow 2.4s linear infinite;
+  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.05));
 }
 
 .flow-line-active {
-  animation: dashflow-fast 0.9s linear infinite;
+  animation: dashflow-fast 0.8s linear infinite;
+  filter: drop-shadow(0 0 4px var(--glow-color, rgba(15, 23, 42, 0.25)));
+}
+
+@keyframes flow-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.6);
+    opacity: 0.15;
+  }
+}
+
+.flow-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: flow-pulse 1.4s ease-in-out infinite;
 }
 
 .work-dot {

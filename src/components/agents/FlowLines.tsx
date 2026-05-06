@@ -14,6 +14,7 @@ export function FlowLines({ manager, others, unit }: FlowLinesProps) {
   if (!manager) return null;
 
   const [mx, , mz] = manager.avatar.position;
+  const managerColor = getAvatarColor(manager.id);
 
   return (
     <svg
@@ -21,17 +22,28 @@ export function FlowLines({ manager, others, unit }: FlowLinesProps) {
       aria-hidden
     >
       <defs>
-        <marker
-          id="flow-arrow"
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="6"
-          markerHeight="6"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5e1" />
-        </marker>
+        {others.map((agent) => {
+          const accent = getAvatarColor(agent.id);
+          const [x, , z] = agent.avatar.position;
+          const x1 = `calc(50% + ${mx * unit}px)`;
+          const y1 = `calc(50% + ${mz * unit}px)`;
+          const x2 = `calc(50% + ${x * unit}px)`;
+          const y2 = `calc(50% + ${z * unit}px)`;
+          return (
+            <linearGradient
+              key={agent.id}
+              id={`flow-grad-${agent.id}`}
+              gradientUnits="userSpaceOnUse"
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+            >
+              <stop offset="0%" stopColor={managerColor} stopOpacity="0.85" />
+              <stop offset="100%" stopColor={accent} stopOpacity="0.95" />
+            </linearGradient>
+          );
+        })}
       </defs>
 
       {others.map((agent) => {
@@ -44,20 +56,30 @@ export function FlowLines({ manager, others, unit }: FlowLinesProps) {
         const y2 = `calc(50% + ${z * unit}px)`;
 
         return (
-          <line
-            key={agent.id}
-            x1={x1}
-            y1={y1}
-            x2={x2}
-            y2={y2}
-            stroke={isActive ? accent : '#cbd5e1'}
-            strokeWidth={isActive ? 2.5 : 1.5}
-            strokeDasharray="6 6"
-            strokeLinecap="round"
-            markerEnd="url(#flow-arrow)"
-            className={cn(isActive ? 'flow-line-active' : 'flow-line')}
-            opacity={isActive ? 0.9 : 0.55}
-          />
+          <g key={agent.id}>
+            <line
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={`url(#flow-grad-${agent.id})`}
+              strokeWidth={isActive ? 3 : 2}
+              strokeDasharray={isActive ? '8 4' : '4 7'}
+              strokeLinecap="round"
+              className={cn(isActive ? 'flow-line-active' : 'flow-line')}
+              opacity={isActive ? 1 : 0.7}
+            />
+            {isActive ? (
+              <circle
+                cx={x2}
+                cy={y2}
+                r={6}
+                fill={accent}
+                opacity={0.45}
+                className="flow-pulse"
+              />
+            ) : null}
+          </g>
         );
       })}
     </svg>
