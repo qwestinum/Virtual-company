@@ -252,6 +252,9 @@ export function ManagerChat() {
           <FieldChecklist
             fdp={fdp}
             defaultCollapsed={fdp.campaignId.startsWith('TASK-')}
+            editingDisabled={
+              fdp.isValidated || isSending || isTranscribing || isAgentBusy
+            }
           />
         </>
       ) : null}

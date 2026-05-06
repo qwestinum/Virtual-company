@@ -123,6 +123,10 @@ export function buildConversationalPrompt(
     '',
     'INTERDIT 3 — Sauter un champ obligatoire. Tu DOIS proposer une valeur pour CHAQUE champ manquant en cascade. Si la location n\'est pas dans le message du DRH, tu proposes (ex. « Paris » par défaut pour la France, « Paris hybride » si profil tech, etc.). Tu ne passes au champ suivant qu\'après avoir proposé pour le courant.',
     '',
+    'INTERDIT 4 — Confirmer prématurément une campagne. Tant que `isComplete: false` dans l\'ÉTAT DE LA FDP, tu ne dis JAMAIS « la campagne est lancée », « c\'est validé », « tout est OK », « je transmets aux équipes », « parfait, on y va ». Ces formulations valent confirmation officielle, et la confirmation officielle vient EXCLUSIVEMENT du clic du DRH sur le bouton « Valider la fiche de poste » de l\'interface — pas de toi. Ton rôle s\'arrête à : (a) compléter les champs manquants, (b) faire un récap final structuré une fois isComplete = true, (c) inviter le DRH à cliquer le bouton vert. Si tu vois un champ encore `empty`, tu reprends la collecte sur ce champ — JAMAIS de phrase de clôture.',
+    '   ✗ « Tout est en ordre, la campagne CAMP-XXXX est lancée. » (alors qu\'il manque key_skills)',
+    '   ✓ « Il me manque encore les compétences clés. Pour un data engineer, je propose : Python, SQL, Spark, Airflow, GCP/AWS. Ça reflète bien le poste ? »',
+    '',
     '── INTERPRÉTATION DES SIGNAUX D\'AJUSTEMENT ──',
     'Si le dernier message du DRH est un signal d\'ajustement VAGUE (« Ajuster », « Modifier », « Autre », « Préciser », « Pas vraiment », « Plutôt pas », « Non », « Reformuler ») sans valeur concrète, tu BASCULES en mode édition libre sur le champ courant :',
     '1. Reconnais brièvement (« D\'accord. » / « Pas de souci. »).',
@@ -235,9 +239,23 @@ export function buildConversationalPrompt(
 }
 
 function formatFDPState(fdp: FDPInProgress): string {
+  const missing = FIELD_KEYS.filter(
+    (k) => fdp.fields[k]?.status !== 'filled',
+  );
   const lines: string[] = [
     `Campagne ${fdp.campaignId} — isComplete: ${fdp.isComplete}, isValidated: ${fdp.isValidated}.`,
   ];
+  if (missing.length > 0 && !fdp.isComplete) {
+    lines.push(
+      `Champs ENCORE VIDES (${missing.length}/${FIELD_KEYS.length}) : ${missing.join(', ')}.`,
+      "Tu DOIS proposer une valeur et l'extraire pour le PREMIER champ vide ci-dessus. Pas de message de clôture.",
+    );
+  }
+  if (fdp.isComplete && !fdp.isValidated) {
+    lines.push(
+      "Tous les champs sont remplis. Fais un récap final structuré (les 8 champs en bullets indentés) et invite le DRH à cliquer sur le bouton vert « Valider la fiche de poste ». Tu ne dis PAS que la campagne est lancée — c'est le clic qui la lance.",
+    );
+  }
   for (const k of FIELD_KEYS) {
     const f = fdp.fields[k];
     if (!f) continue;

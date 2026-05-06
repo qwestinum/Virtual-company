@@ -1,26 +1,57 @@
 'use client';
 
-import { Check, ChevronDown, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { Check, ChevronDown, Loader2, Pencil, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import { FIELD_KEYS, type FDPInProgress } from '@/types/field-collection';
+import { useFdpStore } from '@/stores/fdp-store';
+import {
+  FIELD_KEYS,
+  type FDPInProgress,
+  type FieldKey,
+} from '@/types/field-collection';
 
 export type FieldChecklistProps = {
   fdp: FDPInProgress;
   defaultCollapsed?: boolean;
+  /**
+   * Désactive l'édition manuelle (par ex. quand un agent est en cours
+   * d'exécution et qu'on ne veut pas que le DRH modifie la FDP).
+   */
+  editingDisabled?: boolean;
 };
+
+const ARRAY_FIELDS = new Set<FieldKey>(['main_missions', 'key_skills']);
 
 export function FieldChecklist({
   fdp,
   defaultCollapsed = false,
+  editingDisabled = false,
 }: FieldChecklistProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [editingKey, setEditingKey] = useState<FieldKey | null>(null);
+  const applyExtractions = useFdpStore((s) => s.applyExtractions);
   const total = FIELD_KEYS.length;
   const filledCount = FIELD_KEYS.filter(
     (k) => fdp.fields[k]?.status === 'filled',
   ).length;
   const progressPct = Math.round((filledCount / total) * 100);
+
+  function handleSubmit(key: FieldKey, raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      setEditingKey(null);
+      return;
+    }
+    const value: unknown = ARRAY_FIELDS.has(key)
+      ? trimmed
+          .split(/[\n,;]+/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : trimmed;
+    applyExtractions({ [key]: value } as Partial<Record<FieldKey, unknown>>);
+    setEditingKey(null);
+  }
 
   return (
     <div className="border-b border-stone-200 bg-gradient-to-b from-white to-stone-50">
@@ -81,6 +112,7 @@ export function FieldChecklist({
             const filled = field?.status === 'filled';
             const inProgress = field?.status === 'in_progress';
             const value = filled ? formatValue(field.value) : null;
+            const isEditing = editingKey === key;
             return (
               <li
                 key={key}
@@ -109,18 +141,44 @@ export function FieldChecklist({
                   />
                   {field?.label ?? key}
                 </span>
-                <span
-                  className={cn(
-                    'font-body text-right truncate min-w-0',
-                    filled
-                      ? 'text-stone-800'
-                      : inProgress
-                        ? 'text-amber-700'
-                        : 'text-stone-400 italic',
-                  )}
-                >
-                  {filled ? value : inProgress ? 'en cours…' : 'à préciser'}
-                </span>
+                {isEditing ? (
+                  <FieldEditor
+                    fieldKey={key}
+                    initialValue={value}
+                    onSubmit={(raw) => handleSubmit(key, raw)}
+                    onCancel={() => setEditingKey(null)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    disabled={editingDisabled}
+                    onClick={() => setEditingKey(key)}
+                    className={cn(
+                      'group flex items-center gap-1 font-body text-right truncate min-w-0 max-w-[60%]',
+                      'transition-colors rounded px-1 -mx-1 py-0.5',
+                      filled
+                        ? 'text-stone-800 hover:text-indigo-700 hover:bg-indigo-50'
+                        : inProgress
+                          ? 'text-amber-700 hover:bg-amber-50'
+                          : 'text-stone-400 italic hover:text-stone-700 hover:bg-stone-100',
+                      editingDisabled &&
+                        'opacity-60 hover:bg-transparent hover:text-inherit cursor-not-allowed',
+                    )}
+                    title={editingDisabled ? undefined : 'Modifier ce champ'}
+                  >
+                    <span className="truncate">
+                      {filled
+                        ? value
+                        : inProgress
+                          ? 'en cours…'
+                          : 'à préciser'}
+                    </span>
+                    <Pencil
+                      className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity"
+                      aria-hidden
+                    />
+                  </button>
+                )}
               </li>
             );
           })}
@@ -142,4 +200,67 @@ function formatValue(value: unknown): string {
       .join(', ');
   }
   return JSON.stringify(value);
+}
+
+function FieldEditor({
+  fieldKey,
+  initialValue,
+  onSubmit,
+  onCancel,
+}: {
+  fieldKey: FieldKey;
+  initialValue: string | null;
+  onSubmit: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(initialValue ?? '');
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const placeholder = ARRAY_FIELDS.has(fieldKey)
+    ? 'séparé par des virgules'
+    : 'votre valeur';
+
+  useEffect(() => {
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  return (
+    <div className="flex items-center gap-1 max-w-[65%] min-w-0">
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onSubmit(draft);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+        placeholder={placeholder}
+        className={cn(
+          'font-body text-[12px] flex-1 min-w-0 px-2 py-0.5 rounded border',
+          'border-indigo-300 bg-white outline-none',
+          'focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300',
+        )}
+      />
+      <button
+        type="button"
+        aria-label="Enregistrer"
+        onClick={() => onSubmit(draft)}
+        className="h-5 w-5 grid place-items-center rounded text-emerald-600 hover:bg-emerald-50 shrink-0"
+      >
+        <Check className="h-3 w-3" aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label="Annuler"
+        onClick={onCancel}
+        className="h-5 w-5 grid place-items-center rounded text-stone-500 hover:bg-stone-100 shrink-0"
+      >
+        <X className="h-3 w-3" aria-hidden />
+      </button>
+    </div>
+  );
 }
