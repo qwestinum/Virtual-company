@@ -32,11 +32,15 @@ export function buildIntentClassificationPrompt(): string {
     "Tu es le classifieur d'intention du Manager RH d'une entreprise virtuelle. Lis le dernier message du donneur d'ordre dans son contexte conversationnel et classe son intention dans EXACTEMENT une des cinq catégories canoniques.",
     '',
     'Catégories :',
-    '- "new_campaign" : nouvelle campagne de recrutement (« je veux recruter », « ouvrir un poste », « lancer une recherche »).',
+    '- "new_campaign" : nouvelle campagne de recrutement (« je veux recruter », « ouvrir un poste », « lancer une recherche », « cadrer la fiche complète pour CAMP-XXX »). C\'est aussi la classification quand le DRH vient de créer une campagne et démarre la collecte de la FDP.',
     '- "campaign_followup" : suivi d\'une campagne existante (« où en est CAMP-XXX », « combien de candidatures »).',
     '- "out_of_campaign_task" : sollicitation atomique hors campagne (« prépare une FDP type », « rédige une annonce isolée », « audite cette annonce »).',
     '- "reporting_request" : demande de reporting transverse (« fais-moi un point », « envoie le bilan hebdo »).',
     '- "other" : tout le reste (salutations, hors sujet, demande non liée à la mission RH).',
+    '',
+    "Cas spécial — historique CV-routing : si l'historique contient des messages de routing CV (mots « rattache », « tâche isolée », « cadrer la fiche complète »), regarde le DERNIER message du DRH pour décider :",
+    '- « Cadrer la fiche complète pour CAMP-XXX » → new_campaign avec confidence haute.',
+    '- Tout intitulé de poste isolé (« Quality Engineer », « Comptable senior ») juste après → new_campaign si une FDP est en cours de cadrage.',
     '',
     'Renseigne `needsClarification: true` si :',
     '- la confidence est faible (signal explicite que tu hésites),',
@@ -250,6 +254,11 @@ function formatFDPState(fdp: FDPInProgress): string {
       `Champs ENCORE VIDES (${missing.length}/${FIELD_KEYS.length}) : ${missing.join(', ')}.`,
       "Tu DOIS proposer une valeur et l'extraire pour le PREMIER champ vide ci-dessus. Pas de message de clôture.",
     );
+    if (missing.length === FIELD_KEYS.length) {
+      lines.push(
+        "DÉMARRAGE FRAIS — la FDP vient d'être créée, AUCUN champ n'est encore renseigné. IGNORE l'historique CV-routing antérieur (« j'ai joint un CV », « cadrer la fiche complète », etc.) : ces messages sont du routing, pas de la FDP. Ta première action est de poser la question sur job_title (intitulé du poste). Si le dernier message du DRH contient déjà un intitulé (« Quality Engineer », « Comptable senior »), extrais-le et enchaîne sur le champ suivant. Tu ne dis JAMAIS « concentrons-nous d'abord sur les CV » — la collecte FDP est la priorité ABSOLUE.",
+      );
+    }
   }
   if (fdp.isComplete && !fdp.isValidated) {
     lines.push(

@@ -353,18 +353,21 @@ export function ManagerChat() {
     text: string,
     source: 'text' | 'voice' = 'text',
   ) {
-    // Cas A : on attend un nom de nouvelle campagne. On consomme le
-    // texte comme nom — pas de tour LLM.
-    if (consumeNewCampaignName(text)) {
-      appendMessage({ role: 'user', source, content: text });
-      return;
-    }
+    // On commence TOUJOURS par afficher la bulle DRH avant de router
+    // vers les sous-flows : sinon, des handlers comme
+    // consumeNewCampaignName (qui posent une réponse Manager
+    // immédiate) inversent visuellement l'ordre des bulles et cassent
+    // la position des chips (qui ne s'affichent que sur la DERNIÈRE
+    // bulle Manager).
+    appendMessage({ role: 'user', source, content: text });
 
-    // Cas B : on est en pré-collecte critères isolés. Tour LLM via
-    // l'endpoint dédié /api/manager/isolated-criteria.
+    // Cas A : on attend un nom de nouvelle campagne. Pas de tour LLM,
+    // c'est la fonction de consume qui poste la suite.
+    if (consumeNewCampaignName(text)) return;
+
+    // Cas B : pré-collecte critères isolés via endpoint dédié.
     const isoActive = useIsolatedCriteriaStore.getState().criteria;
     if (isoActive && !isoActive.isValidated) {
-      appendMessage({ role: 'user', source, content: text });
       void sendToManagerIsolated(
         useChatStore.getState().messages,
         useIsolatedCriteriaStore.getState().criteria!,
@@ -373,7 +376,6 @@ export function ManagerChat() {
     }
 
     // Cas C : conversation normale Manager (collecte FDP, etc.).
-    appendMessage({ role: 'user', source, content: text });
     void sendToManager(useChatStore.getState().messages);
   }
 
@@ -393,26 +395,23 @@ export function ManagerChat() {
       const choice = newCampaignFullSetup();
       if (choice) {
         // Bascule vers la collecte FDP normale : on instancie une FDP
-        // vide sous le campaignId déjà créé, puis le Manager prendra
-        // la main au prochain tour (sendToManager) en mode collecte.
+        // vide sous le campaignId déjà créé, puis on déclenche un tour
+        // LLM Manager qui se chargera de poser la première question
+        // (avec l'état FDP "tous champs vides" en contexte). Pas de
+        // message Manager codé en dur — c'est ce qui faisait diverger
+        // le LLM au tour suivant.
         // Limite Session 4 : les CV uploadés ne sont pas re-attachés
         // automatiquement après validation FDP — le DRH les ré-upload
-        // via le source-picker. À améliorer en Session 5 (queue
-        // attachée au campaignId).
+        // via le source-picker. À améliorer en Session 5.
         if (!useFdpStore.getState().fdp) {
           createFDP(choice.campaignId);
         }
         appendMessage({
           role: 'user',
           source: 'text',
-          content: 'Cadrer la fiche complète.',
+          content: `Cadrer la fiche complète pour ${choice.campaignId}.`,
         });
-        appendMessage({
-          role: 'manager',
-          source: 'text',
-          content:
-            "Très bien. On va cadrer la fiche complète ensemble. Quel est l'intitulé exact du poste à pourvoir ?",
-        });
+        void sendToManager(useChatStore.getState().messages);
         return;
       }
     }
