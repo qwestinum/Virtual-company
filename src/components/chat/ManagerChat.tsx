@@ -32,8 +32,16 @@ import {
 } from '@/stores/chat-store';
 import { useFdpStore } from '@/stores/fdp-store';
 import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
+import {
+  FIELD_KEYS,
+  type FDPInProgress,
+} from '@/types/field-collection';
 
 const MANAGER_ID = 'agent.manager-rh';
+
+function countMissing(fdp: FDPInProgress): number {
+  return FIELD_KEYS.filter((k) => fdp.fields[k]?.status !== 'filled').length;
+}
 
 export function ManagerChat() {
   const messages = useChatStore(selectMessages);
@@ -52,6 +60,7 @@ export function ManagerChat() {
 
   const [inputFocusToken, setInputFocusToken] = useState(0);
   const [isAgentBusy, setAgentBusy] = useState(false);
+  const [openFirstMissingToken, setOpenFirstMissingToken] = useState(0);
 
   const fdp = useFdpStore((s) => s.fdp);
   const createFDP = useFdpStore((s) => s.createFDP);
@@ -255,6 +264,7 @@ export function ManagerChat() {
             editingDisabled={
               fdp.isValidated || isSending || isTranscribing || isAgentBusy
             }
+            openFirstMissingToken={openFirstMissingToken}
           />
         </>
       ) : null}
@@ -320,8 +330,12 @@ export function ManagerChat() {
           campaignId={fdp.campaignId}
           isComplete={fdp.isComplete}
           isValidated={fdp.isValidated}
-          disabled={isSending || isTranscribing}
+          disabled={isSending || isTranscribing || isAgentBusy}
           onValidate={handleValidateFDP}
+          missingCount={countMissing(fdp)}
+          onRequestComplete={() =>
+            setOpenFirstMissingToken((t) => t + 1)
+          }
         />
       ) : null}
 

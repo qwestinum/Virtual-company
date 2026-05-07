@@ -1,10 +1,8 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { Check, Pencil } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-
-
 
 /**
  * Nom de l'événement DOM émis quand le donneur d'ordre valide la FDP.
@@ -24,6 +22,18 @@ export type ValidateFDPButtonProps = {
   isValidated: boolean;
   disabled?: boolean;
   onValidate: () => void;
+  /**
+   * Nombre de champs encore vides quand `isComplete=false`. Affiché
+   * dans le bouton ambré pour que le DRH sache combien de cases il
+   * lui reste à remplir.
+   */
+  missingCount?: number;
+  /**
+   * Callback quand le DRH clique le bouton ambré « il manque X
+   * champ(s) ». Utilisé par ManagerChat pour déplier la checklist et
+   * ouvrir l'édition du premier champ vide.
+   */
+  onRequestComplete?: () => void;
 };
 
 export function ValidateFDPButton({
@@ -32,10 +42,12 @@ export function ValidateFDPButton({
   isValidated,
   disabled,
   onValidate,
+  missingCount = 0,
+  onRequestComplete,
 }: ValidateFDPButtonProps) {
-  if (!isComplete || isValidated) return null;
+  if (isValidated) return null;
 
-  function handleClick() {
+  function handleValidate() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent<FdpValidatedEventDetail>(FDP_VALIDATED_EVENT, {
@@ -46,11 +58,46 @@ export function ValidateFDPButton({
     onValidate();
   }
 
+  // Variante incomplete : bouton ambré non-validant qui pointe le DRH
+  // vers la checklist. C'est le filet de sécurité quand le LLM oublie
+  // d'extraire un champ — sans ce bouton, l'UI ne donne aucun chemin
+  // visible pour finir la campagne.
+  if (!isComplete) {
+    const label =
+      missingCount > 1
+        ? `Il manque ${missingCount} champs pour valider`
+        : "Il manque 1 champ pour valider";
+    return (
+      <div className="px-4 py-3 border-t border-stone-200 bg-white/85 backdrop-blur">
+        <button
+          type="button"
+          onClick={onRequestComplete}
+          disabled={disabled || !onRequestComplete}
+          className={cn(
+            'w-full flex items-center justify-center gap-2',
+            'rounded-2xl bg-amber-100 text-amber-800 border border-amber-300',
+            'px-4 py-2.5 font-display font-semibold text-[13px]',
+            'shadow-sm transition-all',
+            'hover:bg-amber-200 hover:shadow',
+            'disabled:opacity-50 disabled:pointer-events-none',
+          )}
+          title="Compléter le premier champ manquant"
+        >
+          <Pencil className="h-4 w-4" aria-hidden />
+          <span>{label}</span>
+        </button>
+        <p className="font-body text-[10.5px] text-stone-500 text-center mt-1.5">
+          Clique pour saisir la valeur, ou continue la conversation avec le Manager.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-3 border-t border-stone-200 bg-white/85 backdrop-blur">
       <button
         type="button"
-        onClick={handleClick}
+        onClick={handleValidate}
         disabled={disabled}
         className={cn(
           'w-full flex items-center justify-center gap-2',

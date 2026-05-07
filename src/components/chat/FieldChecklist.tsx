@@ -19,6 +19,13 @@ export type FieldChecklistProps = {
    * d'exécution et qu'on ne veut pas que le DRH modifie la FDP).
    */
   editingDisabled?: boolean;
+  /**
+   * Token incrémental : quand il change, on déplie la checklist et on
+   * ouvre l'éditeur du PREMIER champ encore vide. Utilisé par le
+   * bouton « Il manque X champs » de ValidateFDPButton pour donner un
+   * point d'entrée explicite quand le LLM oublie une extraction.
+   */
+  openFirstMissingToken?: number;
 };
 
 const ARRAY_FIELDS = new Set<FieldKey>(['main_missions', 'key_skills']);
@@ -27,9 +34,22 @@ export function FieldChecklist({
   fdp,
   defaultCollapsed = false,
   editingDisabled = false,
+  openFirstMissingToken,
 }: FieldChecklistProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [editingKey, setEditingKey] = useState<FieldKey | null>(null);
+
+  useEffect(() => {
+    if (openFirstMissingToken === undefined || openFirstMissingToken === 0)
+      return;
+    if (editingDisabled) return;
+    const firstMissing = FIELD_KEYS.find(
+      (k) => fdp.fields[k]?.status !== 'filled',
+    );
+    if (!firstMissing) return;
+    setCollapsed(false);
+    setEditingKey(firstMissing);
+  }, [openFirstMissingToken, editingDisabled, fdp.fields]);
   const applyExtractions = useFdpStore((s) => s.applyExtractions);
   const total = FIELD_KEYS.length;
   const filledCount = FIELD_KEYS.filter(
