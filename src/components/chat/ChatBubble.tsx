@@ -4,9 +4,11 @@ import { Mic } from 'lucide-react';
 import Image from 'next/image';
 
 import { AttachmentChip } from '@/components/chat/AttachmentChip';
+import { CampaignPicker } from '@/components/chat/CampaignPicker';
 import { ChatChips } from '@/components/chat/ChatChips';
 import { CVBatchSummaryBlock } from '@/components/chat/CVBatchSummaryBlock';
 import { CVProgressBlock } from '@/components/chat/CVProgressBlock';
+import { CVRoutePicker } from '@/components/chat/CVRoutePicker';
 import { parseMessageToBlocks } from '@/components/chat/chat-message-renderer';
 import { SourcePicker } from '@/components/chat/SourcePicker';
 import {
@@ -32,6 +34,11 @@ export type ChatBubbleProps = {
   onChipSelect?: (option: string) => void;
   chipsDisabled?: boolean;
   onSourcePick?: (source: 'manuel') => void;
+  onRoutePick?: (
+    pendingId: string,
+    route: 'new' | 'existing' | 'isolated',
+  ) => void;
+  onCampaignPick?: (pendingId: string, campaignId: string) => void;
   blocksDisabled?: boolean;
 };
 
@@ -41,6 +48,8 @@ export function ChatBubble({
   onChipSelect,
   chipsDisabled,
   onSourcePick,
+  onRoutePick,
+  onCampaignPick,
   blocksDisabled,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
@@ -101,6 +110,25 @@ export function ChatBubble({
               selected={message.block.selected}
               disabled={blocksDisabled}
               onPick={onSourcePick}
+            />
+          ) : null}
+          {message.block?.kind === 'cv-route-picker' && onRoutePick ? (
+            <CVRoutePicker
+              pendingId={message.block.pendingId}
+              fileCount={message.block.fileCount}
+              activeCampaigns={message.block.activeCampaigns}
+              selected={message.block.selected}
+              disabled={blocksDisabled}
+              onPick={onRoutePick}
+            />
+          ) : null}
+          {message.block?.kind === 'campaign-picker' && onCampaignPick ? (
+            <CampaignPicker
+              pendingId={message.block.pendingId}
+              campaigns={message.block.campaigns}
+              selectedCampaignId={message.block.selectedCampaignId}
+              disabled={blocksDisabled}
+              onPick={onCampaignPick}
             />
           ) : null}
           {message.block?.kind === 'cv-progress' ? (

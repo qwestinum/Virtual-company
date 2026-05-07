@@ -5,8 +5,12 @@ import type {
 } from '@/types/cv-analysis';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { IntentClassification } from '@/types/intent';
+import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { JobAdResult } from '@/types/job-writer';
-import type { ManagerResponse } from '@/types/manager-response';
+import type {
+  IsolatedManagerResponse,
+  ManagerResponse,
+} from '@/types/manager-response';
 
 export type ManagerChatTurn = {
   role: 'user' | 'manager';
@@ -93,6 +97,31 @@ export type CVAnalyzerResult = {
     costEstimate: number;
   };
 };
+
+export type IsolatedManagerChatResult = {
+  response: IsolatedManagerResponse;
+  metrics: {
+    durationMs: number;
+    tokensUsed: number;
+    costEstimate: number;
+  };
+};
+
+export async function postIsolatedManagerChat(params: {
+  messages: ManagerChatTurn[];
+  criteria: IsolatedCriteriaInProgress;
+}): Promise<IsolatedManagerChatResult> {
+  const res = await fetch('/api/manager/isolated-criteria', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: params.messages,
+      criteria: params.criteria,
+    }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as IsolatedManagerChatResult;
+}
 
 export async function postCVAnalyzer(params: {
   file: File;

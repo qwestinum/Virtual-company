@@ -13,6 +13,7 @@ export const CVAnalysisCriteriaSchema = z.object({
   salaryRange: z.string().optional(),
   mainMissions: z.array(z.string()).optional(),
   keySkills: z.array(z.string()).optional(),
+  experienceYears: z.number().nonnegative().optional(),
   freeText: z.string().optional(),
 });
 

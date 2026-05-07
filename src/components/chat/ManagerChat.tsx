@@ -12,35 +12,91 @@ import { ChatChips } from '@/components/chat/ChatChips';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { FieldChecklist } from '@/components/chat/FieldChecklist';
 import { TypingDots } from '@/components/chat/TypingDots';
+import { IsolatedCriteriaChecklist } from '@/components/chat/IsolatedCriteriaChecklist';
 import { ValidateFDPButton } from '@/components/chat/ValidateFDPButton';
+import { ValidateIsolatedCriteriaButton } from '@/components/chat/ValidateIsolatedCriteriaButton';
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
 import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
-import { postManagerChat, postTranscribe } from '@/lib/chat/api-client';
 import {
-  consumePendingIsolatedTask,
+  postIsolatedManagerChat,
+  postManagerChat,
+  postTranscribe,
+} from '@/lib/chat/api-client';
+import {
+  chooseExistingCampaign,
+  chooseRouteExisting,
+  chooseRouteIsolated,
+  chooseRouteNewCampaign,
+  consumeNewCampaignName,
   dispatchCVBatch,
-  dispatchIsolatedCVTask,
+  dispatchCVRouting,
+  dispatchIsolatedCVBatch,
   dispatchJobWriter,
-  getPendingIsolatedTask,
+  findPendingByResolvedId,
+  newCampaignFullSetup,
+  newCampaignSkipSetup,
 } from '@/lib/chat/manager-flow';
 import { cn } from '@/lib/utils';
+import { useAgentsStore } from '@/stores/agents-store';
 import { useArtifactsStore } from '@/stores/artifacts-store';
+import { useCampaignsStore } from '@/stores/campaigns-store';
 import {
   selectMessages,
   useChatStore,
   type ChatMessage,
 } from '@/stores/chat-store';
 import { useFdpStore } from '@/stores/fdp-store';
-import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
+import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
+import {
+  type CVAnalysisCriteria,
+  DEFAULT_CV_THRESHOLD,
+} from '@/types/cv-analysis';
 import {
   FIELD_KEYS,
   type FDPInProgress,
 } from '@/types/field-collection';
+import {
+  ISOLATED_CRITERIA_KEYS,
+  type IsolatedCriteriaInProgress,
+  type IsolatedCriteriaKey,
+} from '@/types/isolated-criteria';
 
 const MANAGER_ID = 'agent.manager-rh';
 
 function countMissing(fdp: FDPInProgress): number {
   return FIELD_KEYS.filter((k) => fdp.fields[k]?.status !== 'filled').length;
+}
+
+function countMissingIsolated(criteria: IsolatedCriteriaInProgress): number {
+  return ISOLATED_CRITERIA_KEYS.filter(
+    (k) => criteria.fields[k]?.status !== 'filled',
+  ).length;
+}
+
+function buildIsolatedCriteriaPayload(
+  criteria: IsolatedCriteriaInProgress,
+): CVAnalysisCriteria {
+  const out: CVAnalysisCriteria = {};
+  const get = (k: IsolatedCriteriaKey): unknown => criteria.fields[k]?.value;
+  const jobTitle = get('job_title');
+  const seniority = get('seniority');
+  const skills = get('key_skills');
+  const exp = get('experience_years');
+  if (typeof jobTitle === 'string' && jobTitle.trim().length > 0) {
+    out.jobTitle = jobTitle.trim();
+  }
+  if (typeof seniority === 'string' && seniority.trim().length > 0) {
+    out.seniority = seniority.trim();
+  }
+  if (Array.isArray(skills) && skills.length > 0) {
+    out.keySkills = skills
+      .map((s) => (typeof s === 'string' ? s : ''))
+      .filter((s) => s.length > 0);
+  }
+  if (typeof exp === 'number' && Number.isFinite(exp) && exp >= 0) {
+    out.experienceYears = exp;
+  }
+  return out;
 }
 
 export function ManagerChat() {
@@ -61,6 +117,10 @@ export function ManagerChat() {
   const [inputFocusToken, setInputFocusToken] = useState(0);
   const [isAgentBusy, setAgentBusy] = useState(false);
   const [openFirstMissingToken, setOpenFirstMissingToken] = useState(0);
+  const [
+    openFirstMissingIsolatedToken,
+    setOpenFirstMissingIsolatedToken,
+  ] = useState(0);
 
   const fdp = useFdpStore((s) => s.fdp);
   const createFDP = useFdpStore((s) => s.createFDP);
@@ -68,6 +128,15 @@ export function ManagerChat() {
   const validateFDP = useFdpStore((s) => s.validateFDP);
   const resetFdp = useFdpStore((s) => s.reset);
   const resetArtifacts = useArtifactsStore((s) => s.reset);
+  const addCampaign = useCampaignsStore((s) => s.addCampaign);
+  const resetCampaigns = useCampaignsStore((s) => s.reset);
+  const isolatedCriteria = useIsolatedCriteriaStore((s) => s.criteria);
+  const applyIsolatedExtractions = useIsolatedCriteriaStore(
+    (s) => s.applyExtractions,
+  );
+  const validateIsolated = useIsolatedCriteriaStore((s) => s.validate);
+  const resetIsolated = useIsolatedCriteriaStore((s) => s.reset);
+  const resetAgents = useAgentsStore((s) => s.resetToRegistry);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
@@ -81,6 +150,9 @@ export function ManagerChat() {
     resetChat();
     resetFdp();
     resetArtifacts();
+    resetCampaigns();
+    resetIsolated();
+    resetAgents();
   }
 
   async function handleValidateFDP() {
@@ -89,9 +161,30 @@ export function ManagerChat() {
     validateFDP();
     const validated = useFdpStore.getState().fdp;
     if (!validated) return;
+    // On enregistre la campagne dans le store actif AVANT de
+    // dispatcher : si dispatchJobWriter émet un message d'attente, le
+    // DRH peut déjà voir cette campagne dans un éventuel CV upload
+    // ultérieur.
+    addCampaign({ fdp: validated });
     setAgentBusy(true);
     try {
       await dispatchJobWriter(validated);
+    } finally {
+      setAgentBusy(false);
+    }
+  }
+
+  async function handleValidateIsolated() {
+    const current = useIsolatedCriteriaStore.getState().criteria;
+    if (!current || !current.isComplete || current.isValidated) return;
+    validateIsolated();
+    const pending = findPendingByResolvedId(current.taskId);
+    if (!pending) return;
+    const pendingId = pending.pendingId;
+    const criteria = buildIsolatedCriteriaPayload(current);
+    setAgentBusy(true);
+    try {
+      await dispatchIsolatedCVBatch({ pendingId, criteria });
     } finally {
       setAgentBusy(false);
     }
@@ -125,6 +218,9 @@ export function ManagerChat() {
     const current = useFdpStore.getState().fdp;
     const sourceSelected = lastSourcePickerSelected();
 
+    // Cas 1 — campagne validée + source "Manuel" déjà choisie : on
+    // analyse direct avec les critères de la campagne courante (pas
+    // de routing question, c'est implicite).
     if (current?.isValidated && sourceSelected === 'manuel') {
       const userBubble =
         files.length === 1
@@ -145,18 +241,33 @@ export function ManagerChat() {
       return;
     }
 
-    if (current?.isValidated && sourceSelected !== 'manuel') {
-      appendMessage({
-        role: 'manager',
-        source: 'text',
-        content:
-          'Choisissez d\'abord une source dans la liste ci-dessus avant de me transmettre les CV.',
-      });
-      return;
-    }
+    // Cas 2 — tous les autres cas : on demande explicitement à quoi
+    // rattacher ces CV via le route-picker (nouvelle / existante / isolée).
+    dispatchCVRouting(files);
+  }
 
-    // Hors campagne → tâche isolée TASK-XXXX.
-    dispatchIsolatedCVTask(files);
+  function handleRoutePick(
+    pendingId: string,
+    route: 'new' | 'existing' | 'isolated',
+  ) {
+    if (isAgentBusy || isSending || isTranscribing) return;
+    if (route === 'isolated') {
+      chooseRouteIsolated(pendingId);
+    } else if (route === 'existing') {
+      chooseRouteExisting(pendingId);
+    } else {
+      chooseRouteNewCampaign(pendingId);
+    }
+  }
+
+  async function handleCampaignPick(pendingId: string, campaignId: string) {
+    if (isAgentBusy || isSending || isTranscribing) return;
+    setAgentBusy(true);
+    try {
+      await chooseExistingCampaign(pendingId, campaignId);
+    } finally {
+      setAgentBusy(false);
+    }
   }
 
   function lastSourcePickerSelected(): 'manuel' | null {
@@ -205,24 +316,64 @@ export function ManagerChat() {
     }
   }
 
+  async function sendToManagerIsolated(
+    history: ChatMessage[],
+    criteria: IsolatedCriteriaInProgress,
+  ) {
+    setSending(true);
+    setError(null);
+    try {
+      const turns = history
+        .filter((m) => m.role === 'user' || m.role === 'manager')
+        .map((m) => ({
+          role: m.role as 'user' | 'manager',
+          content: m.content,
+        }));
+      const result = await postIsolatedManagerChat({
+        messages: turns,
+        criteria,
+      });
+      if (result.response.fieldExtractions) {
+        applyIsolatedExtractions(result.response.fieldExtractions);
+      }
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: result.response.message,
+        chips: result.response.chips,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur Manager.');
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function handleSendText(
     text: string,
     source: 'text' | 'voice' = 'text',
   ) {
-    appendMessage({ role: 'user', source, content: text });
-
-    // Si une tâche isolée CV attend l'instruction libre du DRH, on
-    // consomme sa réponse au lieu d'envoyer un tour Manager classique.
-    if (getPendingIsolatedTask()) {
-      setAgentBusy(true);
-      try {
-        await consumePendingIsolatedTask(text);
-      } finally {
-        setAgentBusy(false);
-      }
+    // Cas A : on attend un nom de nouvelle campagne. On consomme le
+    // texte comme nom — pas de tour LLM.
+    if (consumeNewCampaignName(text)) {
+      appendMessage({ role: 'user', source, content: text });
       return;
     }
 
+    // Cas B : on est en pré-collecte critères isolés. Tour LLM via
+    // l'endpoint dédié /api/manager/isolated-criteria.
+    const isoActive = useIsolatedCriteriaStore.getState().criteria;
+    if (isoActive && !isoActive.isValidated) {
+      appendMessage({ role: 'user', source, content: text });
+      void sendToManagerIsolated(
+        useChatStore.getState().messages,
+        useIsolatedCriteriaStore.getState().criteria!,
+      );
+      return;
+    }
+
+    // Cas C : conversation normale Manager (collecte FDP, etc.).
+    appendMessage({ role: 'user', source, content: text });
     void sendToManager(useChatStore.getState().messages);
   }
 
@@ -233,6 +384,37 @@ export function ManagerChat() {
       dismissLastManagerChips();
       setInputFocusToken((token) => token + 1);
       return;
+    }
+    // Interception des chips de la nouvelle campagne après nom donné.
+    if (option === "Juste l'analyse CV pour l'instant") {
+      if (newCampaignSkipSetup()) return;
+    }
+    if (option === 'Cadrer la fiche complète') {
+      const choice = newCampaignFullSetup();
+      if (choice) {
+        // Bascule vers la collecte FDP normale : on instancie une FDP
+        // vide sous le campaignId déjà créé, puis le Manager prendra
+        // la main au prochain tour (sendToManager) en mode collecte.
+        // Limite Session 4 : les CV uploadés ne sont pas re-attachés
+        // automatiquement après validation FDP — le DRH les ré-upload
+        // via le source-picker. À améliorer en Session 5 (queue
+        // attachée au campaignId).
+        if (!useFdpStore.getState().fdp) {
+          createFDP(choice.campaignId);
+        }
+        appendMessage({
+          role: 'user',
+          source: 'text',
+          content: 'Cadrer la fiche complète.',
+        });
+        appendMessage({
+          role: 'manager',
+          source: 'text',
+          content:
+            "Très bien. On va cadrer la fiche complète ensemble. Quel est l'intitulé exact du poste à pourvoir ?",
+        });
+        return;
+      }
     }
     void handleSendText(option, 'text');
   }
@@ -269,6 +451,22 @@ export function ManagerChat() {
         </>
       ) : null}
 
+      {isolatedCriteria && !fdp ? (
+        <>
+          <CampaignHeader campaignId={isolatedCriteria.taskId} />
+          <IsolatedCriteriaChecklist
+            criteria={isolatedCriteria}
+            editingDisabled={
+              isolatedCriteria.isValidated ||
+              isSending ||
+              isTranscribing ||
+              isAgentBusy
+            }
+            openFirstMissingToken={openFirstMissingIsolatedToken}
+          />
+        </>
+      ) : null}
+
       <div
         ref={scrollerRef}
         className="flex-1 overflow-y-auto px-4 py-5 space-y-4"
@@ -288,6 +486,8 @@ export function ManagerChat() {
                 onChipSelect={handleChipSelect}
                 chipsDisabled={isSending || isTranscribing || isAgentBusy}
                 onSourcePick={handleSourcePick}
+                onRoutePick={handleRoutePick}
+                onCampaignPick={handleCampaignPick}
                 blocksDisabled={isSending || isTranscribing || isAgentBusy}
               />
               {showBelow && message.chips ? (
@@ -335,6 +535,20 @@ export function ManagerChat() {
           missingCount={countMissing(fdp)}
           onRequestComplete={() =>
             setOpenFirstMissingToken((t) => t + 1)
+          }
+        />
+      ) : null}
+
+      {isolatedCriteria && !fdp ? (
+        <ValidateIsolatedCriteriaButton
+          taskId={isolatedCriteria.taskId}
+          isComplete={isolatedCriteria.isComplete}
+          isValidated={isolatedCriteria.isValidated}
+          disabled={isSending || isTranscribing || isAgentBusy}
+          onValidate={handleValidateIsolated}
+          missingCount={countMissingIsolated(isolatedCriteria)}
+          onRequestComplete={() =>
+            setOpenFirstMissingIsolatedToken((t) => t + 1)
           }
         />
       ) : null}

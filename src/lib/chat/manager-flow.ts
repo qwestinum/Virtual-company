@@ -18,6 +18,7 @@
  * chat (mimétique humaine — pas de console rouge), avec un ton métier.
  */
 
+import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import {
   buildCVBatchSummary,
   renderCVBatchMarkdown,
@@ -26,7 +27,15 @@ import {
 import { postCVAnalyzer, postJobWriter } from '@/lib/chat/api-client';
 import { useAgentsStore } from '@/stores/agents-store';
 import { useArtifactsStore } from '@/stores/artifacts-store';
-import { useChatStore } from '@/stores/chat-store';
+import {
+  selectActiveCampaigns,
+  useCampaignsStore,
+} from '@/stores/campaigns-store';
+import {
+  useChatStore,
+  type CampaignPickerEntry,
+} from '@/stores/chat-store';
+import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
 import {
   DEFAULT_CV_THRESHOLD,
   type CVAnalysisCriteria,
@@ -248,41 +257,90 @@ export async function dispatchCVBatch(args: {
 }
 
 /**
- * Tâche isolée (hors campagne) — l'utilisateur a uploadé sans FDP
- * validée. Le Manager garde les fichiers en mémoire et demande au DRH
- * son instruction libre. Quand l'instruction arrive (via un tour
- * conversationnel suivant), `dispatchCVBatch` est appelée avec
- * criteria.freeText.
+ * Routing CV (Session 4 — flux post-feedback DRH).
+ *
+ * Quand le DRH upload un ou plusieurs CV via le trombone, on ne lance
+ * jamais l'analyse direct. On demande d'abord à quel contexte ces CV
+ * appartiennent : nouvelle campagne, campagne en cours, ou tâche
+ * isolée. Les fichiers (non-sérialisables) sont conservés dans une
+ * map module-locale indexée par `pendingId` (référencé depuis le block
+ * cv-route-picker du chat).
+ *
+ * Trois branches :
+ *  - 'isolated'  → pré-collecte des 4 critères (jobTitle, seniority,
+ *                  keySkills, experienceYears) avant analyse.
+ *  - 'existing'  → ouvre un campaign-picker, dérive les critères de
+ *                  la FDP de la campagne choisie, lance l'analyse.
+ *  - 'new'       → demande un nom obligatoire, crée une CAMP-XXXX,
+ *                  puis demande au DRH s'il veut faire le setup
+ *                  complet (FDP) ou skipper vers la pré-collecte.
  */
-export type PendingIsolatedCVTask = {
-  taskId: string;
+export type PendingCVRouting = {
+  pendingId: string;
   files: File[];
+  selectedRoute: 'isolated' | 'existing' | 'new' | null;
+  selectedCampaignId: string | null;
+  /** TASK-XXXX ou CAMP-XXXX selon la route choisie, généré à la décision. */
+  resolvedId: string | null;
 };
 
-let pendingIsolatedTask: PendingIsolatedCVTask | null = null;
+const pendingRoutings = new Map<string, PendingCVRouting>();
 
-export function getPendingIsolatedTask(): PendingIsolatedCVTask | null {
-  return pendingIsolatedTask;
+export function getPendingRouting(
+  pendingId: string,
+): PendingCVRouting | undefined {
+  return pendingRoutings.get(pendingId);
 }
 
-export function clearPendingIsolatedTask(): void {
-  pendingIsolatedTask = null;
+/**
+ * Retrouve un pending par son `resolvedId` (TASK-XXXX ou CAMP-XXXX).
+ * Utilisé par ManagerChat quand le DRH valide les critères isolés —
+ * il a en main le taskId du store, pas le pendingId interne.
+ */
+export function findPendingByResolvedId(
+  resolvedId: string,
+): PendingCVRouting | undefined {
+  for (const pending of pendingRoutings.values()) {
+    if (pending.resolvedId === resolvedId) return pending;
+  }
+  return undefined;
 }
 
-export function dispatchIsolatedCVTask(files: File[]): void {
+export function clearAllPendingRoutings(): void {
+  pendingRoutings.clear();
+}
+
+function snapshotActiveCampaigns(): CampaignPickerEntry[] {
+  return selectActiveCampaigns(useCampaignsStore.getState()).map((c) => {
+    const jobTitle = c.fdp.fields.job_title?.value;
+    return {
+      id: c.id,
+      name: c.name,
+      jobTitle:
+        typeof jobTitle === 'string' && jobTitle.trim().length > 0
+          ? jobTitle
+          : c.name,
+    };
+  });
+}
+
+/**
+ * Point d'entrée appelé quand un upload trombone arrive sans contexte
+ * forcé (ni campagne validée + source manuelle, ni autre flux explicite).
+ * Pose la question routante au DRH avec les 3 options.
+ */
+export function dispatchCVRouting(files: File[]): void {
   if (files.length === 0) return;
-  const taskId = `TASK-${new Date().getFullYear()}-${String(
-    Math.floor(Math.random() * 999) + 1,
-  ).padStart(3, '0')}`;
-
-  pendingIsolatedTask = { taskId, files };
+  const pendingId = nowTaskId('route');
+  pendingRoutings.set(pendingId, {
+    pendingId,
+    files: [...files],
+    selectedRoute: null,
+    selectedCampaignId: null,
+    resolvedId: null,
+  });
 
   const chat = useChatStore.getState();
-  const fileLabel =
-    files.length === 1
-      ? `le CV ${files[0].name}`
-      : `${files.length} CV (${files.map((f) => f.name).join(', ')})`;
-
   chat.appendMessage({
     role: 'user',
     source: 'text',
@@ -292,31 +350,340 @@ export function dispatchIsolatedCVTask(files: File[]): void {
         : `J'ai joint ${files.length} CV : ${files.map((f) => f.name).join(', ')}.`,
   });
 
+  const activeCampaigns = snapshotActiveCampaigns();
   chat.appendMessage({
     role: 'manager',
     source: 'text',
-    content: `J'ai bien reçu ${fileLabel}. Pour cette sollicitation ${taskId}, sur quels critères dois-je analyser ces CV ? (intitulé visé, compétences clés, expérience minimale…)`,
+    content:
+      files.length === 1
+        ? "Bien reçu. À quoi rattache-t-on ce CV ?"
+        : `Bien reçu, ${files.length} CV au total. À quoi les rattache-t-on ?`,
+    block: {
+      kind: 'cv-route-picker',
+      pendingId,
+      fileCount: files.length,
+      activeCampaigns,
+      selected: null,
+    },
   });
 }
 
 /**
- * Appelée par le ManagerChat quand une réponse libre arrive après
- * `dispatchIsolatedCVTask`. Lance le batch avec l'instruction libre
- * comme `criteria.freeText`. Retourne true si une tâche en attente
- * a bien été consommée.
+ * Appelé quand le DRH clique « Tâche isolée » dans le route-picker.
+ * Démarre la pré-collecte des 4 critères (le batch ne se lance qu'à la
+ * validation explicite via le bouton vert).
  */
-export async function consumePendingIsolatedTask(
-  freeTextInstruction: string,
-): Promise<boolean> {
-  const pending = pendingIsolatedTask;
-  if (!pending) return false;
-  pendingIsolatedTask = null;
+export function chooseRouteIsolated(pendingId: string): void {
+  const pending = pendingRoutings.get(pendingId);
+  if (!pending) return;
+  const taskId = `TASK-${new Date().getFullYear()}-${String(
+    Math.floor(Math.random() * 999) + 1,
+  ).padStart(3, '0')}`;
+  pending.selectedRoute = 'isolated';
+  pending.resolvedId = taskId;
+  pendingRoutings.set(pendingId, pending);
+
+  markRoutePickerSelected(pendingId, 'isolated');
+
+  useIsolatedCriteriaStore.getState().startCollection(taskId);
+
+  const chat = useChatStore.getState();
+  chat.appendMessage({
+    role: 'user',
+    source: 'text',
+    content: 'Tâche isolée.',
+  });
+  chat.appendMessage({
+    role: 'manager',
+    source: 'text',
+    content: `D'accord, sollicitation ${taskId}. Pour analyser correctement ces CV, j'ai besoin de quatre critères. Commençons par l'intitulé du poste visé — qu'est-ce qu'on cherche ?`,
+  });
+}
+
+/**
+ * Appelé quand le DRH clique « Campagne en cours » dans le route-picker.
+ * On affiche un second block : la liste des campagnes actives.
+ */
+export function chooseRouteExisting(pendingId: string): void {
+  const pending = pendingRoutings.get(pendingId);
+  if (!pending) return;
+  const campaigns = snapshotActiveCampaigns();
+  if (campaigns.length === 0) {
+    // garde-fou — le picker UI désactive ce chip s'il n'y a aucune
+    // campagne, mais on re-vérifie côté flow par sécurité.
+    useChatStore.getState().appendMessage({
+      role: 'manager',
+      source: 'text',
+      content:
+        "Je n'ai pas de campagne active à laquelle rattacher ces CV pour l'instant. On peut partir sur une nouvelle campagne ou sur une analyse isolée.",
+    });
+    return;
+  }
+  pending.selectedRoute = 'existing';
+  pendingRoutings.set(pendingId, pending);
+  markRoutePickerSelected(pendingId, 'existing');
+
+  const chat = useChatStore.getState();
+  chat.appendMessage({
+    role: 'user',
+    source: 'text',
+    content: 'Campagne en cours.',
+  });
+  chat.appendMessage({
+    role: 'manager',
+    source: 'text',
+    content:
+      "Très bien — sur quelle campagne veux-tu rattacher ces CV ?",
+    block: {
+      kind: 'campaign-picker',
+      pendingId,
+      campaigns,
+      selectedCampaignId: null,
+    },
+  });
+}
+
+/**
+ * Appelé quand le DRH clique sur une campagne dans le campaign-picker.
+ * Dérive les critères depuis la FDP, lance dispatchCVBatch.
+ */
+export async function chooseExistingCampaign(
+  pendingId: string,
+  campaignId: string,
+): Promise<void> {
+  const pending = pendingRoutings.get(pendingId);
+  if (!pending) return;
+  const campaign = useCampaignsStore.getState().getById(campaignId);
+  if (!campaign) return;
+
+  pending.selectedCampaignId = campaignId;
+  pending.resolvedId = campaignId;
+  pendingRoutings.set(pendingId, pending);
+  markCampaignPickerSelected(pendingId, campaignId);
+
+  useChatStore.getState().appendMessage({
+    role: 'user',
+    source: 'text',
+    content: `Rattacher à ${campaign.id} — ${campaign.name}.`,
+  });
+  useChatStore.getState().appendMessage({
+    role: 'manager',
+    source: 'text',
+    content: `Compris, je rattache ces CV à ${campaign.id} — ${campaign.name}. Je transmets au CV Analyzer avec les critères de la campagne.`,
+  });
+
+  const files = pending.files;
+  pendingRoutings.delete(pendingId);
+  await dispatchCVBatch({
+    files,
+    criteria: fdpToCVCriteria(campaign.fdp),
+    threshold: DEFAULT_CV_THRESHOLD,
+    campaignId: campaign.id,
+  });
+}
+
+/**
+ * Appelé quand le DRH clique « Nouvelle campagne » dans le route-picker.
+ * Le flow attend ensuite un nom (saisi en texte libre) puis demande s'il
+ * veut faire le setup complet ou skipper vers une pré-collecte courte.
+ */
+export type PendingNewCampaign = {
+  pendingId: string;
+  step: 'await_name' | 'await_setup_choice';
+  name?: string;
+  campaignId?: string;
+};
+
+const pendingNewCampaigns = new Map<string, PendingNewCampaign>();
+
+export function getPendingNewCampaign(
+  pendingId: string,
+): PendingNewCampaign | undefined {
+  return pendingNewCampaigns.get(pendingId);
+}
+
+export function chooseRouteNewCampaign(pendingId: string): void {
+  const pending = pendingRoutings.get(pendingId);
+  if (!pending) return;
+  pending.selectedRoute = 'new';
+  pendingRoutings.set(pendingId, pending);
+  markRoutePickerSelected(pendingId, 'new');
+
+  pendingNewCampaigns.set(pendingId, {
+    pendingId,
+    step: 'await_name',
+  });
+
+  const chat = useChatStore.getState();
+  chat.appendMessage({
+    role: 'user',
+    source: 'text',
+    content: 'Nouvelle campagne.',
+  });
+  chat.appendMessage({
+    role: 'manager',
+    source: 'text',
+    content:
+      "Très bien. Quel nom veux-tu donner à cette nouvelle campagne ? (ex. « Recrutement Data Engineer Q3 »)",
+  });
+}
+
+/**
+ * Helper interne : marque le route-picker comme sélectionné dans la
+ * dernière bulle correspondante (pour griser visuellement les autres
+ * options après le clic).
+ */
+function markRoutePickerSelected(
+  pendingId: string,
+  selected: 'new' | 'existing' | 'isolated',
+): void {
+  const messages = useChatStore.getState().messages;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (
+      m.block?.kind === 'cv-route-picker' &&
+      m.block.pendingId === pendingId
+    ) {
+      useChatStore.getState().updateMessage(m.id, {
+        block: { ...m.block, selected },
+      });
+      return;
+    }
+  }
+}
+
+function markCampaignPickerSelected(
+  pendingId: string,
+  campaignId: string,
+): void {
+  const messages = useChatStore.getState().messages;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (
+      m.block?.kind === 'campaign-picker' &&
+      m.block.pendingId === pendingId
+    ) {
+      useChatStore.getState().updateMessage(m.id, {
+        block: { ...m.block, selectedCampaignId: campaignId },
+      });
+      return;
+    }
+  }
+}
+
+/**
+ * Lance le batch CV pour une tâche isolée une fois la pré-collecte
+ * validée par le DRH (clic sur le bouton vert IsolatedCriteria).
+ */
+export async function dispatchIsolatedCVBatch(args: {
+  pendingId: string;
+  criteria: CVAnalysisCriteria;
+}): Promise<void> {
+  const pending = pendingRoutings.get(args.pendingId);
+  if (!pending || !pending.resolvedId) return;
+  const files = pending.files;
+  const taskId = pending.resolvedId;
+  pendingRoutings.delete(args.pendingId);
+  useIsolatedCriteriaStore.getState().reset();
 
   await dispatchCVBatch({
-    files: pending.files,
-    criteria: { freeText: freeTextInstruction },
+    files,
+    criteria: args.criteria,
     threshold: DEFAULT_CV_THRESHOLD,
-    campaignId: pending.taskId,
+    campaignId: taskId,
   });
-  return true;
+}
+
+/**
+ * Phase « new campaign » — appelée par ManagerChat quand le DRH a
+ * répondu en texte libre alors qu'on attend un nom. Crée la
+ * CAMP-XXXX, l'enregistre comme « pré-active » (pas encore validée
+ * formellement) et demande s'il veut le setup complet.
+ */
+export function consumeNewCampaignName(name: string): boolean {
+  for (const [pendingId, pending] of pendingNewCampaigns) {
+    if (pending.step !== 'await_name') continue;
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const campaignId = `CAMP-${new Date().getFullYear()}-${String(
+      Math.floor(Math.random() * 999) + 1,
+    ).padStart(3, '0')}`;
+    pending.name = trimmed;
+    pending.campaignId = campaignId;
+    pending.step = 'await_setup_choice';
+    pendingNewCampaigns.set(pendingId, pending);
+
+    const route = pendingRoutings.get(pendingId);
+    if (route) {
+      route.resolvedId = campaignId;
+      pendingRoutings.set(pendingId, route);
+    }
+
+    const chat = useChatStore.getState();
+    chat.appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Parfait, campagne ${campaignId} — « ${trimmed} » créée. Veux-tu qu'on cadre tout de suite la fiche de poste complète (intitulé, séniorité, contrat, fourchette, missions, compétences…), ou on lance d'abord juste une analyse rapide des CV avec quelques critères courts ?`,
+      chips: {
+        placement: 'below_bubble',
+        options: ['Cadrer la fiche complète', "Juste l'analyse CV pour l'instant"],
+      },
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Branche du « new campaign » : le DRH choisit l'analyse rapide.
+ * On démarre la pré-collecte critères isolés, mais sous l'identifiant
+ * CAMP-XXXX (l'analyse va remplir la campagne au fil de l'eau ;
+ * le setup complet pourra venir plus tard).
+ */
+export function newCampaignSkipSetup(): boolean {
+  for (const [pendingId, pending] of pendingNewCampaigns) {
+    if (pending.step !== 'await_setup_choice') continue;
+    if (!pending.campaignId) continue;
+    const campaignId = pending.campaignId;
+    pendingNewCampaigns.delete(pendingId);
+
+    useIsolatedCriteriaStore.getState().startCollection(campaignId);
+
+    const chat = useChatStore.getState();
+    chat.appendMessage({
+      role: 'user',
+      source: 'text',
+      content: "Juste l'analyse CV pour l'instant.",
+    });
+    chat.appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Compris, on garde ${campaignId} en mode léger. Donne-moi l'intitulé exact du poste pour que je calibre l'analyse.`,
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Branche du « new campaign » : le DRH choisit le setup complet.
+ * Bascule vers la collecte FDP normale : on initialise une FDP vide
+ * sous CAMP-XXXX dans fdp-store, et le tour Manager suivant prendra
+ * la main via `runManagerTurn`.
+ */
+export function newCampaignFullSetup(): {
+  campaignId: string;
+  pendingFiles: File[];
+} | null {
+  for (const [pendingId, pending] of pendingNewCampaigns) {
+    if (pending.step !== 'await_setup_choice') continue;
+    if (!pending.campaignId) continue;
+    const campaignId = pending.campaignId;
+    const route = pendingRoutings.get(pendingId);
+    const pendingFiles = route?.files ?? [];
+    pendingNewCampaigns.delete(pendingId);
+    pendingRoutings.delete(pendingId);
+    return { campaignId, pendingFiles };
+  }
+  return null;
 }

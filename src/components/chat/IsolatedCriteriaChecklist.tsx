@@ -4,77 +4,81 @@ import { Check, ChevronDown, Loader2, Pencil, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import { useFdpStore } from '@/stores/fdp-store';
+import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
 import {
-  FIELD_KEYS,
-  type FDPInProgress,
-  type FieldKey,
-} from '@/types/field-collection';
+  ISOLATED_CRITERIA_KEYS,
+  type IsolatedCriteriaInProgress,
+  type IsolatedCriteriaKey,
+} from '@/types/isolated-criteria';
 
-export type FieldChecklistProps = {
-  fdp: FDPInProgress;
+export type IsolatedCriteriaChecklistProps = {
+  criteria: IsolatedCriteriaInProgress;
   defaultCollapsed?: boolean;
-  /**
-   * Désactive l'édition manuelle (par ex. quand un agent est en cours
-   * d'exécution et qu'on ne veut pas que le DRH modifie la FDP).
-   */
   editingDisabled?: boolean;
-  /**
-   * Token incrémental : quand il change, on déplie la checklist et on
-   * ouvre l'éditeur du PREMIER champ encore vide. Utilisé par le
-   * bouton « Il manque X champs » de ValidateFDPButton pour donner un
-   * point d'entrée explicite quand le LLM oublie une extraction.
-   */
   openFirstMissingToken?: number;
 };
 
-const ARRAY_FIELDS = new Set<FieldKey>(['main_missions', 'key_skills']);
+const ARRAY_FIELDS = new Set<IsolatedCriteriaKey>(['key_skills']);
+const NUMBER_FIELDS = new Set<IsolatedCriteriaKey>(['experience_years']);
 
-export function FieldChecklist({
-  fdp,
+export function IsolatedCriteriaChecklist({
+  criteria,
   defaultCollapsed = false,
   editingDisabled = false,
   openFirstMissingToken,
-}: FieldChecklistProps) {
+}: IsolatedCriteriaChecklistProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const [editingKey, setEditingKey] = useState<FieldKey | null>(null);
+  const [editingKey, setEditingKey] =
+    useState<IsolatedCriteriaKey | null>(null);
+  const applyExtractions = useIsolatedCriteriaStore(
+    (s) => s.applyExtractions,
+  );
+  const total = ISOLATED_CRITERIA_KEYS.length;
+  const filledCount = ISOLATED_CRITERIA_KEYS.filter(
+    (k) => criteria.fields[k]?.status === 'filled',
+  ).length;
+  const progressPct = Math.round((filledCount / total) * 100);
 
   useEffect(() => {
     if (openFirstMissingToken === undefined || openFirstMissingToken === 0)
       return;
     if (editingDisabled) return;
-    const firstMissing = FIELD_KEYS.find(
-      (k) => fdp.fields[k]?.status !== 'filled',
+    const firstMissing = ISOLATED_CRITERIA_KEYS.find(
+      (k) => criteria.fields[k]?.status !== 'filled',
     );
     if (!firstMissing) return;
-    // Différé hors du cycle de rendu courant pour respecter la règle
-    // « pas de setState synchrone dans un effet ».
     const id = requestAnimationFrame(() => {
       setCollapsed(false);
       setEditingKey(firstMissing);
     });
     return () => cancelAnimationFrame(id);
-  }, [openFirstMissingToken, editingDisabled, fdp.fields]);
-  const applyExtractions = useFdpStore((s) => s.applyExtractions);
-  const total = FIELD_KEYS.length;
-  const filledCount = FIELD_KEYS.filter(
-    (k) => fdp.fields[k]?.status === 'filled',
-  ).length;
-  const progressPct = Math.round((filledCount / total) * 100);
+  }, [openFirstMissingToken, editingDisabled, criteria.fields]);
 
-  function handleSubmit(key: FieldKey, raw: string) {
+  function handleSubmit(key: IsolatedCriteriaKey, raw: string) {
     const trimmed = raw.trim();
     if (!trimmed) {
       setEditingKey(null);
       return;
     }
-    const value: unknown = ARRAY_FIELDS.has(key)
-      ? trimmed
-          .split(/[\n,;]+/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0)
-      : trimmed;
-    applyExtractions({ [key]: value } as Partial<Record<FieldKey, unknown>>);
+    let value: unknown;
+    if (ARRAY_FIELDS.has(key)) {
+      value = trimmed
+        .split(/[\n,;]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    } else if (NUMBER_FIELDS.has(key)) {
+      const n = Number(trimmed.replace(',', '.'));
+      if (!Number.isFinite(n) || n < 0) {
+        setEditingKey(null);
+        return;
+      }
+      value = Math.round(n);
+    } else {
+      value = trimmed;
+    }
+    applyExtractions({
+      [key]: value,
+    } as Partial<Record<IsolatedCriteriaKey, unknown>>);
     setEditingKey(null);
   }
 
@@ -86,7 +90,7 @@ export function FieldChecklist({
         className="w-full px-4 py-2 flex items-center justify-between gap-3 hover:bg-stone-100/60 transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0">
-          {fdp.isComplete ? (
+          {criteria.isComplete ? (
             <Check
               className="h-3.5 w-3.5 text-emerald-600 shrink-0"
               aria-hidden
@@ -97,13 +101,13 @@ export function FieldChecklist({
               aria-hidden
             />
           )}
-          <span className="font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-700 truncate">
-            Fiche de poste
+          <span className="font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-700 truncate">
+            Critères CV
           </span>
           <span
             className={cn(
               'font-data text-[11px] shrink-0 tabular-nums',
-              fdp.isComplete ? 'text-emerald-700' : 'text-indigo-600',
+              criteria.isComplete ? 'text-emerald-700' : 'text-violet-600',
             )}
           >
             {filledCount}/{total}
@@ -119,11 +123,11 @@ export function FieldChecklist({
       </button>
 
       <div className="px-4">
-        <div className="h-1 w-full rounded-full bg-indigo-100 overflow-hidden">
+        <div className="h-1 w-full rounded-full bg-violet-100 overflow-hidden">
           <div
             className={cn(
               'h-full rounded-full transition-all duration-500',
-              fdp.isComplete ? 'bg-emerald-500' : 'bg-indigo-500',
+              criteria.isComplete ? 'bg-emerald-500' : 'bg-violet-500',
             )}
             style={{ width: `${progressPct}%` }}
           />
@@ -132,8 +136,8 @@ export function FieldChecklist({
 
       {!collapsed ? (
         <ul className="px-4 py-3 space-y-1.5">
-          {FIELD_KEYS.map((key) => {
-            const field = fdp.fields[key];
+          {ISOLATED_CRITERIA_KEYS.map((key) => {
+            const field = criteria.fields[key];
             const filled = field?.status === 'filled';
             const inProgress = field?.status === 'in_progress';
             const value = filled ? formatValue(field.value) : null;
@@ -147,7 +151,7 @@ export function FieldChecklist({
                   className={cn(
                     'flex items-center gap-1.5 font-display font-medium shrink-0',
                     filled
-                      ? 'text-indigo-800'
+                      ? 'text-violet-800'
                       : inProgress
                         ? 'text-amber-700'
                         : 'text-stone-500',
@@ -182,14 +186,14 @@ export function FieldChecklist({
                       'group flex items-center gap-1 font-body text-right truncate min-w-0 max-w-[60%]',
                       'transition-colors rounded px-1 -mx-1 py-0.5',
                       filled
-                        ? 'text-stone-800 hover:text-indigo-700 hover:bg-indigo-50'
+                        ? 'text-stone-800 hover:text-violet-700 hover:bg-violet-50'
                         : inProgress
                           ? 'text-amber-700 hover:bg-amber-50'
                           : 'text-stone-400 italic hover:text-stone-700 hover:bg-stone-100',
                       editingDisabled &&
                         'opacity-60 hover:bg-transparent hover:text-inherit cursor-not-allowed',
                     )}
-                    title={editingDisabled ? undefined : 'Modifier ce champ'}
+                    title={editingDisabled ? undefined : 'Modifier ce critère'}
                   >
                     <span className="truncate">
                       {filled
@@ -233,7 +237,7 @@ function FieldEditor({
   onSubmit,
   onCancel,
 }: {
-  fieldKey: FieldKey;
+  fieldKey: IsolatedCriteriaKey;
   initialValue: string | null;
   onSubmit: (value: string) => void;
   onCancel: () => void;
@@ -242,7 +246,9 @@ function FieldEditor({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const placeholder = ARRAY_FIELDS.has(fieldKey)
     ? 'séparé par des virgules'
-    : 'votre valeur';
+    : NUMBER_FIELDS.has(fieldKey)
+      ? 'nombre d\'années'
+      : 'votre valeur';
 
   useEffect(() => {
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -266,8 +272,8 @@ function FieldEditor({
         placeholder={placeholder}
         className={cn(
           'font-body text-[12px] flex-1 min-w-0 px-2 py-0.5 rounded border',
-          'border-indigo-300 bg-white outline-none',
-          'focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300',
+          'border-violet-300 bg-white outline-none',
+          'focus:border-violet-500 focus:ring-1 focus:ring-violet-300',
         )}
       />
       <button

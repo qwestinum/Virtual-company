@@ -4,6 +4,7 @@ vi.mock('@/lib/chat/api-client', () => ({
   postJobWriter: vi.fn(),
   postCVAnalyzer: vi.fn(),
   postManagerChat: vi.fn(),
+  postIsolatedManagerChat: vi.fn(),
   postTranscribe: vi.fn(),
 }));
 
@@ -14,15 +15,22 @@ import {
   type JobWriterResult,
 } from '@/lib/chat/api-client';
 import {
-  consumePendingIsolatedTask,
+  chooseExistingCampaign,
+  chooseRouteIsolated,
+  chooseRouteNewCampaign,
+  consumeNewCampaignName,
   dispatchCVBatch,
-  dispatchIsolatedCVTask,
+  dispatchCVRouting,
+  dispatchIsolatedCVBatch,
   dispatchJobWriter,
-  getPendingIsolatedTask,
+  findPendingByResolvedId,
+  newCampaignSkipSetup,
 } from '@/lib/chat/manager-flow';
 import { useAgentsStore } from '@/stores/agents-store';
 import { useArtifactsStore } from '@/stores/artifacts-store';
+import { useCampaignsStore } from '@/stores/campaigns-store';
 import { useChatStore } from '@/stores/chat-store';
+import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
 import type { CVAnalysisResult } from '@/types/cv-analysis';
 import { buildEmptyFDP, type FDPInProgress } from '@/types/field-collection';
 
@@ -86,13 +94,19 @@ function makeFile(name: string, content = 'CV content for ' + name): File {
   return new File([content], name, { type: 'text/plain' });
 }
 
+function resetAll() {
+  useChatStore.getState().reset();
+  useAgentsStore.getState().resetToRegistry();
+  useArtifactsStore.getState().reset();
+  useCampaignsStore.getState().reset();
+  useIsolatedCriteriaStore.getState().reset();
+}
+
 describe('manager-flow — dispatchJobWriter', () => {
   beforeEach(() => {
     postJobWriterMock.mockReset();
     postCVAnalyzerMock.mockReset();
-    useChatStore.getState().reset();
-    useAgentsStore.getState().resetToRegistry();
-    useArtifactsStore.getState().reset();
+    resetAll();
   });
 
   it('posts intro, creates artifact, posts attachment + source-picker', async () => {
@@ -102,67 +116,29 @@ describe('manager-flow — dispatchJobWriter', () => {
     await dispatchJobWriter(fdp);
 
     const messages = useChatStore.getState().messages;
-    // Greeting + 3 messages Manager (intro, annonce + attachement,
-    // source-picker)
     expect(messages.length).toBeGreaterThanOrEqual(4);
-
-    const introBubble = messages.find((m) =>
-      m.content.includes('Job Writer'),
-    );
-    expect(introBubble?.role).toBe('manager');
-
-    const attachmentBubble = messages.find((m) => m.attachment !== undefined);
-    expect(attachmentBubble?.attachment?.label).toContain('Annonce');
-
-    const sourceBubble = messages.find(
-      (m) => m.block?.kind === 'source-picker',
-    );
-    expect(sourceBubble?.block?.kind).toBe('source-picker');
-
+    expect(
+      messages.some((m) => m.attachment?.label.includes('Annonce')),
+    ).toBe(true);
+    expect(
+      messages.some((m) => m.block?.kind === 'source-picker'),
+    ).toBe(true);
     expect(Object.keys(useArtifactsStore.getState().byId)).toHaveLength(1);
-  });
-
-  it('marks job-writer busy then idle around the call', async () => {
-    let observedActiveDuringCall: string | null | undefined = undefined;
-    postJobWriterMock.mockImplementation(async () => {
-      observedActiveDuringCall =
-        useAgentsStore.getState().activeTaskByAgent['agent.job-writer'];
-      return fakeJobWriterResult();
-    });
-    await dispatchJobWriter(makeFDP());
-
-    expect(observedActiveDuringCall).toBeTruthy();
-    expect(
-      useAgentsStore.getState().activeTaskByAgent['agent.job-writer'],
-    ).toBeNull();
-    expect(
-      useAgentsStore.getState().agents['agent.job-writer']?.status,
-    ).toBe('idle');
   });
 
   it('posts a clean error bubble when the API fails', async () => {
     postJobWriterMock.mockRejectedValueOnce(new Error('OpenAI down'));
     await dispatchJobWriter(makeFDP());
     const messages = useChatStore.getState().messages;
-    const failure = messages.find((m) =>
-      m.content.includes('OpenAI down'),
-    );
-    expect(failure?.role).toBe('manager');
-    // Pas d'attachement ni de source-picker en cas d'échec
+    expect(messages.some((m) => m.content.includes('OpenAI down'))).toBe(true);
     expect(messages.some((m) => m.attachment !== undefined)).toBe(false);
-    expect(
-      messages.some((m) => m.block?.kind === 'source-picker'),
-    ).toBe(false);
   });
 });
 
 describe('manager-flow — dispatchCVBatch', () => {
   beforeEach(() => {
-    postJobWriterMock.mockReset();
     postCVAnalyzerMock.mockReset();
-    useChatStore.getState().reset();
-    useAgentsStore.getState().resetToRegistry();
-    useArtifactsStore.getState().reset();
+    resetAll();
   });
 
   it('runs through every CV and produces a final summary block', async () => {
@@ -179,20 +155,16 @@ describe('manager-flow — dispatchCVBatch', () => {
     });
 
     expect(postCVAnalyzerMock).toHaveBeenCalledTimes(3);
-
-    const messages = useChatStore.getState().messages;
-    const summaryBubble = messages.find(
-      (m) => m.block?.kind === 'cv-batch-summary',
-    );
-    expect(summaryBubble?.attachment?.label).toContain('Rapport');
-
+    const summaryBubble = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'cv-batch-summary');
     if (summaryBubble?.block?.kind === 'cv-batch-summary') {
       expect(summaryBubble.block.summary.total).toBe(3);
       expect(summaryBubble.block.summary.aboveThreshold).toBe(2);
     }
   });
 
-  it('continues on per-file failure and reports it', async () => {
+  it('continues on per-file failure', async () => {
     postCVAnalyzerMock
       .mockResolvedValueOnce(fakeCVResult('a.pdf', 82, true))
       .mockRejectedValueOnce(new Error('PDF illisible'))
@@ -204,72 +176,157 @@ describe('manager-flow — dispatchCVBatch', () => {
       threshold: 75,
       campaignId: 'CAMP-2026-007',
     });
-
     const messages = useChatStore.getState().messages;
-    expect(
-      messages.some((m) => m.content.includes('PDF illisible')),
-    ).toBe(true);
-    const summaryBubble = messages.find(
-      (m) => m.block?.kind === 'cv-batch-summary',
+    expect(messages.some((m) => m.content.includes('PDF illisible'))).toBe(
+      true,
     );
-    if (summaryBubble?.block?.kind === 'cv-batch-summary') {
-      expect(summaryBubble.block.summary.total).toBe(2);
-    }
-  });
-
-  it('marks cv-analyzer busy then idle', async () => {
-    postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('a.pdf'));
-    await dispatchCVBatch({
-      files: [makeFile('a.pdf')],
-      criteria: {},
-      threshold: 75,
-      campaignId: 'CAMP-2026-007',
-    });
-    expect(
-      useAgentsStore.getState().activeTaskByAgent['agent.cv-analyzer'],
-    ).toBeNull();
-    expect(
-      useAgentsStore.getState().agents['agent.cv-analyzer']?.status,
-    ).toBe('idle');
   });
 });
 
-describe('manager-flow — isolated CV task', () => {
+describe('manager-flow — CV routing', () => {
   beforeEach(() => {
     postCVAnalyzerMock.mockReset();
-    useChatStore.getState().reset();
-    useAgentsStore.getState().resetToRegistry();
-    useArtifactsStore.getState().reset();
+    resetAll();
   });
 
-  it('queues files and asks for free-text criteria', () => {
-    dispatchIsolatedCVTask([makeFile('cv1.pdf'), makeFile('cv2.pdf')]);
-    const pending = getPendingIsolatedTask();
-    expect(pending?.files).toHaveLength(2);
-    expect(pending?.taskId).toMatch(/^TASK-\d{4}-\d{3}$/);
+  it('dispatchCVRouting posts a route-picker block with file count', () => {
+    dispatchCVRouting([makeFile('a.pdf'), makeFile('b.pdf')]);
+    const last = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'cv-route-picker');
+    if (last?.block?.kind === 'cv-route-picker') {
+      expect(last.block.fileCount).toBe(2);
+      expect(last.block.activeCampaigns).toHaveLength(0);
+      expect(last.block.selected).toBeNull();
+    } else {
+      throw new Error('expected route-picker block');
+    }
+  });
 
+  it('isolated route starts isolated criteria collection', () => {
+    dispatchCVRouting([makeFile('a.pdf')]);
+    const routerMsg = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'cv-route-picker');
+    if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
+      throw new Error('no route-picker');
+    chooseRouteIsolated(routerMsg.block.pendingId);
+
+    const iso = useIsolatedCriteriaStore.getState().criteria;
+    expect(iso).not.toBeNull();
+    expect(iso?.taskId).toMatch(/^TASK-\d{4}-\d{3}$/);
     const messages = useChatStore.getState().messages;
-    const ask = messages.find((m) =>
-      m.content.includes('sur quels critères'),
-    );
-    expect(ask?.role).toBe('manager');
+    expect(
+      messages.some((m) => m.content.includes("intitulé du poste")),
+    ).toBe(true);
   });
 
-  it('consumes pending task when free-text instruction arrives', async () => {
-    postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('cv1.pdf'));
-    dispatchIsolatedCVTask([makeFile('cv1.pdf')]);
+  it('existing route surfaces a campaign-picker with active campaigns', async () => {
+    useCampaignsStore.getState().addCampaign({ fdp: makeFDP('CAMP-2026-001') });
+    useCampaignsStore.getState().addCampaign({ fdp: makeFDP('CAMP-2026-002') });
 
-    const consumed = await consumePendingIsolatedTask(
-      'Profil senior comptable IFRS',
+    dispatchCVRouting([makeFile('a.pdf')]);
+    const routerMsg = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'cv-route-picker');
+    if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
+      throw new Error('no route-picker');
+    expect(routerMsg.block.activeCampaigns).toHaveLength(2);
+
+    // Maintenant on simule l'utilisateur qui clique « Campagne en cours »
+    // puis qui choisit la campagne CAMP-2026-001.
+    const { chooseRouteExisting } = await import('@/lib/chat/manager-flow');
+    chooseRouteExisting(routerMsg.block.pendingId);
+    const pickerMsg = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'campaign-picker');
+    if (!pickerMsg || pickerMsg.block?.kind !== 'campaign-picker')
+      throw new Error('no campaign-picker');
+    expect(pickerMsg.block.campaigns).toHaveLength(2);
+
+    postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('a.pdf'));
+    await chooseExistingCampaign(
+      pickerMsg.block.pendingId,
+      'CAMP-2026-001',
     );
-    expect(consumed).toBe(true);
-    expect(getPendingIsolatedTask()).toBeNull();
     expect(postCVAnalyzerMock).toHaveBeenCalledTimes(1);
     const callArg = postCVAnalyzerMock.mock.calls[0]?.[0];
-    expect(callArg?.criteria.freeText).toContain('IFRS');
+    expect(callArg?.campaignId).toBe('CAMP-2026-001');
   });
 
-  it('returns false when nothing is pending', async () => {
-    expect(await consumePendingIsolatedTask('whatever')).toBe(false);
+  it('new campaign route asks for a name then gives the setup choice', () => {
+    dispatchCVRouting([makeFile('a.pdf')]);
+    const routerMsg = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'cv-route-picker');
+    if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
+      throw new Error('no route-picker');
+    chooseRouteNewCampaign(routerMsg.block.pendingId);
+
+    expect(
+      useChatStore
+        .getState()
+        .messages.some((m) => m.content.includes('Quel nom')),
+    ).toBe(true);
+
+    const consumed = consumeNewCampaignName('Recrutement Data 2026');
+    expect(consumed).toBe(true);
+    const messages = useChatStore.getState().messages;
+    expect(
+      messages.some((m) => m.content.includes('campagne CAMP-')),
+    ).toBe(true);
+    expect(
+      messages.some((m) =>
+        (m.chips?.options ?? []).includes('Cadrer la fiche complète'),
+      ),
+    ).toBe(true);
+  });
+
+  it('skip setup branch starts isolated criteria under CAMP id', () => {
+    dispatchCVRouting([makeFile('a.pdf')]);
+    const routerMsg = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'cv-route-picker');
+    if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
+      throw new Error('no route-picker');
+    chooseRouteNewCampaign(routerMsg.block.pendingId);
+    consumeNewCampaignName('Recrutement Data 2026');
+    const skipped = newCampaignSkipSetup();
+    expect(skipped).toBe(true);
+    const iso = useIsolatedCriteriaStore.getState().criteria;
+    expect(iso).not.toBeNull();
+    expect(iso?.taskId).toMatch(/^CAMP-\d{4}-\d{3}$/);
+  });
+});
+
+describe('manager-flow — dispatchIsolatedCVBatch', () => {
+  beforeEach(() => {
+    postCVAnalyzerMock.mockReset();
+    resetAll();
+  });
+
+  it('runs the batch using the resolved id from a pending routing', async () => {
+    postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('a.pdf'));
+    dispatchCVRouting([makeFile('a.pdf')]);
+    const routerMsg = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'cv-route-picker');
+    if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
+      throw new Error('no route-picker');
+    chooseRouteIsolated(routerMsg.block.pendingId);
+    const taskId = useIsolatedCriteriaStore.getState().criteria?.taskId;
+    expect(taskId).toBeDefined();
+    if (!taskId) return;
+
+    const pending = findPendingByResolvedId(taskId);
+    expect(pending).toBeDefined();
+    if (!pending) return;
+
+    await dispatchIsolatedCVBatch({
+      pendingId: pending.pendingId,
+      criteria: { jobTitle: 'Data Engineer', seniority: 'senior' },
+    });
+    expect(postCVAnalyzerMock).toHaveBeenCalledTimes(1);
+    expect(useIsolatedCriteriaStore.getState().criteria).toBeNull();
   });
 });

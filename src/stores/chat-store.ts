@@ -17,6 +17,18 @@ import { create } from 'zustand';
 import type { CVBatchSummary } from '@/types/cv-analysis';
 import type { ChipSet } from '@/types/manager-response';
 
+/**
+ * Snapshot léger d'une campagne active, embarqué dans le block
+ * `campaign-picker` pour ne pas dépendre du store campagnes côté
+ * rendu (le store peut évoluer entre l'envoi du message et son
+ * rendu — on fige la liste affichée au moment du message).
+ */
+export type CampaignPickerEntry = {
+  id: string;
+  name: string;
+  jobTitle: string;
+};
+
 export type ChatRole = 'user' | 'manager' | 'system';
 export type ChatMessageSource = 'text' | 'voice';
 
@@ -39,7 +51,20 @@ export type ChatAttachment = {
 export type ChatBlock =
   | { kind: 'source-picker'; selected: 'manuel' | null }
   | { kind: 'cv-progress'; processed: number; total: number }
-  | { kind: 'cv-batch-summary'; summary: CVBatchSummary };
+  | { kind: 'cv-batch-summary'; summary: CVBatchSummary }
+  | {
+      kind: 'cv-route-picker';
+      pendingId: string;
+      fileCount: number;
+      activeCampaigns: CampaignPickerEntry[];
+      selected: 'new' | 'existing' | 'isolated' | null;
+    }
+  | {
+      kind: 'campaign-picker';
+      pendingId: string;
+      campaigns: CampaignPickerEntry[];
+      selectedCampaignId: string | null;
+    };
 
 export type ChatMessage = {
   id: string;
