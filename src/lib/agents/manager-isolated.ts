@@ -25,6 +25,7 @@ import type { PendingSwitch } from '@/types/switch-dialog';
 import {
   buildSwitchDialogResponse,
   generateCampaignId,
+  hasSwitchIntentKeyword,
   SWITCH_DIALOG_THRESHOLD,
   type ConversationTurn,
 } from './manager';
@@ -262,22 +263,35 @@ export async function runIsolatedCriteriaTurn(
       classification = null;
     }
 
+    // Deux chemins (cf. manager.ts) : (a) LLM signale isDistinct=true +
+    // candidate concret, OU (b) keyword explicite de bascule — chemin
+    // (b) ne dépend pas du booléen LLM (le modèle est souvent trop
+    // conservateur quand le DRH n'a pas nommé de poste cible).
     if (
       classification &&
       !classification.needsClarification &&
       classification.confidence >= SWITCH_DIALOG_THRESHOLD &&
       (classification.intent === 'new_campaign' ||
-        classification.intent === 'out_of_campaign_task') &&
-      classification.isDistinctNewCampaign === true
+        classification.intent === 'out_of_campaign_task')
     ) {
       const candidate =
         typeof classification.candidateNewJobTitle === 'string'
           ? classification.candidateNewJobTitle.trim()
           : '';
-      if (
+      const isCandidateMeaningful =
         candidate.length > 0 &&
-        candidate.toLowerCase() !== currentJobTitle.toLowerCase()
-      ) {
+        candidate.toLowerCase() !== currentJobTitle.toLowerCase();
+      const lastUserMessage =
+        [...input.history].reverse().find((t) => t.role === 'user')
+          ?.content ?? '';
+      const hasExplicitKeyword = hasSwitchIntentKeyword(lastUserMessage);
+
+      const shouldTrigger =
+        hasExplicitKeyword ||
+        (classification.isDistinctNewCampaign === true &&
+          isCandidateMeaningful);
+
+      if (shouldTrigger) {
         const pendingSwitch: PendingSwitch = {
           proposedCampaignId: generateCampaignId(classification.intent),
           currentCampaignId: input.criteria.taskId,

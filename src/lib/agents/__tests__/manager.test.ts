@@ -469,6 +469,83 @@ describe('runManagerTurn — orchestration', () => {
     expect(result.pendingSwitch).toBeNull();
   });
 
+  it('triggers switch dialog via keyword fallback when LLM is conservative (no candidate, isDistinct=false)', async () => {
+    // Cas réel observé : DRH dit « non en fait je veux lancer une
+    // campagne » sans nommer le poste cible. Le LLM met isDistinct=false
+    // et candidate=null par excès de prudence. Le keyword « lancer une
+    // campagne » suffit à déclencher le switch côté serveur.
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          intent: 'new_campaign',
+          confidence: 0.9,
+          reasoning: 'Le DRH demande une nouvelle campagne.',
+          needsClarification: false,
+          isDistinctNewCampaign: false,
+          candidateNewJobTitle: null,
+        }),
+      ),
+    );
+
+    const fdp = buildEmptyFDP('CAMP-2026-042');
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      value: 'Développeur Python',
+      status: 'filled',
+    };
+
+    const result = await runManagerTurn({
+      history: [
+        { role: 'user', content: 'Développeur Python' },
+        { role: 'manager', content: 'Quelle séniorité ?' },
+        { role: 'user', content: 'non en fait je veux lancer une campagne' },
+      ],
+      fdp,
+    });
+
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(result.pendingSwitch).not.toBeNull();
+    expect(result.pendingSwitch?.currentJobTitle).toBe('Développeur Python');
+  });
+
+  it('does NOT trigger switch via keyword when message is just a short reply ("senior")', async () => {
+    // Garde-fou : keyword n'est jamais matché par des réponses
+    // courantes de collecte. Le LLM dit isDistinct=true par erreur,
+    // mais aucun keyword → pas de switch.
+    chatCompleteMock
+      .mockResolvedValueOnce(
+        fakeCompletion(
+          JSON.stringify({
+            intent: 'new_campaign',
+            confidence: 0.9,
+            reasoning: 'Faux positif hypothétique.',
+            needsClarification: false,
+            isDistinctNewCampaign: true,
+            candidateNewJobTitle: null,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+
+    const fdp = buildEmptyFDP('CAMP-2026-042');
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      value: 'Développeur Python',
+      status: 'filled',
+    };
+
+    const result = await runManagerTurn({
+      history: [
+        { role: 'user', content: 'Développeur Python' },
+        { role: 'manager', content: 'Quelle séniorité ?' },
+        { role: 'user', content: 'senior' },
+      ],
+      fdp,
+    });
+
+    expect(result.pendingSwitch).toBeNull();
+  });
+
   it('does NOT trigger switch dialog when DRH continues collection on the same job (isDistinctNewCampaign omitted)', async () => {
     // Reproduit le bug : pendant la collecte FDP, le DRH répond
     // « senior » à une question. Le classifier voit toute la conv

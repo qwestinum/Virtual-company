@@ -127,6 +127,39 @@ export function generateCampaignId(intent: Intent): string {
 }
 
 /**
+ * Mots-clés qui dénotent SANS AMBIGUÏTÉ une intention de bascule
+ * formulée par le DRH (« en fait je veux lancer une campagne »,
+ * « ouvre-moi une nouvelle tâche », « passe sur autre chose »).
+ *
+ * Sert de fallback côté serveur quand le classifier renvoie
+ * `isDistinctNewCampaign: true` mais `candidateNewJobTitle: null`
+ * (cas où le DRH exprime l'intention sans nommer le poste cible).
+ * Sans ce fallback, le garde-fou anti-hallucination (qui exige un
+ * candidate concret) bloquerait à tort cette intention légitime.
+ *
+ * Volontairement restrictif : on ne match QUE des verbes/locutions
+ * d'action métier suffisamment spécifiques pour que des messages
+ * courts comme « ok » ou « senior » ne déclenchent jamais.
+ */
+const SWITCH_INTENT_KEYWORDS = [
+  /\bcampagne(?!\s+(?:actuelle|en\s+cours|courante|pr[ée]c[ée]dente))/i,
+  /\b(lance|lancer|ouvre|ouvrir|d[ée]marre|d[ée]marrer|initier|cr[ée]er|cr[ée]e)\s+(?:une\s+)?(?:nouvelle\s+)?(?:campagne|t[âa]che|sollicitation|recrutement)\b/i,
+  /\bnouvelle\s+(?:campagne|t[âa]che|sollicitation|recrutement)\b/i,
+  /\b(en\s+fait|finalement|plut[ôo]t|à\s+la\s+place|au\s+lieu)\b/i,
+  /\bautre\s+(?:poste|recrutement|campagne|t[âa]che|profil)\b/i,
+  /\babandonn(?:er|e|ons)\b/i,
+];
+
+/**
+ * Vrai si le message contient au moins un mot-clé explicite de
+ * bascule. Utilisé comme fallback quand le classifier dit
+ * `isDistinctNewCampaign: true` sans pouvoir nommer un poste cible.
+ */
+export function hasSwitchIntentKeyword(message: string): boolean {
+  return SWITCH_INTENT_KEYWORDS.some((re) => re.test(message));
+}
+
+/**
  * Une FDP est « non vide » dès que job_title est rempli. C'est le
  * critère minimal pour considérer qu'on est dans une campagne en cours
  * (pas une coquille vide juste créée). Sert à déclencher le switch
@@ -222,18 +255,23 @@ export async function runManagerTurn(
 
   // Détection déterministe du switch de campagne. On court-circuite le
   // tour conversationnel LLM si :
-  //   - une FDP existe avec au moins job_title rempli (signal d'une
-  //     campagne en cours, pas une coquille vide qu'on viendrait de
-  //     créer au tour précédent),
+  //   - une FDP existe avec au moins job_title rempli,
   //   - le DRH formule une nouvelle intention (new_campaign ou
   //     out_of_campaign_task) avec une confidence haute,
   //   - aucune clarification n'est en attente,
   //   - le classifier a marqué isDistinctNewCampaign=true,
-  //   - ET le classifier a pu nommer un candidateNewJobTitle concret
-  //     dans le dernier message, distinct du courant (case-insensitive).
-  //     Garde-fou contre les hallucinations LLM : sur des messages
-  //     courts (« ok », « senior »), aucun poste ne peut être nommé,
-  //     donc pas de switch même si le booléen était à true par erreur.
+  //   - ET un signal concret de bascule existe, sous une des deux
+  //     formes admises :
+  //       a) candidateNewJobTitle nommé et différent du courant
+  //          (case-insensitive) — chemin nominal,
+  //       b) candidate absent mais le message contient un mot-clé
+  //          explicite de bascule (« en fait je veux lancer une
+  //          campagne », « ouvre une nouvelle tâche ») — chemin
+  //          fallback pour ne pas bloquer une intention claire
+  //          formulée sans poste cible.
+  //     Sans ces signaux, on bloque (garde-fou anti-hallucination :
+  //     sur « ok » ou « senior », le LLM peut mettre le booléen à
+  //     true à tort mais ni le candidate ni le keyword ne seraient là).
   const isCandidateMeaningful =
     typeof classification.candidateNewJobTitle === 'string' &&
     classification.candidateNewJobTitle.trim().length > 0 &&
@@ -243,6 +281,17 @@ export async function runManagerTurn(
         .toLowerCase() !==
         currentJobTitleForClassifier.trim().toLowerCase());
 
+  const hasExplicitKeyword = hasSwitchIntentKeyword(lastUserMessage);
+
+  // Deux chemins admis pour déclencher le switch (avec les pré-requis
+  // communs : FDP non vide + intent campagne/tâche à confidence haute) :
+  //   a) le LLM signale isDistinctNewCampaign=true ET un candidate
+  //      concret existe (chemin nominal, le plus précis),
+  //   b) le dernier message contient un MOT-CLÉ explicite de bascule
+  //      (« lancer une nouvelle campagne », « en fait », « plutôt »…) ;
+  //      ce signal est définitif et n'a pas besoin de l'approbation du
+  //      LLM — il est volontairement spécifique pour ne pas matcher
+  //      les réponses courantes de collecte.
   const shouldShowSwitchDialog =
     input.fdp !== null &&
     fdpHasJobTitle(input.fdp) &&
@@ -250,8 +299,9 @@ export async function runManagerTurn(
     classification.confidence >= SWITCH_DIALOG_THRESHOLD &&
     (classification.intent === 'new_campaign' ||
       classification.intent === 'out_of_campaign_task') &&
-    classification.isDistinctNewCampaign === true &&
-    isCandidateMeaningful;
+    (hasExplicitKeyword ||
+      (classification.isDistinctNewCampaign === true &&
+        isCandidateMeaningful));
 
   if (shouldShowSwitchDialog && input.fdp) {
     const pendingSwitch: PendingSwitch = {
