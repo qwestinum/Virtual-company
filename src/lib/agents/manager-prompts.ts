@@ -27,8 +27,10 @@ export type ConversationalPromptContext = {
   preSearchHits: JobDescription[];
 };
 
-export function buildIntentClassificationPrompt(): string {
-  return [
+export function buildIntentClassificationPrompt(
+  currentJobTitle?: string,
+): string {
+  const lines: string[] = [
     "Tu es le classifieur d'intention du Manager RH d'une entreprise virtuelle. Lis le dernier message du donneur d'ordre dans son contexte conversationnel et classe son intention dans EXACTEMENT une des cinq catégories canoniques.",
     '',
     'Catégories :',
@@ -46,14 +48,35 @@ export function buildIntentClassificationPrompt(): string {
     '- la confidence est faible (signal explicite que tu hésites),',
     '- OU plusieurs intentions sont plausibles (ex. ambigu entre new_campaign et out_of_campaign_task : « peux-tu me préparer une fiche pour un comptable ? » — campagne complète ou simple template ?).',
     '',
+  ];
+
+  if (currentJobTitle) {
+    lines.push(
+      `── CHAMP ADDITIONNEL — isDistinctNewCampaign ──`,
+      `Une FDP est ACTUELLEMENT en cours sur le poste : "${currentJobTitle}". Tu dois donc renseigner aussi le booléen \`isDistinctNewCampaign\` — il distingue deux cas qui ressemblent tous deux à "new_campaign" mais ne déclenchent pas la même action :`,
+      `- Met \`true\` UNIQUEMENT si le DERNIER message DRH évoque un poste MANIFESTEMENT DIFFÉRENT de "${currentJobTitle}". Le DRH abandonne ce poste pour un autre. Exemples : « en fait je veux recruter un développeur python », « ah non plutôt un commercial ».`,
+      `- Met \`false\` dans TOUS les autres cas, y compris quand le DRH continue normalement la collecte de "${currentJobTitle}" : réponses courtes (« senior », « Paris », « 50K », « plutôt CDI »), ajustements de valeur, précisions, demandes de reformulation, validation, etc. Le DRH alimente la fiche en cours, il ne démarre pas un autre poste.`,
+      `- Met \`false\` aussi quand le dernier message est ambigu ou quand tu hésites — false est le défaut conservateur.`,
+      ``,
+      `Cette décision doit s'appuyer sur le DERNIER message du DRH. L'historique sert juste à comprendre le contexte ; le déclenchement de switch repose sur le dernier message exclusivement.`,
+      ``,
+    );
+  }
+
+  const schemaLine = currentJobTitle
+    ? '  "needsClarification": <booléen>,\n  "isDistinctNewCampaign": <booléen>'
+    : '  "needsClarification": <booléen>';
+
+  lines.push(
     "Sortie : JSON UNIQUEMENT, exactement ce schéma :",
     '{',
     '  "intent": "new_campaign" | "campaign_followup" | "out_of_campaign_task" | "reporting_request" | "other",',
     '  "confidence": <nombre entre 0.0 et 1.0>,',
     '  "reasoning": "<phrase courte expliquant le choix, en français>",',
-    '  "needsClarification": <booléen>',
+    schemaLine,
     '}',
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 export function buildConversationalPrompt(

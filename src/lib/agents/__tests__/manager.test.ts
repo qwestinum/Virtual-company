@@ -311,8 +311,18 @@ describe('runManagerTurn — orchestration', () => {
     expect(result.pendingSwitch).toBeNull();
   });
 
-  it('triggers deterministic switch dialog when FDP has job_title + new_campaign high confidence', async () => {
-    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_INTENT));
+  it('triggers deterministic switch dialog when FDP has job_title + new_campaign high confidence + isDistinctNewCampaign', async () => {
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          intent: 'new_campaign',
+          confidence: 0.92,
+          reasoning: 'Le DRH bascule sur un autre poste.',
+          needsClarification: false,
+          isDistinctNewCampaign: true,
+        }),
+      ),
+    );
 
     const fdp = buildEmptyFDP('CAMP-2026-042');
     fdp.fields.job_title = {
@@ -352,7 +362,17 @@ describe('runManagerTurn — orchestration', () => {
   });
 
   it('switch dialog mentions validated status when current FDP is validated', async () => {
-    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_INTENT));
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          intent: 'new_campaign',
+          confidence: 0.92,
+          reasoning: 'Le DRH bascule sur un autre poste.',
+          needsClarification: false,
+          isDistinctNewCampaign: true,
+        }),
+      ),
+    );
 
     const fdp = {
       ...buildEmptyFDP('CAMP-2026-042'),
@@ -374,6 +394,46 @@ describe('runManagerTurn — orchestration', () => {
 
     expect(result.pendingSwitch?.currentStatus).toBe('validated');
     expect(result.response.message).toContain('déjà validée');
+  });
+
+  it('does NOT trigger switch dialog when DRH continues collection on the same job (isDistinctNewCampaign omitted)', async () => {
+    // Reproduit le bug : pendant la collecte FDP, le DRH répond
+    // « senior » à une question. Le classifier voit toute la conv
+    // comme « new_campaign » mais isDistinctNewCampaign reste false
+    // (ou omis) → le switch ne doit PAS se déclencher.
+    chatCompleteMock
+      .mockResolvedValueOnce(
+        fakeCompletion(
+          JSON.stringify({
+            intent: 'new_campaign',
+            confidence: 0.9,
+            reasoning: 'La conversation reste dans le contexte de cadrage.',
+            needsClarification: false,
+            isDistinctNewCampaign: false,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+
+    const fdp = buildEmptyFDP('CAMP-2026-042');
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      value: 'Comptable',
+      status: 'filled',
+    };
+
+    const result = await runManagerTurn({
+      history: [
+        { role: 'user', content: 'Je veux recruter un comptable.' },
+        { role: 'manager', content: 'Quelle séniorité ?' },
+        { role: 'user', content: 'senior' },
+      ],
+      fdp,
+    });
+
+    // Pas de switch — le tour conversationnel LLM est appelé normalement.
+    expect(chatCompleteMock).toHaveBeenCalledTimes(2);
+    expect(result.pendingSwitch).toBeNull();
   });
 
   it('does NOT trigger switch dialog when FDP has no job_title yet', async () => {

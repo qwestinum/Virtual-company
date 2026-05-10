@@ -175,7 +175,20 @@ export async function runManagerTurn(
   const lastUserMessage =
     [...input.history].reverse().find((t) => t.role === 'user')?.content ?? '';
 
-  const intentSystem = buildIntentClassificationPrompt();
+  // Si une FDP en cours a un job_title, on le passe au classifier pour
+  // qu'il puisse décider isDistinctNewCampaign — la condition stricte
+  // de déclenchement du switch dialog (sub-phase 1.3.1). Sans ça, le
+  // classifier voit toute la conversation comme "new_campaign" dès
+  // qu'on parle de recrutement, et déclenche un switch sur chaque
+  // réponse à une question.
+  const currentJobTitleForClassifier =
+    input.fdp && fdpHasJobTitle(input.fdp)
+      ? getFdpJobTitle(input.fdp)
+      : undefined;
+
+  const intentSystem = buildIntentClassificationPrompt(
+    currentJobTitleForClassifier,
+  );
   const conversation = input.history.map((t) => ({
     role: t.role === 'manager' ? ('assistant' as const) : ('user' as const),
     content: t.content,
@@ -210,16 +223,21 @@ export async function runManagerTurn(
   //     créer au tour précédent),
   //   - le DRH formule une nouvelle intention (new_campaign ou
   //     out_of_campaign_task) avec une confidence haute,
-  //   - aucune clarification n'est en attente.
-  // Dans ce cas, on retourne directement un dialogue déterministe avec
-  // chips. Le client gère la suite (archive + reset + nouvelle FDP).
+  //   - aucune clarification n'est en attente,
+  //   - le classifier a explicitement marqué le dernier message comme
+  //     un poste DIFFÉRENT du job_title courant (isDistinctNewCampaign).
+  //     Ce dernier critère évite le faux positif majeur où chaque
+  //     réponse à une question (« senior », « Paris ») relance le
+  //     classifier sur un historique qui parle globalement de
+  //     recrutement → intent "new_campaign" 0.9 → switch erroné.
   const shouldShowSwitchDialog =
     input.fdp !== null &&
     fdpHasJobTitle(input.fdp) &&
     !classification.needsClarification &&
     classification.confidence >= SWITCH_DIALOG_THRESHOLD &&
     (classification.intent === 'new_campaign' ||
-      classification.intent === 'out_of_campaign_task');
+      classification.intent === 'out_of_campaign_task') &&
+    classification.isDistinctNewCampaign === true;
 
   if (shouldShowSwitchDialog && input.fdp) {
     const pendingSwitch: PendingSwitch = {
