@@ -41,6 +41,7 @@ import {
   findPendingByResolvedId,
   newCampaignFullSetup,
   newCampaignSkipSetup,
+  wipeForFreshStart,
 } from '@/lib/chat/manager-flow';
 import { cn } from '@/lib/utils';
 import { useAgentsStore } from '@/stores/agents-store';
@@ -497,26 +498,16 @@ export function ManagerChat() {
     }
 
     // SWITCH_CHIP_NEW — wipe complet du chat avec seed du dernier
-    // message user (l'intention qui a déclenché la bascule).
+    // message user (l'intention qui a déclenché la bascule). Le
+    // helper wipeForFreshStart archive la FDP courante et reset
+    // chat/fdp/isolated ; on crée ensuite la nouvelle FDP et on
+    // réinjecte le seed pour que le Manager ait l'intention en
+    // contexte sans le bruit de l'historique précédent.
     const seedUserMessage = findLastUserContent(
       useChatStore.getState().messages,
     );
 
-    const currentFdp = useFdpStore.getState().fdp;
-    if (currentFdp) {
-      // L'archive précède le reset : le snapshot de la FDP (draft ou
-      // validée) reste dans campaigns-store, ré-affichable via le
-      // futur sélecteur de campagne (sub-phase 1.4).
-      addCampaign({ fdp: currentFdp });
-    }
-
-    // Reset chat + FDP + isolated criteria (artifacts-store reste
-    // intact : les annonces/rapports déjà produits doivent rester
-    // accessibles par campagne archivée). campaigns-store reste aussi
-    // intact, sinon on perd l'archive qu'on vient juste de poser.
-    resetChat();
-    resetFdp();
-    resetIsolated();
+    wipeForFreshStart();
     createFDP(pending.proposedCampaignId);
 
     if (seedUserMessage) {

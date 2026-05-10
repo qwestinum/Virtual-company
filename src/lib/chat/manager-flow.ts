@@ -19,6 +19,7 @@
  */
 
 import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
+import { useFdpStore } from '@/stores/fdp-store';
 import {
   buildCVBatchSummary,
   renderCVBatchMarkdown,
@@ -48,6 +49,31 @@ const CV_ANALYZER_ID = 'agent.cv-analyzer';
 
 function nowTaskId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/**
+ * Wipe le chat pour démarrer une nouvelle campagne/tâche sur des
+ * bases propres (cf. memory/feedback_chat_reset_on_switch.md).
+ *
+ * Effets :
+ *   - archive la FDP courante dans campaigns-store si présente (draft
+ *     ou validée — l'archive est conservée pour le futur sélecteur),
+ *   - reset chat-store, fdp-store et isolated-criteria-store,
+ *   - PRÉSERVE campaigns-store (sinon on perd l'archive qu'on vient
+ *     de poser) et artifacts-store (annonces/rapports ré-affichables
+ *     via le sélecteur).
+ *
+ * Doit être appelé AVANT de poster les bulles d'ouverture du nouveau
+ * contexte (route-picker isolated/new, switch dialog confirmé, etc.).
+ */
+export function wipeForFreshStart(): void {
+  const currentFdp = useFdpStore.getState().fdp;
+  if (currentFdp) {
+    useCampaignsStore.getState().addCampaign({ fdp: currentFdp });
+  }
+  useChatStore.getState().reset();
+  useFdpStore.getState().reset();
+  useIsolatedCriteriaStore.getState().reset();
 }
 
 /**
@@ -383,7 +409,12 @@ export function chooseRouteIsolated(pendingId: string): void {
   pending.resolvedId = taskId;
   pendingRoutings.set(pendingId, pending);
 
-  markRoutePickerSelected(pendingId, 'isolated');
+  // Wipe avant les bulles d'ouverture : on bascule sur une nouvelle
+  // tâche, l'historique de la conversation précédente n'a plus de
+  // sens et pollue le contexte LLM (cf. feedback_chat_reset_on_switch).
+  // pendingRoutings est une map module-locale → survit au reset.
+  const fileCount = pending.files.length;
+  wipeForFreshStart();
 
   useIsolatedCriteriaStore.getState().startCollection(taskId);
 
@@ -391,12 +422,15 @@ export function chooseRouteIsolated(pendingId: string): void {
   chat.appendMessage({
     role: 'user',
     source: 'text',
-    content: 'Tâche isolée.',
+    content:
+      fileCount === 1
+        ? 'Nouvelle tâche isolée — un CV à analyser.'
+        : `Nouvelle tâche isolée — ${fileCount} CV à analyser.`,
   });
   chat.appendMessage({
     role: 'manager',
     source: 'text',
-    content: `D'accord, sollicitation ${taskId}. Pour analyser correctement ces CV, j'ai besoin de quatre critères. Commençons par l'intitulé du poste visé — qu'est-ce qu'on cherche ?`,
+    content: `Sollicitation ${taskId} ouverte. Pour analyser correctement ces CV, j'ai besoin de quatre critères. Commençons par l'intitulé du poste visé — qu'est-ce qu'on cherche ?`,
   });
 }
 
@@ -507,18 +541,27 @@ export function chooseRouteNewCampaign(pendingId: string): void {
   if (!pending) return;
   pending.selectedRoute = 'new';
   pendingRoutings.set(pendingId, pending);
-  markRoutePickerSelected(pendingId, 'new');
 
   pendingNewCampaigns.set(pendingId, {
     pendingId,
     step: 'await_name',
   });
 
+  // Wipe avant les bulles d'ouverture (cf. chooseRouteIsolated).
+  // pendingRoutings et pendingNewCampaigns sont module-locales et
+  // survivent au reset, donc consumeNewCampaignName retrouvera le
+  // pending au prochain message DRH.
+  const fileCount = pending.files.length;
+  wipeForFreshStart();
+
   const chat = useChatStore.getState();
   chat.appendMessage({
     role: 'user',
     source: 'text',
-    content: 'Nouvelle campagne.',
+    content:
+      fileCount === 1
+        ? 'Nouvelle campagne — un CV à rattacher.'
+        : `Nouvelle campagne — ${fileCount} CV à rattacher.`,
   });
   chat.appendMessage({
     role: 'manager',
