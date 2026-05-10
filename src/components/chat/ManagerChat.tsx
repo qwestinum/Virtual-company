@@ -79,6 +79,22 @@ function countMissingIsolated(criteria: IsolatedCriteriaInProgress): number {
   ).length;
 }
 
+/**
+ * Récupère le contenu textuel du DERNIER message DRH dans le tableau.
+ * Utilisé sur switch confirmé pour re-seeder le chat reset avec
+ * l'intention qui a déclenché la bascule (« en fait je veux un
+ * développeur python »), sinon le LLM tomberait sur un greeting nu.
+ */
+function findLastUserContent(
+  messages: ReadonlyArray<{ role: string; content: string }>,
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === 'user' && m.content.trim().length > 0) return m.content;
+  }
+  return null;
+}
+
 function buildIsolatedCriteriaPayload(
   criteria: IsolatedCriteriaInProgress,
 ): CVAnalysisCriteria {
@@ -455,11 +471,14 @@ export function ManagerChat() {
    *   - SWITCH_CHIP_NEW  : on archive la FDP courante dans
    *                        campaigns-store (qu'elle soit draft ou
    *                        validée — campaigns-store accepte les deux),
-   *                        on reset fdp-store, on crée une FDP fraîche
-   *                        sous proposedCampaignId, puis on relance un
-   *                        tour Manager pour qu'il ouvre la collecte
-   *                        sur le nouveau poste extrait du dernier
-   *                        message DRH.
+   *                        puis on WIPE intégralement le chat, la FDP
+   *                        et les critères isolés pour repartir d'un
+   *                        fil propre. Le dernier message DRH avant
+   *                        le chip est réinjecté comme seed pour
+   *                        conserver son intention. Le tour Manager
+   *                        suivant démarre la collecte sur la nouvelle
+   *                        campagne sans pollution de contexte.
+   *                        Cf. memory/feedback_chat_reset_on_switch.md.
    *   - SWITCH_CHIP_KEEP : on dismiss simplement le dialogue. La FDP
    *                        courante reste active. On relance UN tour
    *                        Manager pour qu'il revienne sur la collecte
@@ -469,22 +488,45 @@ export function ManagerChat() {
     pending: PendingSwitch,
     option: typeof SWITCH_CHIP_NEW | typeof SWITCH_CHIP_KEEP,
   ): Promise<void> {
-    appendMessage({ role: 'user', source: 'text', content: option });
-
-    if (option === SWITCH_CHIP_NEW) {
-      const currentFdp = useFdpStore.getState().fdp;
-      if (currentFdp) {
-        // On archive la FDP courante (draft ou validée). campaigns-store
-        // accepte sans condition et stocke le snapshot — la sub-phase 1.4
-        // affichera draft/validée selon fdp.isValidated.
-        addCampaign({ fdp: currentFdp });
-      }
-      resetFdp();
-      createFDP(pending.proposedCampaignId);
+    if (option === SWITCH_CHIP_KEEP) {
+      // Branche simple : on poste le chip comme bulle user et on
+      // relance un tour pour reprendre la collecte courante.
+      appendMessage({ role: 'user', source: 'text', content: option });
+      void sendToManager(useChatStore.getState().messages);
+      return;
     }
 
-    // On relance un tour Manager dans les deux cas pour que la
-    // conversation reprenne sur le nouveau (ou ancien) contexte.
+    // SWITCH_CHIP_NEW — wipe complet du chat avec seed du dernier
+    // message user (l'intention qui a déclenché la bascule).
+    const seedUserMessage = findLastUserContent(
+      useChatStore.getState().messages,
+    );
+
+    const currentFdp = useFdpStore.getState().fdp;
+    if (currentFdp) {
+      // L'archive précède le reset : le snapshot de la FDP (draft ou
+      // validée) reste dans campaigns-store, ré-affichable via le
+      // futur sélecteur de campagne (sub-phase 1.4).
+      addCampaign({ fdp: currentFdp });
+    }
+
+    // Reset chat + FDP + isolated criteria (artifacts-store reste
+    // intact : les annonces/rapports déjà produits doivent rester
+    // accessibles par campagne archivée). campaigns-store reste aussi
+    // intact, sinon on perd l'archive qu'on vient juste de poser.
+    resetChat();
+    resetFdp();
+    resetIsolated();
+    createFDP(pending.proposedCampaignId);
+
+    if (seedUserMessage) {
+      appendMessage({
+        role: 'user',
+        source: 'text',
+        content: seedUserMessage,
+      });
+    }
+
     void sendToManager(useChatStore.getState().messages);
   }
 
