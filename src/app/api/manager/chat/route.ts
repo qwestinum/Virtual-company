@@ -51,7 +51,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       response: result.response,
       campaignId: result.campaignId,
       preSearchHits: result.preSearchHits,
-      switchIntent: result.switchIntent,
+      pendingSwitch: result.pendingSwitch,
       metrics: result.metrics,
     });
   } catch (err) {

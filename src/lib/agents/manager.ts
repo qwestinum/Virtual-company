@@ -1,12 +1,14 @@
 /**
- * Orchestration du Manager RH (Session 3).
+ * Orchestration du Manager RH (Session 3 + ajustements feedback).
  *
  * Point d'entrée serveur unique pour un tour de conversation Manager.
  * Coordonne :
  *   1. Classification d'intention (LLM, JSON strict).
  *   2. Application du seuil CLARIFICATION_THRESHOLD.
- *   3. Pré-recherche storage (stub Session 3 — vide).
- *   4. Réponse conversationnelle (LLM, JSON strict).
+ *   3. Détection déterministe d'un switch de campagne (sub-phase 1.3).
+ *   4. Pré-recherche storage (stub Session 3 — vide).
+ *   5. Réponse conversationnelle (LLM, JSON strict) — ou court-circuit
+ *      avec dialogue déterministe quand un switch est détecté.
  *
  * Frontière critique : ce module est le SEUL endroit où chat ↔ FDP se
  * coordonnent. Les stores (chat-store, fdp-store) ne se connaissent pas
@@ -29,6 +31,19 @@ import {
   ManagerResponseSchema,
   type ManagerResponse,
 } from '@/types/manager-response';
+import {
+  SWITCH_CHIP_KEEP,
+  SWITCH_CHIP_NEW,
+  type PendingSwitch,
+} from '@/types/switch-dialog';
+
+// Re-export pour compat — l'import canonique côté client passe par
+// '@/types/switch-dialog' (qui n'embarque pas le bundle serveur).
+export {
+  SWITCH_CHIP_KEEP,
+  SWITCH_CHIP_NEW,
+  type PendingSwitch,
+} from '@/types/switch-dialog';
 
 import {
   buildConversationalPrompt,
@@ -43,6 +58,14 @@ export const MANAGER_AGENT_ID = 'agent.manager-rh';
  * alors instruit à proposer 2-3 chips canoniques (cf. manager-prompts).
  */
 export const CLARIFICATION_THRESHOLD = 0.65;
+
+/**
+ * Confidence minimale pour déclencher le dialogue déterministe de
+ * switch de campagne (sub-phase 1.3). En dessous, on retombe sur le
+ * flux normal — laisse le Manager poser une question de clarification
+ * au lieu de proposer un switch fragile.
+ */
+export const SWITCH_DIALOG_THRESHOLD = 0.7;
 
 export type ConversationTurn = {
   role: 'user' | 'manager';
@@ -64,27 +87,16 @@ export type ManagerTurnOutput = {
   classification: IntentClassification;
   response: ManagerResponse;
   preSearchHits: JobDescription[];
-  campaignId: string | null;
   /**
-   * Vrai quand le DRH revient sur le chat APRÈS validation d'une FDP
-   * (FDP courante isValidated=true) et exprime une nouvelle intention
-   * de campagne ou de sollicitation isolée. Le client doit alors :
-   *   - reset la FDP courante,
-   *   - créer une FDP fraîche sous le nouveau `campaignId` retourné.
-   * Sans ce flag, le serveur garderait l'ancien campaignId et le LLM
-   * continuerait à dialoguer dans le contexte de la campagne déjà close.
+   * En sortie : campaignId à ASSOCIER au tour courant (jamais le
+   * proposed du switch — celui-ci vit dans pendingSwitch). Si un switch
+   * est en attente, campaignId reste celui de la campagne courante,
+   * c'est le client qui décidera de basculer ou non.
    */
-  switchIntent: boolean;
+  campaignId: string | null;
+  pendingSwitch: PendingSwitch | null;
   metrics: ManagerTurnMetrics;
 };
-
-/**
- * Confidence minimale pour reconnaître un vrai switch d'intention
- * post-validation. En dessous, on retombe sur le flux normal (pas de
- * reset de FDP) — laisse le Manager poser une question de clarification
- * au lieu de jeter le contexte.
- */
-const SWITCH_INTENT_THRESHOLD = 0.7;
 
 export class ManagerError extends Error {
   constructor(
@@ -112,6 +124,49 @@ export function generateCampaignId(intent: Intent): string {
   const year = new Date().getFullYear();
   const seq = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
   return `${prefix}-${year}-${seq}`;
+}
+
+/**
+ * Une FDP est « non vide » dès que job_title est rempli. C'est le
+ * critère minimal pour considérer qu'on est dans une campagne en cours
+ * (pas une coquille vide juste créée). Sert à déclencher le switch
+ * dialog uniquement quand il y a vraiment du contexte à protéger.
+ */
+function fdpHasJobTitle(fdp: FDPInProgress): boolean {
+  const jt = fdp.fields.job_title?.value;
+  return typeof jt === 'string' && jt.trim().length > 0;
+}
+
+function getFdpJobTitle(fdp: FDPInProgress): string {
+  const jt = fdp.fields.job_title?.value;
+  if (typeof jt === 'string' && jt.trim().length > 0) return jt.trim();
+  return fdp.campaignId;
+}
+
+/**
+ * Construit la réponse Manager déterministe pour le dialogue de switch.
+ * Pas de LLM, pas de risque d'hallucination — wording fixe, chips
+ * fixes, conforme R1/R2 (audio-mode.md). Le placement below_bubble
+ * rend les chips immédiatement visibles sous la bulle.
+ */
+function buildSwitchDialogResponse(
+  pending: PendingSwitch,
+): ManagerResponse {
+  const noun = pending.currentCampaignId.startsWith('TASK-')
+    ? 'sollicitation'
+    : 'campagne';
+  const statusPhrase =
+    pending.currentStatus === 'validated'
+      ? `La ${noun} en cours sur ${pending.currentJobTitle} est déjà validée.`
+      : `La ${noun} en cours sur ${pending.currentJobTitle} est encore en draft.`;
+  const message = `On dirait que vous démarrez sur un autre poste. ${statusPhrase} On en ouvre une nouvelle, ou vous voulez rester sur ${pending.currentJobTitle} ?`;
+  return {
+    message,
+    chips: {
+      placement: 'below_bubble',
+      options: [SWITCH_CHIP_NEW, SWITCH_CHIP_KEEP],
+    },
+  };
 }
 
 export async function runManagerTurn(
@@ -148,19 +203,44 @@ export async function runManagerTurn(
     classification = { ...classification, needsClarification: true };
   }
 
-  // Switch d'intention post-validation : si la FDP courante est validée
-  // et que le DRH formule une nouvelle intention de campagne ou de
-  // sollicitation, on neutralise la FDP en aval (prompt + campaignId)
-  // pour repartir d'une page blanche. Le client recevra `switchIntent`
-  // et fera le reset de son côté.
-  const isSwitchIntent =
-    input.fdp?.isValidated === true &&
+  // Détection déterministe du switch de campagne. On court-circuite le
+  // tour conversationnel LLM si :
+  //   - une FDP existe avec au moins job_title rempli (signal d'une
+  //     campagne en cours, pas une coquille vide qu'on viendrait de
+  //     créer au tour précédent),
+  //   - le DRH formule une nouvelle intention (new_campaign ou
+  //     out_of_campaign_task) avec une confidence haute,
+  //   - aucune clarification n'est en attente.
+  // Dans ce cas, on retourne directement un dialogue déterministe avec
+  // chips. Le client gère la suite (archive + reset + nouvelle FDP).
+  const shouldShowSwitchDialog =
+    input.fdp !== null &&
+    fdpHasJobTitle(input.fdp) &&
     !classification.needsClarification &&
-    classification.confidence >= SWITCH_INTENT_THRESHOLD &&
+    classification.confidence >= SWITCH_DIALOG_THRESHOLD &&
     (classification.intent === 'new_campaign' ||
       classification.intent === 'out_of_campaign_task');
 
-  const effectiveFdp = isSwitchIntent ? null : input.fdp;
+  if (shouldShowSwitchDialog && input.fdp) {
+    const pendingSwitch: PendingSwitch = {
+      proposedCampaignId: generateCampaignId(classification.intent),
+      currentCampaignId: input.fdp.campaignId,
+      currentJobTitle: getFdpJobTitle(input.fdp),
+      currentStatus: input.fdp.isValidated ? 'validated' : 'draft',
+    };
+    return {
+      classification,
+      response: buildSwitchDialogResponse(pendingSwitch),
+      preSearchHits: [],
+      campaignId: input.fdp.campaignId,
+      pendingSwitch,
+      metrics: {
+        durationMs: intentCompletion.durationMs,
+        tokensUsed: intentCompletion.usage.totalTokens,
+        costEstimate: intentCompletion.costEstimate,
+      },
+    };
+  }
 
   let preSearchHits: JobDescription[] = [];
   if (
@@ -175,9 +255,8 @@ export async function runManagerTurn(
     intent: classification.intent,
     confidence: classification.confidence,
     needsClarification: classification.needsClarification,
-    fdp: effectiveFdp,
+    fdp: input.fdp,
     preSearchHits,
-    isSwitchIntent,
   });
 
   // Le tour conversationnel passe sur gpt-4o (vs gpt-4o-mini pour la
@@ -221,19 +300,19 @@ export async function runManagerTurn(
   }
 
   const campaignId =
-    (!effectiveFdp || isSwitchIntent) &&
+    !input.fdp &&
     !classification.needsClarification &&
     (classification.intent === 'new_campaign' ||
       classification.intent === 'out_of_campaign_task')
       ? generateCampaignId(classification.intent)
-      : (effectiveFdp?.campaignId ?? null);
+      : (input.fdp?.campaignId ?? null);
 
   return {
     classification,
     response,
     preSearchHits,
     campaignId,
-    switchIntent: isSwitchIntent,
+    pendingSwitch: null,
     metrics: {
       durationMs:
         intentCompletion.durationMs + responseCompletion.durationMs,

@@ -11,6 +11,7 @@ import type {
   IsolatedManagerResponse,
   ManagerResponse,
 } from '@/types/manager-response';
+import type { PendingSwitch } from '@/types/switch-dialog';
 
 export type ManagerChatTurn = {
   role: 'user' | 'manager';
@@ -23,12 +24,14 @@ export type ManagerChatResult = {
   campaignId: string | null;
   preSearchHits: JobDescription[];
   /**
-   * Vrai quand le DRH a basculé sur une nouvelle intention (campagne ou
-   * tâche isolée) après une FDP déjà validée. Le client doit alors
-   * reset la FDP courante et créer une FDP fraîche sous le `campaignId`
-   * retourné (cf. ManagerChat.sendToManager).
+   * Non null quand le serveur a détecté que le DRH ouvre un nouveau
+   * poste alors qu'une FDP existante est encore en cours (draft ou
+   * validée). Dans ce cas la response courante est un dialogue
+   * déterministe avec chips ; le client gère la suite sur clic des
+   * chips (archive + reset + nouvelle FDP, ou continuer sur la
+   * campagne actuelle). Cf. ManagerChat.handleChipSelect.
    */
-  switchIntent: boolean;
+  pendingSwitch: PendingSwitch | null;
   metrics: {
     durationMs: number;
     tokensUsed: number;

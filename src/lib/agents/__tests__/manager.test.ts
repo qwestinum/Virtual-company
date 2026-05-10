@@ -179,19 +179,6 @@ describe('manager-prompts — content', () => {
     expect(prompt).not.toContain('VERBALISATION OBLIGATOIRE');
   });
 
-  it('includes switch-intent instructions when isSwitchIntent flag is set', () => {
-    const prompt = buildConversationalPrompt({
-      intent: 'new_campaign',
-      confidence: 0.9,
-      needsClarification: false,
-      fdp: null,
-      preSearchHits: [],
-      isSwitchIntent: true,
-    });
-    expect(prompt).toContain('BASCULE DE CONTEXTE');
-    expect(prompt).toContain('page blanche');
-  });
-
   it('conversational prompt formats FDP state when present', () => {
     const fdp = buildEmptyFDP('CAMP-2026-014');
     const prompt = buildConversationalPrompt({
@@ -312,7 +299,7 @@ describe('runManagerTurn — orchestration', () => {
     expect(result.campaignId).toMatch(/^CAMP-\d{4}-\d{3}$/);
   });
 
-  it('keeps the existing fdp.campaignId when fdp is provided', async () => {
+  it('keeps the existing fdp.campaignId when fdp is provided (empty job_title)', async () => {
     chatCompleteMock
       .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
       .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
@@ -321,35 +308,93 @@ describe('runManagerTurn — orchestration', () => {
     const result = await runManagerTurn({ history: SIMPLE_HISTORY, fdp });
 
     expect(result.campaignId).toBe('CAMP-2026-042');
-    expect(result.switchIntent).toBe(false);
+    expect(result.pendingSwitch).toBeNull();
   });
 
-  it('detects switch-intent when validated fdp + new_campaign with high confidence', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+  it('triggers deterministic switch dialog when FDP has job_title + new_campaign high confidence', async () => {
+    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_INTENT));
 
-    const validated = {
-      ...buildEmptyFDP('CAMP-2026-042'),
-      isComplete: true,
-      isValidated: true,
+    const fdp = buildEmptyFDP('CAMP-2026-042');
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      value: 'Comptable senior',
+      status: 'filled',
     };
 
     const result = await runManagerTurn({
       history: [
         { role: 'user', content: 'Comptable senior à Paris.' },
-        { role: 'manager', content: 'FDP validée, annonce générée.' },
-        { role: 'user', content: 'Maintenant je veux recruter un commercial.' },
+        { role: 'manager', content: 'Pour la fourchette, je propose 50-65K.' },
+        { role: 'user', content: 'En fait je veux recruter un commercial.' },
       ],
-      fdp: validated,
+      fdp,
     });
 
-    expect(result.switchIntent).toBe(true);
-    expect(result.campaignId).not.toBe('CAMP-2026-042');
-    expect(result.campaignId).toMatch(/^CAMP-\d{4}-\d{3}$/);
+    // Court-circuit : seul l'appel de classification est fait, pas le tour conversationnel.
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(result.pendingSwitch).not.toBeNull();
+    expect(result.pendingSwitch?.currentCampaignId).toBe('CAMP-2026-042');
+    expect(result.pendingSwitch?.currentJobTitle).toBe('Comptable senior');
+    expect(result.pendingSwitch?.currentStatus).toBe('draft');
+    expect(result.pendingSwitch?.proposedCampaignId).toMatch(
+      /^CAMP-\d{4}-\d{3}$/,
+    );
+    expect(result.pendingSwitch?.proposedCampaignId).not.toBe('CAMP-2026-042');
+    // Le campaignId du tour reste celui de la campagne courante.
+    expect(result.campaignId).toBe('CAMP-2026-042');
+    // Réponse déterministe : message + chips canoniques.
+    expect(result.response.chips?.options).toEqual([
+      'Oui, nouvelle campagne',
+      'Non, je continue',
+    ]);
+    expect(result.response.chips?.placement).toBe('below_bubble');
+    expect(result.response.message).toContain('Comptable senior');
   });
 
-  it('does NOT switch-intent when validated fdp + low confidence intent', async () => {
+  it('switch dialog mentions validated status when current FDP is validated', async () => {
+    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_INTENT));
+
+    const fdp = {
+      ...buildEmptyFDP('CAMP-2026-042'),
+      isComplete: true,
+      isValidated: true,
+    };
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      value: 'Comptable senior',
+      status: 'filled',
+    };
+
+    const result = await runManagerTurn({
+      history: [
+        { role: 'user', content: 'Maintenant je veux recruter un commercial.' },
+      ],
+      fdp,
+    });
+
+    expect(result.pendingSwitch?.currentStatus).toBe('validated');
+    expect(result.response.message).toContain('déjà validée');
+  });
+
+  it('does NOT trigger switch dialog when FDP has no job_title yet', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
+      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+
+    const fdp = buildEmptyFDP('CAMP-2026-042');
+
+    const result = await runManagerTurn({
+      history: SIMPLE_HISTORY,
+      fdp,
+    });
+
+    // FDP vide ⇒ pas de switch ⇒ deux appels LLM (classification + tour conversationnel)
+    expect(chatCompleteMock).toHaveBeenCalledTimes(2);
+    expect(result.pendingSwitch).toBeNull();
+    expect(result.campaignId).toBe('CAMP-2026-042');
+  });
+
+  it('does NOT trigger switch dialog when intent confidence is below threshold', async () => {
     chatCompleteMock
       .mockResolvedValueOnce(
         fakeCompletion(
@@ -363,39 +408,19 @@ describe('runManagerTurn — orchestration', () => {
       )
       .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
 
-    const validated = {
-      ...buildEmptyFDP('CAMP-2026-042'),
-      isComplete: true,
-      isValidated: true,
+    const fdp = buildEmptyFDP('CAMP-2026-042');
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      value: 'Comptable senior',
+      status: 'filled',
     };
 
     const result = await runManagerTurn({
       history: SIMPLE_HISTORY,
-      fdp: validated,
+      fdp,
     });
 
-    expect(result.switchIntent).toBe(false);
-    // confidence < CLARIFICATION_THRESHOLD ⇒ needsClarification=true ⇒ pas de campaignId neuf
-    expect(result.campaignId).toBe('CAMP-2026-042');
-  });
-
-  it('does NOT switch-intent when fdp is not yet validated', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const inProgress = {
-      ...buildEmptyFDP('CAMP-2026-042'),
-      isComplete: false,
-      isValidated: false,
-    };
-
-    const result = await runManagerTurn({
-      history: SIMPLE_HISTORY,
-      fdp: inProgress,
-    });
-
-    expect(result.switchIntent).toBe(false);
+    expect(result.pendingSwitch).toBeNull();
     expect(result.campaignId).toBe('CAMP-2026-042');
   });
 

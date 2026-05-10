@@ -6,6 +6,12 @@ import { useEffect, useRef, useState } from 'react';
 
 import { isAdjustmentSignal } from '@/components/chat/adjustment-signal';
 
+import {
+  SWITCH_CHIP_KEEP,
+  SWITCH_CHIP_NEW,
+  type PendingSwitch,
+} from '@/types/switch-dialog';
+
 import { CampaignHeader } from '@/components/chat/CampaignHeader';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { ChatChips } from '@/components/chat/ChatChips';
@@ -139,6 +145,13 @@ export function ManagerChat() {
   const resetAgents = useAgentsStore((s) => s.resetToRegistry);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Switch déterministe (sub-phase 1.3) : payload renvoyé par le serveur
+   * quand le DRH ouvre un nouveau poste alors qu'une campagne en cours
+   * (draft ou validée) existe. handleChipSelect le consomme pour soit
+   * archiver + créer une nouvelle FDP, soit conserver l'actuelle.
+   */
+  const pendingSwitchRef = useRef<PendingSwitch | null>(null);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -296,22 +309,18 @@ export function ManagerChat() {
         fdp: useFdpStore.getState().fdp,
       });
 
-      // Bascule de contexte : le DRH démarre une nouvelle campagne
-      // alors qu'une FDP était déjà validée. On efface la FDP courante
-      // (mais pas le chat ni les artefacts précédents — l'historique
-      // reste auditable) puis on instancie une FDP fraîche sous le
-      // nouveau campaignId. La campagne précédente reste dans
-      // campaigns-store, accessible via le route-picker pour rattacher
-      // d'éventuels CV.
-      if (result.switchIntent && result.campaignId) {
-        resetFdp();
-        createFDP(result.campaignId);
-      } else if (result.campaignId && !useFdpStore.getState().fdp) {
+      if (result.campaignId && !useFdpStore.getState().fdp) {
         createFDP(result.campaignId);
       }
       if (result.response.fieldExtractions) {
         applyExtractions(result.response.fieldExtractions);
       }
+
+      // Si le serveur a renvoyé un dialogue de switch, on stocke le
+      // payload pour que handleChipSelect puisse l'exploiter au clic.
+      // Le payload reste valide tant qu'un nouveau tour Manager n'est
+      // pas posté (auquel cas il sera écrasé ou réinitialisé).
+      pendingSwitchRef.current = result.pendingSwitch;
 
       appendMessage({
         role: 'manager',
@@ -397,6 +406,18 @@ export function ManagerChat() {
       setInputFocusToken((token) => token + 1);
       return;
     }
+    // Interception du dialogue de switch déterministe (sub-phase 1.3).
+    // Les libellés sont les constantes exportées par manager.ts pour
+    // garder le couplage explicite. Hors d'un dialogue de switch
+    // (pendingSwitchRef null), on laisse passer les libellés en bulle
+    // utilisateur normale — l'utilisateur peut très bien dire « Oui,
+    // nouvelle campagne » dans un autre contexte.
+    const pendingSwitch = pendingSwitchRef.current;
+    if (pendingSwitch && (option === SWITCH_CHIP_NEW || option === SWITCH_CHIP_KEEP)) {
+      pendingSwitchRef.current = null;
+      void handleSwitchDialogChoice(pendingSwitch, option);
+      return;
+    }
     // Interception des chips de la nouvelle campagne après nom donné.
     if (option === "Juste l'analyse CV pour l'instant") {
       if (newCampaignSkipSetup()) return;
@@ -426,6 +447,45 @@ export function ManagerChat() {
       }
     }
     void handleSendText(option, 'text');
+  }
+
+  /**
+   * Consomme le clic sur un chip du dialogue de switch déterministe.
+   *
+   *   - SWITCH_CHIP_NEW  : on archive la FDP courante dans
+   *                        campaigns-store (qu'elle soit draft ou
+   *                        validée — campaigns-store accepte les deux),
+   *                        on reset fdp-store, on crée une FDP fraîche
+   *                        sous proposedCampaignId, puis on relance un
+   *                        tour Manager pour qu'il ouvre la collecte
+   *                        sur le nouveau poste extrait du dernier
+   *                        message DRH.
+   *   - SWITCH_CHIP_KEEP : on dismiss simplement le dialogue. La FDP
+   *                        courante reste active. On relance UN tour
+   *                        Manager pour qu'il revienne sur la collecte
+   *                        en cours et reformule sa dernière question.
+   */
+  async function handleSwitchDialogChoice(
+    pending: PendingSwitch,
+    option: typeof SWITCH_CHIP_NEW | typeof SWITCH_CHIP_KEEP,
+  ): Promise<void> {
+    appendMessage({ role: 'user', source: 'text', content: option });
+
+    if (option === SWITCH_CHIP_NEW) {
+      const currentFdp = useFdpStore.getState().fdp;
+      if (currentFdp) {
+        // On archive la FDP courante (draft ou validée). campaigns-store
+        // accepte sans condition et stocke le snapshot — la sub-phase 1.4
+        // affichera draft/validée selon fdp.isValidated.
+        addCampaign({ fdp: currentFdp });
+      }
+      resetFdp();
+      createFDP(pending.proposedCampaignId);
+    }
+
+    // On relance un tour Manager dans les deux cas pour que la
+    // conversation reprenne sur le nouveau (ou ancien) contexte.
+    void sendToManager(useChatStore.getState().messages);
   }
 
   async function handleTranscribe(audio: File): Promise<string> {

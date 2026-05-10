@@ -25,14 +25,6 @@ export type ConversationalPromptContext = {
   needsClarification: boolean;
   fdp: FDPInProgress | null;
   preSearchHits: JobDescription[];
-  /**
-   * Vrai quand le DRH initie une nouvelle campagne / sollicitation alors
-   * qu'une FDP était déjà validée. On neutralise la FDP en amont (cf.
-   * manager.ts) ; ce flag dit au LLM de reconnaître explicitement la
-   * bascule (« On enchaîne sur un autre poste — page blanche. ») au lieu
-   * de prétendre rien remarquer ou de continuer dans l'ancien contexte.
-   */
-  isSwitchIntent?: boolean;
 };
 
 export function buildIntentClassificationPrompt(): string {
@@ -103,14 +95,6 @@ export function buildConversationalPrompt(
           .filter((s) => s.length > 0)
           .join(' ');
 
-  const switchIntentBlock = ctx.isSwitchIntent
-    ? [
-        '── BASCULE DE CONTEXTE — NOUVELLE CAMPAGNE/TÂCHE ──',
-        "Le DRH vient d'enchaîner sur une NOUVELLE intention alors qu'une campagne précédente était déjà validée. Tu dois ouvrir ton message par UNE phrase de bascule explicite (« Très bien, on enchaîne sur un autre poste — je repars d'une page blanche. ») puis enchaîner immédiatement sur ta première proposition (job_title) en MODE PROPOSITION normal. Ne fais référence à l'ancienne campagne que pour marquer la transition, jamais pour la prolonger ; la FDP en mémoire est désormais vide pour ce nouveau cadrage.",
-        '',
-      ].join('\n')
-    : '';
-
   const clarificationBlock = ctx.needsClarification
     ? [
         '── CLARIFICATION D\'INTENTION (PRIORITÉ ABSOLUE) ──',
@@ -136,7 +120,6 @@ export function buildConversationalPrompt(
     '── ÉTAT DE LA FDP ──',
     fdpBlock,
     '',
-    switchIntentBlock,
     clarificationBlock,
     '── CHAMPS FDP — LISTE FERMÉE (8 champs uniquement) ──',
     fieldsBlock,
