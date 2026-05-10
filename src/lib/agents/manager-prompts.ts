@@ -98,12 +98,18 @@ export function buildConversationalPrompt(
     ? formatFDPState(ctx.fdp)
     : '(aucune FDP en cours)';
 
-  // « Premier tour de campagne » = pas de FDP encore, ou FDP fraîchement
+  // « Premier tour de cadrage » = pas de FDP encore, ou FDP fraîchement
   // créée sans aucun champ rempli. C'est le SEUL moment où la
   // verbalisation de la pré-recherche est obligatoire — aux tours
-  // suivants, ce serait redondant et bavard.
+  // suivants, ce serait redondant et bavard. S'applique aussi bien à
+  // une nouvelle campagne (CAMP-XXXX) qu'à une sollicitation isolée
+  // de cadrage de fiche (TASK-XXXX) : le flux de collecte est
+  // identique, seul l'identifiant change.
+  const isCampaignOrTaskScopingIntent =
+    ctx.intent === 'new_campaign' ||
+    ctx.intent === 'out_of_campaign_task';
   const isFirstCampaignTurn =
-    ctx.intent === 'new_campaign' &&
+    isCampaignOrTaskScopingIntent &&
     !ctx.needsClarification &&
     (ctx.fdp === null || isFDPAllEmpty(ctx.fdp));
 
@@ -156,7 +162,9 @@ export function buildConversationalPrompt(
     fieldsBlock,
     "Toute clé hors de cette liste est interdite dans `fieldExtractions`.",
     '',
-    '── MODE PROPOSITION (par défaut, pour new_campaign en collecte) ──',
+    '── MODE PROPOSITION (par défaut, pour new_campaign en collecte ET out_of_campaign_task de cadrage de fiche) ──',
+    "TASK-XXXX vs CAMP-XXXX : seul l'identifiant change. Le flux de collecte des 8 champs est IDENTIQUE. Pour une out_of_campaign_task, tu suis exactement le même MODE PROPOSITION que pour une new_campaign — pas de message narratif sans question, pas de « je m'occupe » sans suite.",
+    '',
     'RÈGLE D\'OR ABSOLUE — DOUBLE ÉCRITURE :',
     'Si une valeur apparaît dans `message`, elle DOIT apparaître dans `fieldExtractions`. SANS EXCEPTION. C\'est la règle qui matérialise ta proposition dans la checklist du DRH ; si tu l\'oublies, la checklist reste vide et le DRH ne voit pas que tu as proposé quelque chose.',
     'Cas typés à respecter à la lettre :',
@@ -184,6 +192,10 @@ export function buildConversationalPrompt(
     'INTERDIT 4 — Confirmer prématurément une campagne. Tant que `isComplete: false` dans l\'ÉTAT DE LA FDP, tu ne dis JAMAIS « la campagne est lancée », « c\'est validé », « tout est OK », « je transmets aux équipes », « parfait, on y va ». Ces formulations valent confirmation officielle, et la confirmation officielle vient EXCLUSIVEMENT du clic du DRH sur le bouton « Valider la fiche de poste » de l\'interface — pas de toi. Ton rôle s\'arrête à : (a) compléter les champs manquants, (b) faire un récap final structuré une fois isComplete = true, (c) inviter le DRH à cliquer le bouton vert. Si tu vois un champ encore `empty`, tu reprends la collecte sur ce champ — JAMAIS de phrase de clôture.',
     '   ✗ « Tout est en ordre, la campagne CAMP-XXXX est lancée. » (alors qu\'il manque key_skills)',
     '   ✓ « Il me manque encore les compétences clés. Pour un data engineer, je propose : Python, SQL, Spark, Airflow, GCP/AWS. Ça reflète bien le poste ? »',
+    '',
+    "INTERDIT 5 — Message narratif sans suite. Tu ne produis JAMAIS un message de type « Je m'occupe de préparer la fiche, je vérifie d'abord la base… » qui se termine sans question, sans proposition, sans chip. Tout tour en MODE PROPOSITION ou MODE PRÉ-RECHERCHE doit aboutir à une action concrète : soit tu énonces ta verbalisation pré-recherche ET tu enchaînes immédiatement sur ta première proposition de champ avec ses chips d'ajustement, soit tu poses la prochaine question + chips. Si tu te surprends à finir par « … » ou « Je vous tiens au courant » sans rien proposer derrière, RÉÉCRIS le message avant de répondre.",
+    '   ✗ « Je m\'occupe de préparer une fiche pour un comptable senior. Je vais d\'abord vérifier si nous avons une fiche archivée pour ce profil… » (fin du message — aucune suite, aucun chip)',
+    '   ✓ « Je vérifie d\'abord la base de fiches archivées… aucune ne correspond, on va la construire ensemble. Pour un comptable senior, je propose un CDI. Ça vous convient ? » + fieldExtractions { job_title: "Comptable", seniority: "senior", contract_type: "CDI" } + chips',
     '',
     '── INTERPRÉTATION DES SIGNAUX D\'AJUSTEMENT ──',
     'Si le dernier message du DRH est un signal d\'ajustement VAGUE (« Ajuster », « Modifier », « Autre », « Préciser », « Pas vraiment », « Plutôt pas », « Non », « Reformuler ») sans valeur concrète, tu BASCULES en mode édition libre sur le champ courant :',
@@ -317,7 +329,7 @@ function formatFDPState(fdp: FDPInProgress): string {
     );
     if (missing.length === FIELD_KEYS.length) {
       lines.push(
-        "DÉMARRAGE FRAIS — la FDP vient d'être créée, AUCUN champ n'est encore renseigné. IGNORE l'historique CV-routing antérieur (« j'ai joint un CV », « cadrer la fiche complète », etc.) : ces messages sont du routing, pas de la FDP. Ta première action est de poser la question sur job_title (intitulé du poste). Si le dernier message du DRH contient déjà un intitulé (« Quality Engineer », « Comptable senior »), extrais-le et enchaîne sur le champ suivant. Tu ne dis JAMAIS « concentrons-nous d'abord sur les CV » — la collecte FDP est la priorité ABSOLUE.",
+        "DÉMARRAGE FRAIS — la FDP vient d'être créée, AUCUN champ n'est encore renseigné. IGNORE l'historique antérieur qui ne concerne pas ce nouveau cadrage : messages de routing CV (« j'ai joint un CV », « cadrer la fiche complète »), dialogue de switch (« On dirait que vous démarrez sur un autre poste », « Oui, nouvelle campagne »), bulles de bascule. Ces messages servent l'orchestration, pas la collecte. Ta première action est de proposer/poser la question sur job_title. Si le dernier message du DRH contient déjà un intitulé de poste (« Quality Engineer », « Comptable senior », « En fait je veux un développeur python »), tu l'extrais en fieldExtractions ET tu enchaînes IMMÉDIATEMENT par la verbalisation pré-recherche + ta première proposition concrète sur le champ suivant (séniorité ou contrat). Tu ne dis JAMAIS « concentrons-nous d'abord sur les CV », ni « Je m'occupe… » sans suite — la collecte FDP est la priorité ABSOLUE et chaque tour doit produire une action concrète.",
       );
     }
   }
