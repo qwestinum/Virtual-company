@@ -372,6 +372,13 @@ export function ManagerChat() {
       if (result.response.fieldExtractions) {
         applyIsolatedExtractions(result.response.fieldExtractions);
       }
+
+      // Switch détecté en plein milieu de la pré-collecte isolated :
+      // on stocke le payload comme dans sendToManager. Le clic du chip
+      // SWITCH_CHIP_NEW déclenchera wipeForFreshStart() qui reset aussi
+      // isolated-criteria-store → le flow bascule vers le flow FDP.
+      pendingSwitchRef.current = result.pendingSwitch;
+
       appendMessage({
         role: 'manager',
         source: 'text',

@@ -148,8 +148,12 @@ function getFdpJobTitle(fdp: FDPInProgress): string {
  * Pas de LLM, pas de risque d'hallucination — wording fixe, chips
  * fixes, conforme R1/R2 (audio-mode.md). Le placement below_bubble
  * rend les chips immédiatement visibles sous la bulle.
+ *
+ * Exporté pour être réutilisé par le flow isolated (manager-isolated.ts),
+ * qui détecte aussi un switch quand le DRH bascule en plein milieu
+ * d'une pré-collecte de critères.
  */
-function buildSwitchDialogResponse(
+export function buildSwitchDialogResponse(
   pending: PendingSwitch,
 ): ManagerResponse {
   const noun = pending.currentCampaignId.startsWith('TASK-')

@@ -43,6 +43,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     } as IsolatedTurnInput);
     return NextResponse.json({
       response: result.response,
+      pendingSwitch: result.pendingSwitch,
       metrics: result.metrics,
     });
   } catch (err) {

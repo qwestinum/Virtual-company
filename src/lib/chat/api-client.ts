@@ -110,6 +110,13 @@ export type CVAnalyzerResult = {
 
 export type IsolatedManagerChatResult = {
   response: IsolatedManagerResponse;
+  /**
+   * Non null quand le serveur détecte en plein milieu d'une pré-collecte
+   * isolated que le DRH bascule vers une nouvelle campagne/tâche FDP.
+   * Le client traite ce payload comme dans le flow principal (cf.
+   * ManagerChat.handleSwitchDialogChoice).
+   */
+  pendingSwitch: PendingSwitch | null;
   metrics: {
     durationMs: number;
     tokensUsed: number;

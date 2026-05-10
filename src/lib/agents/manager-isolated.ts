@@ -10,6 +10,7 @@
  */
 
 import { chatComplete } from '@/lib/ai/provider';
+import { IntentClassificationSchema } from '@/types/intent';
 import {
   ISOLATED_CRITERIA_KEYS,
   ISOLATED_CRITERIA_LABELS,
@@ -19,8 +20,15 @@ import {
   IsolatedManagerResponseSchema,
   type IsolatedManagerResponse,
 } from '@/types/manager-response';
+import type { PendingSwitch } from '@/types/switch-dialog';
 
-import type { ConversationTurn } from './manager';
+import {
+  buildSwitchDialogResponse,
+  generateCampaignId,
+  SWITCH_DIALOG_THRESHOLD,
+  type ConversationTurn,
+} from './manager';
+import { buildIntentClassificationPrompt } from './manager-prompts';
 
 export type IsolatedTurnInput = {
   history: ConversationTurn[];
@@ -35,6 +43,15 @@ export type IsolatedTurnMetrics = {
 
 export type IsolatedTurnOutput = {
   response: IsolatedManagerResponse;
+  /**
+   * Non null quand le serveur détecte que le DRH bascule (au milieu
+   * d'une pré-collecte isolated) vers une nouvelle campagne ou tâche
+   * FDP. Le client traite ce payload comme dans le flow principal :
+   * sur clic SWITCH_CHIP_NEW → wipeForFreshStart + createFDP(proposed)
+   * + seed du dernier user message + sendToManager. La pré-collecte
+   * isolated est abandonnée.
+   */
+  pendingSwitch: PendingSwitch | null;
   metrics: IsolatedTurnMetrics;
 };
 
@@ -46,6 +63,15 @@ export class IsolatedManagerError extends Error {
     super(message);
     this.name = 'IsolatedManagerError';
   }
+}
+
+function getCriteriaJobTitle(
+  criteria: IsolatedCriteriaInProgress,
+): string | undefined {
+  const v = criteria.fields.job_title?.value;
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t.length > 0 ? t : undefined;
 }
 
 function formatCriteriaState(criteria: IsolatedCriteriaInProgress): string {
@@ -196,6 +222,81 @@ export async function runIsolatedCriteriaTurn(
     content: t.content,
   }));
 
+  // Détection de switch — symétrique au flow principal (manager.ts).
+  // Si le DRH bascule en plein milieu d'une pré-collecte isolated
+  // vers une nouvelle campagne ou une autre tâche FDP, on court-circuit
+  // le tour conversationnel et on retourne un dialogue déterministe.
+  // Ne s'active que si criteria.job_title est déjà renseigné (sinon
+  // pas de contexte à protéger — le 1er tour isolated EST le moment
+  // où le DRH nomme le poste).
+  const currentJobTitle = getCriteriaJobTitle(input.criteria);
+  let switchMetrics: IsolatedTurnMetrics = {
+    durationMs: 0,
+    tokensUsed: 0,
+    costEstimate: 0,
+  };
+
+  if (currentJobTitle) {
+    const intentSystem = buildIntentClassificationPrompt(currentJobTitle);
+    const intentCompletion = await chatComplete({
+      jsonMode: true,
+      temperature: 0.1,
+      messages: [
+        { role: 'system', content: intentSystem },
+        ...conversation,
+      ],
+    });
+    switchMetrics = {
+      durationMs: intentCompletion.durationMs,
+      tokensUsed: intentCompletion.usage.totalTokens,
+      costEstimate: intentCompletion.costEstimate,
+    };
+
+    let classification = null;
+    try {
+      classification = IntentClassificationSchema.parse(
+        JSON.parse(intentCompletion.content),
+      );
+    } catch {
+      // Classification cassée → on ignore et on continue le tour normal.
+      classification = null;
+    }
+
+    if (
+      classification &&
+      !classification.needsClarification &&
+      classification.confidence >= SWITCH_DIALOG_THRESHOLD &&
+      (classification.intent === 'new_campaign' ||
+        classification.intent === 'out_of_campaign_task') &&
+      classification.isDistinctNewCampaign === true
+    ) {
+      const candidate =
+        typeof classification.candidateNewJobTitle === 'string'
+          ? classification.candidateNewJobTitle.trim()
+          : '';
+      if (
+        candidate.length > 0 &&
+        candidate.toLowerCase() !== currentJobTitle.toLowerCase()
+      ) {
+        const pendingSwitch: PendingSwitch = {
+          proposedCampaignId: generateCampaignId(classification.intent),
+          currentCampaignId: input.criteria.taskId,
+          currentJobTitle,
+          currentStatus: input.criteria.isValidated ? 'validated' : 'draft',
+        };
+        const switchResponse = buildSwitchDialogResponse(pendingSwitch);
+        // buildSwitchDialogResponse retourne un ManagerResponse, mais
+        // le shape (message + chips, sans fieldExtractions) est
+        // compatible avec IsolatedManagerResponse — on cast.
+        return {
+          response: switchResponse as IsolatedManagerResponse,
+          pendingSwitch,
+          metrics: switchMetrics,
+        };
+      }
+    }
+  }
+
   const completion = await chatComplete({
     model: 'gpt-4o',
     jsonMode: true,
@@ -258,10 +359,12 @@ export async function runIsolatedCriteriaTurn(
 
   return {
     response,
+    pendingSwitch: null,
     metrics: {
-      durationMs: completion.durationMs,
-      tokensUsed: completion.usage.totalTokens,
-      costEstimate: completion.costEstimate,
+      durationMs: completion.durationMs + switchMetrics.durationMs,
+      tokensUsed:
+        completion.usage.totalTokens + switchMetrics.tokensUsed,
+      costEstimate: completion.costEstimate + switchMetrics.costEstimate,
     },
   };
 }

@@ -113,6 +113,68 @@ describe('runIsolatedCriteriaTurn — backfill extractions from message', () => 
     expect(result.response.fieldExtractions?.seniority).toBe('confirmé');
   });
 
+  it('detects switch dialog when DRH names a different job during isolated collection', async () => {
+    // Classification (1er call) — détecte le switch.
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          intent: 'new_campaign',
+          confidence: 0.92,
+          reasoning: 'Le DRH bascule sur un autre poste.',
+          needsClarification: false,
+          isDistinctNewCampaign: true,
+          candidateNewJobTitle: 'Commercial',
+        }),
+      ),
+    );
+
+    const criteria = buildEmptyIsolatedCriteria('TASK-2026-100');
+    criteria.fields.job_title = {
+      ...criteria.fields.job_title!,
+      value: 'Développeur Python',
+      status: 'filled',
+    };
+
+    const result = await runIsolatedCriteriaTurn({
+      history: [
+        { role: 'user', content: 'Développeur Python' },
+        { role: 'manager', content: 'Quelle séniorité ?' },
+        { role: 'user', content: 'En fait je veux lancer une campagne pour un commercial' },
+      ],
+      criteria,
+    });
+
+    // Court-circuit : un seul call LLM (classification), pas de tour conversationnel
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(result.pendingSwitch).not.toBeNull();
+    expect(result.pendingSwitch?.currentJobTitle).toBe('Développeur Python');
+    expect(result.pendingSwitch?.currentCampaignId).toBe('TASK-2026-100');
+    expect(result.response.chips?.options).toEqual([
+      'Oui, nouvelle campagne',
+      'Non, je continue',
+    ]);
+  });
+
+  it('does NOT trigger switch when criteria.job_title is not yet filled', async () => {
+    // Pas de currentJobTitle ⇒ pas de classifier, donc seul le tour normal est appelé.
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          message: 'Compris, Développeur Python. Je propose senior, 5 ans.',
+          fieldExtractions: { job_title: 'Développeur Python' },
+        }),
+      ),
+    );
+
+    const result = await runIsolatedCriteriaTurn({
+      history: [{ role: 'user', content: 'Développeur Python' }],
+      criteria: buildEmptyIsolatedCriteria('TASK-2026-200'),
+    });
+
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(result.pendingSwitch).toBeNull();
+  });
+
   it('skips skills backfill when list has fewer than 2 items', async () => {
     chatCompleteMock.mockResolvedValueOnce(
       fakeCompletion(
