@@ -315,6 +315,22 @@ export function ManagerChat() {
     setSending(true);
     setError(null);
     try {
+      // Capture l'état AVANT le tour pour détecter un « fresh start
+      // post-flow » : le DRH vient de finir une tâche/campagne dans la
+      // même session (chat non trivial, pas de FDP courante) et formule
+      // une intention de campagne/tâche neuve. Le serveur ne déclenche
+      // pas de switch dialog dans ce cas (input.fdp est null donc la
+      // condition côté serveur ne s'active pas) — on wipe côté client
+      // après réception pour conserver le comportement « chat propre »
+      // promis au DRH (cf. memory/feedback_chat_reset_on_switch.md).
+      const messagesBefore = useChatStore.getState().messages;
+      const hadFdpBefore = useFdpStore.getState().fdp !== null;
+      const triggerUserMessage = findLastUserContent(messagesBefore);
+      // Greeting + dernier user message = 2 messages minimum au démarrage
+      // d'une session. Au-delà, on est dans un contexte « post-flow »
+      // (tâche/campagne précédente dans l'historique).
+      const hasPriorFlowHistory = messagesBefore.length > 2;
+
       const turns = history
         .filter((m) => m.role === 'user' || m.role === 'manager')
         .map((m) => ({
@@ -326,18 +342,51 @@ export function ManagerChat() {
         fdp: useFdpStore.getState().fdp,
       });
 
+      // Si le serveur a renvoyé un dialogue de switch, on stocke le
+      // payload pour que handleChipSelect puisse l'exploiter au clic.
+      // Le payload reste valide tant qu'un nouveau tour Manager n'est
+      // pas posté (auquel cas il sera écrasé ou réinitialisé).
+      pendingSwitchRef.current = result.pendingSwitch;
+
+      // Fresh start post-flow : le serveur a créé un campaignId, on
+      // n'avait pas de FDP, et le chat avait déjà un historique. On
+      // wipe pour démarrer la nouvelle campagne sur un chat propre,
+      // puis on repose le user message et la réponse Manager.
+      const isPostFlowFreshStart =
+        !result.pendingSwitch &&
+        result.campaignId !== null &&
+        !hadFdpBefore &&
+        hasPriorFlowHistory &&
+        triggerUserMessage !== null;
+
+      if (isPostFlowFreshStart && triggerUserMessage && result.campaignId) {
+        wipeForFreshStart();
+        createFDP(result.campaignId);
+        appendMessage({
+          role: 'user',
+          source: 'text',
+          content: triggerUserMessage,
+        });
+        if (result.response.fieldExtractions) {
+          applyExtractions(result.response.fieldExtractions);
+        }
+        appendMessage({
+          role: 'manager',
+          source: 'text',
+          content: result.response.message,
+          chips: result.response.chips,
+        });
+        return;
+      }
+
+      // Chemin nominal : pas de wipe, on applique simplement le
+      // campaignId/extractions/message au chat existant.
       if (result.campaignId && !useFdpStore.getState().fdp) {
         createFDP(result.campaignId);
       }
       if (result.response.fieldExtractions) {
         applyExtractions(result.response.fieldExtractions);
       }
-
-      // Si le serveur a renvoyé un dialogue de switch, on stocke le
-      // payload pour que handleChipSelect puisse l'exploiter au clic.
-      // Le payload reste valide tant qu'un nouveau tour Manager n'est
-      // pas posté (auquel cas il sera écrasé ou réinitialisé).
-      pendingSwitchRef.current = result.pendingSwitch;
 
       appendMessage({
         role: 'manager',
