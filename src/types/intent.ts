@@ -26,6 +26,19 @@ export const IntentClassificationSchema = z.object({
    * comme `false` (pas de switch).
    */
   isDistinctNewCampaign: z.boolean().optional(),
+  /**
+   * Intitulé du nouveau poste mentionné EXPLICITEMENT dans le dernier
+   * message DRH, le cas échéant. Sert de garde-fou côté serveur : on
+   * ne déclenche le switch dialog que si le LLM a pu nommer un poste
+   * concret distinct du courant. Empêche les faux positifs sur des
+   * messages courts ou ambigus (« ok », « oui », « senior ») où le
+   * LLM pourrait pourtant retourner isDistinctNewCampaign=true à tort.
+   *
+   * `null` ou absent quand aucun poste n'est explicitement nommé.
+   * Le LLM est instruit de N'EXTRAIRE QUE depuis le dernier message,
+   * jamais depuis l'historique.
+   */
+  candidateNewJobTitle: z.string().min(1).nullable().optional(),
 });
 
 export type Intent = z.infer<typeof IntentSchema>;

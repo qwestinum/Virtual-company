@@ -224,12 +224,21 @@ export async function runManagerTurn(
   //   - le DRH formule une nouvelle intention (new_campaign ou
   //     out_of_campaign_task) avec une confidence haute,
   //   - aucune clarification n'est en attente,
-  //   - le classifier a explicitement marqué le dernier message comme
-  //     un poste DIFFÉRENT du job_title courant (isDistinctNewCampaign).
-  //     Ce dernier critère évite le faux positif majeur où chaque
-  //     réponse à une question (« senior », « Paris ») relance le
-  //     classifier sur un historique qui parle globalement de
-  //     recrutement → intent "new_campaign" 0.9 → switch erroné.
+  //   - le classifier a marqué isDistinctNewCampaign=true,
+  //   - ET le classifier a pu nommer un candidateNewJobTitle concret
+  //     dans le dernier message, distinct du courant (case-insensitive).
+  //     Garde-fou contre les hallucinations LLM : sur des messages
+  //     courts (« ok », « senior »), aucun poste ne peut être nommé,
+  //     donc pas de switch même si le booléen était à true par erreur.
+  const isCandidateMeaningful =
+    typeof classification.candidateNewJobTitle === 'string' &&
+    classification.candidateNewJobTitle.trim().length > 0 &&
+    (currentJobTitleForClassifier === undefined ||
+      classification.candidateNewJobTitle
+        .trim()
+        .toLowerCase() !==
+        currentJobTitleForClassifier.trim().toLowerCase());
+
   const shouldShowSwitchDialog =
     input.fdp !== null &&
     fdpHasJobTitle(input.fdp) &&
@@ -237,7 +246,8 @@ export async function runManagerTurn(
     classification.confidence >= SWITCH_DIALOG_THRESHOLD &&
     (classification.intent === 'new_campaign' ||
       classification.intent === 'out_of_campaign_task') &&
-    classification.isDistinctNewCampaign === true;
+    classification.isDistinctNewCampaign === true &&
+    isCandidateMeaningful;
 
   if (shouldShowSwitchDialog && input.fdp) {
     const pendingSwitch: PendingSwitch = {

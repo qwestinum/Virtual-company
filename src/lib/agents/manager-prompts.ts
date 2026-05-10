@@ -52,19 +52,27 @@ export function buildIntentClassificationPrompt(
 
   if (currentJobTitle) {
     lines.push(
-      `── CHAMP ADDITIONNEL — isDistinctNewCampaign ──`,
-      `Une FDP est ACTUELLEMENT en cours sur le poste : "${currentJobTitle}". Tu dois donc renseigner aussi le booléen \`isDistinctNewCampaign\` — il distingue deux cas qui ressemblent tous deux à "new_campaign" mais ne déclenchent pas la même action :`,
-      `- Met \`true\` UNIQUEMENT si le DERNIER message DRH évoque un poste MANIFESTEMENT DIFFÉRENT de "${currentJobTitle}". Le DRH abandonne ce poste pour un autre. Exemples : « en fait je veux recruter un développeur python », « ah non plutôt un commercial ».`,
-      `- Met \`false\` dans TOUS les autres cas, y compris quand le DRH continue normalement la collecte de "${currentJobTitle}" : réponses courtes (« senior », « Paris », « 50K », « plutôt CDI »), ajustements de valeur, précisions, demandes de reformulation, validation, etc. Le DRH alimente la fiche en cours, il ne démarre pas un autre poste.`,
-      `- Met \`false\` aussi quand le dernier message est ambigu ou quand tu hésites — false est le défaut conservateur.`,
+      `── CHAMPS ADDITIONNELS — isDistinctNewCampaign + candidateNewJobTitle ──`,
+      `Une FDP est ACTUELLEMENT en cours sur le poste : "${currentJobTitle}". Tu dois donc renseigner DEUX champs supplémentaires qui servent à déclencher (ou pas) un dialogue de switch déterministe côté serveur :`,
       ``,
-      `Cette décision doit s'appuyer sur le DERNIER message du DRH. L'historique sert juste à comprendre le contexte ; le déclenchement de switch repose sur le dernier message exclusivement.`,
+      `\`isDistinctNewCampaign\` (booléen) :`,
+      `- \`true\` UNIQUEMENT si le DERNIER message DRH évoque un poste MANIFESTEMENT DIFFÉRENT de "${currentJobTitle}". Le DRH abandonne ce poste pour un autre. Exemples : « en fait je veux recruter un développeur python », « ah non plutôt un commercial ».`,
+      `- \`false\` dans TOUS les autres cas. Le DRH continue la collecte sur "${currentJobTitle}" — réponses courtes (« senior », « Paris », « 50K », « plutôt CDI »), validations (« ok », « oui », « parfait »), ajustements, précisions, reformulations. \`false\` est le défaut conservateur.`,
+      ``,
+      `\`candidateNewJobTitle\` (string ou null) :`,
+      `- L'INTITULÉ du nouveau poste explicitement nommé DANS LE DERNIER MESSAGE DRH UNIQUEMENT. JAMAIS depuis l'historique antérieur (l'historique peut mentionner d'anciens postes — ne les recopie pas).`,
+      `- Met une string courte normalisée (ex. « Développeur Python », « Commercial », « Data Engineer ») UNIQUEMENT quand le dernier message contient un intitulé clair d'un autre poste.`,
+      `- Met \`null\` quand le dernier message ne nomme AUCUN nouveau poste (« ok », « oui », « senior », « Paris », « 50K »…). Met \`null\` aussi en cas de doute.`,
+      ``,
+      `RÈGLE DE COHÉRENCE : si \`candidateNewJobTitle\` est \`null\`, alors \`isDistinctNewCampaign\` doit être \`false\`. Pas de switch sans poste nommé.`,
+      ``,
+      `Le déclenchement du switch dialog repose sur le dernier message DRH exclusivement. L'historique sert juste à comprendre le contexte conversationnel.`,
       ``,
     );
   }
 
   const schemaLine = currentJobTitle
-    ? '  "needsClarification": <booléen>,\n  "isDistinctNewCampaign": <booléen>'
+    ? '  "needsClarification": <booléen>,\n  "isDistinctNewCampaign": <booléen>,\n  "candidateNewJobTitle": <string ou null>'
     : '  "needsClarification": <booléen>';
 
   lines.push(
