@@ -296,7 +296,17 @@ export function ManagerChat() {
         fdp: useFdpStore.getState().fdp,
       });
 
-      if (result.campaignId && !useFdpStore.getState().fdp) {
+      // Bascule de contexte : le DRH démarre une nouvelle campagne
+      // alors qu'une FDP était déjà validée. On efface la FDP courante
+      // (mais pas le chat ni les artefacts précédents — l'historique
+      // reste auditable) puis on instancie une FDP fraîche sous le
+      // nouveau campaignId. La campagne précédente reste dans
+      // campaigns-store, accessible via le route-picker pour rattacher
+      // d'éventuels CV.
+      if (result.switchIntent && result.campaignId) {
+        resetFdp();
+        createFDP(result.campaignId);
+      } else if (result.campaignId && !useFdpStore.getState().fdp) {
         createFDP(result.campaignId);
       }
       if (result.response.fieldExtractions) {

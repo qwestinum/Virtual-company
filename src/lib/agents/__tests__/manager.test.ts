@@ -150,6 +150,48 @@ describe('manager-prompts — content', () => {
     expect(prompt).toContain('Aucune fiche archivée');
   });
 
+  it('forces pre-search verbalization on first campaign turn (empty FDP)', () => {
+    const prompt = buildConversationalPrompt({
+      intent: 'new_campaign',
+      confidence: 0.9,
+      needsClarification: false,
+      fdp: null,
+      preSearchHits: [],
+    });
+    expect(prompt).toContain('VERBALISATION OBLIGATOIRE');
+    expect(prompt).toMatch(/PREMIER tour/i);
+  });
+
+  it('skips pre-search verbalization once at least one field is filled', () => {
+    const fdp = buildEmptyFDP('CAMP-2026-099');
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      value: 'Comptable',
+      status: 'filled',
+    };
+    const prompt = buildConversationalPrompt({
+      intent: 'new_campaign',
+      confidence: 0.9,
+      needsClarification: false,
+      fdp,
+      preSearchHits: [],
+    });
+    expect(prompt).not.toContain('VERBALISATION OBLIGATOIRE');
+  });
+
+  it('includes switch-intent instructions when isSwitchIntent flag is set', () => {
+    const prompt = buildConversationalPrompt({
+      intent: 'new_campaign',
+      confidence: 0.9,
+      needsClarification: false,
+      fdp: null,
+      preSearchHits: [],
+      isSwitchIntent: true,
+    });
+    expect(prompt).toContain('BASCULE DE CONTEXTE');
+    expect(prompt).toContain('page blanche');
+  });
+
   it('conversational prompt formats FDP state when present', () => {
     const fdp = buildEmptyFDP('CAMP-2026-014');
     const prompt = buildConversationalPrompt({
@@ -278,6 +320,82 @@ describe('runManagerTurn — orchestration', () => {
     const fdp = buildEmptyFDP('CAMP-2026-042');
     const result = await runManagerTurn({ history: SIMPLE_HISTORY, fdp });
 
+    expect(result.campaignId).toBe('CAMP-2026-042');
+    expect(result.switchIntent).toBe(false);
+  });
+
+  it('detects switch-intent when validated fdp + new_campaign with high confidence', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
+      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+
+    const validated = {
+      ...buildEmptyFDP('CAMP-2026-042'),
+      isComplete: true,
+      isValidated: true,
+    };
+
+    const result = await runManagerTurn({
+      history: [
+        { role: 'user', content: 'Comptable senior à Paris.' },
+        { role: 'manager', content: 'FDP validée, annonce générée.' },
+        { role: 'user', content: 'Maintenant je veux recruter un commercial.' },
+      ],
+      fdp: validated,
+    });
+
+    expect(result.switchIntent).toBe(true);
+    expect(result.campaignId).not.toBe('CAMP-2026-042');
+    expect(result.campaignId).toMatch(/^CAMP-\d{4}-\d{3}$/);
+  });
+
+  it('does NOT switch-intent when validated fdp + low confidence intent', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(
+        fakeCompletion(
+          JSON.stringify({
+            intent: 'new_campaign',
+            confidence: 0.55,
+            reasoning: 'Hésitation.',
+            needsClarification: false,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+
+    const validated = {
+      ...buildEmptyFDP('CAMP-2026-042'),
+      isComplete: true,
+      isValidated: true,
+    };
+
+    const result = await runManagerTurn({
+      history: SIMPLE_HISTORY,
+      fdp: validated,
+    });
+
+    expect(result.switchIntent).toBe(false);
+    // confidence < CLARIFICATION_THRESHOLD ⇒ needsClarification=true ⇒ pas de campaignId neuf
+    expect(result.campaignId).toBe('CAMP-2026-042');
+  });
+
+  it('does NOT switch-intent when fdp is not yet validated', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
+      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+
+    const inProgress = {
+      ...buildEmptyFDP('CAMP-2026-042'),
+      isComplete: false,
+      isValidated: false,
+    };
+
+    const result = await runManagerTurn({
+      history: SIMPLE_HISTORY,
+      fdp: inProgress,
+    });
+
+    expect(result.switchIntent).toBe(false);
     expect(result.campaignId).toBe('CAMP-2026-042');
   });
 

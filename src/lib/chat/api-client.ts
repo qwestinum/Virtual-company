@@ -22,6 +22,13 @@ export type ManagerChatResult = {
   response: ManagerResponse;
   campaignId: string | null;
   preSearchHits: JobDescription[];
+  /**
+   * Vrai quand le DRH a basculé sur une nouvelle intention (campagne ou
+   * tâche isolée) après une FDP déjà validée. Le client doit alors
+   * reset la FDP courante et créer une FDP fraîche sous le `campaignId`
+   * retourné (cf. ManagerChat.sendToManager).
+   */
+  switchIntent: boolean;
   metrics: {
     durationMs: number;
     tokensUsed: number;

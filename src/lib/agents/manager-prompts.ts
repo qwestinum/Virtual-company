@@ -25,6 +25,14 @@ export type ConversationalPromptContext = {
   needsClarification: boolean;
   fdp: FDPInProgress | null;
   preSearchHits: JobDescription[];
+  /**
+   * Vrai quand le DRH initie une nouvelle campagne / sollicitation alors
+   * qu'une FDP était déjà validée. On neutralise la FDP en amont (cf.
+   * manager.ts) ; ce flag dit au LLM de reconnaître explicitement la
+   * bascule (« On enchaîne sur un autre poste — page blanche. ») au lieu
+   * de prétendre rien remarquer ou de continuer dans l'ancien contexte.
+   */
+  isSwitchIntent?: boolean;
 };
 
 export function buildIntentClassificationPrompt(): string {
@@ -67,10 +75,41 @@ export function buildConversationalPrompt(
     ? formatFDPState(ctx.fdp)
     : '(aucune FDP en cours)';
 
+  // « Premier tour de campagne » = pas de FDP encore, ou FDP fraîchement
+  // créée sans aucun champ rempli. C'est le SEUL moment où la
+  // verbalisation de la pré-recherche est obligatoire — aux tours
+  // suivants, ce serait redondant et bavard.
+  const isFirstCampaignTurn =
+    ctx.intent === 'new_campaign' &&
+    !ctx.needsClarification &&
+    (ctx.fdp === null || isFDPAllEmpty(ctx.fdp));
+
   const preSearchBlock =
     ctx.preSearchHits.length === 0
-      ? "Aucune fiche archivée trouvée. Tu opères en MODE PROPOSITION (cf. plus bas) : tu proposes les valeurs par défaut, le DRH valide ou ajuste."
-      : `MODE PRÉ-RECHERCHE actif. Fiche(s) archivée(s) comparable(s) trouvée(s) : ${ctx.preSearchHits.map((h) => h.title).join(', ')}. Présente-la comme un BLOC structuré (les 8 champs d'un coup) et propose au DRH de la valider en un seul geste OU de la passer en revue champ par champ. Format ci-dessous.`;
+      ? [
+          "Aucune fiche archivée trouvée. Tu opères en MODE PROPOSITION (cf. plus bas) : tu proposes les valeurs par défaut, le DRH valide ou ajuste.",
+          isFirstCampaignTurn
+            ? "VERBALISATION OBLIGATOIRE — c'est le PREMIER tour de cadrage de cette campagne. Ta toute première phrase DOIT rendre visible que tu as consulté la base, exemple : « Je vérifie d'abord si on a déjà une fiche archivée pour ce profil… aucune ne correspond, on va la construire ensemble. » Enchaîne ensuite sur ta première proposition de champ. À ne dire qu'UNE FOIS, pas aux tours suivants."
+            : '',
+        ]
+          .filter((s) => s.length > 0)
+          .join(' ')
+      : [
+          `MODE PRÉ-RECHERCHE actif. Fiche(s) archivée(s) comparable(s) trouvée(s) : ${ctx.preSearchHits.map((h) => h.title).join(', ')}. Présente-la comme un BLOC structuré (les 8 champs d'un coup) et propose au DRH de la valider en un seul geste OU de la passer en revue champ par champ.`,
+          isFirstCampaignTurn
+            ? "VERBALISATION OBLIGATOIRE — c'est le PREMIER tour. Ta toute première phrase DOIT signaler la pré-recherche, exemple : « Je consulte la base de fiches archivées… j'en ai retrouvé une qui correspond bien : <intitulé>. » Puis présente le récap structuré et les chips « Tout valider / Examiner champ par champ »."
+            : '',
+        ]
+          .filter((s) => s.length > 0)
+          .join(' ');
+
+  const switchIntentBlock = ctx.isSwitchIntent
+    ? [
+        '── BASCULE DE CONTEXTE — NOUVELLE CAMPAGNE/TÂCHE ──',
+        "Le DRH vient d'enchaîner sur une NOUVELLE intention alors qu'une campagne précédente était déjà validée. Tu dois ouvrir ton message par UNE phrase de bascule explicite (« Très bien, on enchaîne sur un autre poste — je repars d'une page blanche. ») puis enchaîner immédiatement sur ta première proposition (job_title) en MODE PROPOSITION normal. Ne fais référence à l'ancienne campagne que pour marquer la transition, jamais pour la prolonger ; la FDP en mémoire est désormais vide pour ce nouveau cadrage.",
+        '',
+      ].join('\n')
+    : '';
 
   const clarificationBlock = ctx.needsClarification
     ? [
@@ -97,6 +136,7 @@ export function buildConversationalPrompt(
     '── ÉTAT DE LA FDP ──',
     fdpBlock,
     '',
+    switchIntentBlock,
     clarificationBlock,
     '── CHAMPS FDP — LISTE FERMÉE (8 champs uniquement) ──',
     fieldsBlock,
@@ -240,6 +280,13 @@ export function buildConversationalPrompt(
   ]
     .filter((line) => line !== '')
     .join('\n');
+}
+
+function isFDPAllEmpty(fdp: FDPInProgress): boolean {
+  for (const k of FIELD_KEYS) {
+    if (fdp.fields[k]?.status === 'filled') return false;
+  }
+  return true;
 }
 
 function formatFDPState(fdp: FDPInProgress): string {

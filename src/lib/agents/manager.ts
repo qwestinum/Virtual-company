@@ -65,8 +65,26 @@ export type ManagerTurnOutput = {
   response: ManagerResponse;
   preSearchHits: JobDescription[];
   campaignId: string | null;
+  /**
+   * Vrai quand le DRH revient sur le chat APRÈS validation d'une FDP
+   * (FDP courante isValidated=true) et exprime une nouvelle intention
+   * de campagne ou de sollicitation isolée. Le client doit alors :
+   *   - reset la FDP courante,
+   *   - créer une FDP fraîche sous le nouveau `campaignId` retourné.
+   * Sans ce flag, le serveur garderait l'ancien campaignId et le LLM
+   * continuerait à dialoguer dans le contexte de la campagne déjà close.
+   */
+  switchIntent: boolean;
   metrics: ManagerTurnMetrics;
 };
+
+/**
+ * Confidence minimale pour reconnaître un vrai switch d'intention
+ * post-validation. En dessous, on retombe sur le flux normal (pas de
+ * reset de FDP) — laisse le Manager poser une question de clarification
+ * au lieu de jeter le contexte.
+ */
+const SWITCH_INTENT_THRESHOLD = 0.7;
 
 export class ManagerError extends Error {
   constructor(
@@ -130,6 +148,20 @@ export async function runManagerTurn(
     classification = { ...classification, needsClarification: true };
   }
 
+  // Switch d'intention post-validation : si la FDP courante est validée
+  // et que le DRH formule une nouvelle intention de campagne ou de
+  // sollicitation, on neutralise la FDP en aval (prompt + campaignId)
+  // pour repartir d'une page blanche. Le client recevra `switchIntent`
+  // et fera le reset de son côté.
+  const isSwitchIntent =
+    input.fdp?.isValidated === true &&
+    !classification.needsClarification &&
+    classification.confidence >= SWITCH_INTENT_THRESHOLD &&
+    (classification.intent === 'new_campaign' ||
+      classification.intent === 'out_of_campaign_task');
+
+  const effectiveFdp = isSwitchIntent ? null : input.fdp;
+
   let preSearchHits: JobDescription[] = [];
   if (
     classification.intent === 'new_campaign' &&
@@ -143,8 +175,9 @@ export async function runManagerTurn(
     intent: classification.intent,
     confidence: classification.confidence,
     needsClarification: classification.needsClarification,
-    fdp: input.fdp,
+    fdp: effectiveFdp,
     preSearchHits,
+    isSwitchIntent,
   });
 
   // Le tour conversationnel passe sur gpt-4o (vs gpt-4o-mini pour la
@@ -188,18 +221,19 @@ export async function runManagerTurn(
   }
 
   const campaignId =
-    !input.fdp &&
+    (!effectiveFdp || isSwitchIntent) &&
     !classification.needsClarification &&
     (classification.intent === 'new_campaign' ||
       classification.intent === 'out_of_campaign_task')
       ? generateCampaignId(classification.intent)
-      : (input.fdp?.campaignId ?? null);
+      : (effectiveFdp?.campaignId ?? null);
 
   return {
     classification,
     response,
     preSearchHits,
     campaignId,
+    switchIntent: isSwitchIntent,
     metrics: {
       durationMs:
         intentCompletion.durationMs + responseCompletion.durationMs,
