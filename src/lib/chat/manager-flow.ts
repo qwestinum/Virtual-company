@@ -32,6 +32,7 @@ import {
   suggestCVReportFileName,
 } from '@/lib/agents/cv-report-render';
 import { postCVAnalyzer, postJobWriter } from '@/lib/chat/api-client';
+import { pushArtifact } from '@/lib/db/sync/artifacts-sync';
 import { useAgentsStore } from '@/stores/agents-store';
 import { useArtifactsStore } from '@/stores/artifacts-store';
 import {
@@ -134,11 +135,22 @@ export async function dispatchJobWriter(
 
   try {
     const result = await postJobWriter({ fdp, taskId, channel });
+    const ownerKey = isTask
+      ? { taskId: fdp.campaignId }
+      : { campaignId: fdp.campaignId };
     const artifact = artifacts.addArtifact({
       name: result.fileName,
       mime: 'text/markdown',
       content: result.markdown,
+      kind: 'job_ad',
+      ...ownerKey,
     });
+    // Round 3 — push fire-and-forget vers Supabase Storage. Le store
+    // est back-updaté avec publicUrl quand la promesse résout. La
+    // bulle chat affiche l'attachment immédiatement avec le Blob
+    // local en attendant ; AttachmentChip basculera sur l'URL si
+    // dispo.
+    void pushArtifact({ artifact, content: result.markdown });
 
     chat.appendMessage({
       role: 'manager',
@@ -298,11 +310,29 @@ export async function dispatchCVBatch(args: {
 
   const summary = buildCVBatchSummary(results, threshold);
   const reportName = suggestCVReportFileName(args.campaignId);
+  const reportContent = renderCVBatchMarkdown(summary, args.campaignId);
+  // Le rapport CV peut concerner une campagne OU une tâche isolée.
+  // On utilise la convention TASK-XXX pour différencier le owner.
+  const isTaskOwner =
+    args.campaignId !== null && args.campaignId.startsWith('TASK-');
+  const reportOwnerKey =
+    args.campaignId === null
+      ? {}
+      : isTaskOwner
+        ? { taskId: args.campaignId }
+        : { campaignId: args.campaignId };
   const reportArtifact = artifacts.addArtifact({
     name: reportName,
     mime: 'text/markdown',
-    content: renderCVBatchMarkdown(summary, args.campaignId),
+    content: reportContent,
+    kind: 'cv_report',
+    ...reportOwnerKey,
   });
+  // Round 3 — push Supabase si on a un owner (sinon batch transverse,
+  // pas de persistance par campagne — l'artefact reste local).
+  if (args.campaignId) {
+    void pushArtifact({ artifact: reportArtifact, content: reportContent });
+  }
 
   // On remplace la bulle de progression par le récap structuré.
   useChatStore.getState().updateMessage(progress.id, {

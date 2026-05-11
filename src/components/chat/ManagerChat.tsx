@@ -67,6 +67,8 @@ import {
   newCampaignSkipSetup,
   wipeForFreshStart,
 } from '@/lib/chat/manager-flow';
+import { pushArtifact } from '@/lib/db/sync/artifacts-sync';
+import { renderFdpMarkdown, suggestFdpFileName } from '@/lib/agents/fdp-render';
 import { cn } from '@/lib/utils';
 import { useAgentsStore } from '@/stores/agents-store';
 import { useArtifactsStore } from '@/stores/artifacts-store';
@@ -685,6 +687,25 @@ export function ManagerChat() {
 
     addCampaign({ fdp: validated });
     useCampaignsStore.getState().recomputeStatus(validated.campaignId);
+
+    // Round 3 — production de la FDP en markdown + upload Supabase
+    // Storage. Le fichier apparaît dans le bucket public, lisible
+    // depuis l'URL renvoyée. Idempotent côté Storage (upsert) — une
+    // revalidation après ajustement écrase la FDP précédente.
+    const isTaskOwner = validated.campaignId.startsWith('TASK-');
+    const fdpArtifact = useArtifactsStore.getState().addArtifact({
+      name: suggestFdpFileName(validated.campaignId),
+      mime: 'text/markdown',
+      content: renderFdpMarkdown(validated),
+      kind: 'fdp',
+      ...(isTaskOwner
+        ? { taskId: validated.campaignId }
+        : { campaignId: validated.campaignId }),
+    });
+    void pushArtifact({
+      artifact: fdpArtifact,
+      content: renderFdpMarkdown(validated),
+    });
 
     if (isRevalidation) {
       // Revalidation : la chaîne en aval (channels, flux, scoring)
