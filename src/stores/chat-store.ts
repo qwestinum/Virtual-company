@@ -98,6 +98,18 @@ export type ChatBlock =
       campaignId: string;
       activeSources: Record<CVSource, boolean>;
       confirmed: boolean;
+    }
+  | {
+      /**
+       * Éditeur de fiche de scoring (Phase 4.3). Posé après la
+       * validation des flux. La fiche elle-même vit dans
+       * scoring-store ; ce block est un marker pour positionner
+       * l'éditeur dans le fil. confirmed passe à true au clic sur
+       * "Valider la fiche de scoring".
+       */
+      kind: 'scoring-sheet-editor';
+      campaignId: string;
+      confirmed: boolean;
     };
 
 export type ChatMessage = {

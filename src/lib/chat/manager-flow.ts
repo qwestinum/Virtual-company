@@ -20,6 +20,7 @@
 
 import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import { useFdpStore } from '@/stores/fdp-store';
+import { useScoringStore } from '@/stores/scoring-store';
 import { useTasksStore } from '@/stores/tasks-store';
 import {
   PUBLICATION_CHANNEL_LABELS,
@@ -83,6 +84,10 @@ export function wipeForFreshStart(): void {
   useChatStore.getState().reset();
   useFdpStore.getState().reset();
   useIsolatedCriteriaStore.getState().reset();
+  // Phase 4.3 — la fiche de scoring est liée à la campagne courante :
+  // un wipe efface aussi la sheet en cours. Pas d'archive de scoring
+  // pour MVP (à introduire en même temps que le sélecteur de scoring).
+  useScoringStore.getState().reset();
 }
 
 /**

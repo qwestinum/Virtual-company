@@ -25,6 +25,14 @@ import {
   CV_SOURCE_LABELS,
   type CVSource,
 } from '@/types/cv-source';
+import {
+  type ScoringCriterion,
+  type ScoringLevel,
+} from '@/types/scoring';
+import {
+  selectScoringSheet,
+  useScoringStore,
+} from '@/stores/scoring-store';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { ChatChips } from '@/components/chat/ChatChips';
 import { ChatInput } from '@/components/chat/ChatInput';
@@ -38,6 +46,7 @@ import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import {
   postIsolatedManagerChat,
   postManagerChat,
+  postManagerScoring,
   postTranscribe,
 } from '@/lib/chat/api-client';
 import {
@@ -296,6 +305,13 @@ export function ManagerChat() {
     [tasksById, tasksOrder],
   );
   const resetAgents = useAgentsStore((s) => s.resetToRegistry);
+
+  const scoringSheet = useScoringStore(selectScoringSheet);
+  const proposeScoringSheet = useScoringStore((s) => s.proposeSheet);
+  const addScoringCriterion = useScoringStore((s) => s.addCriterion);
+  const updateScoringCriterion = useScoringStore((s) => s.updateCriterion);
+  const removeScoringCriterion = useScoringStore((s) => s.removeCriterion);
+  const validateScoringSheet = useScoringStore((s) => s.validate);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   /**
@@ -839,7 +855,7 @@ export function ManagerChat() {
    * liste des flux activés. Pas de tour LLM. Le futur Publisher
    * consommera la config validée pour brancher les flux automatiques.
    */
-  function handleSourcesConfirm(messageId: string) {
+  async function handleSourcesConfirm(messageId: string) {
     if (isSending || isTranscribing || isAgentBusy) return;
     const target = useChatStore
       .getState()
@@ -858,6 +874,7 @@ export function ManagerChat() {
       .filter(([, on]) => on)
       .map(([s]) => s);
     if (active.length === 0) return;
+    const campaignId = target.block.campaignId;
     updateMessage(messageId, {
       block: { ...target.block, confirmed: true },
     });
@@ -867,8 +884,102 @@ export function ManagerChat() {
       source: 'text',
       content:
         active.length === 1
-          ? `Configuration validée pour ${target.block.campaignId} — flux actif : ${activeLabels}.`
-          : `Configuration validée pour ${target.block.campaignId} — ${active.length} flux actifs : ${activeLabels}.`,
+          ? `Configuration validée pour ${campaignId} — flux actif : ${activeLabels}.`
+          : `Configuration validée pour ${campaignId} — ${active.length} flux actifs : ${activeLabels}.`,
+    });
+
+    // Phase 4.3 — auto-déclenche la proposition de fiche de scoring
+    // après validation des flux. La FDP doit être validée (le picker
+    // flows n'apparaît que sur ce chemin), donc on peut directement
+    // appeler le serveur.
+    const fdpForScoring = useFdpStore.getState().fdp;
+    if (!fdpForScoring || !fdpForScoring.isValidated) return;
+
+    const proposeBubble = appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Je prépare maintenant la fiche de scoring pour ${campaignId} — elle servira au CV Analyzer pour évaluer chaque candidature.`,
+    });
+    void proposeBubble;
+
+    setAgentBusy(true);
+    try {
+      const result = await postManagerScoring({ fdp: fdpForScoring });
+      proposeScoringSheet(campaignId, result.criteria);
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Voici ma proposition (${result.criteria.length} critères répartis sur les niveaux de criticité). Ajuste le libellé, le niveau ou le poids puis valide.`,
+        block: {
+          kind: 'scoring-sheet-editor',
+          campaignId,
+          confirmed: false,
+        },
+      });
+    } catch (err) {
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Je n'ai pas pu préparer la fiche de scoring (${
+          err instanceof Error ? err.message : 'erreur inconnue'
+        }). Tu peux me redemander dès que tu veux.`,
+      });
+    } finally {
+      setAgentBusy(false);
+    }
+  }
+
+  /** Phase 4.3 — ajoute un critère à la fiche de scoring en cours. */
+  function handleScoringAdd(input: { label: string; level: ScoringLevel }) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    if (!scoringSheet || scoringSheet.isValidated) return;
+    addScoringCriterion(input);
+  }
+
+  /** Phase 4.3 — édite un critère existant (label, niveau, poids). */
+  function handleScoringUpdate(
+    id: string,
+    patch: Partial<Pick<ScoringCriterion, 'label' | 'level' | 'weight'>>,
+  ) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    if (!scoringSheet || scoringSheet.isValidated) return;
+    updateScoringCriterion(id, patch);
+  }
+
+  /** Phase 4.3 — supprime un critère. */
+  function handleScoringRemove(id: string) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    if (!scoringSheet || scoringSheet.isValidated) return;
+    removeScoringCriterion(id);
+  }
+
+  /**
+   * Phase 4.3 — validation de la fiche de scoring. Gèle le block
+   * éditeur, valide la sheet dans le store, et poste une bulle Manager
+   * récap. Le CV Analyzer pondéré (Phase 4.4) consommera la sheet
+   * validée sur tous les uploads ultérieurs de la campagne.
+   */
+  function handleScoringValidate(messageId: string) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    if (!scoringSheet || scoringSheet.isValidated) return;
+    const target = useChatStore
+      .getState()
+      .messages.find((m) => m.id === messageId);
+    if (
+      !target ||
+      target.block?.kind !== 'scoring-sheet-editor' ||
+      target.block.confirmed
+    ) {
+      return;
+    }
+    validateScoringSheet();
+    updateMessage(messageId, {
+      block: { ...target.block, confirmed: true },
+    });
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Fiche de scoring validée pour ${target.block.campaignId} — ${scoringSheet.criteria.length} critère${scoringSheet.criteria.length > 1 ? 's' : ''}. Les prochains CV seront scorés sur cette base.`,
     });
   }
 
@@ -992,6 +1103,11 @@ export function ManagerChat() {
                 onChannelsConfirm={handleChannelsConfirm}
                 onSourceToggle={handleSourceToggle}
                 onSourcesConfirm={handleSourcesConfirm}
+                scoringSheet={scoringSheet}
+                onScoringAdd={handleScoringAdd}
+                onScoringUpdate={handleScoringUpdate}
+                onScoringRemove={handleScoringRemove}
+                onScoringValidate={handleScoringValidate}
                 blocksDisabled={isSending || isTranscribing || isAgentBusy}
               />
               {showBelow && message.chips ? (

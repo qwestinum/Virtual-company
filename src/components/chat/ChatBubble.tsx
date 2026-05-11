@@ -12,8 +12,14 @@ import { CVRoutePicker } from '@/components/chat/CVRoutePicker';
 import { CVSourcesPicker } from '@/components/chat/CVSourcesPicker';
 import { parseMessageToBlocks } from '@/components/chat/chat-message-renderer';
 import { PublicationChannelPicker } from '@/components/chat/PublicationChannelPicker';
+import { ScoringSheetEditor } from '@/components/chat/ScoringSheetEditor';
 import type { CVSource } from '@/types/cv-source';
 import type { PublicationChannel } from '@/types/publication-channel';
+import type {
+  ScoringCriterion,
+  ScoringLevel,
+  ScoringSheet,
+} from '@/types/scoring';
 import {
   DRH_COLOR,
   DRH_INITIALS,
@@ -45,6 +51,14 @@ export type ChatBubbleProps = {
   onChannelsConfirm?: (messageId: string) => void;
   onSourceToggle?: (messageId: string, source: CVSource) => void;
   onSourcesConfirm?: (messageId: string) => void;
+  scoringSheet?: ScoringSheet | null;
+  onScoringAdd?: (input: { label: string; level: ScoringLevel }) => void;
+  onScoringUpdate?: (
+    id: string,
+    patch: Partial<Pick<ScoringCriterion, 'label' | 'level' | 'weight'>>,
+  ) => void;
+  onScoringRemove?: (id: string) => void;
+  onScoringValidate?: (messageId: string) => void;
   blocksDisabled?: boolean;
 };
 
@@ -59,6 +73,11 @@ export function ChatBubble({
   onChannelsConfirm,
   onSourceToggle,
   onSourcesConfirm,
+  scoringSheet,
+  onScoringAdd,
+  onScoringUpdate,
+  onScoringRemove,
+  onScoringValidate,
   blocksDisabled,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
@@ -114,6 +133,23 @@ export function ChatBubble({
             </span>
           ) : null}
           <RenderedContent content={message.content} />
+          {message.block?.kind === 'scoring-sheet-editor' &&
+          scoringSheet &&
+          scoringSheet.campaignId === message.block.campaignId &&
+          onScoringAdd &&
+          onScoringUpdate &&
+          onScoringRemove &&
+          onScoringValidate ? (
+            <ScoringSheetEditor
+              sheet={scoringSheet}
+              confirmed={message.block.confirmed}
+              disabled={blocksDisabled}
+              onAddCriterion={onScoringAdd}
+              onUpdateCriterion={onScoringUpdate}
+              onRemoveCriterion={onScoringRemove}
+              onValidate={() => onScoringValidate(message.id)}
+            />
+          ) : null}
           {message.block?.kind === 'cv-sources-picker' &&
           onSourceToggle &&
           onSourcesConfirm ? (
