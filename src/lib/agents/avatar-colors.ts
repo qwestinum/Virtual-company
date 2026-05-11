@@ -9,6 +9,7 @@ const AVATAR_META: Record<string, AvatarMeta> = {
   'agent.cv-analyzer': { color: '#0d9488', initials: 'CV', filename: 'cv-analyzer' },
   'agent.mail-composer': { color: '#d97706', initials: 'MC', filename: 'mail-composer' },
   'agent.job-writer': { color: '#7c3aed', initials: 'JW', filename: 'job-writer' },
+  'agent.publisher': { color: '#db2777', initials: 'PU', filename: 'publisher' },
   'agent.scheduler': { color: '#16a34a', initials: 'SC', filename: 'scheduler' },
 };
 

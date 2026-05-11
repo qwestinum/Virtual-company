@@ -12,9 +12,9 @@ describe('agents-store', () => {
     useAgentsStore.getState().resetToRegistry();
   });
 
-  it('hydrates with the 5 registry agents in stable order', () => {
+  it('hydrates with the 6 registry agents in stable order', () => {
     const agents = selectAgents(useAgentsStore.getState());
-    expect(agents).toHaveLength(5);
+    expect(agents).toHaveLength(6);
     expect(agents[0]?.id).toBe('agent.manager-rh');
   });
 

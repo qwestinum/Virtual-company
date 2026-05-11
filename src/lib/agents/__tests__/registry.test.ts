@@ -10,8 +10,8 @@ import {
 import { AgentContractDataSchema } from '@/types/agent';
 
 describe('agent registry', () => {
-  it('contains exactly 5 RH agents', () => {
-    expect(AGENT_REGISTRY).toHaveLength(5);
+  it('contains exactly 6 RH agents', () => {
+    expect(AGENT_REGISTRY).toHaveLength(6);
     expect(AGENT_REGISTRY.every((a) => a.department === 'rh')).toBe(true);
   });
 
@@ -53,8 +53,8 @@ describe('agent registry', () => {
     expect(getAgentById('nope')).toBeUndefined();
   });
 
-  it('getAgentsByDepartment("rh") returns all 5', () => {
-    expect(getAgentsByDepartment('rh')).toHaveLength(5);
+  it('getAgentsByDepartment("rh") returns all 6', () => {
+    expect(getAgentsByDepartment('rh')).toHaveLength(6);
   });
 
   it('getAgentsByDepartment("finance") returns []', () => {
@@ -63,7 +63,7 @@ describe('agent registry', () => {
 
   it('snapshot omits execute and indexes by id', () => {
     const snap = getAgentDataSnapshot();
-    expect(Object.keys(snap)).toHaveLength(5);
+    expect(Object.keys(snap)).toHaveLength(6);
     expect(snap['agent.manager-rh']).toBeDefined();
     expect((snap['agent.manager-rh'] as unknown as { execute?: unknown }).execute).toBeUndefined();
   });

@@ -8,6 +8,7 @@ import { cvAnalyzerAgent } from './contracts/cv-analyzer';
 import { jobWriterAgent } from './contracts/job-writer';
 import { mailComposerAgent } from './contracts/mail-composer';
 import { managerAgent } from './contracts/manager';
+import { publisherAgent } from './contracts/publisher';
 import { schedulerAgent } from './contracts/scheduler';
 
 export const AGENT_REGISTRY: ReadonlyArray<AgentContract> = [
@@ -15,6 +16,7 @@ export const AGENT_REGISTRY: ReadonlyArray<AgentContract> = [
   cvAnalyzerAgent,
   mailComposerAgent,
   jobWriterAgent,
+  publisherAgent,
   schedulerAgent,
 ];
 

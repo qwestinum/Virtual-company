@@ -47,14 +47,15 @@ describe('getAvatarUrl', () => {
 });
 
 describe('listAvatarMeta', () => {
-  it('exposes the 5 registered agents', () => {
+  it('exposes the 6 registered agents', () => {
     const list = listAvatarMeta();
-    expect(list).toHaveLength(5);
+    expect(list).toHaveLength(6);
     expect(list.map((m) => m.agentId)).toEqual([
       'agent.manager-rh',
       'agent.cv-analyzer',
       'agent.mail-composer',
       'agent.job-writer',
+      'agent.publisher',
       'agent.scheduler',
     ]);
   });
