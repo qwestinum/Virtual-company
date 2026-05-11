@@ -1,9 +1,11 @@
 import { ManagerChat } from '@/components/chat/ManagerChat';
+import { HydrationGate } from '@/components/HydrationGate';
 import { WorkspacePane } from '@/components/workspace/WorkspacePane';
 
 export default function Home() {
   return (
     <main className="flex h-[100svh] w-full overflow-hidden min-w-[1280px]">
+      <HydrationGate />
       <section
         className="relative flex-1 min-w-0 overflow-hidden"
         style={{
