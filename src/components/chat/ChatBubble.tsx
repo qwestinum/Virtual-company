@@ -133,6 +133,19 @@ export function ChatBubble({
             </span>
           ) : null}
           <RenderedContent content={message.content} />
+          {/*
+            Round 3 — l'attachment (livrable produit) est rendu AVANT
+            les blocks (actions/widgets de pilotage). Logique narrative :
+            « voici ce que j'ai produit » → « voici ce qu'on fait
+            maintenant ». Sans ça le picker de canaux écrasait
+            visuellement la fiche de poste tout juste validée.
+          */}
+          {message.attachment ? (
+            <AttachmentChip
+              attachment={message.attachment}
+              disabled={blocksDisabled}
+            />
+          ) : null}
           {message.block?.kind === 'scoring-sheet-editor' &&
           scoringSheet &&
           scoringSheet.campaignId === message.block.campaignId &&
@@ -200,12 +213,6 @@ export function ChatBubble({
               disabled={blocksDisabled}
               onToggle={(channel) => onChannelToggle(message.id, channel)}
               onConfirm={() => onChannelsConfirm(message.id)}
-            />
-          ) : null}
-          {message.attachment ? (
-            <AttachmentChip
-              attachment={message.attachment}
-              disabled={blocksDisabled}
             />
           ) : null}
           {inlineChips && onChipSelect ? (
