@@ -182,6 +182,7 @@ export function CampaignSelector({
                 <CampaignMenuItem
                   entry={current}
                   onSelect={() => {}}
+                  onChangeStatus={onChangeStatus}
                   isCurrent
                 />
               ) : null}
@@ -194,6 +195,7 @@ export function CampaignSelector({
                       key={entry.id}
                       entry={entry}
                       onSelect={() => onSelectCampaign(entry)}
+                      onChangeStatus={onChangeStatus}
                     />
                   ))
                 : null}
@@ -286,10 +288,12 @@ export function CampaignSelector({
 function CampaignMenuItem({
   entry,
   onSelect,
+  onChangeStatus,
   isCurrent = false,
 }: {
   entry: CampaignEntry;
   onSelect: () => void;
+  onChangeStatus?: (entry: CampaignEntry, next: CampaignStatus) => void;
   isCurrent?: boolean;
 }) {
   const isTask = entry.id.startsWith('TASK-');
@@ -336,17 +340,105 @@ function CampaignMenuItem({
           </span>
           <StatusBadge status={entry.status} />
           {isCurrent ? (
-            <Check
-              className="h-3 w-3 text-stone-500 ml-auto shrink-0"
-              aria-hidden
-            />
+            <Check className="h-3 w-3 text-stone-500 shrink-0" aria-hidden />
           ) : null}
         </div>
         <p className="font-body text-[12px] text-stone-700 truncate">
           {entry.title}
         </p>
       </div>
+      {onChangeStatus ? (
+        <InlineStatusActions
+          entry={entry}
+          onChangeStatus={onChangeStatus}
+        />
+      ) : null}
     </Menu.Item>
+  );
+}
+
+/**
+ * Phase 8 — boutons icône d'action inline sur chaque ligne du
+ * sélecteur. Deux contrôles, l'un toggle paused/in_progress, l'autre
+ * toggle closed/in_progress. Click stopPropagé pour ne pas déclencher
+ * la sélection de la ligne parente (Menu.Item.onClick).
+ *
+ * Conventions :
+ *   - paused: bouton Play (jaune) → "Reprendre"
+ *   - non-paused, non-closed: bouton PauseCircle (jaune pâle) → "Suspendre"
+ *   - closed: bouton RotateCcw (sky) → "Rouvrir"
+ *   - non-closed: bouton CircleSlash (gris) → "Clôturer"
+ */
+function InlineStatusActions({
+  entry,
+  onChangeStatus,
+}: {
+  entry: CampaignEntry;
+  onChangeStatus: (entry: CampaignEntry, next: CampaignStatus) => void;
+}) {
+  const isPaused = entry.status === 'paused';
+  const isClosed = entry.status === 'closed';
+  // Click handlers stoppent la propagation pour ne pas déclencher
+  // l'onSelect du Menu.Item parent (qui ferait basculer la campagne
+  // courante avant de muter le statut).
+  function pauseToggle(e: React.PointerEvent | React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    onChangeStatus(entry, isPaused ? 'in_progress' : 'paused');
+  }
+  function closeToggle(e: React.PointerEvent | React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    onChangeStatus(entry, isClosed ? 'in_progress' : 'closed');
+  }
+  return (
+    <div
+      className="flex items-center gap-0.5 shrink-0 ml-1"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {!isClosed ? (
+        <button
+          type="button"
+          aria-label={isPaused ? 'Reprendre la campagne' : 'Suspendre la campagne'}
+          title={isPaused ? 'Reprendre' : 'Suspendre'}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={pauseToggle}
+          className={cn(
+            'h-6 w-6 grid place-items-center rounded',
+            'transition-colors',
+            isPaused
+              ? 'text-sky-700 hover:bg-sky-50'
+              : 'text-yellow-700 hover:bg-yellow-50',
+          )}
+        >
+          {isPaused ? (
+            <Play className="h-3 w-3" aria-hidden />
+          ) : (
+            <PauseCircle className="h-3.5 w-3.5" aria-hidden />
+          )}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        aria-label={isClosed ? 'Rouvrir la campagne' : 'Clôturer la campagne'}
+        title={isClosed ? 'Rouvrir' : 'Clôturer'}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={closeToggle}
+        className={cn(
+          'h-6 w-6 grid place-items-center rounded',
+          'transition-colors',
+          isClosed
+            ? 'text-sky-700 hover:bg-sky-50'
+            : 'text-stone-500 hover:bg-stone-100 hover:text-stone-800',
+        )}
+      >
+        {isClosed ? (
+          <RotateCcw className="h-3 w-3" aria-hidden />
+        ) : (
+          <CircleSlash className="h-3.5 w-3.5" aria-hidden />
+        )}
+      </button>
+    </div>
   );
 }
 
