@@ -693,10 +693,12 @@ export function ManagerChat() {
     // depuis l'URL renvoyée. Idempotent côté Storage (upsert) — une
     // revalidation après ajustement écrase la FDP précédente.
     const isTaskOwner = validated.campaignId.startsWith('TASK-');
+    const fdpMarkdown = renderFdpMarkdown(validated);
+    const fdpFileName = suggestFdpFileName(validated.campaignId);
     const fdpArtifact = useArtifactsStore.getState().addArtifact({
-      name: suggestFdpFileName(validated.campaignId),
+      name: fdpFileName,
       mime: 'text/markdown',
-      content: renderFdpMarkdown(validated),
+      content: fdpMarkdown,
       kind: 'fdp',
       ...(isTaskOwner
         ? { taskId: validated.campaignId }
@@ -704,8 +706,22 @@ export function ManagerChat() {
     });
     void pushArtifact({
       artifact: fdpArtifact,
-      content: renderFdpMarkdown(validated),
+      content: fdpMarkdown,
     });
+
+    // Round 3 — label de l'AttachmentChip. On préfère l'intitulé du
+    // poste s'il est renseigné, sinon on retombe sur le campaignId.
+    const jobTitleVal = validated.fields.job_title?.value;
+    const fdpLabel =
+      typeof jobTitleVal === 'string' && jobTitleVal.trim().length > 0
+        ? `Fiche de poste — ${jobTitleVal.trim()}`
+        : `Fiche de poste — ${validated.campaignId}`;
+    const fdpAttachment = {
+      artifactId: fdpArtifact.id,
+      label: fdpLabel,
+      fileName: fdpFileName,
+      mime: 'text/markdown',
+    };
 
     if (isRevalidation) {
       // Revalidation : la chaîne en aval (channels, flux, scoring)
@@ -722,6 +738,7 @@ export function ManagerChat() {
         role: 'manager',
         source: 'text',
         content: `Fiche de poste mise à jour pour ${validated.campaignId}. ${tail}`,
+        attachment: fdpAttachment,
       });
       // Phase 7.4 — chips pour modifier les autres jalons sans
       // repasser par le sélecteur.
@@ -741,6 +758,7 @@ export function ManagerChat() {
         selectedChannels: [],
         confirmed: false,
       },
+      attachment: fdpAttachment,
     });
     // Phase 7.4 — chips contextuels pour les autres jalons. Exclut
     // 'channels' (porté par le picker juste posé).
