@@ -2,7 +2,7 @@
 
 import { RotateCcw } from 'lucide-react';
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { isAdjustmentSignal } from '@/components/chat/adjustment-signal';
 
@@ -200,8 +200,18 @@ export function ManagerChat() {
   const resetArtifacts = useArtifactsStore((s) => s.reset);
   const addCampaign = useCampaignsStore((s) => s.addCampaign);
   const resetCampaigns = useCampaignsStore((s) => s.reset);
-  const archivedCampaigns = useCampaignsStore((s) =>
-    s.order.map((id) => s.byId[id]).filter((c): c is NonNullable<typeof c> => Boolean(c)),
+  // On sélectionne `byId` et `order` séparément (références stables
+  // côté Zustand) puis on dérive la liste localement via useMemo.
+  // Sans ça, retourner `s.order.map(...)` depuis le sélecteur produit
+  // un nouveau tableau à chaque render → re-rendus infinis.
+  const campaignsById = useCampaignsStore((s) => s.byId);
+  const campaignsOrder = useCampaignsStore((s) => s.order);
+  const archivedCampaigns = useMemo(
+    () =>
+      campaignsOrder
+        .map((id) => campaignsById[id])
+        .filter((c): c is NonNullable<typeof c> => Boolean(c)),
+    [campaignsById, campaignsOrder],
   );
   const isolatedCriteria = useIsolatedCriteriaStore((s) => s.criteria);
   const applyIsolatedExtractions = useIsolatedCriteriaStore(
