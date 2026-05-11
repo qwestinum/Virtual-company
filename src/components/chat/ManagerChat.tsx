@@ -95,6 +95,9 @@ const MANAGER_ID = 'agent.manager-rh';
 
 type ResumeAction = 'fdp' | 'scoring' | 'channels' | 'sources';
 
+/** Phase 7.4.1 — chip de réouverture pour les campagnes closed. */
+const REOPEN_CHIP_LABEL = 'Rouvrir la campagne';
+
 /**
  * Phase 7.2 — verbe contextuel sur les chips de reprise. Chaque
  * artefact peut être à l'un des trois états :
@@ -604,6 +607,13 @@ export function ManagerChat() {
     null,
   );
 
+  /**
+   * Phase 7.4.1 — entry de la campagne closed en attente d'une
+   * réouverture via le chip "Rouvrir la campagne". On stocke l'entry
+   * complète pour pouvoir appeler handleCampaignStatusChange au clic.
+   */
+  const pendingReopenRef = useRef<CampaignEntry | null>(null);
+
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -940,6 +950,14 @@ export function ManagerChat() {
 
   function handleChipSelect(option: string) {
     if (isSending || isTranscribing) return;
+    // Phase 7.4.1 — chip "Rouvrir la campagne" posé sur la bulle de
+    // reprise d'une campagne closed.
+    const reopenEntry = pendingReopenRef.current;
+    if (reopenEntry && option === REOPEN_CHIP_LABEL) {
+      pendingReopenRef.current = null;
+      handleCampaignStatusChange(reopenEntry, 'in_progress');
+      return;
+    }
     // Phase 6.2 / 7.2 — interception PRIORITAIRE des chips d'options
     // de reprise. Doit passer AVANT isAdjustmentSignal : les libellés
     // commencent par "Modifier"/"Initier"/"Continuer" et certains
@@ -1421,21 +1439,29 @@ export function ManagerChat() {
       closed:
         "Cette campagne est marquée comme terminée. Tu peux la rouvrir pour la réactiver.",
     };
-    // Phase 7.4 — récap multi-ligne + chips contextuels. La bulle
-    // résume où en est la campagne (✓ / · / ○ par jalon) et propose
-    // les CTA Initier/Continuer/Modifier. Masqués sur closed (le
-    // DRH rouvre d'abord). Tâches isolées : cycle plus court, pas
-    // de récap multi-jalons à exposer.
-    const offersResumeActions =
-      entry.kind === 'fdp' && entry.status !== 'closed';
+    // Phase 7.4 / 7.4.1 — récap multi-ligne + chips contextuels. La
+    // bulle résume où en est la campagne (✓ / · / ○ par jalon) et
+    // propose des CTA :
+    //   - draft/in_progress/active/paused : Initier/Continuer/Modifier
+    //     pour chaque artefact (FDP, scoring, annonces, flux),
+    //   - closed : une CTA spéciale « Rouvrir la campagne » pour
+    //     remettre la campagne en travail.
+    // Tâches isolées : cycle plus court, pas de chips multi-jalons.
+    const isFdpEntry = entry.kind === 'fdp';
     let chips: { placement: 'below_bubble'; options: string[] } | undefined;
     let recap = '';
-    if (offersResumeActions) {
+    if (isFdpEntry && entry.status === 'closed') {
+      const reopenLabel = REOPEN_CHIP_LABEL;
+      pendingResumeActionsRef.current = null;
+      pendingReopenRef.current = entry;
+      chips = { placement: 'below_bubble', options: [reopenLabel] };
+    } else if (isFdpEntry) {
       const snap = computeProgressSnapshot(entry.id);
       if (snap) {
         recap = `\n\nÉtat actuel :\n${formatProgressRecap(snap)}`;
         const { options, labelMap } = buildResumeChipPayload(snap);
         pendingResumeActionsRef.current = labelMap;
+        pendingReopenRef.current = null;
         chips = { placement: 'below_bubble', options };
       }
     }
