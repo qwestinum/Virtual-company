@@ -12,13 +12,24 @@
 
 import { create } from 'zustand';
 
+import type { CampaignStatus } from '@/types/campaign-status';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 
 export type ArchivedTask = {
   id: string; // TASK-XXXX
   name: string; // intitulé extrait de criteria.job_title, ou taskId
   criteria: IsolatedCriteriaInProgress;
+  /**
+   * Phase 5.1 — état d'avancement. Pour les tâches isolées :
+   *   - draft  : collecte des 4 critères en cours,
+   *   - active : critères validés et batch CV déclenché ou prêt,
+   *   - closed : clôturée explicitement.
+   * 'in_progress' n'apparaît pas pour les tâches (pas d'étape
+   * intermédiaire annonce/scoring entre la validation et l'action).
+   */
+  status: CampaignStatus;
   createdAt: string;
+  updatedAt: string;
 };
 
 export type TasksState = {
@@ -28,7 +39,9 @@ export type TasksState = {
   addTask: (input: {
     criteria: IsolatedCriteriaInProgress;
     name?: string;
+    status?: CampaignStatus;
   }) => ArchivedTask;
+  updateStatus: (id: string, status: CampaignStatus) => void;
   getById: (id: string) => ArchivedTask | undefined;
   list: () => ArchivedTask[];
   reset: () => void;
@@ -40,17 +53,31 @@ function titleFromCriteria(criteria: IsolatedCriteriaInProgress): string {
   return 'Poste non précisé';
 }
 
+function deriveInitialTaskStatus(
+  criteria: IsolatedCriteriaInProgress,
+): CampaignStatus {
+  return criteria.isValidated ? 'active' : 'draft';
+}
+
 export const useTasksStore = create<TasksState>()((set, get) => ({
   byId: {},
   order: [],
 
   addTask: (input) => {
     const name = input.name?.trim() || titleFromCriteria(input.criteria);
+    const now = new Date().toISOString();
+    const existing = get().byId[input.criteria.taskId];
+    const status =
+      input.status ??
+      existing?.status ??
+      deriveInitialTaskStatus(input.criteria);
     const task: ArchivedTask = {
       id: input.criteria.taskId,
       name,
       criteria: input.criteria,
-      createdAt: new Date().toISOString(),
+      status,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
     };
     set((state) => {
       const exists = Boolean(state.byId[task.id]);
@@ -63,6 +90,23 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
     });
     return task;
   },
+
+  updateStatus: (id, status) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            status,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
 
   getById: (id) => get().byId[id],
 

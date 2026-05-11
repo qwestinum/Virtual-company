@@ -6,11 +6,18 @@ import {
   Check,
   ChevronDown,
   CircleDot,
+  CircleSlash,
   FileText,
   Plus,
+  RotateCcw,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import {
+  CAMPAIGN_STATUS_COLORS,
+  CAMPAIGN_STATUS_LABELS,
+  type CampaignStatus,
+} from '@/types/campaign-status';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 
@@ -19,9 +26,8 @@ import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
  * dans le sélecteur. La courante est marquée `isCurrent: true` et
  * apparaît en tête du menu, désactivée au clic.
  *
- * Le statut est dérivé du snapshot :
- *   - validée  : isValidated === true (vert)
- *   - draft    : isValidated === false (amber)
+ * Phase 5.1 — le `status` reflète maintenant les 4 états canoniques
+ * (draft / in_progress / active / closed) avec badge coloré.
  *
  * Le `kind` discrimine FDP (campagne, 8 champs) vs isolated (tâche,
  * 4 critères) — le handler de switch côté ManagerChat appelle
@@ -32,7 +38,7 @@ export type CampaignEntry =
       kind: 'fdp';
       id: string;
       title: string;
-      status: 'draft' | 'validated';
+      status: CampaignStatus;
       isCurrent: boolean;
       snapshot: FDPInProgress | null;
     }
@@ -40,7 +46,7 @@ export type CampaignEntry =
       kind: 'isolated';
       id: string;
       title: string;
-      status: 'draft' | 'validated';
+      status: CampaignStatus;
       isCurrent: boolean;
       snapshot: IsolatedCriteriaInProgress | null;
     };
@@ -49,6 +55,12 @@ export type CampaignSelectorProps = {
   campaigns: CampaignEntry[];
   onSelectCampaign: (entry: CampaignEntry) => void;
   onNewCampaign: () => void;
+  /**
+   * Phase 5.3 — bascule l'état d'une entrée vers `closed` (clôture)
+   * ou vers le status précédent (réouverture). Le sélecteur n'a pas
+   * besoin de connaître la transition exacte : ManagerChat la gère.
+   */
+  onChangeStatus?: (entry: CampaignEntry, next: CampaignStatus) => void;
   disabled?: boolean;
 };
 
@@ -56,6 +68,7 @@ export function CampaignSelector({
   campaigns,
   onSelectCampaign,
   onNewCampaign,
+  onChangeStatus,
   disabled = false,
 }: CampaignSelectorProps) {
   const current = campaigns.find((c) => c.isCurrent);
@@ -163,6 +176,34 @@ export function CampaignSelector({
               ) : null}
             </div>
             <div className="border-t border-stone-100">
+              {onChangeStatus && current.status !== 'closed' ? (
+                <Menu.Item
+                  onClick={() => onChangeStatus(current, 'closed')}
+                  className={cn(
+                    'flex items-center gap-2 w-full px-3 py-2.5',
+                    'text-stone-600 font-medium font-body text-[12.5px]',
+                    'hover:bg-stone-50 outline-none cursor-pointer',
+                    'data-[highlighted]:bg-stone-50',
+                  )}
+                >
+                  <CircleSlash className="h-3.5 w-3.5" aria-hidden />
+                  Marquer comme terminée
+                </Menu.Item>
+              ) : null}
+              {onChangeStatus && current.status === 'closed' ? (
+                <Menu.Item
+                  onClick={() => onChangeStatus(current, 'in_progress')}
+                  className={cn(
+                    'flex items-center gap-2 w-full px-3 py-2.5',
+                    'text-sky-700 font-medium font-body text-[12.5px]',
+                    'hover:bg-sky-50 outline-none cursor-pointer',
+                    'data-[highlighted]:bg-sky-50',
+                  )}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                  Rouvrir la campagne
+                </Menu.Item>
+              ) : null}
               <Menu.Item
                 onClick={onNewCampaign}
                 className={cn(
@@ -216,12 +257,10 @@ function CampaignMenuItem({
           />
         ) : (
           <span
-            className={cn(
-              'h-3.5 w-3.5 rounded-full border block',
-              entry.status === 'validated'
-                ? 'border-emerald-400'
-                : 'border-amber-400',
-            )}
+            className="h-3.5 w-3.5 rounded-full border block"
+            style={{
+              borderColor: CAMPAIGN_STATUS_COLORS[entry.status],
+            }}
             aria-hidden
           />
         )}
@@ -252,31 +291,28 @@ function CampaignMenuItem({
   );
 }
 
-function StatusDot({ status }: { status: 'draft' | 'validated' }) {
+function StatusDot({ status }: { status: CampaignStatus }) {
   return (
     <span
-      className={cn(
-        'h-2 w-2 rounded-full shrink-0',
-        status === 'validated' ? 'bg-emerald-500' : 'bg-amber-400',
-      )}
+      className="h-2 w-2 rounded-full shrink-0"
+      style={{ backgroundColor: CAMPAIGN_STATUS_COLORS[status] }}
       aria-hidden
-      title={status === 'validated' ? 'Validée' : 'En cours'}
+      title={CAMPAIGN_STATUS_LABELS[status]}
     />
   );
 }
 
-function StatusBadge({ status }: { status: 'draft' | 'validated' }) {
+function StatusBadge({ status }: { status: CampaignStatus }) {
+  const color = CAMPAIGN_STATUS_COLORS[status];
   return (
     <span
-      className={cn(
-        'font-display text-[9px] uppercase tracking-[0.12em] font-medium',
-        'px-1.5 py-0.5 rounded',
-        status === 'validated'
-          ? 'bg-emerald-50 text-emerald-700'
-          : 'bg-amber-50 text-amber-700',
-      )}
+      className="font-display text-[9px] uppercase tracking-[0.12em] font-medium px-1.5 py-0.5 rounded"
+      style={{
+        backgroundColor: `${color}1a`, // 10% opacity background
+        color,
+      }}
     >
-      {status === 'validated' ? 'Validée' : 'Draft'}
+      {CAMPAIGN_STATUS_LABELS[status]}
     </span>
   );
 }

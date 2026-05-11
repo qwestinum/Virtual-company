@@ -30,6 +30,10 @@ import {
   type ScoringLevel,
 } from '@/types/scoring';
 import {
+  CAMPAIGN_STATUS_LABELS,
+  type CampaignStatus,
+} from '@/types/campaign-status';
+import {
   selectScoringSheet,
   useScoringStore,
 } from '@/stores/scoring-store';
@@ -118,22 +122,35 @@ function countMissingIsolated(criteria: IsolatedCriteriaInProgress): number {
 function buildCampaignEntries(args: {
   currentFdp: FDPInProgress | null;
   currentCriteria: IsolatedCriteriaInProgress | null;
+  currentScoringValidated: boolean;
   archivedCampaigns: ReadonlyArray<{
     id: string;
     name: string;
     fdp: FDPInProgress;
+    status: CampaignStatus;
   }>;
   archivedTasks: ReadonlyArray<{
     id: string;
     name: string;
     criteria: IsolatedCriteriaInProgress;
+    status: CampaignStatus;
   }>;
 }): CampaignEntry[] {
-  const fdpStatus = (f: FDPInProgress): 'draft' | 'validated' =>
-    f.isValidated ? 'validated' : 'draft';
-  const criteriaStatus = (
+  /**
+   * Status de la campagne courante (en cours de cadrage côté
+   * fdp-store) : déduit de l'avancement de la session :
+   *   - FDP non validée → draft
+   *   - FDP validée + fiche scoring non validée → in_progress
+   *   - FDP validée + fiche scoring validée → active
+   */
+  const deriveCurrentFdpStatus = (f: FDPInProgress): CampaignStatus => {
+    if (!f.isValidated) return 'draft';
+    if (args.currentScoringValidated) return 'active';
+    return 'in_progress';
+  };
+  const deriveCurrentTaskStatus = (
     c: IsolatedCriteriaInProgress,
-  ): 'draft' | 'validated' => (c.isValidated ? 'validated' : 'draft');
+  ): CampaignStatus => (c.isValidated ? 'active' : 'draft');
   const fdpTitle = (f: FDPInProgress): string => {
     const v = f.fields.job_title?.value;
     if (typeof v === 'string' && v.trim().length > 0) return v.trim();
@@ -154,7 +171,7 @@ function buildCampaignEntries(args: {
       kind: 'fdp',
       id: args.currentFdp.campaignId,
       title: fdpTitle(args.currentFdp),
-      status: fdpStatus(args.currentFdp),
+      status: deriveCurrentFdpStatus(args.currentFdp),
       isCurrent: true,
       snapshot: null,
     });
@@ -164,7 +181,7 @@ function buildCampaignEntries(args: {
       kind: 'isolated',
       id: args.currentCriteria.taskId,
       title: criteriaTitle(args.currentCriteria),
-      status: criteriaStatus(args.currentCriteria),
+      status: deriveCurrentTaskStatus(args.currentCriteria),
       isCurrent: true,
       snapshot: null,
     });
@@ -178,7 +195,7 @@ function buildCampaignEntries(args: {
       kind: 'fdp',
       id: c.id,
       title: c.name || fdpTitle(c.fdp),
-      status: fdpStatus(c.fdp),
+      status: c.status,
       isCurrent: false,
       snapshot: c.fdp,
     });
@@ -190,7 +207,7 @@ function buildCampaignEntries(args: {
       kind: 'isolated',
       id: t.id,
       title: t.name || criteriaTitle(t.criteria),
-      status: criteriaStatus(t.criteria),
+      status: t.status,
       isCurrent: false,
       snapshot: t.criteria,
     });
@@ -976,10 +993,16 @@ export function ManagerChat() {
     updateMessage(messageId, {
       block: { ...target.block, confirmed: true },
     });
+    // Phase 5.1 — la fiche de scoring validée fait passer la campagne
+    // à `active`. Le campaignId du scoring matche celui de la FDP
+    // courante (cf. handleSourcesConfirm qui le propage).
+    useCampaignsStore
+      .getState()
+      .updateStatus(target.block.campaignId, 'active');
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `Fiche de scoring validée pour ${target.block.campaignId} — ${scoringSheet.criteria.length} critère${scoringSheet.criteria.length > 1 ? 's' : ''}. Les prochains CV seront scorés sur cette base.`,
+      content: `Fiche de scoring validée pour ${target.block.campaignId} — ${scoringSheet.criteria.length} critère${scoringSheet.criteria.length > 1 ? 's' : ''}. Campagne active, les prochains CV seront scorés sur cette base.`,
     });
   }
 
@@ -1000,16 +1023,34 @@ export function ManagerChat() {
     wipeForFreshStart();
     if (entry.kind === 'fdp') {
       restoreFDP(entry.snapshot);
+      // Phase 5.2 — si l'archive embarque une fiche de scoring,
+      // on la restaure aussi. Le DRH retrouve l'état exact où il
+      // s'est arrêté (FDP + scoring + status) ; il peut continuer
+      // à éditer si pas validé, ou re-uploader des CV si validé.
+      const archived = useCampaignsStore.getState().getById(entry.id);
+      if (archived?.scoringSheet) {
+        useScoringStore.getState().restoreSheet(archived.scoringSheet);
+      }
     } else {
       restoreCollection(entry.snapshot);
     }
     const noun = entry.kind === 'fdp' ? 'campagne' : 'sollicitation';
-    const statusPhrase =
-      entry.status === 'validated' ? 'déjà validée' : 'en draft';
+    // Phase 5.1 — message contextuel selon l'état d'avancement.
+    // Chaque branche indique au DRH ce qu'il peut reprendre.
+    const reopen: Record<CampaignStatus, string> = {
+      draft:
+        "Tu peux reprendre la collecte des champs manquants ou ajuster ceux déjà remplis.",
+      in_progress:
+        "La fiche de poste est validée. Tu peux générer ou modifier les annonces, configurer les flux, ou finaliser la fiche de scoring.",
+      active:
+        "Tout est aligné — tu peux déposer des CV ou ajuster la fiche de scoring si besoin.",
+      closed:
+        "Cette campagne est marquée comme terminée. Tu peux la rouvrir pour la réactiver.",
+    };
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `On reprend sur la ${noun} ${entry.id} — ${entry.title} (${statusPhrase}). Vous voulez reprendre la collecte ou poursuivre autre chose ?`,
+      content: `On reprend sur la ${noun} ${entry.id} — ${entry.title} (${CAMPAIGN_STATUS_LABELS[entry.status].toLowerCase()}). ${reopen[entry.status]}`,
     });
   }
 
@@ -1021,6 +1062,76 @@ export function ManagerChat() {
   function handleNewCampaign() {
     if (isSending || isTranscribing || isAgentBusy) return;
     wipeForFreshStart();
+  }
+
+  /**
+   * Phase 5.3 — clôture ou réouverture de la campagne courante depuis
+   * le sélecteur. La transition est portée par le caller (sélecteur)
+   * pour rester explicite : closed → in_progress sur réouverture,
+   * tout → closed sur clôture.
+   *
+   * Effets :
+   *   - met à jour le status dans campaigns-store / tasks-store,
+   *   - synchronise l'archive (si la courante est dans le store).
+   *     C'est le cas standard car le wipe pose toujours une entrée
+   *     pour la courante, mais pas si on n'a pas encore basculé.
+   *     Dans ce cas on ajoute l'archive maintenant pour rendre
+   *     l'action persistante.
+   *   - poste une bulle Manager récap.
+   */
+  function handleCampaignStatusChange(
+    entry: CampaignEntry,
+    next: CampaignStatus,
+  ) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    if (entry.kind === 'fdp') {
+      // Si la courante est dans fdp-store et pas encore dans campaigns,
+      // on l'y pose avant de muter son status (sinon updateStatus est
+      // un no-op sur une entrée inexistante).
+      const inStore = useCampaignsStore.getState().getById(entry.id);
+      if (!inStore && entry.isCurrent) {
+        const currentFdp = useFdpStore.getState().fdp;
+        const currentScoring = useScoringStore.getState().sheet;
+        if (currentFdp && currentFdp.campaignId === entry.id) {
+          useCampaignsStore.getState().addCampaign({
+            fdp: currentFdp,
+            scoringSheet:
+              currentScoring && currentScoring.campaignId === entry.id
+                ? currentScoring
+                : null,
+            status: next,
+          });
+        }
+      } else {
+        useCampaignsStore.getState().updateStatus(entry.id, next);
+      }
+    } else {
+      const inStore = useTasksStore.getState().getById(entry.id);
+      if (!inStore && entry.isCurrent) {
+        const currentCriteria =
+          useIsolatedCriteriaStore.getState().criteria;
+        if (currentCriteria && currentCriteria.taskId === entry.id) {
+          useTasksStore.getState().addTask({
+            criteria: currentCriteria,
+            status: next,
+          });
+        }
+      } else {
+        useTasksStore.getState().updateStatus(entry.id, next);
+      }
+    }
+    const noun = entry.kind === 'fdp' ? 'campagne' : 'sollicitation';
+    const messages: Record<CampaignStatus, string> = {
+      closed: `J'ai marqué la ${noun} ${entry.id} comme terminée. Tu peux la rouvrir depuis le menu si besoin.`,
+      in_progress: `J'ai rouvert la ${noun} ${entry.id}. Tu peux reprendre où on s'est arrêté.`,
+      active: `J'ai remis la ${noun} ${entry.id} en active.`,
+      draft: `J'ai remis la ${noun} ${entry.id} en brouillon.`,
+    };
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: messages[next],
+    });
   }
 
   async function handleTranscribe(audio: File): Promise<string> {
@@ -1046,11 +1157,16 @@ export function ManagerChat() {
           campaigns={buildCampaignEntries({
             currentFdp: fdp,
             currentCriteria: !fdp ? isolatedCriteria : null,
+            currentScoringValidated:
+              scoringSheet?.isValidated === true &&
+              fdp !== null &&
+              scoringSheet.campaignId === fdp.campaignId,
             archivedCampaigns,
             archivedTasks,
           })}
           onSelectCampaign={handleSelectCampaign}
           onNewCampaign={handleNewCampaign}
+          onChangeStatus={handleCampaignStatusChange}
           disabled={isSending || isTranscribing || isAgentBusy}
         />
       ) : null}

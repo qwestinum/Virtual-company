@@ -74,8 +74,20 @@ function nowTaskId(prefix: string): string {
  */
 export function wipeForFreshStart(): void {
   const currentFdp = useFdpStore.getState().fdp;
+  const currentScoring = useScoringStore.getState().sheet;
   if (currentFdp) {
-    useCampaignsStore.getState().addCampaign({ fdp: currentFdp });
+    // Phase 5.2 — on attache la scoring sheet à l'archive uniquement
+    // si elle correspond bien à la campagne courante (sinon ce serait
+    // un mélange : ex. scoring d'une campagne précédente non encore
+    // resetée à cause d'un crash).
+    const scoringSnapshot =
+      currentScoring && currentScoring.campaignId === currentFdp.campaignId
+        ? currentScoring
+        : null;
+    useCampaignsStore.getState().addCampaign({
+      fdp: currentFdp,
+      scoringSheet: scoringSnapshot,
+    });
   }
   const currentCriteria = useIsolatedCriteriaStore.getState().criteria;
   if (currentCriteria) {
@@ -84,9 +96,6 @@ export function wipeForFreshStart(): void {
   useChatStore.getState().reset();
   useFdpStore.getState().reset();
   useIsolatedCriteriaStore.getState().reset();
-  // Phase 4.3 — la fiche de scoring est liée à la campagne courante :
-  // un wipe efface aussi la sheet en cours. Pas d'archive de scoring
-  // pour MVP (à introduire en même temps que le sélecteur de scoring).
   useScoringStore.getState().reset();
 }
 
