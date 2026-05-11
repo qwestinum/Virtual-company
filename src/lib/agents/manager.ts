@@ -408,7 +408,21 @@ export async function runManagerTurn(
     !classification.needsClarification &&
     lastUserMessage.length > 0
   ) {
-    preSearchHits = await searchExistingJobDescriptions(lastUserMessage);
+    const rawHits = await searchExistingJobDescriptions(lastUserMessage);
+    // Dédup par intitulé normalisé : si la base contient 3 FDPs
+    // « Comptable » archivées sur la même période, le Manager n'a aucun
+    // intérêt à en lister 3 — il en mentionne UNE (la plus récente,
+    // donc la première de la liste retournée triée par archived_at desc).
+    // En round 1 on n'a pas d'UX L2 multi-fiches, donc la dédup
+    // simplifie aussi le wording côté prompt.
+    const seenTitles = new Set<string>();
+    preSearchHits = [];
+    for (const hit of rawHits) {
+      const key = hit.title.trim().toLowerCase();
+      if (seenTitles.has(key)) continue;
+      seenTitles.add(key);
+      preSearchHits.push(hit);
+    }
   }
 
   const conversationalSystem = buildConversationalPrompt({

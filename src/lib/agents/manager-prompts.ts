@@ -113,24 +113,78 @@ export function buildConversationalPrompt(
     !ctx.needsClarification &&
     (ctx.fdp === null || isFDPAllEmpty(ctx.fdp));
 
+  // Round 1 (Session 5) — pré-recherche L1 « balance tout le bloc » :
+  // quand une FDP archivée matche le brief, le Manager remplit les 8
+  // champs d'un coup depuis la FDP retrouvée et propose au DRH de
+  // valider la fiche telle quelle (chip intercepté côté client) ou
+  // d'ajuster (LLM enchaîne normalement sur la modif demandée).
+  const hitsSummary = ctx.preSearchHits
+    .map((h) => {
+      const seniority = pickField(h.fdp, 'seniority');
+      const location = pickField(h.fdp, 'location');
+      const tail = [seniority, location].filter(Boolean).join(', ');
+      return tail ? `${h.title} (${tail})` : h.title;
+    })
+    .join(' ; ');
+
+  const topHit = ctx.preSearchHits[0] ?? null;
+  const topHitDump = topHit ? formatArchivedFdpForReuse(topHit) : '';
+
   const preSearchBlock =
     ctx.preSearchHits.length === 0
       ? [
-          "Aucune fiche archivée trouvée. Tu opères en MODE PROPOSITION (cf. plus bas) : tu proposes les valeurs par défaut, le DRH valide ou ajuste.",
+          'Aucune fiche archivée trouvée pour ce profil. Tu opères en MODE PROPOSITION (cf. plus bas) : tu proposes les valeurs par défaut, le DRH valide ou ajuste.',
           isFirstCampaignTurn
             ? "VERBALISATION OBLIGATOIRE — c'est le PREMIER tour de cadrage de cette campagne. Ta toute première phrase DOIT rendre visible que tu as consulté la base, exemple : « Je vérifie d'abord si on a déjà une fiche archivée pour ce profil… aucune ne correspond, on va la construire ensemble. » Enchaîne ensuite sur ta première proposition de champ. À ne dire qu'UNE FOIS, pas aux tours suivants."
             : '',
         ]
           .filter((s) => s.length > 0)
           .join(' ')
-      : [
-          `MODE PRÉ-RECHERCHE actif. Fiche(s) archivée(s) comparable(s) trouvée(s) : ${ctx.preSearchHits.map((h) => h.title).join(', ')}. Présente-la comme un BLOC structuré (les 8 champs d'un coup) et propose au DRH de la valider en un seul geste OU de la passer en revue champ par champ.`,
-          isFirstCampaignTurn
-            ? "VERBALISATION OBLIGATOIRE — c'est le PREMIER tour. Ta toute première phrase DOIT signaler la pré-recherche, exemple : « Je consulte la base de fiches archivées… j'en ai retrouvé une qui correspond bien : <intitulé>. » Puis présente le récap structuré et les chips « Tout valider / Examiner champ par champ »."
-            : '',
-        ]
-          .filter((s) => s.length > 0)
-          .join(' ');
+      : isFirstCampaignTurn && topHit
+        ? [
+            `PRÉ-RECHERCHE — fiche archivée comparable retrouvée : ${hitsSummary}.`,
+            '── MODE RÉUTILISATION L1 (PRIORITÉ ABSOLUE — court-circuite MODE PROPOSITION pour CE tour) ──',
+            "Tu vas RÉUTILISER la fiche archivée telle quelle pour ce tour. Le DRH décide ensuite : valider tel quel, ou ajuster certains champs. Tu N'ENCHAÎNES PAS la collecte champ par champ ; tu balances le bloc complet d'un coup.",
+            '',
+            'CONTENU EXACT de la fiche archivée à réutiliser :',
+            topHitDump,
+            '',
+            'RÈGLE 1 — Extraction. Tu copies INTÉGRALEMENT les 8 champs ci-dessus dans `fieldExtractions`. Sans exception. Sans reformulation. Les listes (main_missions, key_skills) restent des tableaux de strings. Ne pas réécrire « 3 ans » en « 36 mois », garde les valeurs telles quelles.',
+            '',
+            'RÈGLE 2 — Message. Tu PRÉSENTES la fiche au DRH au format MARKDOWN STRUCTURÉ (le rendu front transforme les bullets en vraies puces, avec sous-listes indentées). Format EXACT à respecter, ligne par ligne :',
+            '',
+            '```',
+            "J'ai retrouvé une fiche archivée pour ce profil — je la reprends telle quelle pour gagner du temps.",
+            '',
+            '- Intitulé : <job_title>',
+            '- Séniorité : <seniority>',
+            '- Contrat : <contract_type>',
+            '- Localisation : <location>',
+            '- Fourchette salariale : <salary_range>',
+            '- Prise de poste : <start_date>',
+            '- Missions principales :',
+            '  - <mission 1>',
+            '  - <mission 2>',
+            '  - <mission 3>',
+            '- Compétences clés :',
+            '  - <skill 1>',
+            '  - <skill 2>',
+            '  - <skill 3>',
+            '',
+            'Tu valides telle quelle, ou tu veux ajuster un point ?',
+            '```',
+            '',
+            "Règles de format strictes : (a) bullets avec `- ` (tiret + espace, pas `*`) ; (b) sous-bullets indentés de DEUX espaces exactement (« `  - item` »), pas de tab ; (c) une ligne vide entre l'intro, la liste et la question finale, pour que le rendu sépare les blocs ; (d) ne mets pas de `**gras**` ni de `__souligné__` — le parseur ne les rend pas, ils apparaîtraient en texte brut ; (e) garde les noms de champs en clair (« Intitulé », « Séniorité »…) pas les clés techniques (job_title, seniority).",
+            '',
+            "Compat audio-first : ce format se lit aussi naturellement à voix haute — le TTS énonce chaque ligne séparément, ce qui donne une dictée propre du contenu de la fiche. Pas de JSON, pas de bullets imbriqués au-delà du niveau 2.",
+            '',
+            'RÈGLE 3 — Chips OBLIGATOIRES. Placement `below_bubble`, EXACTEMENT ces deux libellés dans cet ordre : « Valider telle quelle », « Ajuster ». Pas d\'autres chips, pas de variation orthographique — ces libellés sont interceptés côté client.',
+            '',
+            "INTERDICTIONS — Ne pose AUCUNE question de collecte (« Pour le type de contrat ? »). Ne propose AUCUNE valeur par défaut « marché ». Tu n'es plus en MODE PROPOSITION pour ce tour — tu es en RESTITUTION d'une fiche existante.",
+          ]
+            .filter((s) => s.length > 0)
+            .join('\n')
+        : `PRÉ-RECHERCHE — fiche(s) archivée(s) comparable(s) déjà mentionnée(s) au DRH (${hitsSummary}). Continue en MODE PROPOSITION normal — tu n'as plus à reverbaliser la pré-recherche.`;
 
   const clarificationBlock = ctx.needsClarification
     ? [
@@ -315,6 +369,50 @@ function isFDPAllEmpty(fdp: FDPInProgress): boolean {
     if (fdp.fields[k]?.status === 'filled') return false;
   }
   return true;
+}
+
+/**
+ * Extrait la valeur d'un champ texte d'une FDP archivée pour
+ * enrichir le wording de la verbalisation pré-recherche. Retourne
+ * une string non vide ou null.
+ */
+function pickField(fdp: FDPInProgress, key: string): string | null {
+  const field = fdp.fields[key as keyof typeof fdp.fields];
+  const v = field?.value;
+  if (typeof v !== 'string') return null;
+  const trimmed = v.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Sérialise les 8 champs d'une FDP archivée en bloc texte lisible
+ * par le LLM en contexte (un champ par ligne, valeur entre guillemets
+ * ou liste JSON). Le LLM doit le recopier intégralement dans
+ * `fieldExtractions` au format demandé (string ou string[]).
+ *
+ * On dump explicitement les listes au format JSON pour qu'il n'y ait
+ * pas d'ambiguïté sur main_missions / key_skills (le format de sortie
+ * exige des tableaux, pas une string CSV).
+ */
+function formatArchivedFdpForReuse(hit: { fdp: FDPInProgress }): string {
+  const lines: string[] = [];
+  for (const key of FIELD_KEYS) {
+    const field = hit.fdp.fields[key];
+    if (!field || field.value === undefined || field.value === null) continue;
+    const value = field.value;
+    let rendered: string;
+    if (Array.isArray(value)) {
+      rendered = JSON.stringify(value);
+    } else if (typeof value === 'string') {
+      rendered = JSON.stringify(value);
+    } else {
+      rendered = JSON.stringify(value);
+    }
+    lines.push(`  - ${key}: ${rendered}`);
+  }
+  return lines.length > 0
+    ? lines.join('\n')
+    : '  (fiche archivée trouvée mais aucun champ exploitable — ignore-la et passe en MODE PROPOSITION)';
 }
 
 function formatFDPState(fdp: FDPInProgress): string {

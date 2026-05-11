@@ -107,6 +107,15 @@ const REOPEN_CHIP_LABEL = 'Rouvrir la campagne'; // status === 'closed'
 const RESUME_PAUSED_CHIP_LABEL = 'Reprendre la campagne'; // status === 'paused'
 
 /**
+ * Session 5 — chip de validation rapide quand le Manager vient de
+ * dumper une FDP archivée (MODE RÉUTILISATION L1, cf. prompt
+ * manager-prompts.ts). Le libellé est imposé par le prompt et est
+ * intercepté côté client pour appeler `handleValidateFDP` sans
+ * round-trip LLM.
+ */
+const REUSE_FDP_VALIDATE_LABEL = 'Valider telle quelle';
+
+/**
  * Phase 7.2 — verbe contextuel sur les chips de reprise. Chaque
  * artefact peut être à l'un des trois états :
  *   - 'untouched' : rien n'a été produit ⇒ "Initier ..."
@@ -1030,6 +1039,25 @@ export function ManagerChat() {
       pendingSwitchRef.current = null;
       void handleSwitchDialogChoice(pendingSwitch, option);
       return;
+    }
+    // Session 5 — chip « Valider telle quelle » : le Manager vient de
+    // rendre la fiche archivée et a extrait les 8 champs d'un coup
+    // (MODE RÉUTILISATION L1). Le DRH valide en un geste — on appelle
+    // directement handleValidateFDP() sans passer par le LLM, et on
+    // pose une bulle user pour préserver la cohérence du fil.
+    if (option === REUSE_FDP_VALIDATE_LABEL) {
+      const current = useFdpStore.getState().fdp;
+      if (current && current.isComplete && !current.isValidated) {
+        appendMessage({
+          role: 'user',
+          source: 'text',
+          content: option,
+        });
+        void handleValidateFDP();
+        return;
+      }
+      // FDP incomplète ou déjà validée : on laisse passer en LLM
+      // normal (le Manager s'expliquera).
     }
     // Interception des chips de la nouvelle campagne après nom donné.
     if (option === "Juste l'analyse CV pour l'instant") {
