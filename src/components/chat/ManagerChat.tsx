@@ -46,7 +46,6 @@ import { IsolatedCriteriaChecklist } from '@/components/chat/IsolatedCriteriaChe
 import { ValidateFDPButton } from '@/components/chat/ValidateFDPButton';
 import { ValidateIsolatedCriteriaButton } from '@/components/chat/ValidateIsolatedCriteriaButton';
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
-import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import {
   postIsolatedManagerChat,
   postManagerChat,
@@ -80,11 +79,9 @@ import {
 } from '@/stores/chat-store';
 import { useFdpStore } from '@/stores/fdp-store';
 import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
+import { type CVAnalysisCriteria } from '@/types/cv-analysis';
 import {
-  type CVAnalysisCriteria,
-  DEFAULT_CV_THRESHOLD,
-} from '@/types/cv-analysis';
-import {
+  buildEmptyFDP,
   FIELD_KEYS,
   type FDPInProgress,
 } from '@/types/field-collection';
@@ -95,6 +92,17 @@ import {
 } from '@/types/isolated-criteria';
 
 const MANAGER_ID = 'agent.manager-rh';
+
+/**
+ * Phase 6.2 — libellés canoniques des chips d'options de reprise.
+ * Exposés en haut du fichier pour les partager entre la composition
+ * (handleSelectCampaign) et l'interception (handleChipSelect).
+ * Audio-friendly (R2) : courts, distincts à l'écoute.
+ */
+const RESUME_CHIP_FDP = 'Modifier la FDP';
+const RESUME_CHIP_SCORING = 'Modifier la fiche de scoring';
+const RESUME_CHIP_CHANNELS = 'Modifier les annonces';
+const RESUME_CHIP_SOURCES = 'Modifier les flux';
 
 function countMissing(fdp: FDPInProgress): number {
   return FIELD_KEYS.filter((k) => fdp.fields[k]?.status !== 'filled').length;
@@ -229,6 +237,55 @@ function findLastUserContent(
     if (m.role === 'user' && m.content.trim().length > 0) return m.content;
   }
   return null;
+}
+
+/**
+ * Phase 6.1 — Convertit les 4 critères isolated en FDPInProgress
+ * synthétique, payload accepté par /api/manager/scoring (qui
+ * attend FDPInProgressSchema). Les champs non-mappables restent
+ * 'empty' ; le prompt scoring tolère les FDP partielles.
+ */
+function buildFDPFromIsolatedCriteria(
+  criteria: IsolatedCriteriaInProgress,
+): FDPInProgress {
+  const fdp = buildEmptyFDP(criteria.taskId);
+  const jobTitle = criteria.fields.job_title?.value;
+  if (typeof jobTitle === 'string' && jobTitle.trim().length > 0) {
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      status: 'filled',
+      value: jobTitle.trim(),
+    };
+  }
+  const seniority = criteria.fields.seniority?.value;
+  if (typeof seniority === 'string' && seniority.trim().length > 0) {
+    fdp.fields.seniority = {
+      ...fdp.fields.seniority!,
+      status: 'filled',
+      value: seniority.trim(),
+    };
+  }
+  const keySkills = criteria.fields.key_skills?.value;
+  if (Array.isArray(keySkills) && keySkills.length > 0) {
+    fdp.fields.key_skills = {
+      ...fdp.fields.key_skills!,
+      status: 'filled',
+      value: keySkills.filter(
+        (s): s is string => typeof s === 'string' && s.trim().length > 0,
+      ),
+    };
+  }
+  // experience_years n'a pas de champ FDP direct — on l'évoque dans
+  // les missions pour que le prompt scoring puisse en faire un critère.
+  const exp = criteria.fields.experience_years?.value;
+  if (typeof exp === 'number' && Number.isFinite(exp) && exp > 0) {
+    fdp.fields.main_missions = {
+      ...fdp.fields.main_missions!,
+      status: 'filled',
+      value: [`Expérience minimale attendue : ${exp} ans`],
+    };
+  }
+  return fdp;
 }
 
 function buildIsolatedCriteriaPayload(
@@ -390,17 +447,62 @@ export function ManagerChat() {
     });
   }
 
+  /**
+   * Phase 6.1 — Après validation des 4 critères isolated, on NE
+   * dispatch PLUS direct le batch CV. À la place :
+   *   1. on construit une FDP synthétique depuis les criteria,
+   *   2. on demande au serveur une proposition de fiche de scoring,
+   *   3. on pose le scoring-sheet-editor pour que le DRH ajuste,
+   *   4. la validation de la fiche déclenche le batch (cf.
+   *      handleScoringValidate).
+   * Fallback : si la proposition serveur échoue, on lance le batch
+   * direct sans scoringSheet (mode legacy) pour ne pas bloquer le DRH.
+   */
   async function handleValidateIsolated() {
     const current = useIsolatedCriteriaStore.getState().criteria;
     if (!current || !current.isComplete || current.isValidated) return;
     validateIsolated();
     const pending = findPendingByResolvedId(current.taskId);
     if (!pending) return;
-    const pendingId = pending.pendingId;
-    const criteria = buildIsolatedCriteriaPayload(current);
+
+    const fdpLike = buildFDPFromIsolatedCriteria(current);
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Critères validés pour ${current.taskId}. Je prépare la fiche de scoring pondérée — elle servira à scorer chaque CV reçu.`,
+    });
     setAgentBusy(true);
     try {
-      await dispatchIsolatedCVBatch({ pendingId, criteria });
+      const result = await postManagerScoring({ fdp: fdpLike });
+      proposeScoringSheet(current.taskId, result.criteria);
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Voici ma proposition (${result.criteria.length} critères). Ajuste si besoin puis valide pour lancer l'analyse.`,
+        block: {
+          kind: 'scoring-sheet-editor',
+          campaignId: current.taskId,
+          confirmed: false,
+        },
+      });
+    } catch (err) {
+      // Fallback : on ne bloque pas le DRH, on lance l'analyse sans
+      // scoring pondéré (comportement legacy < Phase 6.1).
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Je n'ai pas pu préparer la fiche de scoring (${
+          err instanceof Error ? err.message : 'erreur inconnue'
+        }). Je lance quand même l'analyse avec les critères validés.`,
+      });
+      try {
+        await dispatchIsolatedCVBatch({
+          pendingId: pending.pendingId,
+          criteria: buildIsolatedCriteriaPayload(current),
+        });
+      } catch {
+        // Erreur déjà loggée côté dispatchIsolatedCVBatch (bulle Manager).
+      }
     } finally {
       setAgentBusy(false);
     }
@@ -408,34 +510,11 @@ export function ManagerChat() {
 
   async function handleFilesSelected(files: File[]) {
     if (files.length === 0 || isAgentBusy) return;
-    const current = useFdpStore.getState().fdp;
-    const manualActive = isManualSourceActive();
-
-    // Cas 1 — campagne validée + flux manual actif dans le dernier
-    // cv-sources-picker : on analyse direct avec les critères de la
-    // campagne courante (pas de routing question, c'est implicite).
-    if (current?.isValidated && manualActive) {
-      const userBubble =
-        files.length === 1
-          ? `J'ai joint un CV : ${files[0].name}.`
-          : `J'ai joint ${files.length} CV : ${files.map((f) => f.name).join(', ')}.`;
-      appendMessage({ role: 'user', source: 'text', content: userBubble });
-      setAgentBusy(true);
-      try {
-        await dispatchCVBatch({
-          files,
-          criteria: fdpToCVCriteria(current),
-          threshold: DEFAULT_CV_THRESHOLD,
-          campaignId: current.campaignId,
-        });
-      } finally {
-        setAgentBusy(false);
-      }
-      return;
-    }
-
-    // Cas 2 — tous les autres cas : on demande explicitement à quoi
-    // rattacher ces CV via le route-picker (nouvelle / existante / isolée).
+    // Phase 6.3 — on ne court-circuite PLUS le route-picker, même
+    // quand la campagne courante est validée et que le flux manual
+    // est actif. Le DRH doit toujours pouvoir trancher entre tâche
+    // isolée et rattachement à une campagne existante (peut être
+    // une autre campagne que la courante).
     dispatchCVRouting(files);
   }
 
@@ -463,23 +542,6 @@ export function ManagerChat() {
     }
   }
 
-  /**
-   * Vrai si le dernier cv-sources-picker du chat a la source `manual`
-   * activée. Sert à handleFilesSelected pour décider si on analyse
-   * direct (manuel actif sous campagne validée) ou si on route via
-   * le cv-route-picker. En l'absence de cv-sources-picker (campagne
-   * juste validée par ex.), on retombe sur false.
-   */
-  function isManualSourceActive(): boolean {
-    const list = useChatStore.getState().messages;
-    for (let i = list.length - 1; i >= 0; i--) {
-      const m = list[i];
-      if (m.block?.kind === 'cv-sources-picker') {
-        return m.block.activeSources.manual === true;
-      }
-    }
-    return false;
-  }
 
   async function sendToManager(history: ChatMessage[]) {
     setSending(true);
@@ -659,6 +721,23 @@ export function ManagerChat() {
     if (pendingSwitch && (option === SWITCH_CHIP_NEW || option === SWITCH_CHIP_KEEP)) {
       pendingSwitchRef.current = null;
       void handleSwitchDialogChoice(pendingSwitch, option);
+      return;
+    }
+    // Phase 6.2 — interception des chips d'options de reprise.
+    if (option === RESUME_CHIP_FDP) {
+      void handleResumeAction('fdp');
+      return;
+    }
+    if (option === RESUME_CHIP_SCORING) {
+      void handleResumeAction('scoring');
+      return;
+    }
+    if (option === RESUME_CHIP_CHANNELS) {
+      void handleResumeAction('channels');
+      return;
+    }
+    if (option === RESUME_CHIP_SOURCES) {
+      void handleResumeAction('sources');
       return;
     }
     // Interception des chips de la nouvelle campagne après nom donné.
@@ -976,7 +1055,7 @@ export function ManagerChat() {
    * récap. Le CV Analyzer pondéré (Phase 4.4) consommera la sheet
    * validée sur tous les uploads ultérieurs de la campagne.
    */
-  function handleScoringValidate(messageId: string) {
+  async function handleScoringValidate(messageId: string) {
     if (isSending || isTranscribing || isAgentBusy) return;
     if (!scoringSheet || scoringSheet.isValidated) return;
     const target = useChatStore
@@ -989,20 +1068,53 @@ export function ManagerChat() {
     ) {
       return;
     }
+    const campaignId = target.block.campaignId;
+    const criteriaCount = scoringSheet.criteria.length;
     validateScoringSheet();
     updateMessage(messageId, {
       block: { ...target.block, confirmed: true },
     });
-    // Phase 5.1 — la fiche de scoring validée fait passer la campagne
-    // à `active`. Le campaignId du scoring matche celui de la FDP
-    // courante (cf. handleSourcesConfirm qui le propage).
-    useCampaignsStore
-      .getState()
-      .updateStatus(target.block.campaignId, 'active');
+
+    // Phase 6.1 — si on est en mode isolated (criteria active avec
+    // taskId === campaignId), la validation de la fiche de scoring
+    // déclenche l'analyse des CV en attente (les files sont stockés
+    // dans le pending routing résolu par taskId).
+    const isolatedNow = useIsolatedCriteriaStore.getState().criteria;
+    const isIsolatedFlow =
+      isolatedNow !== null &&
+      isolatedNow.taskId === campaignId &&
+      isolatedNow.isValidated;
+
+    if (isIsolatedFlow) {
+      const pending = findPendingByResolvedId(campaignId);
+      if (pending) {
+        // Status 'active' AVANT le dispatch (le batch reset criteria).
+        useTasksStore.getState().updateStatus(campaignId, 'active');
+        appendMessage({
+          role: 'manager',
+          source: 'text',
+          content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}. Je lance maintenant l'analyse des CV avec cette grille pondérée.`,
+        });
+        setAgentBusy(true);
+        try {
+          await dispatchIsolatedCVBatch({
+            pendingId: pending.pendingId,
+            criteria: buildIsolatedCriteriaPayload(isolatedNow),
+          });
+        } finally {
+          setAgentBusy(false);
+        }
+        return;
+      }
+    }
+
+    // Mode campagne FDP : on bascule la campagne à 'active' et on
+    // attend que le DRH upload des CV manuellement.
+    useCampaignsStore.getState().updateStatus(campaignId, 'active');
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `Fiche de scoring validée pour ${target.block.campaignId} — ${scoringSheet.criteria.length} critère${scoringSheet.criteria.length > 1 ? 's' : ''}. Campagne active, les prochains CV seront scorés sur cette base.`,
+      content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}. Campagne active, les prochains CV seront scorés sur cette base.`,
     });
   }
 
@@ -1036,21 +1148,37 @@ export function ManagerChat() {
     }
     const noun = entry.kind === 'fdp' ? 'campagne' : 'sollicitation';
     // Phase 5.1 — message contextuel selon l'état d'avancement.
-    // Chaque branche indique au DRH ce qu'il peut reprendre.
     const reopen: Record<CampaignStatus, string> = {
       draft:
         "Tu peux reprendre la collecte des champs manquants ou ajuster ceux déjà remplis.",
       in_progress:
-        "La fiche de poste est validée. Tu peux générer ou modifier les annonces, configurer les flux, ou finaliser la fiche de scoring.",
+        "La fiche de poste est validée. Tu peux modifier les annonces, configurer les flux, ou finaliser la fiche de scoring.",
       active:
-        "Tout est aligné — tu peux déposer des CV ou ajuster la fiche de scoring si besoin.",
+        "Tout est aligné. Tu peux déposer des CV ou ajuster un élément ci-dessous.",
       closed:
         "Cette campagne est marquée comme terminée. Tu peux la rouvrir pour la réactiver.",
     };
+    // Phase 6.2 — chips d'options actionnables. On les propose
+    // uniquement pour les campagnes FDP (kind='fdp') et pas pour les
+    // tâches isolées (4 critères, pas de FDP/scoring/annonces à
+    // modifier indépendamment), et pas en closed (rouvrir d'abord).
+    const offersResumeActions =
+      entry.kind === 'fdp' && entry.status !== 'closed';
     appendMessage({
       role: 'manager',
       source: 'text',
       content: `On reprend sur la ${noun} ${entry.id} — ${entry.title} (${CAMPAIGN_STATUS_LABELS[entry.status].toLowerCase()}). ${reopen[entry.status]}`,
+      chips: offersResumeActions
+        ? {
+            placement: 'below_bubble',
+            options: [
+              RESUME_CHIP_FDP,
+              RESUME_CHIP_SCORING,
+              RESUME_CHIP_CHANNELS,
+              RESUME_CHIP_SOURCES,
+            ],
+          }
+        : undefined,
     });
   }
 
@@ -1062,6 +1190,147 @@ export function ManagerChat() {
   function handleNewCampaign() {
     if (isSending || isTranscribing || isAgentBusy) return;
     wipeForFreshStart();
+  }
+
+  /**
+   * Phase 6.2 — actions de reprise après bascule sur une campagne
+   * archivée. Selon l'action :
+   *   - 'fdp'      : dévalide la FDP courante pour que la checklist
+   *                  redevienne éditable. Le DRH ajuste puis revalide.
+   *   - 'scoring'  : dévalide la fiche de scoring et repose son
+   *                  éditeur dans le chat.
+   *   - 'channels' : repose le picker des réseaux de publication.
+   *   - 'sources'  : repose le picker des flux de réception CV avec
+   *                  une config par défaut (manual seul actif).
+   */
+  async function handleResumeAction(
+    action: 'fdp' | 'scoring' | 'channels' | 'sources',
+  ) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    const currentFdp = useFdpStore.getState().fdp;
+    if (!currentFdp) return;
+    const campaignId = currentFdp.campaignId;
+
+    if (action === 'fdp') {
+      useFdpStore.getState().invalidateFDP();
+      // Le statut redescend en draft tant que la FDP n'est pas
+      // revalidée ; les jalons en aval (scoring, status active)
+      // restent inchangés — c'est au DRH de retravailler s'il veut.
+      useCampaignsStore.getState().updateStatus(campaignId, 'draft');
+      appendMessage({
+        role: 'user',
+        source: 'text',
+        content: RESUME_CHIP_FDP,
+      });
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Très bien, j'ai rouvert la fiche de poste de ${campaignId}. Ajuste les champs dans la checklist en haut, puis re-valide quand tu es prêt.`,
+      });
+      return;
+    }
+
+    if (action === 'scoring') {
+      const sheet = useScoringStore.getState().sheet;
+      // Si la fiche n'existe pas pour cette campagne, on en demande
+      // une nouvelle au serveur (parcours symétrique à handleSourcesConfirm).
+      if (!sheet || sheet.campaignId !== campaignId) {
+        appendMessage({
+          role: 'user',
+          source: 'text',
+          content: RESUME_CHIP_SCORING,
+        });
+        appendMessage({
+          role: 'manager',
+          source: 'text',
+          content: `Je prépare une nouvelle fiche de scoring pour ${campaignId}.`,
+        });
+        setAgentBusy(true);
+        try {
+          const result = await postManagerScoring({ fdp: currentFdp });
+          proposeScoringSheet(campaignId, result.criteria);
+          appendMessage({
+            role: 'manager',
+            source: 'text',
+            content: `Voici une proposition (${result.criteria.length} critères). Ajuste si besoin puis valide.`,
+            block: {
+              kind: 'scoring-sheet-editor',
+              campaignId,
+              confirmed: false,
+            },
+          });
+        } catch (err) {
+          appendMessage({
+            role: 'manager',
+            source: 'text',
+            content: `Je n'ai pas pu préparer la fiche (${
+              err instanceof Error ? err.message : 'erreur inconnue'
+            }). Tu peux me redemander.`,
+          });
+        } finally {
+          setAgentBusy(false);
+        }
+        return;
+      }
+      // Sinon on dévalide la fiche existante et on repose l'éditeur.
+      useScoringStore.getState().invalidate();
+      useCampaignsStore.getState().updateStatus(campaignId, 'in_progress');
+      appendMessage({
+        role: 'user',
+        source: 'text',
+        content: RESUME_CHIP_SCORING,
+      });
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `J'ai rouvert la fiche de scoring de ${campaignId} (${sheet.criteria.length} critères). Ajuste puis valide.`,
+        block: {
+          kind: 'scoring-sheet-editor',
+          campaignId,
+          confirmed: false,
+        },
+      });
+      return;
+    }
+
+    if (action === 'channels') {
+      pendingChannelPickRef.current = { fdp: currentFdp };
+      appendMessage({
+        role: 'user',
+        source: 'text',
+        content: RESUME_CHIP_CHANNELS,
+      });
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Sur quels réseaux veux-tu (re-)publier l'annonce pour ${campaignId} ?`,
+        block: {
+          kind: 'publication-channel-picker',
+          campaignId,
+          selectedChannels: [],
+          confirmed: false,
+        },
+      });
+      return;
+    }
+
+    // 'sources'
+    appendMessage({
+      role: 'user',
+      source: 'text',
+      content: RESUME_CHIP_SOURCES,
+    });
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Reconfigure les flux de réception de CV pour ${campaignId}.`,
+      block: {
+        kind: 'cv-sources-picker',
+        campaignId,
+        activeSources: buildDefaultSourcesConfig([]),
+        confirmed: false,
+      },
+    });
   }
 
   /**

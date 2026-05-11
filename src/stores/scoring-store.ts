@@ -53,6 +53,11 @@ export type ScoringState = {
   ) => void;
   removeCriterion: (id: string) => void;
   validate: () => void;
+  /**
+   * Phase 6.2 — dévalide la fiche courante sans perdre les critères.
+   * Le DRH peut ainsi rouvrir l'édition à la reprise d'une campagne.
+   */
+  invalidate: () => void;
   reset: () => void;
 };
 
@@ -146,6 +151,15 @@ export const useScoringStore = create<ScoringState>()((set) => ({
       return {
         ...state,
         sheet: { ...state.sheet, isValidated: true },
+      };
+    }),
+
+  invalidate: () =>
+    set((state) => {
+      if (!state.sheet || !state.sheet.isValidated) return state;
+      return {
+        ...state,
+        sheet: { ...state.sheet, isValidated: false },
       };
     }),
 

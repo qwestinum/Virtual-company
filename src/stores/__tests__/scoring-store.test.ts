@@ -84,4 +84,24 @@ describe('scoring-store', () => {
     useScoringStore.getState().reset();
     expect(useScoringStore.getState().sheet).toBeNull();
   });
+
+  it('invalidate flips isValidated back to false without losing criteria', () => {
+    useScoringStore.getState().proposeSheet('CAMP-2026-008', [
+      buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+    ]);
+    useScoringStore.getState().validate();
+    expect(useScoringStore.getState().sheet?.isValidated).toBe(true);
+    useScoringStore.getState().invalidate();
+    const sheet = useScoringStore.getState().sheet;
+    expect(sheet?.isValidated).toBe(false);
+    expect(sheet?.criteria).toHaveLength(1);
+  });
+
+  it('invalidate is a no-op when the sheet is already a draft', () => {
+    useScoringStore.getState().proposeSheet('CAMP-2026-009', [
+      buildCriterion({ id: 'c1', label: 'A', level: 'critique' }),
+    ]);
+    useScoringStore.getState().invalidate();
+    expect(useScoringStore.getState().sheet?.isValidated).toBe(false);
+  });
 });

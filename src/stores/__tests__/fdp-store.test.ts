@@ -112,6 +112,49 @@ describe('fdp-store (Session 3)', () => {
     expect(useFdpStore.getState().fdp).toBeNull();
   });
 
+  it('invalidateFDP flips isValidated back to false without losing values', () => {
+    const { createFDP, applyExtractions, validateFDP, invalidateFDP } =
+      useFdpStore.getState();
+    createFDP('CAMP-2026-INV');
+    applyExtractions({
+      job_title: 'Comptable',
+      seniority: 'senior',
+      contract_type: 'CDI',
+      location: 'Paris',
+      salary_range: '50K',
+      start_date: '2026',
+      main_missions: ['m'],
+      key_skills: ['s'],
+    });
+    validateFDP();
+    expect(useFdpStore.getState().fdp?.isValidated).toBe(true);
+    invalidateFDP();
+    const fdp = useFdpStore.getState().fdp;
+    expect(fdp?.isValidated).toBe(false);
+    // Les valeurs restent intactes.
+    expect(fdp?.fields.job_title?.value).toBe('Comptable');
+  });
+
+  it('invalidateFDP is a no-op when the FDP is not validated', () => {
+    const { createFDP, invalidateFDP } = useFdpStore.getState();
+    createFDP('CAMP-2026-INV2');
+    invalidateFDP();
+    expect(useFdpStore.getState().fdp?.isValidated).toBe(false);
+  });
+
+  it('restoreFDP loads a snapshot as-is', () => {
+    const { createFDP, restoreFDP } = useFdpStore.getState();
+    const snapshot = createFDP('CAMP-2026-RES');
+    snapshot.isComplete = true;
+    snapshot.isValidated = true;
+    // Reset before restore to ensure independence from the current state.
+    useFdpStore.getState().reset();
+    expect(useFdpStore.getState().fdp).toBeNull();
+    restoreFDP(snapshot);
+    expect(useFdpStore.getState().fdp?.campaignId).toBe('CAMP-2026-RES');
+    expect(useFdpStore.getState().fdp?.isValidated).toBe(true);
+  });
+
   it('does not import chat-store (boundary)', () => {
     // Sanity check : si le store référençait le chat, ce test détecterait
     // l'erreur via une dépendance circulaire au chargement. Mais il sert

@@ -44,6 +44,12 @@ export type FdpState = {
   ) => void;
   markFieldInProgress: (key: FieldKey) => void;
   validateFDP: () => void;
+  /**
+   * Phase 6.2 — dévalide la FDP courante sans toucher aux valeurs.
+   * Utilisé à la reprise d'une campagne quand le DRH veut modifier
+   * la fiche : on rouvre l'édition sur la checklist.
+   */
+  invalidateFDP: () => void;
   reset: () => void;
 };
 
@@ -103,6 +109,12 @@ export const useFdpStore = create<FdpState>()((set) => ({
     set((state) => {
       if (!state.fdp || !state.fdp.isComplete) return state;
       return { ...state, fdp: { ...state.fdp, isValidated: true } };
+    }),
+
+  invalidateFDP: () =>
+    set((state) => {
+      if (!state.fdp || !state.fdp.isValidated) return state;
+      return { ...state, fdp: { ...state.fdp, isValidated: false } };
     }),
 
   reset: () => set({ fdp: null }),
