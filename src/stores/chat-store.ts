@@ -15,6 +15,7 @@
 import { create } from 'zustand';
 
 import type { CVBatchSummary } from '@/types/cv-analysis';
+import type { CVSource } from '@/types/cv-source';
 import type { ChipSet } from '@/types/manager-response';
 import type { PublicationChannel } from '@/types/publication-channel';
 
@@ -78,6 +79,20 @@ export type ChatBlock =
       campaignId: string;
       selectedChannels: PublicationChannel[];
       confirmed: boolean;
+    }
+  | {
+      /**
+       * Picker multi-toggle des flux de réception de CV (Phase 3.2).
+       * Posé après le dispatch des annonces. Les sources des channels
+       * choisis sont activées par défaut ; `manual` est toujours
+       * activé. Persiste dans le chat — handleFilesSelected consulte
+       * le dernier block de ce kind pour savoir si Manuel est actif.
+       * Le futur agent Publisher lira aussi cette config pour
+       * brancher les flux automatiques (API / MCP).
+       */
+      kind: 'cv-sources-picker';
+      campaignId: string;
+      activeSources: Record<CVSource, boolean>;
     };
 
 export type ChatMessage = {

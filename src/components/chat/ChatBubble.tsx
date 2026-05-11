@@ -9,9 +9,10 @@ import { ChatChips } from '@/components/chat/ChatChips';
 import { CVBatchSummaryBlock } from '@/components/chat/CVBatchSummaryBlock';
 import { CVProgressBlock } from '@/components/chat/CVProgressBlock';
 import { CVRoutePicker } from '@/components/chat/CVRoutePicker';
+import { CVSourcesPicker } from '@/components/chat/CVSourcesPicker';
 import { parseMessageToBlocks } from '@/components/chat/chat-message-renderer';
 import { PublicationChannelPicker } from '@/components/chat/PublicationChannelPicker';
-import { SourcePicker } from '@/components/chat/SourcePicker';
+import type { CVSource } from '@/types/cv-source';
 import type { PublicationChannel } from '@/types/publication-channel';
 import {
   DRH_COLOR,
@@ -35,7 +36,6 @@ export type ChatBubbleProps = {
   showInlineChips?: boolean;
   onChipSelect?: (option: string) => void;
   chipsDisabled?: boolean;
-  onSourcePick?: (source: 'manuel') => void;
   onRoutePick?: (
     pendingId: string,
     route: 'new' | 'existing' | 'isolated',
@@ -43,6 +43,7 @@ export type ChatBubbleProps = {
   onCampaignPick?: (pendingId: string, campaignId: string) => void;
   onChannelToggle?: (messageId: string, channel: PublicationChannel) => void;
   onChannelsConfirm?: (messageId: string) => void;
+  onSourceToggle?: (messageId: string, source: CVSource) => void;
   blocksDisabled?: boolean;
 };
 
@@ -51,11 +52,11 @@ export function ChatBubble({
   showInlineChips = true,
   onChipSelect,
   chipsDisabled,
-  onSourcePick,
   onRoutePick,
   onCampaignPick,
   onChannelToggle,
   onChannelsConfirm,
+  onSourceToggle,
   blocksDisabled,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
@@ -111,11 +112,12 @@ export function ChatBubble({
             </span>
           ) : null}
           <RenderedContent content={message.content} />
-          {message.block?.kind === 'source-picker' && onSourcePick ? (
-            <SourcePicker
-              selected={message.block.selected}
+          {message.block?.kind === 'cv-sources-picker' && onSourceToggle ? (
+            <CVSourcesPicker
+              campaignId={message.block.campaignId}
+              activeSources={message.block.activeSources}
               disabled={blocksDisabled}
-              onPick={onSourcePick}
+              onToggle={(source) => onSourceToggle(message.id, source)}
             />
           ) : null}
           {message.block?.kind === 'cv-route-picker' && onRoutePick ? (

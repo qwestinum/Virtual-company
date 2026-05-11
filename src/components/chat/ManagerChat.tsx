@@ -20,6 +20,10 @@ import {
   PUBLICATION_CHANNEL_LABELS,
   type PublicationChannel,
 } from '@/types/publication-channel';
+import {
+  buildDefaultSourcesConfig,
+  type CVSource,
+} from '@/types/cv-source';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { ChatChips } from '@/components/chat/ChatChips';
 import { ChatInput } from '@/components/chat/ChatInput';
@@ -368,38 +372,15 @@ export function ManagerChat() {
     }
   }
 
-  function handleSourcePick(source: 'manuel') {
-    if (source !== 'manuel') return;
-    const last = [...useChatStore.getState().messages]
-      .reverse()
-      .find((m) => m.block?.kind === 'source-picker');
-    if (last && last.block?.kind === 'source-picker') {
-      updateMessage(last.id, {
-        block: { kind: 'source-picker', selected: 'manuel' },
-      });
-    }
-    appendMessage({
-      role: 'user',
-      source: 'text',
-      content: 'Source : manuel.',
-    });
-    appendMessage({
-      role: 'manager',
-      source: 'text',
-      content:
-        "Parfait. Utilisez le trombone ci-dessous pour me téléverser un ou plusieurs CV — j'enchaîne dès qu'ils arrivent.",
-    });
-  }
-
   async function handleFilesSelected(files: File[]) {
     if (files.length === 0 || isAgentBusy) return;
     const current = useFdpStore.getState().fdp;
-    const sourceSelected = lastSourcePickerSelected();
+    const manualActive = isManualSourceActive();
 
-    // Cas 1 — campagne validée + source "Manuel" déjà choisie : on
-    // analyse direct avec les critères de la campagne courante (pas
-    // de routing question, c'est implicite).
-    if (current?.isValidated && sourceSelected === 'manuel') {
+    // Cas 1 — campagne validée + flux manual actif dans le dernier
+    // cv-sources-picker : on analyse direct avec les critères de la
+    // campagne courante (pas de routing question, c'est implicite).
+    if (current?.isValidated && manualActive) {
       const userBubble =
         files.length === 1
           ? `J'ai joint un CV : ${files[0].name}.`
@@ -448,15 +429,22 @@ export function ManagerChat() {
     }
   }
 
-  function lastSourcePickerSelected(): 'manuel' | null {
+  /**
+   * Vrai si le dernier cv-sources-picker du chat a la source `manual`
+   * activée. Sert à handleFilesSelected pour décider si on analyse
+   * direct (manuel actif sous campagne validée) ou si on route via
+   * le cv-route-picker. En l'absence de cv-sources-picker (campagne
+   * juste validée par ex.), on retombe sur false.
+   */
+  function isManualSourceActive(): boolean {
     const list = useChatStore.getState().messages;
     for (let i = list.length - 1; i >= 0; i--) {
       const m = list[i];
-      if (m.block?.kind === 'source-picker') {
-        return m.block.selected;
+      if (m.block?.kind === 'cv-sources-picker') {
+        return m.block.activeSources.manual === true;
       }
     }
-    return null;
+    return false;
   }
 
   async function sendToManager(history: ChatMessage[]) {
@@ -756,6 +744,9 @@ export function ManagerChat() {
    * poste une bulle user récapitulative, puis dispatch SÉQUENTIELLEMENT
    * un Job Writer par channel choisi. La séquence évite de saturer
    * les rate limits et de mélanger les bulles dans le chat.
+   *
+   * Phase 3.2 — à la fin du loop, on pose le cv-sources-picker avec
+   * les channels choisis activés par défaut (+ manual toujours actif).
    */
   async function handleChannelsConfirm(messageId: string) {
     if (isSending || isTranscribing || isAgentBusy) return;
@@ -797,6 +788,40 @@ export function ManagerChat() {
     } finally {
       setAgentBusy(false);
     }
+    // Phase 3.2 — flux de réception. Activations par défaut alignées
+    // sur les channels choisis pour publier (cf. buildDefaultSourcesConfig).
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content:
+        channels.length === 1
+          ? `Pour la suite, je suis prêt à recevoir les CV. J'ai déjà activé le flux ${labels} et l'upload manuel — tu peux ajuster ci-dessous.`
+          : `Pour la suite, je suis prêt à recevoir les CV. J'ai déjà activé les flux ${labels} et l'upload manuel — tu peux ajuster ci-dessous.`,
+      block: {
+        kind: 'cv-sources-picker',
+        campaignId: pending.fdp.campaignId,
+        activeSources: buildDefaultSourcesConfig(channels),
+      },
+    });
+  }
+
+  /**
+   * Phase 3.2 — toggle d'une source dans le cv-sources-picker.
+   * Met à jour le block via updateMessage. Pas de tour LLM.
+   */
+  function handleSourceToggle(messageId: string, source: CVSource) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    const target = useChatStore
+      .getState()
+      .messages.find((m) => m.id === messageId);
+    if (!target || target.block?.kind !== 'cv-sources-picker') return;
+    const next = {
+      ...target.block.activeSources,
+      [source]: !target.block.activeSources[source],
+    };
+    updateMessage(messageId, {
+      block: { ...target.block, activeSources: next },
+    });
   }
 
   /**
@@ -913,11 +938,11 @@ export function ManagerChat() {
                 message={message}
                 onChipSelect={handleChipSelect}
                 chipsDisabled={isSending || isTranscribing || isAgentBusy}
-                onSourcePick={handleSourcePick}
                 onRoutePick={handleRoutePick}
                 onCampaignPick={handleCampaignPick}
                 onChannelToggle={handleChannelToggle}
                 onChannelsConfirm={handleChannelsConfirm}
+                onSourceToggle={handleSourceToggle}
                 blocksDisabled={isSending || isTranscribing || isAgentBusy}
               />
               {showBelow && message.chips ? (

@@ -132,19 +132,16 @@ export async function dispatchJobWriter(
       content: `Voici l'annonce — ${result.ad.title}. Vous pouvez la relire et la télécharger ; je reste preneur de vos retours avant publication.`,
       attachment: {
         artifactId: artifact.id,
-        label: 'Annonce — Job Writer',
+        label: `Annonce — ${channelLabel}`,
         fileName: result.fileName,
         mime: 'text/markdown',
       },
     });
 
-    chat.appendMessage({
-      role: 'manager',
-      source: 'text',
-      content:
-        "Pour la suite, comment voulez-vous me transmettre les CV ? Choisissez une source ci-dessous.",
-      block: { kind: 'source-picker', selected: null },
-    });
+    // NOTE Phase 3.2 : on ne poste plus le source-picker ici. C'est
+    // handleChannelsConfirm (côté ManagerChat) qui pose le
+    // cv-sources-picker UNE FOIS toutes les annonces générées, avec
+    // les channels choisis activés par défaut.
 
     agents.pushEvent({
       agentId: JOB_WRITER_ID,

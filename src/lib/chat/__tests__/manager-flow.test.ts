@@ -109,20 +109,27 @@ describe('manager-flow — dispatchJobWriter', () => {
     resetAll();
   });
 
-  it('posts intro, creates artifact, posts attachment + source-picker', async () => {
+  it('posts intro + attachment but no longer the source picker (Phase 3.2)', async () => {
+    // Depuis Phase 3.2, c'est handleChannelsConfirm qui pose le
+    // cv-sources-picker UNE FOIS, après le loop dispatch des annonces.
+    // dispatchJobWriter ne s'en occupe plus.
     postJobWriterMock.mockResolvedValueOnce(fakeJobWriterResult());
     const fdp = makeFDP('CAMP-2026-007');
 
     await dispatchJobWriter(fdp);
 
     const messages = useChatStore.getState().messages;
-    expect(messages.length).toBeGreaterThanOrEqual(4);
+    expect(messages.length).toBeGreaterThanOrEqual(2);
     expect(
       messages.some((m) => m.attachment?.label.includes('Annonce')),
     ).toBe(true);
     expect(
-      messages.some((m) => m.block?.kind === 'source-picker'),
-    ).toBe(true);
+      messages.some(
+        (m) =>
+          m.block?.kind === 'cv-sources-picker' ||
+          m.block?.kind === 'source-picker',
+      ),
+    ).toBe(false);
     expect(Object.keys(useArtifactsStore.getState().byId)).toHaveLength(1);
   });
 
