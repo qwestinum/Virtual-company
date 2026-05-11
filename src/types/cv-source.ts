@@ -23,15 +23,26 @@ import {
 } from './publication-channel';
 
 export const CV_SOURCE_MANUAL = 'manual';
+export const CV_SOURCE_EMAIL = 'email';
+export const CV_SOURCE_LOCAL_FOLDER = 'local_folder';
 
 export const CVSourceSchema = z.union([
   z.literal(CV_SOURCE_MANUAL),
+  z.literal(CV_SOURCE_EMAIL),
+  z.literal(CV_SOURCE_LOCAL_FOLDER),
   PublicationChannelSchema,
 ]);
 export type CVSource = z.infer<typeof CVSourceSchema>;
 
+/**
+ * Ordre d'affichage dans le picker. Manual en tête, puis les sources
+ * « hors réseau » (mail + dossier local) à configurer plus tard, puis
+ * les réseaux de publication branchables au Publisher.
+ */
 export const CV_SOURCES: CVSource[] = [
   'manual',
+  'email',
+  'local_folder',
   'linkedin',
   'indeed',
   'welcome_to_the_jungle',
@@ -42,6 +53,8 @@ export const CV_SOURCES: CVSource[] = [
 
 export const CV_SOURCE_LABELS: Record<CVSource, string> = {
   manual: 'Upload manuel',
+  email: 'Boîte mail générique',
+  local_folder: 'Emplacement local',
   linkedin: 'LinkedIn',
   indeed: 'Indeed',
   welcome_to_the_jungle: 'Welcome to the Jungle',
@@ -52,6 +65,8 @@ export const CV_SOURCE_LABELS: Record<CVSource, string> = {
 
 export const CV_SOURCE_HINTS: Record<CVSource, string> = {
   manual: 'Téléverser les CV via le trombone',
+  email: 'Réception auto depuis une boîte mail dédiée (à configurer)',
+  local_folder: 'Surveillance d\'un dossier local (à configurer)',
   linkedin: 'Réception auto via LinkedIn (Publisher — bientôt)',
   indeed: 'Réception auto via Indeed (Publisher — bientôt)',
   welcome_to_the_jungle:
@@ -63,10 +78,13 @@ export const CV_SOURCE_HINTS: Record<CVSource, string> = {
 
 /**
  * Sources opérationnelles en Session 4. Les autres sont affichées mais
- * non fonctionnelles (placeholders pour le Publisher futur).
+ * non fonctionnelles (placeholders à configurer plus tard ou via le
+ * futur Publisher).
  */
 export const CV_SOURCE_OPERATIONAL: Record<CVSource, boolean> = {
   manual: true,
+  email: false,
+  local_folder: false,
   linkedin: false,
   indeed: false,
   welcome_to_the_jungle: false,
@@ -89,6 +107,8 @@ export function buildDefaultSourcesConfig(
   for (const source of CV_SOURCES) {
     config[source] = false;
   }
+  // `manual` toujours actif par défaut. `email` et `local_folder`
+  // restent désactivés tant que le DRH ne les a pas configurés.
   config.manual = true;
   for (const channel of publishedChannels) {
     if (channel === 'generic') continue;

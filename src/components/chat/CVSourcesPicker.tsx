@@ -1,6 +1,14 @@
 'use client';
 
-import { Globe, Newspaper, Paperclip, Sparkles, Target } from 'lucide-react';
+import {
+  FolderOpen,
+  Globe,
+  Inbox,
+  Newspaper,
+  Paperclip,
+  Sparkles,
+  Target,
+} from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import {
@@ -20,6 +28,8 @@ export type CVSourcesPickerProps = {
 
 const SOURCE_ICONS: Record<CVSource, typeof Globe> = {
   manual: Paperclip,
+  email: Inbox,
+  local_folder: FolderOpen,
   linkedin: Sparkles,
   indeed: Newspaper,
   welcome_to_the_jungle: Sparkles,
