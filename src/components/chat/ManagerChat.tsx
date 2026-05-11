@@ -291,7 +291,6 @@ function countMissingIsolated(criteria: IsolatedCriteriaInProgress): number {
 function buildCampaignEntries(args: {
   currentFdp: FDPInProgress | null;
   currentCriteria: IsolatedCriteriaInProgress | null;
-  currentScoringValidated: boolean;
   archivedCampaigns: ReadonlyArray<{
     id: string;
     name: string;
@@ -306,44 +305,46 @@ function buildCampaignEntries(args: {
   }>;
 }): CampaignEntry[] {
   /**
-   * Status de la campagne courante. Phase 7.1.1 — les overrides
-   * opérateur ('paused' / 'closed') stockés dans campaigns-store ont
-   * la priorité sur la dérivation. Sans ça, ouvrir une campagne
-   * suspendue la ferait apparaître comme 'in_progress' et le menu
-   * « Reprendre la campagne » (qui check status==='paused') ne
-   * s'afficherait jamais.
+   * Status de la campagne courante.
+   *
+   * Phase 8.1 — Source de vérité : l'archive du campaigns-store (qui
+   * est synchronisée à chaque jalon via markPublishedChannel /
+   * markSourcesConfirmed / addCampaign + recomputeStatus). On lit
+   * directement archive.status si l'archive existe.
+   *
+   * Sans ça, deriveCurrentFdpStatus retournait 'active' dès que la
+   * scoring était validée, alors que recomputeStatus exige aussi
+   * publishedChannels > 0 ET sourcesConfirmed === true. Conséquence :
+   * la même campagne apparaissait 'active' tant qu'elle était
+   * courante, puis 'en cours' une fois archivée — incohérence visible.
+   *
+   * Fallback : pas d'archive encore (FDP créée mais pas validée donc
+   * jamais passée par handleValidateFDP). On dérive depuis l'état
+   * local de la FDP + scoring (la courante est forcément draft ou
+   * in_progress dans ce cas — pas active sans archive).
    */
-  const archivedStatusForCurrent = args.currentFdp
+  const archivedForCurrent = args.currentFdp
     ? args.archivedCampaigns.find(
         (c) => c.id === args.currentFdp!.campaignId,
-      )?.status ?? null
+      ) ?? null
     : null;
   const deriveCurrentFdpStatus = (f: FDPInProgress): CampaignStatus => {
-    if (
-      archivedStatusForCurrent === 'paused' ||
-      archivedStatusForCurrent === 'closed'
-    ) {
-      return archivedStatusForCurrent;
-    }
+    if (archivedForCurrent) return archivedForCurrent.status;
     if (!f.isValidated) return 'draft';
-    if (args.currentScoringValidated) return 'active';
     return 'in_progress';
   };
-  // Phase 7.1.1 — symétrique du derive campagne pour les tâches isolées.
-  const archivedStatusForCurrentTask = args.currentCriteria
+  // Phase 8.1 — symétrique : la tâche courante lit son statut depuis
+  // l'archive du tasks-store (source de vérité) avec fallback dérivé
+  // uniquement quand pas encore archivée.
+  const archivedForCurrentTask = args.currentCriteria
     ? args.archivedTasks.find(
         (t) => t.id === args.currentCriteria!.taskId,
-      )?.status ?? null
+      ) ?? null
     : null;
   const deriveCurrentTaskStatus = (
     c: IsolatedCriteriaInProgress,
   ): CampaignStatus => {
-    if (
-      archivedStatusForCurrentTask === 'paused' ||
-      archivedStatusForCurrentTask === 'closed'
-    ) {
-      return archivedStatusForCurrentTask;
-    }
+    if (archivedForCurrentTask) return archivedForCurrentTask.status;
     return c.isValidated ? 'active' : 'draft';
   };
   const fdpTitle = (f: FDPInProgress): string => {
@@ -1885,10 +1886,6 @@ export function ManagerChat() {
           campaigns={buildCampaignEntries({
             currentFdp: fdp,
             currentCriteria: !fdp ? isolatedCriteria : null,
-            currentScoringValidated:
-              scoringSheet?.isValidated === true &&
-              fdp !== null &&
-              scoringSheet.campaignId === fdp.campaignId,
             archivedCampaigns,
             archivedTasks,
           })}
