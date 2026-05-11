@@ -12,6 +12,7 @@ import {
 import { AIProviderError } from '@/lib/ai/errors';
 import { FDPInProgressSchema } from '@/types/field-collection';
 import { JobAdResultSchema } from '@/types/job-writer';
+import { PublicationChannelSchema } from '@/types/publication-channel';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -19,6 +20,12 @@ export const maxDuration = 60;
 const RequestSchema = z.object({
   fdp: FDPInProgressSchema,
   taskId: z.string().min(1).optional(),
+  /**
+   * Réseau de publication ciblé. Influence le ton/format de l'annonce
+   * via buildJobAdSystemPrompt. Par défaut (omis), l'annonce est
+   * produite en mode `generic` (multi-réseaux).
+   */
+  channel: PublicationChannelSchema.optional(),
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -42,7 +49,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       taskId,
       correlationId: taskId,
       agentId: 'agent.job-writer',
-      payload: { fdp: parsed.fdp },
+      payload: { fdp: parsed.fdp, channel: parsed.channel },
       context: {
         campaignId: parsed.fdp.campaignId,
         priority: 'normal',

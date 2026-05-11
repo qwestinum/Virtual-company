@@ -136,6 +136,37 @@ describe('executeJobWriter', () => {
       }),
     ).rejects.toMatchObject({ name: 'JobWriterError' });
   });
+
+  it('passes the channel directive to the system prompt', async () => {
+    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_AD));
+    const fdp = buildCompleteFDP();
+    await executeJobWriter({
+      taskId: 't1',
+      correlationId: 'c1',
+      agentId: 'agent.job-writer',
+      payload: { fdp, channel: 'linkedin' },
+      context: { priority: 'normal', requestedBy: 'agent.manager-rh' },
+    });
+    const call = chatCompleteMock.mock.calls[0]?.[0];
+    const systemMessage = call?.messages.find((m) => m.role === 'system');
+    expect(systemMessage?.content).toContain('LinkedIn');
+    expect(systemMessage?.content).toContain('ADAPTATION RÉSEAU');
+  });
+
+  it('defaults to generic channel when none is provided', async () => {
+    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_AD));
+    const fdp = buildCompleteFDP();
+    await executeJobWriter({
+      taskId: 't1',
+      correlationId: 'c1',
+      agentId: 'agent.job-writer',
+      payload: { fdp },
+      context: { priority: 'normal', requestedBy: 'agent.manager-rh' },
+    });
+    const call = chatCompleteMock.mock.calls[0]?.[0];
+    const systemMessage = call?.messages.find((m) => m.role === 'system');
+    expect(systemMessage?.content).toContain('multi-réseaux');
+  });
 });
 
 describe('job-writer-render', () => {

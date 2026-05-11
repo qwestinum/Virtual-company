@@ -16,6 +16,12 @@ import {
   CampaignSelector,
   type CampaignEntry,
 } from '@/components/chat/CampaignSelector';
+import {
+  channelFromLabel,
+  PUBLICATION_CHANNEL_LABELS,
+  PUBLICATION_CHANNEL_ORDER,
+  type PublicationChannel,
+} from '@/types/publication-channel';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { ChatChips } from '@/components/chat/ChatChips';
 import { ChatInput } from '@/components/chat/ChatInput';
@@ -297,6 +303,14 @@ export function ManagerChat() {
    */
   const pendingSwitchRef = useRef<PendingSwitch | null>(null);
 
+  /**
+   * Pending channel pick (Phase 3) : posé par handleValidateFDP, le ref
+   * mémorise la FDP qui attend que le DRH choisisse un réseau de
+   * publication via les chips canoniques. Consommé par
+   * handleChipSelect → handlePublicationChannelPick → dispatchJobWriter.
+   */
+  const pendingChannelPickRef = useRef<{ fdp: FDPInProgress } | null>(null);
+
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -323,12 +337,22 @@ export function ManagerChat() {
     // DRH peut déjà voir cette campagne dans un éventuel CV upload
     // ultérieur.
     addCampaign({ fdp: validated });
-    setAgentBusy(true);
-    try {
-      await dispatchJobWriter(validated);
-    } finally {
-      setAgentBusy(false);
-    }
+    // Phase 3 : au lieu de dispatcher direct le Job Writer, on pose une
+    // bulle Manager qui propose les réseaux de publication via chips
+    // canoniques. Le clic sur un chip est intercepté par
+    // handleChipSelect → dispatchJobWriter(fdp, channel).
+    pendingChannelPickRef.current = { fdp: validated };
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Fiche validée pour ${validated.campaignId}. Pour quel réseau veux-tu publier l'annonce ? Tu peux aussi partir sur une annonce générique multi-réseaux si tu n'es pas sûr.`,
+      chips: {
+        placement: 'below_bubble',
+        options: PUBLICATION_CHANNEL_ORDER.map(
+          (ch) => PUBLICATION_CHANNEL_LABELS[ch],
+        ),
+      },
+    });
   }
 
   async function handleValidateIsolated() {
@@ -618,6 +642,19 @@ export function ManagerChat() {
       void handleSwitchDialogChoice(pendingSwitch, option);
       return;
     }
+    // Interception du picker de réseau de publication (Phase 3). Le
+    // libellé du chip est mappé sur l'enum via channelFromLabel ; si
+    // le ref est en attente et que le label correspond, on dispatch
+    // le Job Writer avec le channel choisi.
+    const pendingChannelPick = pendingChannelPickRef.current;
+    if (pendingChannelPick) {
+      const channel = channelFromLabel(option);
+      if (channel) {
+        pendingChannelPickRef.current = null;
+        void handlePublicationChannelPick(pendingChannelPick.fdp, channel);
+        return;
+      }
+    }
     // Interception des chips de la nouvelle campagne après nom donné.
     if (option === "Juste l'analyse CV pour l'instant") {
       if (newCampaignSkipSetup()) return;
@@ -702,6 +739,28 @@ export function ManagerChat() {
     }
 
     void sendToManager(useChatStore.getState().messages);
+  }
+
+  /**
+   * Phase 3 — exécution du Job Writer pour le réseau choisi par le DRH.
+   * Poste une bulle user représentant le clic du chip (auditabilité),
+   * puis enchaîne sur dispatchJobWriter avec le channel.
+   */
+  async function handlePublicationChannelPick(
+    fdp: FDPInProgress,
+    channel: PublicationChannel,
+  ): Promise<void> {
+    appendMessage({
+      role: 'user',
+      source: 'text',
+      content: PUBLICATION_CHANNEL_LABELS[channel],
+    });
+    setAgentBusy(true);
+    try {
+      await dispatchJobWriter(fdp, channel);
+    } finally {
+      setAgentBusy(false);
+    }
   }
 
   /**

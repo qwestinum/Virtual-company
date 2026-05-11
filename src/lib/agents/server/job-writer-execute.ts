@@ -21,6 +21,10 @@ import {
   type FDPInProgress,
 } from '@/types/field-collection';
 import { JobAdResultSchema, type JobAdResult } from '@/types/job-writer';
+import {
+  PublicationChannelSchema,
+  type PublicationChannel,
+} from '@/types/publication-channel';
 import type { TaskInput, TaskOutput } from '@/types/task';
 
 export class JobWriterError extends Error {
@@ -45,12 +49,22 @@ export async function executeJobWriter(input: TaskInput): Promise<TaskOutput> {
     );
   }
 
+  // Channel optionnel — défaut "generic" (annonce multi-réseaux).
+  // L'API route a déjà validé via PublicationChannelSchema ; on
+  // re-vérifie ici pour ne pas faire confiance au payload brut.
+  let channel: PublicationChannel = 'generic';
+  const channelRaw = input.payload?.channel;
+  if (channelRaw !== undefined) {
+    const parsed = PublicationChannelSchema.safeParse(channelRaw);
+    if (parsed.success) channel = parsed.data;
+  }
+
   const completion = await chatComplete({
     model: 'gpt-4o',
     jsonMode: true,
     temperature: 0.5,
     messages: [
-      { role: 'system', content: buildJobAdSystemPrompt() },
+      { role: 'system', content: buildJobAdSystemPrompt(channel) },
       { role: 'user', content: buildJobAdUserPrompt(fdp) },
     ],
   });

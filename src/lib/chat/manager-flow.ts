@@ -22,6 +22,10 @@ import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import { useFdpStore } from '@/stores/fdp-store';
 import { useTasksStore } from '@/stores/tasks-store';
 import {
+  PUBLICATION_CHANNEL_LABELS,
+  type PublicationChannel,
+} from '@/types/publication-channel';
+import {
   buildCVBatchSummary,
   renderCVBatchMarkdown,
   suggestCVReportFileName,
@@ -82,11 +86,15 @@ export function wipeForFreshStart(): void {
 }
 
 /**
- * Étape 1 du moment 1 — la validation FDP enchaîne sur le Job Writer.
+ * Étape 1 du moment 1 — après le choix du réseau de publication par
+ * le DRH, on lance le Job Writer adapté au channel sélectionné.
  * Marque l'agent occupé, appelle l'API, range l'annonce dans
  * artifacts-store, poste le bouton télécharger et le source-picker.
  */
-export async function dispatchJobWriter(fdp: FDPInProgress): Promise<void> {
+export async function dispatchJobWriter(
+  fdp: FDPInProgress,
+  channel: PublicationChannel = 'generic',
+): Promise<void> {
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
   const artifacts = useArtifactsStore.getState();
@@ -94,11 +102,12 @@ export async function dispatchJobWriter(fdp: FDPInProgress): Promise<void> {
 
   const isTask = fdp.campaignId.startsWith('TASK-');
   const noun = isTask ? 'sollicitation' : 'campagne';
+  const channelLabel = PUBLICATION_CHANNEL_LABELS[channel];
 
   chat.appendMessage({
     role: 'manager',
     source: 'text',
-    content: `Tout est en ordre — ${noun} ${fdp.campaignId} lancée. Je passe la main au Job Writer pour rédiger l'annonce, je reviens vers vous dès qu'elle est prête.`,
+    content: `Tout est en ordre — ${noun} ${fdp.campaignId} lancée. Je passe la main au Job Writer pour rédiger l'annonce ${channelLabel}, je reviens vers vous dès qu'elle est prête.`,
   });
 
   agents.setAgentStatus(JOB_WRITER_ID, 'active');
@@ -106,11 +115,11 @@ export async function dispatchJobWriter(fdp: FDPInProgress): Promise<void> {
   agents.pushEvent({
     agentId: JOB_WRITER_ID,
     type: 'task_started',
-    payload: { taskId, fdpId: fdp.campaignId },
+    payload: { taskId, fdpId: fdp.campaignId, channel },
   });
 
   try {
-    const result = await postJobWriter({ fdp, taskId });
+    const result = await postJobWriter({ fdp, taskId, channel });
     const artifact = artifacts.addArtifact({
       name: result.fileName,
       mime: 'text/markdown',

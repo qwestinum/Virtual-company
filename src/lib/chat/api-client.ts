@@ -7,6 +7,7 @@ import type { FDPInProgress } from '@/types/field-collection';
 import type { IntentClassification } from '@/types/intent';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { JobAdResult } from '@/types/job-writer';
+import type { PublicationChannel } from '@/types/publication-channel';
 import type {
   IsolatedManagerResponse,
   ManagerResponse,
@@ -88,6 +89,7 @@ export type JobWriterResult = {
 export async function postJobWriter(params: {
   fdp: FDPInProgress;
   taskId?: string;
+  channel?: PublicationChannel;
 }): Promise<JobWriterResult> {
   const res = await fetch('/api/job-writer', {
     method: 'POST',
