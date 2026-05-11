@@ -141,11 +141,14 @@ export function generateCampaignId(intent: Intent): string {
  * d'action métier suffisamment spécifiques pour que des messages
  * courts comme « ok » ou « senior » ne déclenchent jamais.
  */
+// Les patterns évitent `\b` quand un mot commence par un caractère
+// accentué (JS regex \b est ASCII-only par défaut). On utilise
+// `(?:^|\W)` pour la frontière initiale dans ces cas.
 const SWITCH_INTENT_KEYWORDS = [
   /\bcampagne(?!\s+(?:actuelle|en\s+cours|courante|pr[ée]c[ée]dente))/i,
-  /\b(lance|lancer|ouvre|ouvrir|d[ée]marre|d[ée]marrer|initier|cr[ée]er|cr[ée]e)\s+(?:une\s+)?(?:nouvelle\s+)?(?:campagne|t[âa]che|sollicitation|recrutement)\b/i,
+  /\b(lance|lancer|ouvre|ouvrir|d[ée]marre|d[ée]marrer|initier|cr[ée]er|cr[ée]e)\s+(?:(?:une|un)\s+)?(?:nouvelle\s+)?(?:campagne|t[âa]che|sollicitation|recrutement)\b/i,
   /\bnouvelle\s+(?:campagne|t[âa]che|sollicitation|recrutement)\b/i,
-  /\b(en\s+fait|finalement|plut[ôo]t|à\s+la\s+place|au\s+lieu)\b/i,
+  /(?:^|\W)(en\s+fait|finalement|plut[ôo]t|[àa]\s+la\s+place|au\s+lieu)(?:\W|$)/i,
   /\bautre\s+(?:poste|recrutement|campagne|t[âa]che|profil)\b/i,
   /\babandonn(?:er|e|ons)\b/i,
 ];
@@ -170,6 +173,8 @@ export function hasSwitchIntentKeyword(message: string): boolean {
  * automatiquement le mode éclaircissement (le DRH peut décrire un
  * contexte sans demander d'explication).
  */
+// Patterns avec frontière `(?:^|\W)` pour les mots à initiale
+// accentuée (éclaire, éclaircissement) — `\b` ASCII échoue sur eux.
 const CLARIFICATION_REQUEST_KEYWORDS = [
   /\bexplique(?:-moi|s|z)?\b/i,
   /\bpourquoi\b/i,
@@ -179,8 +184,8 @@ const CLARIFICATION_REQUEST_KEYWORDS = [
   /\bje\s+(?:ne\s+)?comprends?\s+pas\b/i,
   /\bpr[ée]cise(?:-moi|s|z)?\b/i,
   /\bd[ée]taille(?:-moi|s|z)?\b/i,
-  /\b[ée]claire(?:-moi|s|z)?\b/i,
-  /\b[ée]claircis(?:sement)?\b/i,
+  /(?:^|\W)[ée]claire(?:-moi|s|z)?(?:\W|$)/i,
+  /(?:^|\W)[ée]claircis(?:sement)?\b/i,
   /\bclarifie(?:-moi|s|z)?\b/i,
 ];
 

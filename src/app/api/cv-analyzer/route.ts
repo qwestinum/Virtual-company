@@ -15,6 +15,23 @@ import {
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
+/**
+ * Sécurité — limites sur l'upload CV.
+ *   - MAX_BYTES : protège le serveur d'un upload massif (DoS via PDF
+ *     de plusieurs centaines de Mo). 15 Mo couvre 95% des CV PDF
+ *     réels sans pénaliser les profils avec portfolio intégré.
+ *   - ACCEPTED_MIME : on accepte uniquement les formats raisonnables.
+ *     Le prefix-match (startsWith) tolère les variantes type
+ *     "application/pdf; charset=utf-8".
+ */
+const MAX_BYTES = 15 * 1024 * 1024;
+const ACCEPTED_MIME = [
+  'application/pdf',
+  'text/plain',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+];
+
 export async function POST(request: Request): Promise<NextResponse> {
   let form: FormData;
   try {
@@ -39,6 +56,31 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json(
       { error: 'invalid_request', message: 'Champ "cv" manquant.' },
       { status: 400 },
+    );
+  }
+
+  if (file.size === 0) {
+    return NextResponse.json(
+      { error: 'empty_cv', message: 'Le fichier CV est vide.' },
+      { status: 400 },
+    );
+  }
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json(
+      {
+        error: 'cv_too_large',
+        message: `Le CV dépasse la limite de ${Math.round(MAX_BYTES / (1024 * 1024))} Mo.`,
+      },
+      { status: 413 },
+    );
+  }
+  if (file.type && !ACCEPTED_MIME.some((m) => file.type.startsWith(m))) {
+    return NextResponse.json(
+      {
+        error: 'unsupported_mime',
+        message: `Type de fichier non supporté : ${file.type}. Utilisez PDF, DOCX ou texte.`,
+      },
+      { status: 415 },
     );
   }
 
