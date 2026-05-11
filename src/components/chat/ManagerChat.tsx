@@ -122,6 +122,122 @@ const RESUME_NOUN: Record<ResumeAction, string> = {
   sources: 'les flux',
 };
 
+/**
+ * Phase 7.4 — un état d'avancement par artefact, calculé depuis les
+ * stores au moment de la reprise ou de la fin d'une étape. Sert à
+ * (a) générer un récap textuel et (b) produire les chips contextuels.
+ */
+type ProgressSnapshot = {
+  campaignId: string;
+  status: CampaignStatus;
+  stages: Record<ResumeAction, ResumeChipStage>;
+  channelsPublished: PublicationChannel[];
+};
+
+function computeProgressSnapshot(
+  campaignId: string,
+): ProgressSnapshot | null {
+  const fdpNow = useFdpStore.getState().fdp;
+  const sheetNow = useScoringStore.getState().sheet;
+  const arch = useCampaignsStore.getState().getById(campaignId);
+  const fdpForStage = fdpNow?.campaignId === campaignId ? fdpNow : arch?.fdp ?? null;
+  const sheetForStage =
+    sheetNow?.campaignId === campaignId ? sheetNow : arch?.scoringSheet ?? null;
+  if (!fdpForStage && !arch) return null;
+  const fdpStage: ResumeChipStage = !fdpForStage
+    ? 'untouched'
+    : fdpForStage.isValidated
+      ? 'validated'
+      : Object.values(fdpForStage.fields).some(
+            (f) => f?.status === 'filled',
+          )
+        ? 'started'
+        : 'untouched';
+  const scoringStage: ResumeChipStage = !sheetForStage
+    ? 'untouched'
+    : sheetForStage.isValidated
+      ? 'validated'
+      : 'started';
+  const channelsPublished = arch?.publishedChannels ?? [];
+  const channelsStage: ResumeChipStage =
+    channelsPublished.length > 0 ? 'validated' : 'untouched';
+  const sourcesStage: ResumeChipStage = arch?.sourcesConfirmed
+    ? 'validated'
+    : 'untouched';
+  return {
+    campaignId,
+    status: arch?.status ?? 'draft',
+    stages: {
+      fdp: fdpStage,
+      scoring: scoringStage,
+      channels: channelsStage,
+      sources: sourcesStage,
+    },
+    channelsPublished,
+  };
+}
+
+/**
+ * Phase 7.4 — récap textuel de l'avancement par artefact. Une ligne
+ * par jalon avec un préfixe ✓ (validé) / · (entamé) / ○ (à initier),
+ * suffisamment compact pour entrer dans une bulle Manager.
+ */
+function formatProgressRecap(snap: ProgressSnapshot): string {
+  const prefix = (s: ResumeChipStage): string =>
+    s === 'validated' ? '✓' : s === 'started' ? '·' : '○';
+  const adsLine =
+    snap.stages.channels === 'validated' &&
+    snap.channelsPublished.length > 0
+      ? `${prefix(snap.stages.channels)} Annonces publiées sur ${snap.channelsPublished
+          .map((c) => PUBLICATION_CHANNEL_LABELS[c])
+          .join(', ')}`
+      : `${prefix(snap.stages.channels)} Annonces ${
+          snap.stages.channels === 'validated' ? 'publiées' : 'à initier'
+        }`;
+  return [
+    `${prefix(snap.stages.fdp)} FDP ${
+      snap.stages.fdp === 'validated'
+        ? 'validée'
+        : snap.stages.fdp === 'started'
+          ? 'en cours'
+          : 'à initier'
+    }`,
+    adsLine,
+    `${prefix(snap.stages.sources)} Flux de réception ${
+      snap.stages.sources === 'validated' ? 'configurés' : 'à configurer'
+    }`,
+    `${prefix(snap.stages.scoring)} Fiche de scoring ${
+      snap.stages.scoring === 'validated'
+        ? 'validée'
+        : snap.stages.scoring === 'started'
+          ? 'en cours'
+          : 'à initier'
+    }`,
+  ].join('\n');
+}
+
+/**
+ * Phase 7.4 — produit le payload chips contextuels (label → action)
+ * pour une campagne. `exclude` permet d'omettre l'action en cours
+ * d'un block (ex. quand on poste le picker channels, on omet le chip
+ * « ... les annonces »). Limite stricte à 4 chips (ChipSet accepte 5).
+ */
+function buildResumeChipPayload(
+  snap: ProgressSnapshot,
+  exclude?: ResumeAction,
+): { options: string[]; labelMap: Record<string, ResumeAction> } {
+  const actions: ResumeAction[] = ['fdp', 'scoring', 'channels', 'sources'];
+  const labelMap: Record<string, ResumeAction> = {};
+  const options: string[] = [];
+  for (const action of actions) {
+    if (action === exclude) continue;
+    const label = `${RESUME_VERB[snap.stages[action]]} ${RESUME_NOUN[action]}`;
+    labelMap[label] = action;
+    options.push(label);
+  }
+  return { options, labelMap };
+}
+
 function countMissing(fdp: FDPInProgress): number {
   return FIELD_KEYS.filter((k) => fdp.fields[k]?.status !== 'filled').length;
 }
@@ -449,6 +565,35 @@ export function ManagerChat() {
   const pendingChannelPickRef = useRef<{ fdp: FDPInProgress } | null>(null);
 
   /**
+   * Phase 7.4 — pose les chips contextuels d'options de reprise sur la
+   * dernière bulle Manager du chat. Utilisé à la fin de chaque étape
+   * (validation FDP, dispatch annonces, confirm flux, validation
+   * scoring) pour permettre au DRH de basculer sur un autre artefact
+   * sans repasser par le sélecteur. `exclude` retire l'action portée
+   * par le block courant de la liste (sinon doublon visuel).
+   */
+  function attachResumeChipsToLastBubble(
+    campaignId: string,
+    exclude?: ResumeAction,
+  ) {
+    const snap = computeProgressSnapshot(campaignId);
+    if (!snap) return;
+    const { options, labelMap } = buildResumeChipPayload(snap, exclude);
+    if (options.length === 0) return;
+    const messages = useChatStore.getState().messages;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === 'manager') {
+        pendingResumeActionsRef.current = labelMap;
+        updateMessage(m.id, {
+          chips: { placement: 'below_bubble', options },
+        });
+        return;
+      }
+    }
+  }
+
+  /**
    * Phase 7.2 — map des libellés des chips de reprise actifs vers
    * leur ResumeAction. Posé par handleSelectCampaign au moment où
    * on calcule les libellés contextuels (Initier/Continuer/Modifier).
@@ -513,6 +658,9 @@ export function ManagerChat() {
         source: 'text',
         content: `Fiche de poste mise à jour pour ${validated.campaignId}. ${tail}`,
       });
+      // Phase 7.4 — chips pour modifier les autres jalons sans
+      // repasser par le sélecteur.
+      attachResumeChipsToLastBubble(validated.campaignId);
       return;
     }
 
@@ -529,6 +677,9 @@ export function ManagerChat() {
         confirmed: false,
       },
     });
+    // Phase 7.4 — chips contextuels pour les autres jalons. Exclut
+    // 'channels' (porté par le picker juste posé).
+    attachResumeChipsToLastBubble(validated.campaignId, 'channels');
   }
 
   /**
@@ -996,6 +1147,8 @@ export function ManagerChat() {
         confirmed: false,
       },
     });
+    // Phase 7.4 — exclut 'sources' (porté par le picker).
+    attachResumeChipsToLastBubble(pending.fdp.campaignId, 'sources');
   }
 
   /**
@@ -1094,6 +1247,8 @@ export function ManagerChat() {
           confirmed: false,
         },
       });
+      // Phase 7.4 — exclut 'scoring' (porté par l'éditeur posé).
+      attachResumeChipsToLastBubble(campaignId, 'scoring');
     } catch (err) {
       appendMessage({
         role: 'manager',
@@ -1102,6 +1257,7 @@ export function ManagerChat() {
           err instanceof Error ? err.message : 'erreur inconnue'
         }). Tu peux me redemander dès que tu veux.`,
       });
+      attachResumeChipsToLastBubble(campaignId);
     } finally {
       setAgentBusy(false);
     }
@@ -1218,6 +1374,9 @@ export function ManagerChat() {
       source: 'text',
       content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}. ${tail}`,
     });
+    // Phase 7.4 — fin du workflow nominal : on propose les CTA sur
+    // les 4 artefacts (le DRH peut tout modifier librement).
+    attachResumeChipsToLastBubble(campaignId);
   }
 
   /**
@@ -1262,57 +1421,28 @@ export function ManagerChat() {
       closed:
         "Cette campagne est marquée comme terminée. Tu peux la rouvrir pour la réactiver.",
     };
-    // Phase 6.2 / 7.2 — chips d'options actionnables, libellés
-    // contextuels (Initier / Continuer / Modifier) calculés depuis
-    // l'état restauré. Proposés sur draft / in_progress / active /
-    // paused, masqués sur closed (rouvrir d'abord). Pas de chips
-    // pour les tâches isolées (cycle plus court).
+    // Phase 7.4 — récap multi-ligne + chips contextuels. La bulle
+    // résume où en est la campagne (✓ / · / ○ par jalon) et propose
+    // les CTA Initier/Continuer/Modifier. Masqués sur closed (le
+    // DRH rouvre d'abord). Tâches isolées : cycle plus court, pas
+    // de récap multi-jalons à exposer.
     const offersResumeActions =
       entry.kind === 'fdp' && entry.status !== 'closed';
     let chips: { placement: 'below_bubble'; options: string[] } | undefined;
+    let recap = '';
     if (offersResumeActions) {
-      const fdpNow = useFdpStore.getState().fdp;
-      const sheetNow = useScoringStore.getState().sheet;
-      const arch = useCampaignsStore.getState().getById(entry.id);
-      const fdpStage: ResumeChipStage = !fdpNow
-        ? 'untouched'
-        : fdpNow.isValidated
-          ? 'validated'
-          : Object.values(fdpNow.fields).some((f) => f?.status === 'filled')
-            ? 'started'
-            : 'untouched';
-      const scoringStage: ResumeChipStage =
-        !sheetNow || sheetNow.campaignId !== entry.id
-          ? 'untouched'
-          : sheetNow.isValidated
-            ? 'validated'
-            : 'started';
-      const channelsStage: ResumeChipStage =
-        (arch?.publishedChannels.length ?? 0) > 0 ? 'validated' : 'untouched';
-      const sourcesStage: ResumeChipStage = arch?.sourcesConfirmed
-        ? 'validated'
-        : 'untouched';
-      const stages: Record<ResumeAction, ResumeChipStage> = {
-        fdp: fdpStage,
-        scoring: scoringStage,
-        channels: channelsStage,
-        sources: sourcesStage,
-      };
-      const actions: ResumeAction[] = ['fdp', 'scoring', 'channels', 'sources'];
-      const labelMap: Record<string, ResumeAction> = {};
-      const labels: string[] = [];
-      for (const action of actions) {
-        const label = `${RESUME_VERB[stages[action]]} ${RESUME_NOUN[action]}`;
-        labelMap[label] = action;
-        labels.push(label);
+      const snap = computeProgressSnapshot(entry.id);
+      if (snap) {
+        recap = `\n\nÉtat actuel :\n${formatProgressRecap(snap)}`;
+        const { options, labelMap } = buildResumeChipPayload(snap);
+        pendingResumeActionsRef.current = labelMap;
+        chips = { placement: 'below_bubble', options };
       }
-      pendingResumeActionsRef.current = labelMap;
-      chips = { placement: 'below_bubble', options: labels };
     }
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `On reprend sur la ${noun} ${entry.id} — ${entry.title} (${CAMPAIGN_STATUS_LABELS[entry.status].toLowerCase()}). ${reopen[entry.status]}`,
+      content: `On reprend sur la ${noun} ${entry.id} — ${entry.title} (${CAMPAIGN_STATUS_LABELS[entry.status].toLowerCase()}). ${reopen[entry.status]}${recap}`,
       chips,
     });
   }
