@@ -163,20 +163,46 @@ function buildCampaignEntries(args: {
   }>;
 }): CampaignEntry[] {
   /**
-   * Status de la campagne courante (en cours de cadrage côté
-   * fdp-store) : déduit de l'avancement de la session :
-   *   - FDP non validée → draft
-   *   - FDP validée + fiche scoring non validée → in_progress
-   *   - FDP validée + fiche scoring validée → active
+   * Status de la campagne courante. Phase 7.1.1 — les overrides
+   * opérateur ('paused' / 'closed') stockés dans campaigns-store ont
+   * la priorité sur la dérivation. Sans ça, ouvrir une campagne
+   * suspendue la ferait apparaître comme 'in_progress' et le menu
+   * « Reprendre la campagne » (qui check status==='paused') ne
+   * s'afficherait jamais.
    */
+  const archivedStatusForCurrent = args.currentFdp
+    ? args.archivedCampaigns.find(
+        (c) => c.id === args.currentFdp!.campaignId,
+      )?.status ?? null
+    : null;
   const deriveCurrentFdpStatus = (f: FDPInProgress): CampaignStatus => {
+    if (
+      archivedStatusForCurrent === 'paused' ||
+      archivedStatusForCurrent === 'closed'
+    ) {
+      return archivedStatusForCurrent;
+    }
     if (!f.isValidated) return 'draft';
     if (args.currentScoringValidated) return 'active';
     return 'in_progress';
   };
+  // Phase 7.1.1 — symétrique du derive campagne pour les tâches isolées.
+  const archivedStatusForCurrentTask = args.currentCriteria
+    ? args.archivedTasks.find(
+        (t) => t.id === args.currentCriteria!.taskId,
+      )?.status ?? null
+    : null;
   const deriveCurrentTaskStatus = (
     c: IsolatedCriteriaInProgress,
-  ): CampaignStatus => (c.isValidated ? 'active' : 'draft');
+  ): CampaignStatus => {
+    if (
+      archivedStatusForCurrentTask === 'paused' ||
+      archivedStatusForCurrentTask === 'closed'
+    ) {
+      return archivedStatusForCurrentTask;
+    }
+    return c.isValidated ? 'active' : 'draft';
+  };
   const fdpTitle = (f: FDPInProgress): string => {
     const v = f.fields.job_title?.value;
     if (typeof v === 'string' && v.trim().length > 0) return v.trim();
