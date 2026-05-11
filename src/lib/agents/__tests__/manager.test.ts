@@ -661,7 +661,12 @@ describe('runManagerTurn — orchestration', () => {
     expect(result.metrics.costEstimate).toBeCloseTo(0.005, 5);
   });
 
-  it('cleans null chips/fieldExtractions before validation', async () => {
+  it('cleans null chips/fieldExtractions but injects fallback chips when missing', async () => {
+    // Le LLM renvoie chips/fieldExtractions à null → on les déserialise
+    // proprement (les rendre undefined avant zod). Puis la Phase 2
+    // garde-fou ensureChipsPresent injecte la paire fallback
+    // Continuer/Ajuster placement above_input (le dernier message DRH
+    // n'est pas une demande d'éclaircissement).
     chatCompleteMock
       .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
       .mockResolvedValueOnce(
@@ -679,8 +684,42 @@ describe('runManagerTurn — orchestration', () => {
       fdp: null,
     });
 
-    expect(result.response.chips).toBeUndefined();
     expect(result.response.fieldExtractions).toBeUndefined();
+    expect(result.response.chips).toEqual({
+      placement: 'above_input',
+      options: ['Continuer', 'Ajuster'],
+    });
+  });
+
+  it('does NOT inject fallback chips when DRH asks for clarification', async () => {
+    // Exception unique à la règle « chips toujours » : si le dernier
+    // message DRH contient un keyword d'éclaircissement (« explique »,
+    // « pourquoi », « précise »…), le Manager peut répondre en prose
+    // libre sans chips.
+    chatCompleteMock
+      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
+      .mockResolvedValueOnce(
+        fakeCompletion(
+          JSON.stringify({
+            message:
+              "La fourchette dépend du niveau d'expérience et de la localisation…",
+          }),
+        ),
+      );
+
+    const result = await runManagerTurn({
+      history: [
+        { role: 'user', content: 'Je veux recruter un comptable senior.' },
+        {
+          role: 'manager',
+          content: 'Pour la fourchette, je propose 50-65K.',
+        },
+        { role: 'user', content: "Pourquoi cette fourchette ? Explique-moi." },
+      ],
+      fdp: null,
+    });
+
+    expect(result.response.chips).toBeUndefined();
   });
 
   it('throws ManagerError on invalid intent JSON', async () => {

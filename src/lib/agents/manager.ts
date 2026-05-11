@@ -160,6 +160,79 @@ export function hasSwitchIntentKeyword(message: string): boolean {
 }
 
 /**
+ * Mots-clés qui dénotent une demande d'éclaircissement du DRH
+ * (« explique-moi », « pourquoi », « précise »). Dans ce cas, le
+ * Manager peut répondre en prose libre sans chips — c'est la seule
+ * exception à la règle « chips toujours présents ».
+ *
+ * Volontairement restrictif : on ne match QUE des formulations
+ * d'interrogation/explication. Les phrases longues n'activent pas
+ * automatiquement le mode éclaircissement (le DRH peut décrire un
+ * contexte sans demander d'explication).
+ */
+const CLARIFICATION_REQUEST_KEYWORDS = [
+  /\bexplique(?:-moi|s|z)?\b/i,
+  /\bpourquoi\b/i,
+  /\bcomment\s+(?:ça\s+marche|ça\s+fonctionne|tu\s+(?:fais|gères?))\b/i,
+  /\bqu['']est-ce\s+que\b/i,
+  /\bc['']est\s+quoi\b/i,
+  /\bje\s+(?:ne\s+)?comprends?\s+pas\b/i,
+  /\bpr[ée]cise(?:-moi|s|z)?\b/i,
+  /\bd[ée]taille(?:-moi|s|z)?\b/i,
+  /\b[ée]claire(?:-moi|s|z)?\b/i,
+  /\b[ée]claircis(?:sement)?\b/i,
+  /\bclarifie(?:-moi|s|z)?\b/i,
+];
+
+export function hasClarificationRequestKeyword(message: string): boolean {
+  return CLARIFICATION_REQUEST_KEYWORDS.some((re) => re.test(message));
+}
+
+/**
+ * Libellés canoniques des chips fallback injectés par le garde-fou
+ * `ensureChipsPresent` quand le LLM oublie d'en proposer en MODE
+ * PROPOSITION. Conformes R2 (audio-mode.md) : courts, énonçables,
+ * distincts à l'oreille.
+ *
+ * - `Continuer` : validation implicite. Le DRH accepte la proposition
+ *   courante telle quelle et le Manager enchaîne sur le champ suivant.
+ *   Comportement côté LLM au tour suivant : il interprète « Continuer »
+ *   comme une acceptation implicite (cf. règle d'acceptation implicite
+ *   dans le prompt isolated).
+ * - `Ajuster` : signal d'ajustement vague — handleChipSelect côté
+ *   client le détecte via isAdjustmentSignal et dismiss les chips
+ *   pour laisser la main au textarea (pas de tour LLM).
+ */
+export const FALLBACK_CHIP_CONTINUE = 'Continuer';
+export const FALLBACK_CHIP_ADJUST = 'Ajuster';
+
+/**
+ * Garde-fou anti-régression : si le LLM oublie d'inclure des chips
+ * dans sa réponse (en MODE PROPOSITION normalement obligatoire), on
+ * injecte une paire fallback `Continuer / Ajuster` placement
+ * above_input. Exception : si le dernier message DRH est une demande
+ * d'éclaircissement explicite, on laisse passer sans chips — le
+ * Manager peut alors répondre en prose libre.
+ *
+ * Note R2 : libellés courts et distincts à l'écoute. Le DRH peut
+ * cliquer (UI) ou dire « continuer »/« ajuster » (audio).
+ */
+export function ensureChipsPresent(
+  response: ManagerResponse,
+  lastUserMessage: string,
+): ManagerResponse {
+  if (response.chips) return response;
+  if (hasClarificationRequestKeyword(lastUserMessage)) return response;
+  return {
+    ...response,
+    chips: {
+      placement: 'above_input',
+      options: [FALLBACK_CHIP_CONTINUE, FALLBACK_CHIP_ADJUST],
+    },
+  };
+}
+
+/**
  * Une FDP est « non vide » dès que job_title est rempli. C'est le
  * critère minimal pour considérer qu'on est dans une campagne en cours
  * (pas une coquille vide juste créée). Sert à déclencher le switch
@@ -380,6 +453,12 @@ export async function runManagerTurn(
       err instanceof Error ? err.message : 'Manager response shape invalid.',
     );
   }
+
+  // Garde-fou Phase 2 : si le LLM a oublié ses chips alors qu'on est
+  // en MODE PROPOSITION, on injecte une paire fallback. Exception :
+  // demande explicite d'éclaircissement par le DRH (le Manager peut
+  // alors répondre en prose libre).
+  response = ensureChipsPresent(response, lastUserMessage);
 
   const campaignId =
     !input.fdp &&

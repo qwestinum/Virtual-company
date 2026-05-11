@@ -24,7 +24,10 @@ import type { PendingSwitch } from '@/types/switch-dialog';
 
 import {
   buildSwitchDialogResponse,
+  FALLBACK_CHIP_ADJUST,
+  FALLBACK_CHIP_CONTINUE,
   generateCampaignId,
+  hasClarificationRequestKeyword,
   hasSwitchIntentKeyword,
   SWITCH_DIALOG_THRESHOLD,
   type ConversationTurn,
@@ -370,6 +373,21 @@ export async function runIsolatedCriteriaTurn(
   // conservatrice : on ne remplit QUE si extractions[key] est absent
   // ET si le pattern matche sans ambiguïté.
   response = backfillExtractionsFromMessage(response);
+
+  // Garde-fou Phase 2 — chips obligatoires sauf demande
+  // d'éclaircissement explicite. Symétrique du flow principal.
+  const lastUserForChips =
+    [...input.history].reverse().find((t) => t.role === 'user')?.content ??
+    '';
+  if (!response.chips && !hasClarificationRequestKeyword(lastUserForChips)) {
+    response = {
+      ...response,
+      chips: {
+        placement: 'above_input',
+        options: [FALLBACK_CHIP_CONTINUE, FALLBACK_CHIP_ADJUST],
+      },
+    };
+  }
 
   return {
     response,
