@@ -31,6 +31,14 @@ export type FdpState = {
   fdp: FDPInProgress | null;
 
   createFDP: (campaignId: string) => FDPInProgress;
+  /**
+   * Restaure un snapshot de FDP existant (typiquement repris depuis
+   * campaigns-store via le sélecteur de campagne sub-phase 1.4).
+   * Distinct de createFDP : on n'efface PAS les valeurs des champs,
+   * on les reprend telles quelles. isComplete et isValidated suivent
+   * le snapshot d'origine.
+   */
+  restoreFDP: (snapshot: FDPInProgress) => void;
   applyExtractions: (
     extractions: Partial<Record<FieldKey, unknown>>,
   ) => void;
@@ -54,6 +62,8 @@ export const useFdpStore = create<FdpState>()((set) => ({
     set({ fdp: fresh });
     return fresh;
   },
+
+  restoreFDP: (snapshot) => set({ fdp: snapshot }),
 
   applyExtractions: (extractions) =>
     set((state) => {

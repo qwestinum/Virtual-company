@@ -13,6 +13,10 @@ import {
 } from '@/types/switch-dialog';
 
 import { CampaignHeader } from '@/components/chat/CampaignHeader';
+import {
+  CampaignSelector,
+  type CampaignEntry,
+} from '@/components/chat/CampaignSelector';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { ChatChips } from '@/components/chat/ChatChips';
 import { ChatInput } from '@/components/chat/ChatInput';
@@ -78,6 +82,48 @@ function countMissingIsolated(criteria: IsolatedCriteriaInProgress): number {
   return ISOLATED_CRITERIA_KEYS.filter(
     (k) => criteria.fields[k]?.status !== 'filled',
   ).length;
+}
+
+/**
+ * Construit la liste d'entries pour le sélecteur de campagne. La
+ * courante (FDP active) en tête, suivie des campagnes archivées
+ * (chronologie inverse — la plus récemment archivée en haut).
+ */
+function buildCampaignEntries(
+  current: FDPInProgress,
+  archived: ReadonlyArray<{ id: string; name: string; fdp: FDPInProgress }>,
+): CampaignEntry[] {
+  const fdpStatus = (f: FDPInProgress): 'draft' | 'validated' =>
+    f.isValidated ? 'validated' : 'draft';
+  const fdpTitle = (f: FDPInProgress): string => {
+    const v = f.fields.job_title?.value;
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+    return 'Poste non précisé';
+  };
+  const entries: CampaignEntry[] = [
+    {
+      id: current.campaignId,
+      title: fdpTitle(current),
+      status: fdpStatus(current),
+      isCurrent: true,
+      snapshot: null,
+    },
+  ];
+  // On exclut la courante de la liste archivée (campaigns-store peut
+  // contenir une entrée pour le même id si elle a transité par addCampaign
+  // — cas du switch dialog confirmé). Affichage : plus récent en haut.
+  for (let i = archived.length - 1; i >= 0; i--) {
+    const c = archived[i];
+    if (c.id === current.campaignId) continue;
+    entries.push({
+      id: c.id,
+      title: c.name || fdpTitle(c.fdp),
+      status: fdpStatus(c.fdp),
+      isCurrent: false,
+      snapshot: c.fdp,
+    });
+  }
+  return entries;
 }
 
 /**
@@ -147,12 +193,16 @@ export function ManagerChat() {
 
   const fdp = useFdpStore((s) => s.fdp);
   const createFDP = useFdpStore((s) => s.createFDP);
+  const restoreFDP = useFdpStore((s) => s.restoreFDP);
   const applyExtractions = useFdpStore((s) => s.applyExtractions);
   const validateFDP = useFdpStore((s) => s.validateFDP);
   const resetFdp = useFdpStore((s) => s.reset);
   const resetArtifacts = useArtifactsStore((s) => s.reset);
   const addCampaign = useCampaignsStore((s) => s.addCampaign);
   const resetCampaigns = useCampaignsStore((s) => s.reset);
+  const archivedCampaigns = useCampaignsStore((s) =>
+    s.order.map((id) => s.byId[id]).filter((c): c is NonNullable<typeof c> => Boolean(c)),
+  );
   const isolatedCriteria = useIsolatedCriteriaStore((s) => s.criteria);
   const applyIsolatedExtractions = useIsolatedCriteriaStore(
     (s) => s.applyExtractions,
@@ -577,6 +627,43 @@ export function ManagerChat() {
     void sendToManager(useChatStore.getState().messages);
   }
 
+  /**
+   * Bascule sur une campagne archivée depuis le sélecteur. On archive
+   * la courante (si différente), on wipe pour démarrer un fil propre,
+   * puis on restaure le snapshot ciblé et on poste une bulle Manager
+   * d'ouverture déterministe (pas de tour LLM — le wording est fixe).
+   *
+   * Note Session 4 : les artefacts de la campagne restaurée
+   * (annonces, rapports CV) ne sont pas re-affichés automatiquement
+   * dans le chat. Ils restent accessibles via artifacts-store, à
+   * exposer plus tard (sub-phase à définir).
+   */
+  function handleSelectCampaign(entry: CampaignEntry) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    if (!entry.snapshot) return;
+    wipeForFreshStart();
+    restoreFDP(entry.snapshot);
+    const isTask = entry.id.startsWith('TASK-');
+    const noun = isTask ? 'sollicitation' : 'campagne';
+    const statusPhrase =
+      entry.status === 'validated' ? 'déjà validée' : 'en draft';
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `On reprend sur la ${noun} ${entry.id} — ${entry.title} (${statusPhrase}). Vous voulez reprendre la collecte ou poursuivre autre chose ?`,
+    });
+  }
+
+  /**
+   * Démarre une nouvelle campagne depuis le sélecteur. Wipe complet
+   * sans seed : le greeting du chat reset accueille le DRH, qui
+   * formule alors son intention librement au tour suivant.
+   */
+  function handleNewCampaign() {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    wipeForFreshStart();
+  }
+
   async function handleTranscribe(audio: File): Promise<string> {
     setTranscribing(true);
     setError(null);
@@ -597,7 +684,12 @@ export function ManagerChat() {
       <ChatHeader onReset={handleReset} />
       {fdp ? (
         <>
-          <CampaignHeader campaignId={fdp.campaignId} />
+          <CampaignSelector
+            campaigns={buildCampaignEntries(fdp, archivedCampaigns)}
+            onSelectCampaign={handleSelectCampaign}
+            onNewCampaign={handleNewCampaign}
+            disabled={isSending || isTranscribing || isAgentBusy}
+          />
           <FieldChecklist
             fdp={fdp}
             defaultCollapsed={fdp.campaignId.startsWith('TASK-')}
