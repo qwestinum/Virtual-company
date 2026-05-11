@@ -1810,8 +1810,8 @@ export function ManagerChat() {
     }
     const noun = entry.kind === 'fdp' ? 'campagne' : 'sollicitation';
     const messages: Record<CampaignStatus, string> = {
-      closed: `J'ai marqué la ${noun} ${entry.id} comme terminée. Tu peux la rouvrir depuis le menu si besoin.`,
-      paused: `J'ai suspendu la ${noun} ${entry.id}. Tu peux la reprendre depuis le menu quand tu veux.`,
+      closed: `J'ai marqué la ${noun} ${entry.id} comme terminée. Tu peux la rouvrir à tout moment via le chip ci-dessous.`,
+      paused: `J'ai suspendu la ${noun} ${entry.id}. Tu peux la reprendre à tout moment via le chip ci-dessous.`,
       in_progress:
         entry.status === 'paused'
           ? `J'ai repris la ${noun} ${entry.id}. Tu peux poursuivre où on s'est arrêté.`
@@ -1819,10 +1819,43 @@ export function ManagerChat() {
       active: `J'ai remis la ${noun} ${entry.id} en active.`,
       draft: `J'ai remis la ${noun} ${entry.id} en brouillon.`,
     };
+    // Phase 7.5.1 — quand on bascule vers paused/closed, on attache
+    // le chip de réouverture directement à la bulle de confirmation
+    // pour que le DRH n'ait pas à rouvrir le menu kebab. Symétrique au
+    // chip posé par handleSelectCampaign à la reprise depuis le
+    // dropdown — même handler de clic (handleReopenAndContinue).
+    let chips:
+      | { placement: 'below_bubble'; options: string[] }
+      | undefined;
+    if (entry.kind === 'fdp' && (next === 'paused' || next === 'closed')) {
+      pendingResumeActionsRef.current = null;
+      pendingReopenRef.current = entry;
+      chips = {
+        placement: 'below_bubble',
+        options: [
+          next === 'paused'
+            ? RESUME_PAUSED_CHIP_LABEL
+            : REOPEN_CHIP_LABEL,
+        ],
+      };
+    } else if (
+      entry.kind === 'fdp' &&
+      (next === 'in_progress' || next === 'active')
+    ) {
+      // Réouverture depuis le menu : on repose les chips de
+      // modification pour offrir la continuation immédiate.
+      const snap = computeProgressSnapshot(entry.id);
+      if (snap) {
+        const { options, labelMap } = buildResumeChipPayload(snap);
+        pendingResumeActionsRef.current = labelMap;
+        chips = { placement: 'below_bubble', options };
+      }
+    }
     appendMessage({
       role: 'manager',
       source: 'text',
       content: messages[next],
+      chips,
     });
   }
 
