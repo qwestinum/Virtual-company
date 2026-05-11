@@ -7,6 +7,7 @@ vi.mock('@/lib/ai/provider', () => ({
 import {
   buildCVAnalyzerSystemPrompt,
   buildCVAnalyzerUserPrompt,
+  formatScoringSheetForPrompt,
 } from '@/lib/agents/cv-analyzer-prompts';
 import {
   buildCVBatchSummary,
@@ -19,6 +20,7 @@ import {
 } from '@/lib/agents/server/cv-analyzer-execute';
 import { chatComplete } from '@/lib/ai/provider';
 import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
+import { buildCriterion, type ScoringSheet } from '@/types/scoring';
 
 const chatCompleteMock = vi.mocked(chatComplete);
 
@@ -173,6 +175,59 @@ describe('cv-analyzer-prompts', () => {
     });
     expect(p).toContain('Instruction libre');
     expect(p).toContain('Juger comme tu veux');
+  });
+
+  it('system prompt switches to weighted grid mode when scoring sheet is present', () => {
+    const withSheet = buildCVAnalyzerSystemPrompt(75, true);
+    expect(withSheet).toContain('MODE GRILLE PONDÉRÉE');
+    expect(withSheet.toLowerCase()).toContain('knockout');
+    const without = buildCVAnalyzerSystemPrompt(75, false);
+    expect(without).not.toContain('MODE GRILLE PONDÉRÉE');
+  });
+
+  it('formatScoringSheetForPrompt groups by level and flags knockouts', () => {
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-2026-200',
+      isValidated: true,
+      criteria: [
+        buildCriterion({
+          id: 'c1',
+          label: 'Permis B',
+          level: 'redhibitoire',
+        }),
+        buildCriterion({ id: 'c2', label: 'IFRS', level: 'obligatoire' }),
+        buildCriterion({
+          id: 'c3',
+          label: 'Anglais',
+          level: 'important',
+        }),
+      ],
+    };
+    const txt = formatScoringSheetForPrompt(sheet);
+    expect(txt).toContain('Rédhibitoire');
+    expect(txt).toContain('KNOCKOUT');
+    expect(txt).toContain('Permis B');
+    expect(txt).toContain('Obligatoire');
+    expect(txt).toContain('IFRS');
+    expect(txt).toContain('(poids');
+    expect(txt).toContain('Anglais');
+  });
+
+  it('user prompt embeds the scoring sheet when provided', () => {
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-2026-201',
+      isValidated: true,
+      criteria: [
+        buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+      ],
+    };
+    const p = buildCVAnalyzerUserPrompt({
+      cvText: 'CV',
+      criteria: { jobTitle: 'Comptable', scoringSheet: sheet },
+      fileName: 'cv.pdf',
+    });
+    expect(p).toContain('Fiche de scoring');
+    expect(p).toContain('IFRS');
   });
 });
 

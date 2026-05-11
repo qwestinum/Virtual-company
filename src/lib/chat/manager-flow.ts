@@ -175,6 +175,10 @@ export async function dispatchJobWriter(
 /**
  * Étape 2 — analyse séquentielle d'un lot de CV, en éditant une bulle
  * de progression et en finissant par un récap + rapport téléchargeable.
+ *
+ * Phase 4.4 — si une fiche de scoring validée existe pour la campagne
+ * courante (matching campaignId), elle est injectée dans `criteria`
+ * pour que le CV Analyzer passe en mode grille pondérée.
  */
 export async function dispatchCVBatch(args: {
   files: File[];
@@ -182,8 +186,21 @@ export async function dispatchCVBatch(args: {
   threshold?: number;
   campaignId: string | null;
 }): Promise<void> {
-  const { files, criteria } = args;
+  const { files } = args;
   if (files.length === 0) return;
+
+  // Si la fiche de scoring courante est validée ET liée à la même
+  // campagne que l'analyse, on la joint aux critères. Le CV Analyzer
+  // détectera la présence de scoringSheet et basculera en mode grille
+  // pondérée (cf. buildCVAnalyzerSystemPrompt).
+  const scoringSheet = useScoringStore.getState().sheet;
+  const criteria: CVAnalysisCriteria =
+    scoringSheet &&
+    scoringSheet.isValidated &&
+    args.campaignId !== null &&
+    scoringSheet.campaignId === args.campaignId
+      ? { ...args.criteria, scoringSheet }
+      : args.criteria;
 
   const threshold = args.threshold ?? DEFAULT_CV_THRESHOLD;
   const chat = useChatStore.getState();

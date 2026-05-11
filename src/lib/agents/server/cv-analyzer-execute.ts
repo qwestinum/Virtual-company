@@ -66,12 +66,16 @@ export async function executeCVAnalyzer(
       ? thresholdRaw
       : DEFAULT_CV_THRESHOLD;
 
+  const hasScoringSheet = Boolean(criteria.scoringSheet);
   const completion = await chatComplete({
     model: 'gpt-4o',
     jsonMode: true,
     temperature: 0.2,
     messages: [
-      { role: 'system', content: buildCVAnalyzerSystemPrompt(threshold) },
+      {
+        role: 'system',
+        content: buildCVAnalyzerSystemPrompt(threshold, hasScoringSheet),
+      },
       {
         role: 'user',
         content: buildCVAnalyzerUserPrompt({ cvText, criteria, fileName }),
