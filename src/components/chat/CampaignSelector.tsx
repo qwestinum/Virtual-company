@@ -74,12 +74,18 @@ export function CampaignSelector({
   disabled = false,
 }: CampaignSelectorProps) {
   const current = campaigns.find((c) => c.isCurrent) ?? null;
-  const archived = campaigns.filter((c) => !c.isCurrent);
-  // Si aucune campagne courante ET aucune archive, on cache le bandeau
-  // entièrement (rien à exposer). Sinon on l'affiche : la courante en
-  // tête si elle existe, sinon un placeholder neutre qui ouvre quand
-  // même le menu pour atteindre les archives + "Nouvelle campagne".
-  if (!current && archived.length === 0) return null;
+  // Les campagnes clôturées sont écartées du menu déroulant — elles
+  // ne sont plus une option de reprise pour le DRH. Exception : si
+  // la campagne courante est elle-même clôturée (le DRH y est resté
+  // après clôture), elle reste affichée en tête avec son action
+  // « Rouvrir » accessible. Pas de section archives — pour récupérer
+  // une campagne clôturée, on passe par la console Supabase.
+  const archived = campaigns.filter(
+    (c) => !c.isCurrent && c.status !== 'closed',
+  );
+  // Bandeau visible dès qu'il y a au moins une campagne dans n'importe
+  // quel état (sinon le DRH n'a pas accès au CTA « Nouvelle campagne »).
+  if (campaigns.length === 0) return null;
 
   const isTask = current ? current.id.startsWith('TASK-') : false;
   const Icon = current ? (isTask ? FileText : Briefcase) : Briefcase;
@@ -142,9 +148,11 @@ export function CampaignSelector({
                   isTask ? 'text-amber-700/80' : 'text-indigo-700/80',
                 )}
               >
-                {archived.length === 1
-                  ? 'Reprendre la campagne archivée ou en démarrer une nouvelle'
-                  : `Reprendre une des ${archived.length} campagnes archivées ou en démarrer une nouvelle`}
+                {archived.length === 0
+                  ? 'Démarrer une nouvelle campagne'
+                  : archived.length === 1
+                    ? 'Reprendre la campagne archivée ou en démarrer une nouvelle'
+                    : `Reprendre une des ${archived.length} campagnes archivées ou en démarrer une nouvelle`}
               </span>
             )}
           </span>
