@@ -59,3 +59,30 @@ export type JournalRow = {
   payload: Record<string, unknown>;
   created_at: string;
 };
+
+/**
+ * Métadonnées d'un artefact (Session 5 round 2). Le contenu est dans
+ * Supabase Storage (bucket 'artifacts'), les métadonnées sont dans la
+ * table `artifacts_meta`. En mode dégradé (échec d'upload Storage),
+ * les champs storage_* sont null — l'artefact existe comme trace.
+ */
+export type ArtifactKind =
+  | 'fdp'
+  | 'job_ad'
+  | 'cv_report'
+  | 'scoring_sheet'
+  | 'other';
+
+export type ArtifactMetaRow = {
+  id: string;
+  campaign_id: string | null;
+  task_id: string | null;
+  kind: ArtifactKind;
+  name: string;
+  mime: string;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  public_url: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
