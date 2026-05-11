@@ -12,7 +12,6 @@ import {
   type PendingSwitch,
 } from '@/types/switch-dialog';
 
-import { CampaignHeader } from '@/components/chat/CampaignHeader';
 import {
   CampaignSelector,
   type CampaignEntry,
@@ -51,6 +50,7 @@ import { cn } from '@/lib/utils';
 import { useAgentsStore } from '@/stores/agents-store';
 import { useArtifactsStore } from '@/stores/artifacts-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
+import { useTasksStore } from '@/stores/tasks-store';
 import {
   selectMessages,
   useChatStore,
@@ -85,42 +85,96 @@ function countMissingIsolated(criteria: IsolatedCriteriaInProgress): number {
 }
 
 /**
- * Construit la liste d'entries pour le sélecteur de campagne. La
- * courante (FDP active) en tête, suivie des campagnes archivées
- * (chronologie inverse — la plus récemment archivée en haut).
+ * Construit la liste d'entries pour le sélecteur de campagne, en
+ * unifiant deux familles d'entités :
+ *   - les campagnes FDP (campaigns-store, kind 'fdp'),
+ *   - les tâches isolées (tasks-store, kind 'isolated').
+ *
+ * Une (et une seule) entrée est marquée `isCurrent: true` selon
+ * l'état actif côté ManagerChat : FDP courante si présente, sinon
+ * criteria isolée courante. Les archivées suivent, plus récente
+ * d'abord. L'id de la courante est exclu de la liste archivée pour
+ * éviter le doublon (un même id peut transiter par addCampaign /
+ * addTask lors d'un switch dialog confirmé).
  */
-function buildCampaignEntries(
-  current: FDPInProgress,
-  archived: ReadonlyArray<{ id: string; name: string; fdp: FDPInProgress }>,
-): CampaignEntry[] {
+function buildCampaignEntries(args: {
+  currentFdp: FDPInProgress | null;
+  currentCriteria: IsolatedCriteriaInProgress | null;
+  archivedCampaigns: ReadonlyArray<{
+    id: string;
+    name: string;
+    fdp: FDPInProgress;
+  }>;
+  archivedTasks: ReadonlyArray<{
+    id: string;
+    name: string;
+    criteria: IsolatedCriteriaInProgress;
+  }>;
+}): CampaignEntry[] {
   const fdpStatus = (f: FDPInProgress): 'draft' | 'validated' =>
     f.isValidated ? 'validated' : 'draft';
+  const criteriaStatus = (
+    c: IsolatedCriteriaInProgress,
+  ): 'draft' | 'validated' => (c.isValidated ? 'validated' : 'draft');
   const fdpTitle = (f: FDPInProgress): string => {
     const v = f.fields.job_title?.value;
     if (typeof v === 'string' && v.trim().length > 0) return v.trim();
     return 'Poste non précisé';
   };
-  const entries: CampaignEntry[] = [
-    {
-      id: current.campaignId,
-      title: fdpTitle(current),
-      status: fdpStatus(current),
+  const criteriaTitle = (c: IsolatedCriteriaInProgress): string => {
+    const v = c.fields.job_title?.value;
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+    return 'Poste non précisé';
+  };
+
+  const entries: CampaignEntry[] = [];
+  let currentId: string | null = null;
+
+  if (args.currentFdp) {
+    currentId = args.currentFdp.campaignId;
+    entries.push({
+      kind: 'fdp',
+      id: args.currentFdp.campaignId,
+      title: fdpTitle(args.currentFdp),
+      status: fdpStatus(args.currentFdp),
       isCurrent: true,
       snapshot: null,
-    },
-  ];
-  // On exclut la courante de la liste archivée (campaigns-store peut
-  // contenir une entrée pour le même id si elle a transité par addCampaign
-  // — cas du switch dialog confirmé). Affichage : plus récent en haut.
-  for (let i = archived.length - 1; i >= 0; i--) {
-    const c = archived[i];
-    if (c.id === current.campaignId) continue;
+    });
+  } else if (args.currentCriteria) {
+    currentId = args.currentCriteria.taskId;
     entries.push({
+      kind: 'isolated',
+      id: args.currentCriteria.taskId,
+      title: criteriaTitle(args.currentCriteria),
+      status: criteriaStatus(args.currentCriteria),
+      isCurrent: true,
+      snapshot: null,
+    });
+  }
+
+  // Archivés — campagnes puis tâches, plus récent en premier.
+  for (let i = args.archivedCampaigns.length - 1; i >= 0; i--) {
+    const c = args.archivedCampaigns[i];
+    if (c.id === currentId) continue;
+    entries.push({
+      kind: 'fdp',
       id: c.id,
       title: c.name || fdpTitle(c.fdp),
       status: fdpStatus(c.fdp),
       isCurrent: false,
       snapshot: c.fdp,
+    });
+  }
+  for (let i = args.archivedTasks.length - 1; i >= 0; i--) {
+    const t = args.archivedTasks[i];
+    if (t.id === currentId) continue;
+    entries.push({
+      kind: 'isolated',
+      id: t.id,
+      title: t.name || criteriaTitle(t.criteria),
+      status: criteriaStatus(t.criteria),
+      isCurrent: false,
+      snapshot: t.criteria,
     });
   }
   return entries;
@@ -219,6 +273,19 @@ export function ManagerChat() {
   );
   const validateIsolated = useIsolatedCriteriaStore((s) => s.validate);
   const resetIsolated = useIsolatedCriteriaStore((s) => s.reset);
+  const restoreCollection = useIsolatedCriteriaStore(
+    (s) => s.restoreCollection,
+  );
+
+  const tasksById = useTasksStore((s) => s.byId);
+  const tasksOrder = useTasksStore((s) => s.order);
+  const archivedTasks = useMemo(
+    () =>
+      tasksOrder
+        .map((id) => tasksById[id])
+        .filter((t): t is NonNullable<typeof t> => Boolean(t)),
+    [tasksById, tasksOrder],
+  );
   const resetAgents = useAgentsStore((s) => s.resetToRegistry);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -638,23 +705,26 @@ export function ManagerChat() {
   }
 
   /**
-   * Bascule sur une campagne archivée depuis le sélecteur. On archive
-   * la courante (si différente), on wipe pour démarrer un fil propre,
-   * puis on restaure le snapshot ciblé et on poste une bulle Manager
-   * d'ouverture déterministe (pas de tour LLM — le wording est fixe).
+   * Bascule sur une entrée archivée (campagne FDP ou tâche isolée).
+   * On wipe pour démarrer un fil propre (la courante est archivée à
+   * son tour via wipeForFreshStart), puis on restaure le snapshot
+   * selon son kind et on poste une bulle Manager d'ouverture
+   * déterministe (pas de tour LLM — le wording est fixe).
    *
-   * Note Session 4 : les artefacts de la campagne restaurée
-   * (annonces, rapports CV) ne sont pas re-affichés automatiquement
-   * dans le chat. Ils restent accessibles via artifacts-store, à
-   * exposer plus tard (sub-phase à définir).
+   * Note Session 4 : les artefacts de l'entité restaurée (annonces,
+   * rapports CV) ne sont pas re-affichés dans le chat. Ils restent
+   * dans artifacts-store, à exposer plus tard.
    */
   function handleSelectCampaign(entry: CampaignEntry) {
     if (isSending || isTranscribing || isAgentBusy) return;
     if (!entry.snapshot) return;
     wipeForFreshStart();
-    restoreFDP(entry.snapshot);
-    const isTask = entry.id.startsWith('TASK-');
-    const noun = isTask ? 'sollicitation' : 'campagne';
+    if (entry.kind === 'fdp') {
+      restoreFDP(entry.snapshot);
+    } else {
+      restoreCollection(entry.snapshot);
+    }
+    const noun = entry.kind === 'fdp' ? 'campagne' : 'sollicitation';
     const statusPhrase =
       entry.status === 'validated' ? 'déjà validée' : 'en draft';
     appendMessage({
@@ -692,39 +762,42 @@ export function ManagerChat() {
   return (
     <div className="h-full w-full flex flex-col">
       <ChatHeader onReset={handleReset} />
+      {fdp || isolatedCriteria ? (
+        <CampaignSelector
+          campaigns={buildCampaignEntries({
+            currentFdp: fdp,
+            currentCriteria: !fdp ? isolatedCriteria : null,
+            archivedCampaigns,
+            archivedTasks,
+          })}
+          onSelectCampaign={handleSelectCampaign}
+          onNewCampaign={handleNewCampaign}
+          disabled={isSending || isTranscribing || isAgentBusy}
+        />
+      ) : null}
+
       {fdp ? (
-        <>
-          <CampaignSelector
-            campaigns={buildCampaignEntries(fdp, archivedCampaigns)}
-            onSelectCampaign={handleSelectCampaign}
-            onNewCampaign={handleNewCampaign}
-            disabled={isSending || isTranscribing || isAgentBusy}
-          />
-          <FieldChecklist
-            fdp={fdp}
-            defaultCollapsed={fdp.campaignId.startsWith('TASK-')}
-            editingDisabled={
-              fdp.isValidated || isSending || isTranscribing || isAgentBusy
-            }
-            openFirstMissingToken={openFirstMissingToken}
-          />
-        </>
+        <FieldChecklist
+          fdp={fdp}
+          defaultCollapsed={fdp.campaignId.startsWith('TASK-')}
+          editingDisabled={
+            fdp.isValidated || isSending || isTranscribing || isAgentBusy
+          }
+          openFirstMissingToken={openFirstMissingToken}
+        />
       ) : null}
 
       {isolatedCriteria && !fdp ? (
-        <>
-          <CampaignHeader campaignId={isolatedCriteria.taskId} />
-          <IsolatedCriteriaChecklist
-            criteria={isolatedCriteria}
-            editingDisabled={
-              isolatedCriteria.isValidated ||
-              isSending ||
-              isTranscribing ||
-              isAgentBusy
-            }
-            openFirstMissingToken={openFirstMissingIsolatedToken}
-          />
-        </>
+        <IsolatedCriteriaChecklist
+          criteria={isolatedCriteria}
+          editingDisabled={
+            isolatedCriteria.isValidated ||
+            isSending ||
+            isTranscribing ||
+            isAgentBusy
+          }
+          openFirstMissingToken={openFirstMissingIsolatedToken}
+        />
       ) : null}
 
       <div

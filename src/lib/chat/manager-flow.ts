@@ -20,6 +20,7 @@
 
 import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import { useFdpStore } from '@/stores/fdp-store';
+import { useTasksStore } from '@/stores/tasks-store';
 import {
   buildCVBatchSummary,
   renderCVBatchMarkdown,
@@ -56,12 +57,12 @@ function nowTaskId(prefix: string): string {
  * bases propres (cf. memory/feedback_chat_reset_on_switch.md).
  *
  * Effets :
- *   - archive la FDP courante dans campaigns-store si présente (draft
- *     ou validée — l'archive est conservée pour le futur sélecteur),
+ *   - archive la FDP courante dans campaigns-store si présente,
+ *   - archive la pré-collecte isolée (criteria) en cours dans
+ *     tasks-store si présente — les deux entités sont restaurables
+ *     plus tard via le sélecteur de campagne (sub-phase 1.4.1),
  *   - reset chat-store, fdp-store et isolated-criteria-store,
- *   - PRÉSERVE campaigns-store (sinon on perd l'archive qu'on vient
- *     de poser) et artifacts-store (annonces/rapports ré-affichables
- *     via le sélecteur).
+ *   - PRÉSERVE campaigns-store, tasks-store et artifacts-store.
  *
  * Doit être appelé AVANT de poster les bulles d'ouverture du nouveau
  * contexte (route-picker isolated/new, switch dialog confirmé, etc.).
@@ -70,6 +71,10 @@ export function wipeForFreshStart(): void {
   const currentFdp = useFdpStore.getState().fdp;
   if (currentFdp) {
     useCampaignsStore.getState().addCampaign({ fdp: currentFdp });
+  }
+  const currentCriteria = useIsolatedCriteriaStore.getState().criteria;
+  if (currentCriteria) {
+    useTasksStore.getState().addTask({ criteria: currentCriteria });
   }
   useChatStore.getState().reset();
   useFdpStore.getState().reset();

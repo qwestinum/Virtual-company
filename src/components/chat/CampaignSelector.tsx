@@ -12,28 +12,38 @@ import {
 
 import { cn } from '@/lib/utils';
 import type { FDPInProgress } from '@/types/field-collection';
+import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 
 /**
- * Représentation visuelle d'une campagne (active ou archivée) pour le
- * sélecteur. La courante est marquée `isCurrent: true` et apparaît en
- * tête du menu, désactivée au clic (déjà sélectionnée).
+ * Représentation visuelle d'une entrée (campagne FDP ou tâche isolée)
+ * dans le sélecteur. La courante est marquée `isCurrent: true` et
+ * apparaît en tête du menu, désactivée au clic.
  *
- * Le statut est dérivé de la FDP :
+ * Le statut est dérivé du snapshot :
  *   - validée  : isValidated === true (vert)
  *   - draft    : isValidated === false (amber)
+ *
+ * Le `kind` discrimine FDP (campagne, 8 champs) vs isolated (tâche,
+ * 4 critères) — le handler de switch côté ManagerChat appelle
+ * restoreFDP ou restoreCollection selon ce flag.
  */
-export type CampaignEntry = {
-  id: string;
-  title: string;
-  status: 'draft' | 'validated';
-  isCurrent: boolean;
-  /**
-   * Snapshot complet de la FDP — fourni pour les entries archivées
-   * uniquement (pour restoreFDP au clic). null pour la courante (déjà
-   * dans fdp-store).
-   */
-  snapshot: FDPInProgress | null;
-};
+export type CampaignEntry =
+  | {
+      kind: 'fdp';
+      id: string;
+      title: string;
+      status: 'draft' | 'validated';
+      isCurrent: boolean;
+      snapshot: FDPInProgress | null;
+    }
+  | {
+      kind: 'isolated';
+      id: string;
+      title: string;
+      status: 'draft' | 'validated';
+      isCurrent: boolean;
+      snapshot: IsolatedCriteriaInProgress | null;
+    };
 
 export type CampaignSelectorProps = {
   campaigns: CampaignEntry[];

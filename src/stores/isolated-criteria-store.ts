@@ -25,6 +25,13 @@ export type IsolatedCriteriaState = {
   criteria: IsolatedCriteriaInProgress | null;
 
   startCollection: (taskId: string) => IsolatedCriteriaInProgress;
+  /**
+   * Restaure un snapshot existant de tâche isolée (typiquement repris
+   * depuis tasks-store via le sélecteur de campagne sub-phase 1.4.1).
+   * Distinct de startCollection : on n'efface pas les valeurs, on
+   * reprend l'état tel quel.
+   */
+  restoreCollection: (snapshot: IsolatedCriteriaInProgress) => void;
   applyExtractions: (
     extractions: Partial<Record<IsolatedCriteriaKey, unknown>>,
   ) => void;
@@ -49,6 +56,8 @@ export const useIsolatedCriteriaStore = create<IsolatedCriteriaState>()(
       set({ criteria: fresh });
       return fresh;
     },
+
+    restoreCollection: (snapshot) => set({ criteria: snapshot }),
 
     applyExtractions: (extractions) =>
       set((state) => {
