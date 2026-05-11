@@ -8,6 +8,7 @@ import type { IntentClassification } from '@/types/intent';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { JobAdResult } from '@/types/job-writer';
 import type { PublicationChannel } from '@/types/publication-channel';
+import type { ScoringCriterion } from '@/types/scoring';
 import type {
   IsolatedManagerResponse,
   ManagerResponse,
@@ -98,6 +99,32 @@ export async function postJobWriter(params: {
   });
   if (!res.ok) throw new Error(await readError(res));
   return (await res.json()) as JobWriterResult;
+}
+
+export type ScoringProposalResult = {
+  criteria: ScoringCriterion[];
+  metrics: {
+    durationMs: number;
+    tokensUsed: number;
+    costEstimate: number;
+  };
+};
+
+/**
+ * Phase 4.2 — demande au Manager de proposer une fiche de scoring à
+ * partir d'une FDP validée. Le serveur dérive les poids depuis le
+ * niveau (DEFAULT_WEIGHTS) ; le DRH ajuste ensuite via l'UI.
+ */
+export async function postManagerScoring(params: {
+  fdp: FDPInProgress;
+}): Promise<ScoringProposalResult> {
+  const res = await fetch('/api/manager/scoring', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as ScoringProposalResult;
 }
 
 export type CVAnalyzerResult = {
