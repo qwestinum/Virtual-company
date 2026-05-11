@@ -480,14 +480,43 @@ export function ManagerChat() {
     validateFDP();
     const validated = useFdpStore.getState().fdp;
     if (!validated) return;
-    // On enregistre la campagne dans le store actif AVANT de
-    // dispatcher : si dispatchJobWriter émet un message d'attente, le
-    // DRH peut déjà voir cette campagne dans un éventuel CV upload
-    // ultérieur.
+    // Phase 7.2.1 — Détection d'une revalidation après modification
+    // d'une campagne déjà avancée. On regarde l'archive AVANT de
+    // re-poser une entrée (sinon addCampaign écraserait l'état
+    // qu'on veut tester).
+    const priorArchive = useCampaignsStore
+      .getState()
+      .getById(validated.campaignId);
+    const isRevalidation = Boolean(
+      priorArchive &&
+        (priorArchive.publishedChannels.length > 0 ||
+          priorArchive.sourcesConfirmed ||
+          priorArchive.scoringSheet?.isValidated),
+    );
+
     addCampaign({ fdp: validated });
-    // Phase 3.1 : on pose un block multi-select pour que le DRH coche
-    // un ou plusieurs réseaux. Le bouton « Lancer » du picker déclenche
-    // handleChannelsConfirm qui dispatch un Job Writer par channel.
+    useCampaignsStore.getState().recomputeStatus(validated.campaignId);
+
+    if (isRevalidation) {
+      // Revalidation : la chaîne en aval (channels, flux, scoring)
+      // reste valide. On confirme juste la mise à jour ; le DRH
+      // continuera depuis le sélecteur s'il veut toucher autre chose.
+      const finalStatus =
+        useCampaignsStore.getState().getById(validated.campaignId)?.status ??
+        'in_progress';
+      const tail =
+        finalStatus === 'active'
+          ? 'La campagne reste active, les CV continuent à être scorés sur la base existante.'
+          : 'Tu peux revenir au sélecteur pour ajuster un autre élément si besoin.';
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Fiche de poste mise à jour pour ${validated.campaignId}. ${tail}`,
+      });
+      return;
+    }
+
+    // Première validation : workflow standard avec picker channels.
     pendingChannelPickRef.current = { fdp: validated };
     appendMessage({
       role: 'manager',
