@@ -71,13 +71,17 @@ export function CampaignSelector({
   onChangeStatus,
   disabled = false,
 }: CampaignSelectorProps) {
-  const current = campaigns.find((c) => c.isCurrent);
-  if (!current) return null;
-
-  const isTask = current.id.startsWith('TASK-');
-  const Icon = isTask ? FileText : Briefcase;
-  const kind = isTask ? 'Sollicitation' : 'Campagne';
+  const current = campaigns.find((c) => c.isCurrent) ?? null;
   const archived = campaigns.filter((c) => !c.isCurrent);
+  // Si aucune campagne courante ET aucune archive, on cache le bandeau
+  // entièrement (rien à exposer). Sinon on l'affiche : la courante en
+  // tête si elle existe, sinon un placeholder neutre qui ouvre quand
+  // même le menu pour atteindre les archives + "Nouvelle campagne".
+  if (!current && archived.length === 0) return null;
+
+  const isTask = current ? current.id.startsWith('TASK-') : false;
+  const Icon = current ? (isTask ? FileText : Briefcase) : Briefcase;
+  const kind = current ? (isTask ? 'Sollicitation' : 'Campagne') : 'Campagne';
 
   return (
     <Menu.Root>
@@ -106,29 +110,44 @@ export function CampaignSelector({
               isTask ? 'text-amber-700' : 'text-indigo-700',
             )}
           >
-            {kind}
+            {current ? kind : 'Campagnes'}
           </span>
           <span className="font-body text-[12px] truncate">
-            <span
-              className={cn(
-                'font-data font-semibold tracking-tight',
-                isTask ? 'text-amber-900' : 'text-indigo-900',
-              )}
-            >
-              {current.id}
-            </span>
-            <span
-              className={cn(
-                'font-normal',
-                isTask ? 'text-amber-700/80' : 'text-indigo-700/80',
-              )}
-            >
-              {' '}
-              — {current.title}
-            </span>
+            {current ? (
+              <>
+                <span
+                  className={cn(
+                    'font-data font-semibold tracking-tight',
+                    isTask ? 'text-amber-900' : 'text-indigo-900',
+                  )}
+                >
+                  {current.id}
+                </span>
+                <span
+                  className={cn(
+                    'font-normal',
+                    isTask ? 'text-amber-700/80' : 'text-indigo-700/80',
+                  )}
+                >
+                  {' '}
+                  — {current.title}
+                </span>
+              </>
+            ) : (
+              <span
+                className={cn(
+                  'font-normal italic',
+                  isTask ? 'text-amber-700/80' : 'text-indigo-700/80',
+                )}
+              >
+                {archived.length === 1
+                  ? 'Reprendre la campagne archivée ou en démarrer une nouvelle'
+                  : `Reprendre une des ${archived.length} campagnes archivées ou en démarrer une nouvelle`}
+              </span>
+            )}
           </span>
         </div>
-        <StatusDot status={current.status} />
+        {current ? <StatusDot status={current.status} /> : null}
         <ChevronDown
           className={cn(
             'h-3.5 w-3.5 shrink-0 transition-transform',
@@ -157,26 +176,33 @@ export function CampaignSelector({
               </p>
             </div>
             <div className="py-1 max-h-[300px] overflow-y-auto">
-              <CampaignMenuItem
-                entry={current}
-                onSelect={() => {}}
-                isCurrent
-              />
-              {archived.length > 0 ? (
-                <>
-                  <div className="my-1 mx-3 h-px bg-stone-100" aria-hidden />
-                  {archived.map((entry) => (
+              {current ? (
+                <CampaignMenuItem
+                  entry={current}
+                  onSelect={() => {}}
+                  isCurrent
+                />
+              ) : null}
+              {current && archived.length > 0 ? (
+                <div className="my-1 mx-3 h-px bg-stone-100" aria-hidden />
+              ) : null}
+              {archived.length > 0
+                ? archived.map((entry) => (
                     <CampaignMenuItem
                       key={entry.id}
                       entry={entry}
                       onSelect={() => onSelectCampaign(entry)}
                     />
-                  ))}
-                </>
+                  ))
+                : null}
+              {!current && archived.length === 0 ? (
+                <p className="px-3 py-2 font-body text-[12px] italic text-stone-500">
+                  Aucune campagne enregistrée.
+                </p>
               ) : null}
             </div>
             <div className="border-t border-stone-100">
-              {onChangeStatus && current.status !== 'closed' ? (
+              {current && onChangeStatus && current.status !== 'closed' ? (
                 <Menu.Item
                   onClick={() => onChangeStatus(current, 'closed')}
                   className={cn(
@@ -190,7 +216,7 @@ export function CampaignSelector({
                   Marquer comme terminée
                 </Menu.Item>
               ) : null}
-              {onChangeStatus && current.status === 'closed' ? (
+              {current && onChangeStatus && current.status === 'closed' ? (
                 <Menu.Item
                   onClick={() => onChangeStatus(current, 'in_progress')}
                   className={cn(

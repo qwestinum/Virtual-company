@@ -1152,7 +1152,10 @@ export function ManagerChat() {
   return (
     <div className="h-full w-full flex flex-col">
       <ChatHeader onReset={handleReset} />
-      {fdp || isolatedCriteria ? (
+      {fdp ||
+      isolatedCriteria ||
+      archivedCampaigns.length > 0 ||
+      archivedTasks.length > 0 ? (
         <CampaignSelector
           campaigns={buildCampaignEntries({
             currentFdp: fdp,
