@@ -10,7 +10,9 @@ import { CVBatchSummaryBlock } from '@/components/chat/CVBatchSummaryBlock';
 import { CVProgressBlock } from '@/components/chat/CVProgressBlock';
 import { CVRoutePicker } from '@/components/chat/CVRoutePicker';
 import { parseMessageToBlocks } from '@/components/chat/chat-message-renderer';
+import { PublicationChannelPicker } from '@/components/chat/PublicationChannelPicker';
 import { SourcePicker } from '@/components/chat/SourcePicker';
+import type { PublicationChannel } from '@/types/publication-channel';
 import {
   DRH_COLOR,
   DRH_INITIALS,
@@ -39,6 +41,8 @@ export type ChatBubbleProps = {
     route: 'new' | 'existing' | 'isolated',
   ) => void;
   onCampaignPick?: (pendingId: string, campaignId: string) => void;
+  onChannelToggle?: (messageId: string, channel: PublicationChannel) => void;
+  onChannelsConfirm?: (messageId: string) => void;
   blocksDisabled?: boolean;
 };
 
@@ -50,6 +54,8 @@ export function ChatBubble({
   onSourcePick,
   onRoutePick,
   onCampaignPick,
+  onChannelToggle,
+  onChannelsConfirm,
   blocksDisabled,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
@@ -139,6 +145,18 @@ export function ChatBubble({
           ) : null}
           {message.block?.kind === 'cv-batch-summary' ? (
             <CVBatchSummaryBlock summary={message.block.summary} />
+          ) : null}
+          {message.block?.kind === 'publication-channel-picker' &&
+          onChannelToggle &&
+          onChannelsConfirm ? (
+            <PublicationChannelPicker
+              campaignId={message.block.campaignId}
+              selectedChannels={message.block.selectedChannels}
+              confirmed={message.block.confirmed}
+              disabled={blocksDisabled}
+              onToggle={(channel) => onChannelToggle(message.id, channel)}
+              onConfirm={() => onChannelsConfirm(message.id)}
+            />
           ) : null}
           {message.attachment ? (
             <AttachmentChip

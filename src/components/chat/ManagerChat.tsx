@@ -17,9 +17,7 @@ import {
   type CampaignEntry,
 } from '@/components/chat/CampaignSelector';
 import {
-  channelFromLabel,
   PUBLICATION_CHANNEL_LABELS,
-  PUBLICATION_CHANNEL_ORDER,
   type PublicationChannel,
 } from '@/types/publication-channel';
 import { ChatBubble } from '@/components/chat/ChatBubble';
@@ -337,20 +335,19 @@ export function ManagerChat() {
     // DRH peut déjà voir cette campagne dans un éventuel CV upload
     // ultérieur.
     addCampaign({ fdp: validated });
-    // Phase 3 : au lieu de dispatcher direct le Job Writer, on pose une
-    // bulle Manager qui propose les réseaux de publication via chips
-    // canoniques. Le clic sur un chip est intercepté par
-    // handleChipSelect → dispatchJobWriter(fdp, channel).
+    // Phase 3.1 : on pose un block multi-select pour que le DRH coche
+    // un ou plusieurs réseaux. Le bouton « Lancer » du picker déclenche
+    // handleChannelsConfirm qui dispatch un Job Writer par channel.
     pendingChannelPickRef.current = { fdp: validated };
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `Fiche validée pour ${validated.campaignId}. Pour quel réseau veux-tu publier l'annonce ? Tu peux aussi partir sur une annonce générique multi-réseaux si tu n'es pas sûr.`,
-      chips: {
-        placement: 'below_bubble',
-        options: PUBLICATION_CHANNEL_ORDER.map(
-          (ch) => PUBLICATION_CHANNEL_LABELS[ch],
-        ),
+      content: `Fiche validée pour ${validated.campaignId}. Sur quels réseaux veux-tu publier l'annonce ? Tu peux en sélectionner plusieurs — je produirai une annonce adaptée à chacun.`,
+      block: {
+        kind: 'publication-channel-picker',
+        campaignId: validated.campaignId,
+        selectedChannels: [],
+        confirmed: false,
       },
     });
   }
@@ -642,19 +639,6 @@ export function ManagerChat() {
       void handleSwitchDialogChoice(pendingSwitch, option);
       return;
     }
-    // Interception du picker de réseau de publication (Phase 3). Le
-    // libellé du chip est mappé sur l'enum via channelFromLabel ; si
-    // le ref est en attente et que le label correspond, on dispatch
-    // le Job Writer avec le channel choisi.
-    const pendingChannelPick = pendingChannelPickRef.current;
-    if (pendingChannelPick) {
-      const channel = channelFromLabel(option);
-      if (channel) {
-        pendingChannelPickRef.current = null;
-        void handlePublicationChannelPick(pendingChannelPick.fdp, channel);
-        return;
-      }
-    }
     // Interception des chips de la nouvelle campagne après nom donné.
     if (option === "Juste l'analyse CV pour l'instant") {
       if (newCampaignSkipSetup()) return;
@@ -742,22 +726,74 @@ export function ManagerChat() {
   }
 
   /**
-   * Phase 3 — exécution du Job Writer pour le réseau choisi par le DRH.
-   * Poste une bulle user représentant le clic du chip (auditabilité),
-   * puis enchaîne sur dispatchJobWriter avec le channel.
+   * Phase 3.1 — toggle d'un channel dans le picker multi-select.
+   * Met à jour le tableau `selectedChannels` du block via updateMessage.
+   * Le picker est gelé une fois `confirmed: true`, donc inopérant.
    */
-  async function handlePublicationChannelPick(
-    fdp: FDPInProgress,
-    channel: PublicationChannel,
-  ): Promise<void> {
+  function handleChannelToggle(messageId: string, channel: PublicationChannel) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    const target = useChatStore
+      .getState()
+      .messages.find((m) => m.id === messageId);
+    if (
+      !target ||
+      target.block?.kind !== 'publication-channel-picker' ||
+      target.block.confirmed
+    ) {
+      return;
+    }
+    const currentSelection = target.block.selectedChannels;
+    const nextSelection = currentSelection.includes(channel)
+      ? currentSelection.filter((c) => c !== channel)
+      : [...currentSelection, channel];
+    updateMessage(messageId, {
+      block: { ...target.block, selectedChannels: nextSelection },
+    });
+  }
+
+  /**
+   * Phase 3.1 — confirmation du picker multi-select. Gèle le block,
+   * poste une bulle user récapitulative, puis dispatch SÉQUENTIELLEMENT
+   * un Job Writer par channel choisi. La séquence évite de saturer
+   * les rate limits et de mélanger les bulles dans le chat.
+   */
+  async function handleChannelsConfirm(messageId: string) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    const target = useChatStore
+      .getState()
+      .messages.find((m) => m.id === messageId);
+    if (
+      !target ||
+      target.block?.kind !== 'publication-channel-picker' ||
+      target.block.confirmed
+    ) {
+      return;
+    }
+    const channels = target.block.selectedChannels;
+    if (channels.length === 0) return;
+    const pending = pendingChannelPickRef.current;
+    if (!pending) return;
+    pendingChannelPickRef.current = null;
+    // Gèle le picker pour qu'il reste lisible mais inactif.
+    updateMessage(messageId, {
+      block: { ...target.block, confirmed: true },
+    });
+    const labels = channels
+      .map((c) => PUBLICATION_CHANNEL_LABELS[c])
+      .join(', ');
     appendMessage({
       role: 'user',
       source: 'text',
-      content: PUBLICATION_CHANNEL_LABELS[channel],
+      content:
+        channels.length === 1
+          ? `Lancer l'annonce ${labels}.`
+          : `Lancer les annonces : ${labels}.`,
     });
     setAgentBusy(true);
     try {
-      await dispatchJobWriter(fdp, channel);
+      for (const channel of channels) {
+        await dispatchJobWriter(pending.fdp, channel);
+      }
     } finally {
       setAgentBusy(false);
     }
@@ -880,6 +916,8 @@ export function ManagerChat() {
                 onSourcePick={handleSourcePick}
                 onRoutePick={handleRoutePick}
                 onCampaignPick={handleCampaignPick}
+                onChannelToggle={handleChannelToggle}
+                onChannelsConfirm={handleChannelsConfirm}
                 blocksDisabled={isSending || isTranscribing || isAgentBusy}
               />
               {showBelow && message.chips ? (

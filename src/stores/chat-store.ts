@@ -16,6 +16,7 @@ import { create } from 'zustand';
 
 import type { CVBatchSummary } from '@/types/cv-analysis';
 import type { ChipSet } from '@/types/manager-response';
+import type { PublicationChannel } from '@/types/publication-channel';
 
 /**
  * Snapshot léger d'une campagne active, embarqué dans le block
@@ -64,6 +65,19 @@ export type ChatBlock =
       pendingId: string;
       campaigns: CampaignPickerEntry[];
       selectedCampaignId: string | null;
+    }
+  | {
+      /**
+       * Picker multi-select des réseaux de publication (Phase 3.1).
+       * Posé par handleValidateFDP après validation FDP. Le DRH coche
+       * les réseaux voulus puis confirme → N appels dispatchJobWriter.
+       * `confirmed` passe à true au clic du bouton — le picker reste
+       * affiché pour traçabilité mais les contrôles sont gelés.
+       */
+      kind: 'publication-channel-picker';
+      campaignId: string;
+      selectedChannels: PublicationChannel[];
+      confirmed: boolean;
     };
 
 export type ChatMessage = {
