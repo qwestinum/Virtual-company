@@ -126,6 +126,22 @@ const RESUME_NOUN: Record<ResumeAction, string> = {
 };
 
 /**
+ * Phase 7.4.2 — fallback de reconstruction de l'action depuis un
+ * libellé de chip. Sert quand le ref `pendingResumeActionsRef` a été
+ * perdu (re-render, hot-reload, autre handler qui l'a vidé) mais que
+ * le libellé contient son suffixe canonique. Plus robuste que le
+ * lookup exact dans la map.
+ */
+function resumeActionFromLabel(label: string): ResumeAction | null {
+  const lower = label.toLowerCase();
+  if (lower.endsWith(RESUME_NOUN.fdp.toLowerCase())) return 'fdp';
+  if (lower.endsWith(RESUME_NOUN.scoring.toLowerCase())) return 'scoring';
+  if (lower.endsWith(RESUME_NOUN.channels.toLowerCase())) return 'channels';
+  if (lower.endsWith(RESUME_NOUN.sources.toLowerCase())) return 'sources';
+  return null;
+}
+
+/**
  * Phase 7.4 — un état d'avancement par artefact, calculé depuis les
  * stores au moment de la reprise ou de la fin d'une étape. Sert à
  * (a) générer un récap textuel et (b) produire les chips contextuels.
@@ -958,16 +974,28 @@ export function ManagerChat() {
       handleCampaignStatusChange(reopenEntry, 'in_progress');
       return;
     }
-    // Phase 6.2 / 7.2 — interception PRIORITAIRE des chips d'options
-    // de reprise. Doit passer AVANT isAdjustmentSignal : les libellés
-    // commencent par "Modifier"/"Initier"/"Continuer" et certains
-    // matchent le keyword d'ajustement vague. La map ref permet de
-    // résoudre l'action quel que soit le verbe contextuel.
+    // Phase 6.2 / 7.2 / 7.4.2 — interception PRIORITAIRE des chips
+    // d'options de reprise. Doit passer AVANT isAdjustmentSignal :
+    // les libellés commencent par "Modifier"/"Initier"/"Continuer"
+    // et certains matchent le keyword d'ajustement vague.
+    //
+    // Deux chemins de résolution :
+    //   1. lookup dans le ref `pendingResumeActionsRef` (chemin
+    //      nominal posé par handleSelectCampaign / fin d'étape),
+    //   2. fallback `resumeActionFromLabel` qui matche le suffixe
+    //      canonique du libellé. Robuste à la perte du ref (re-render,
+    //      autre handler qui l'aurait vidé).
     const resumeMap = pendingResumeActionsRef.current;
     if (resumeMap && Object.prototype.hasOwnProperty.call(resumeMap, option)) {
       const action = resumeMap[option]!;
       pendingResumeActionsRef.current = null;
       void handleResumeAction(action, option);
+      return;
+    }
+    const fallbackAction = resumeActionFromLabel(option);
+    if (fallbackAction) {
+      pendingResumeActionsRef.current = null;
+      void handleResumeAction(fallbackAction, option);
       return;
     }
     if (isAdjustmentSignal(option)) {
@@ -1385,8 +1413,8 @@ export function ManagerChat() {
       'in_progress';
     const tail =
       resolvedStatus === 'active'
-        ? 'Campagne active, les prochains CV seront scorés sur cette base.'
-        : "Il reste des étapes à franchir (FDP, annonces, flux) avant de basculer en active. Ouvre le sélecteur pour reprendre.";
+        ? `🎯 Campagne ${campaignId} ACTIVE. Tous les jalons sont alignés (FDP validée, annonces publiées, flux configurés, scoring validé). La campagne est en attente de CV — tu peux les déposer via le trombone ou attendre l'arrivée automatique des flux configurés.`
+        : "Il reste des étapes à franchir avant de basculer en active. Utilise les chips ci-dessous pour finaliser.";
     appendMessage({
       role: 'manager',
       source: 'text',
