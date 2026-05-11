@@ -95,8 +95,16 @@ const MANAGER_ID = 'agent.manager-rh';
 
 type ResumeAction = 'fdp' | 'scoring' | 'channels' | 'sources';
 
-/** Phase 7.4.1 — chip de réouverture pour les campagnes closed. */
-const REOPEN_CHIP_LABEL = 'Rouvrir la campagne';
+/**
+ * Phase 7.4.1 / 7.5 — chips de réouverture/reprise pour les
+ * campagnes dans un statut « bloquant » (operator-set, jamais
+ * écrasé par recomputeStatus). Tant que le DRH n'a pas explicitement
+ * remis la campagne en route, les chips de modification ne sont pas
+ * proposées : elles agiraient sur la FDP / scoring / etc. sans
+ * pouvoir débloquer le status, ce qui crée une incohérence visible.
+ */
+const REOPEN_CHIP_LABEL = 'Rouvrir la campagne'; // status === 'closed'
+const RESUME_PAUSED_CHIP_LABEL = 'Reprendre la campagne'; // status === 'paused'
 
 /**
  * Phase 7.2 — verbe contextuel sur les chips de reprise. Chaque
@@ -966,12 +974,18 @@ export function ManagerChat() {
 
   function handleChipSelect(option: string) {
     if (isSending || isTranscribing) return;
-    // Phase 7.4.1 — chip "Rouvrir la campagne" posé sur la bulle de
-    // reprise d'une campagne closed.
+    // Phase 7.4.1 / 7.5 — chips "Rouvrir" (closed) ou "Reprendre"
+    // (paused) posés sur la bulle de reprise. Le clic rouvre la
+    // campagne puis re-pose la bulle Manager avec les chips de
+    // modification, pour que le DRH puisse enchaîner sans repasser
+    // par le sélecteur.
     const reopenEntry = pendingReopenRef.current;
-    if (reopenEntry && option === REOPEN_CHIP_LABEL) {
+    if (
+      reopenEntry &&
+      (option === REOPEN_CHIP_LABEL || option === RESUME_PAUSED_CHIP_LABEL)
+    ) {
       pendingReopenRef.current = null;
-      handleCampaignStatusChange(reopenEntry, 'in_progress');
+      handleReopenAndContinue(reopenEntry, option);
       return;
     }
     // Phase 6.2 / 7.2 / 7.4.2 — interception PRIORITAIRE des chips
@@ -1479,10 +1493,24 @@ export function ManagerChat() {
     let chips: { placement: 'below_bubble'; options: string[] } | undefined;
     let recap = '';
     if (isFdpEntry && entry.status === 'closed') {
-      const reopenLabel = REOPEN_CHIP_LABEL;
       pendingResumeActionsRef.current = null;
       pendingReopenRef.current = entry;
-      chips = { placement: 'below_bubble', options: [reopenLabel] };
+      chips = { placement: 'below_bubble', options: [REOPEN_CHIP_LABEL] };
+    } else if (isFdpEntry && entry.status === 'paused') {
+      // Phase 7.5 — paused : pas de chips de modification (elles
+      // agiraient sans pouvoir changer le statut, recomputeStatus
+      // n'override jamais paused). On force le DRH à reprendre
+      // d'abord, puis les chips de modification reviennent.
+      pendingResumeActionsRef.current = null;
+      pendingReopenRef.current = entry;
+      const snap = computeProgressSnapshot(entry.id);
+      if (snap) {
+        recap = `\n\nÉtat actuel :\n${formatProgressRecap(snap)}`;
+      }
+      chips = {
+        placement: 'below_bubble',
+        options: [RESUME_PAUSED_CHIP_LABEL],
+      };
     } else if (isFdpEntry) {
       const snap = computeProgressSnapshot(entry.id);
       if (snap) {
@@ -1672,6 +1700,55 @@ export function ManagerChat() {
         activeSources: buildDefaultSourcesConfig([]),
         confirmed: false,
       },
+    });
+  }
+
+  /**
+   * Phase 7.5 — clic d'un chip de réouverture (closed → "Rouvrir" ou
+   * paused → "Reprendre") posé dans une bulle de reprise. On rouvre
+   * la campagne en `in_progress` (recompute la repassera à `active`
+   * si tous les jalons sont déjà alignés), puis on repose la bulle
+   * Manager avec récap + chips de modification — exactement comme
+   * lors d'une reprise normale d'une campagne non-bloquée.
+   */
+  function handleReopenAndContinue(entry: CampaignEntry, clickedLabel: string) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    appendMessage({ role: 'user', source: 'text', content: clickedLabel });
+    if (entry.kind === 'fdp') {
+      useCampaignsStore.getState().updateStatus(entry.id, 'in_progress');
+      useCampaignsStore.getState().recomputeStatus(entry.id);
+    } else {
+      useTasksStore.getState().updateStatus(entry.id, 'in_progress');
+    }
+    const resolvedStatus =
+      (entry.kind === 'fdp'
+        ? useCampaignsStore.getState().getById(entry.id)?.status
+        : useTasksStore.getState().getById(entry.id)?.status) ??
+      'in_progress';
+    const noun = entry.kind === 'fdp' ? 'campagne' : 'sollicitation';
+    const verbMsg =
+      clickedLabel === REOPEN_CHIP_LABEL
+        ? `J'ai rouvert la ${noun} ${entry.id}.`
+        : `J'ai repris la ${noun} ${entry.id}.`;
+    // Récap + chips de modif pour permettre la continuation immédiate.
+    let chips:
+      | { placement: 'below_bubble'; options: string[] }
+      | undefined;
+    let recap = '';
+    if (entry.kind === 'fdp') {
+      const snap = computeProgressSnapshot(entry.id);
+      if (snap) {
+        recap = `\n\nÉtat actuel :\n${formatProgressRecap(snap)}`;
+        const { options, labelMap } = buildResumeChipPayload(snap);
+        pendingResumeActionsRef.current = labelMap;
+        chips = { placement: 'below_bubble', options };
+      }
+    }
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `${verbMsg} Nouveau statut : ${CAMPAIGN_STATUS_LABELS[resolvedStatus].toLowerCase()}.${recap}`,
+      chips,
     });
   }
 
