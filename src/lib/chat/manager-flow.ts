@@ -157,6 +157,14 @@ export async function dispatchJobWriter(
     // cv-sources-picker UNE FOIS toutes les annonces générées, avec
     // les channels choisis activés par défaut.
 
+    // Phase 7.1 — marque le channel comme publié pour cette campagne.
+    // Idempotent côté store. Permet à recomputeStatus de basculer en
+    // 'active' une fois tous les jalons franchis.
+    useCampaignsStore
+      .getState()
+      .markPublishedChannel(fdp.campaignId, channel);
+    useCampaignsStore.getState().recomputeStatus(fdp.campaignId);
+
     agents.pushEvent({
       agentId: JOB_WRITER_ID,
       type: 'task_completed',

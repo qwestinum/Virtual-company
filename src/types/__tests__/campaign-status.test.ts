@@ -8,11 +8,12 @@ import {
 } from '@/types/campaign-status';
 
 describe('campaign-status', () => {
-  it('exposes the four canonical statuses', () => {
+  it('exposes the five canonical statuses', () => {
     expect(CAMPAIGN_STATUSES).toEqual([
       'draft',
       'in_progress',
       'active',
+      'paused',
       'closed',
     ]);
   });
@@ -28,7 +29,7 @@ describe('campaign-status', () => {
     for (const status of CAMPAIGN_STATUSES) {
       expect(CampaignStatusSchema.safeParse(status).success).toBe(true);
     }
-    expect(CampaignStatusSchema.safeParse('paused').success).toBe(false);
+    expect(CampaignStatusSchema.safeParse('archived').success).toBe(false);
     expect(CampaignStatusSchema.safeParse('').success).toBe(false);
     expect(CampaignStatusSchema.safeParse(null).success).toBe(false);
   });

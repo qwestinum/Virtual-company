@@ -24,6 +24,7 @@ export const CAMPAIGN_STATUSES = [
   'draft',
   'in_progress',
   'active',
+  'paused',
   'closed',
 ] as const;
 
@@ -34,6 +35,7 @@ export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
   draft: 'Brouillon',
   in_progress: 'En cours',
   active: 'Active',
+  paused: 'Suspendue',
   closed: 'Terminée',
 };
 
@@ -48,5 +50,6 @@ export const CAMPAIGN_STATUS_COLORS: Record<CampaignStatus, string> = {
   draft: '#d97706', // amber-600
   in_progress: '#0284c7', // sky-600
   active: '#059669', // emerald-600
+  paused: '#a16207', // yellow-700 — pause volontaire, distinct de draft (amber)
   closed: '#78716c', // stone-500
 };

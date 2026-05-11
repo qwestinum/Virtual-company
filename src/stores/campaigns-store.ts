@@ -14,6 +14,7 @@ import { create } from 'zustand';
 
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { FDPInProgress } from '@/types/field-collection';
+import type { PublicationChannel } from '@/types/publication-channel';
 import type { ScoringSheet } from '@/types/scoring';
 
 export type ActiveCampaign = {
@@ -27,10 +28,19 @@ export type ActiveCampaign = {
    */
   scoringSheet: ScoringSheet | null;
   /**
-   * Phase 5.1 — état d'avancement de la campagne. Dérivé initialement
-   * de fdp.isValidated (validée → 'in_progress', sinon 'draft'), puis
-   * mis à jour par updateStatus quand des jalons en aval sont franchis
-   * (validation fiche de scoring → 'active', clôture → 'closed').
+   * Phase 7.1 — tracking des artefacts produits pour cette campagne.
+   * Sert à recomputeStatus qui dérive 'active' uniquement quand TOUT
+   * est aligné (FDP validée + au moins une annonce + flux confirmés
+   * + scoring validé). Avant Phase 7, le status pouvait passer à
+   * 'active' juste sur validation scoring même si la FDP ou les flux
+   * n'étaient pas en place.
+   */
+  publishedChannels: PublicationChannel[];
+  sourcesConfirmed: boolean;
+  /**
+   * Phase 5.1 — état d'avancement de la campagne. Dérivé par
+   * recomputeStatus quand un jalon change, ou écrasé explicitement
+   * par updateStatus (closed, paused).
    */
   status: CampaignStatus;
   createdAt: string;
@@ -46,13 +56,36 @@ export type CampaignsState = {
     name?: string;
     status?: CampaignStatus;
     scoringSheet?: ScoringSheet | null;
+    publishedChannels?: PublicationChannel[];
+    sourcesConfirmed?: boolean;
   }) => ActiveCampaign;
   /**
-   * Met à jour le statut d'une campagne archivée. Si l'id est
-   * inconnu, no-op (les helpers appelants doivent vérifier avant).
-   * Met aussi à jour updatedAt pour traçabilité.
+   * Écrase explicitement le statut d'une campagne (paused / closed
+   * principalement). Pour les transitions dérivées (draft → in_progress
+   * → active), utiliser recomputeStatus.
    */
   updateStatus: (id: string, status: CampaignStatus) => void;
+  /**
+   * Phase 7.1 — marque qu'une annonce a été produite pour ce channel.
+   * Idempotent (pas de doublon). Recalcule le statut après.
+   */
+  markPublishedChannel: (id: string, channel: PublicationChannel) => void;
+  /**
+   * Phase 7.1 — marque que le cv-sources-picker a été confirmé.
+   * Recalcule le statut après.
+   */
+  markSourcesConfirmed: (id: string) => void;
+  /**
+   * Phase 7.1 — recalcule le status DÉRIVÉ d'une campagne à partir de
+   * ses artefacts. Règle :
+   *   - FDP non validée → 'draft'
+   *   - FDP validée mais (annonce manquante OR flux non confirmés OR
+   *     scoring non validé) → 'in_progress'
+   *   - Tout aligné → 'active'
+   * Ne touche PAS aux statuts explicites 'paused' et 'closed' — un
+   * recompute ne sort jamais quelqu'un de la pause ou de la clôture.
+   */
+  recomputeStatus: (id: string) => void;
   getById: (id: string) => ActiveCampaign | undefined;
   list: () => ActiveCampaign[];
   reset: () => void;
@@ -93,11 +126,17 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       input.scoringSheet !== undefined
         ? input.scoringSheet
         : (existing?.scoringSheet ?? null);
+    const publishedChannels =
+      input.publishedChannels ?? existing?.publishedChannels ?? [];
+    const sourcesConfirmed =
+      input.sourcesConfirmed ?? existing?.sourcesConfirmed ?? false;
     const campaign: ActiveCampaign = {
       id: input.fdp.campaignId,
       name,
       fdp: input.fdp,
       scoringSheet,
+      publishedChannels,
+      sourcesConfirmed,
       status,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -125,6 +164,77 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
           [id]: {
             ...current,
             status,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  markPublishedChannel: (id, channel) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      if (current.publishedChannels.includes(channel)) return state;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            publishedChannels: [...current.publishedChannels, channel],
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  markSourcesConfirmed: (id) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      if (current.sourcesConfirmed) return state;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            sourcesConfirmed: true,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  recomputeStatus: (id) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      // Les statuts explicites paused / closed ne sont jamais
+      // écrasés par un recompute — seul l'utilisateur les change.
+      if (current.status === 'paused' || current.status === 'closed') {
+        return state;
+      }
+      let nextStatus: CampaignStatus;
+      if (!current.fdp.isValidated) {
+        nextStatus = 'draft';
+      } else if (
+        current.publishedChannels.length > 0 &&
+        current.sourcesConfirmed &&
+        current.scoringSheet?.isValidated === true
+      ) {
+        nextStatus = 'active';
+      } else {
+        nextStatus = 'in_progress';
+      }
+      if (nextStatus === current.status) return state;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            status: nextStatus,
             updatedAt: new Date().toISOString(),
           },
         },

@@ -93,16 +93,34 @@ import {
 
 const MANAGER_ID = 'agent.manager-rh';
 
+type ResumeAction = 'fdp' | 'scoring' | 'channels' | 'sources';
+
 /**
- * Phase 6.2 — libellés canoniques des chips d'options de reprise.
- * Exposés en haut du fichier pour les partager entre la composition
- * (handleSelectCampaign) et l'interception (handleChipSelect).
- * Audio-friendly (R2) : courts, distincts à l'écoute.
+ * Phase 7.2 — verbe contextuel sur les chips de reprise. Chaque
+ * artefact peut être à l'un des trois états :
+ *   - 'untouched' : rien n'a été produit ⇒ "Initier ..."
+ *   - 'started'   : entamé mais pas validé ⇒ "Continuer ..."
+ *   - 'validated' : produit et validé ⇒ "Modifier ..."
+ *
+ * Les libellés sont calculés à chaque reprise pour refléter l'état
+ * réel des stores. handleChipSelect intercepte via une map
+ * label → ResumeAction stockée dans pendingResumeActionsRef plutôt
+ * que par match string exact (les libellés sont dynamiques).
  */
-const RESUME_CHIP_FDP = 'Modifier la FDP';
-const RESUME_CHIP_SCORING = 'Modifier la fiche de scoring';
-const RESUME_CHIP_CHANNELS = 'Modifier les annonces';
-const RESUME_CHIP_SOURCES = 'Modifier les flux';
+type ResumeChipStage = 'untouched' | 'started' | 'validated';
+
+const RESUME_VERB: Record<ResumeChipStage, string> = {
+  untouched: 'Initier',
+  started: 'Continuer',
+  validated: 'Modifier',
+};
+
+const RESUME_NOUN: Record<ResumeAction, string> = {
+  fdp: 'la FDP',
+  scoring: 'la fiche de scoring',
+  channels: 'les annonces',
+  sources: 'les flux',
+};
 
 function countMissing(fdp: FDPInProgress): number {
   return FIELD_KEYS.filter((k) => fdp.fields[k]?.status !== 'filled').length;
@@ -403,6 +421,17 @@ export function ManagerChat() {
    * handleChipSelect → handlePublicationChannelPick → dispatchJobWriter.
    */
   const pendingChannelPickRef = useRef<{ fdp: FDPInProgress } | null>(null);
+
+  /**
+   * Phase 7.2 — map des libellés des chips de reprise actifs vers
+   * leur ResumeAction. Posé par handleSelectCampaign au moment où
+   * on calcule les libellés contextuels (Initier/Continuer/Modifier).
+   * Consommé par handleChipSelect en priorité sur tous les autres
+   * intercepteurs (sinon "Modifier ..." est absorbé par isAdjustmentSignal).
+   */
+  const pendingResumeActionsRef = useRef<Record<string, ResumeAction> | null>(
+    null,
+  );
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -705,24 +734,16 @@ export function ManagerChat() {
 
   function handleChipSelect(option: string) {
     if (isSending || isTranscribing) return;
-    // Phase 6.2 — interception PRIORITAIRE des chips d'options de
-    // reprise. Doit passer AVANT isAdjustmentSignal : les libellés
-    // commencent par "Modifier" qui matche le keyword d'ajustement
-    // vague et serait absorbé par le dismiss sans cette priorité.
-    if (option === RESUME_CHIP_FDP) {
-      void handleResumeAction('fdp');
-      return;
-    }
-    if (option === RESUME_CHIP_SCORING) {
-      void handleResumeAction('scoring');
-      return;
-    }
-    if (option === RESUME_CHIP_CHANNELS) {
-      void handleResumeAction('channels');
-      return;
-    }
-    if (option === RESUME_CHIP_SOURCES) {
-      void handleResumeAction('sources');
+    // Phase 6.2 / 7.2 — interception PRIORITAIRE des chips d'options
+    // de reprise. Doit passer AVANT isAdjustmentSignal : les libellés
+    // commencent par "Modifier"/"Initier"/"Continuer" et certains
+    // matchent le keyword d'ajustement vague. La map ref permet de
+    // résoudre l'action quel que soit le verbe contextuel.
+    const resumeMap = pendingResumeActionsRef.current;
+    if (resumeMap && Object.prototype.hasOwnProperty.call(resumeMap, option)) {
+      const action = resumeMap[option]!;
+      pendingResumeActionsRef.current = null;
+      void handleResumeAction(action, option);
       return;
     }
     if (isAdjustmentSignal(option)) {
@@ -977,6 +998,9 @@ export function ManagerChat() {
     updateMessage(messageId, {
       block: { ...target.block, confirmed: true },
     });
+    // Phase 7.1 — marque les flux confirmés, recompute status.
+    useCampaignsStore.getState().markSourcesConfirmed(campaignId);
+    useCampaignsStore.getState().recomputeStatus(campaignId);
     const activeLabels = active.map((s) => CV_SOURCE_LABELS[s]).join(', ');
     appendMessage({
       role: 'manager',
@@ -1111,13 +1135,33 @@ export function ManagerChat() {
       }
     }
 
-    // Mode campagne FDP : on bascule la campagne à 'active' et on
-    // attend que le DRH upload des CV manuellement.
-    useCampaignsStore.getState().updateStatus(campaignId, 'active');
+    // Phase 7.1 — Mode campagne FDP : on sync la sheet validée dans
+    // l'archive puis on recompute le status (ne sera 'active' que si
+    // FDP validée + annonce publiée + flux confirmés sont aussi en
+    // place). Plus de bascule autoritaire à 'active' qui ignorait
+    // l'avancement des autres jalons.
+    const sheetSnapshot = useScoringStore.getState().sheet;
+    if (sheetSnapshot) {
+      const archive = useCampaignsStore.getState().getById(campaignId);
+      if (archive) {
+        useCampaignsStore.getState().addCampaign({
+          fdp: archive.fdp,
+          scoringSheet: sheetSnapshot,
+        });
+      }
+    }
+    useCampaignsStore.getState().recomputeStatus(campaignId);
+    const resolvedStatus =
+      useCampaignsStore.getState().getById(campaignId)?.status ??
+      'in_progress';
+    const tail =
+      resolvedStatus === 'active'
+        ? 'Campagne active, les prochains CV seront scorés sur cette base.'
+        : "Il reste des étapes à franchir (FDP, annonces, flux) avant de basculer en active. Ouvre le sélecteur pour reprendre.";
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}. Campagne active, les prochains CV seront scorés sur cette base.`,
+      content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}. ${tail}`,
     });
   }
 
@@ -1158,30 +1202,63 @@ export function ManagerChat() {
         "La fiche de poste est validée. Tu peux modifier les annonces, configurer les flux, ou finaliser la fiche de scoring.",
       active:
         "Tout est aligné. Tu peux déposer des CV ou ajuster un élément ci-dessous.",
+      paused:
+        "Cette campagne est suspendue. Tu peux la reprendre depuis le menu, ou ajuster un élément ci-dessous.",
       closed:
         "Cette campagne est marquée comme terminée. Tu peux la rouvrir pour la réactiver.",
     };
-    // Phase 6.2 — chips d'options actionnables. On les propose
-    // uniquement pour les campagnes FDP (kind='fdp') et pas pour les
-    // tâches isolées (4 critères, pas de FDP/scoring/annonces à
-    // modifier indépendamment), et pas en closed (rouvrir d'abord).
+    // Phase 6.2 / 7.2 — chips d'options actionnables, libellés
+    // contextuels (Initier / Continuer / Modifier) calculés depuis
+    // l'état restauré. Proposés sur draft / in_progress / active /
+    // paused, masqués sur closed (rouvrir d'abord). Pas de chips
+    // pour les tâches isolées (cycle plus court).
     const offersResumeActions =
       entry.kind === 'fdp' && entry.status !== 'closed';
+    let chips: { placement: 'below_bubble'; options: string[] } | undefined;
+    if (offersResumeActions) {
+      const fdpNow = useFdpStore.getState().fdp;
+      const sheetNow = useScoringStore.getState().sheet;
+      const arch = useCampaignsStore.getState().getById(entry.id);
+      const fdpStage: ResumeChipStage = !fdpNow
+        ? 'untouched'
+        : fdpNow.isValidated
+          ? 'validated'
+          : Object.values(fdpNow.fields).some((f) => f?.status === 'filled')
+            ? 'started'
+            : 'untouched';
+      const scoringStage: ResumeChipStage =
+        !sheetNow || sheetNow.campaignId !== entry.id
+          ? 'untouched'
+          : sheetNow.isValidated
+            ? 'validated'
+            : 'started';
+      const channelsStage: ResumeChipStage =
+        (arch?.publishedChannels.length ?? 0) > 0 ? 'validated' : 'untouched';
+      const sourcesStage: ResumeChipStage = arch?.sourcesConfirmed
+        ? 'validated'
+        : 'untouched';
+      const stages: Record<ResumeAction, ResumeChipStage> = {
+        fdp: fdpStage,
+        scoring: scoringStage,
+        channels: channelsStage,
+        sources: sourcesStage,
+      };
+      const actions: ResumeAction[] = ['fdp', 'scoring', 'channels', 'sources'];
+      const labelMap: Record<string, ResumeAction> = {};
+      const labels: string[] = [];
+      for (const action of actions) {
+        const label = `${RESUME_VERB[stages[action]]} ${RESUME_NOUN[action]}`;
+        labelMap[label] = action;
+        labels.push(label);
+      }
+      pendingResumeActionsRef.current = labelMap;
+      chips = { placement: 'below_bubble', options: labels };
+    }
     appendMessage({
       role: 'manager',
       source: 'text',
       content: `On reprend sur la ${noun} ${entry.id} — ${entry.title} (${CAMPAIGN_STATUS_LABELS[entry.status].toLowerCase()}). ${reopen[entry.status]}`,
-      chips: offersResumeActions
-        ? {
-            placement: 'below_bubble',
-            options: [
-              RESUME_CHIP_FDP,
-              RESUME_CHIP_SCORING,
-              RESUME_CHIP_CHANNELS,
-              RESUME_CHIP_SOURCES,
-            ],
-          }
-        : undefined,
+      chips,
     });
   }
 
@@ -1207,7 +1284,13 @@ export function ManagerChat() {
    *                  une config par défaut (manual seul actif).
    */
   async function handleResumeAction(
-    action: 'fdp' | 'scoring' | 'channels' | 'sources',
+    action: ResumeAction,
+    /**
+     * Libellé exact du chip cliqué — utilisé pour la bulle user de
+     * traçabilité. Optionnel : si absent (cas où handleResumeAction
+     * est appelé hors chip), on retombe sur "Modifier <noun>".
+     */
+    clickedLabel?: string,
   ) {
     if (isSending || isTranscribing || isAgentBusy) return;
     const currentFdp = useFdpStore.getState().fdp;
@@ -1216,14 +1299,21 @@ export function ManagerChat() {
 
     if (action === 'fdp') {
       useFdpStore.getState().invalidateFDP();
-      // Le statut redescend en draft tant que la FDP n'est pas
-      // revalidée ; les jalons en aval (scoring, status active)
-      // restent inchangés — c'est au DRH de retravailler s'il veut.
-      useCampaignsStore.getState().updateStatus(campaignId, 'draft');
+      // Phase 7.1 — sync l'archive sur la FDP dévalidée puis
+      // recompute. recomputeStatus retournera 'draft' tant que la
+      // FDP n'est pas re-validée.
+      const archive = useCampaignsStore.getState().getById(campaignId);
+      const currentFdpNow = useFdpStore.getState().fdp;
+      if (archive && currentFdpNow) {
+        useCampaignsStore
+          .getState()
+          .addCampaign({ fdp: currentFdpNow });
+      }
+      useCampaignsStore.getState().recomputeStatus(campaignId);
       appendMessage({
         role: 'user',
         source: 'text',
-        content: RESUME_CHIP_FDP,
+        content: clickedLabel ?? `Modifier ${RESUME_NOUN.fdp}`,
       });
       appendMessage({
         role: 'manager',
@@ -1241,7 +1331,7 @@ export function ManagerChat() {
         appendMessage({
           role: 'user',
           source: 'text',
-          content: RESUME_CHIP_SCORING,
+          content: clickedLabel ?? `Modifier ${RESUME_NOUN.scoring}`,
         });
         appendMessage({
           role: 'manager',
@@ -1277,11 +1367,21 @@ export function ManagerChat() {
       }
       // Sinon on dévalide la fiche existante et on repose l'éditeur.
       useScoringStore.getState().invalidate();
-      useCampaignsStore.getState().updateStatus(campaignId, 'in_progress');
+      // Sync l'archive avec la sheet dévalidée + recompute (qui
+      // retourne 'in_progress' tant qu'elle n'est pas re-validée).
+      const archive = useCampaignsStore.getState().getById(campaignId);
+      const invalidated = useScoringStore.getState().sheet;
+      if (archive && invalidated) {
+        useCampaignsStore.getState().addCampaign({
+          fdp: archive.fdp,
+          scoringSheet: invalidated,
+        });
+      }
+      useCampaignsStore.getState().recomputeStatus(campaignId);
       appendMessage({
         role: 'user',
         source: 'text',
-        content: RESUME_CHIP_SCORING,
+        content: clickedLabel ?? `Modifier ${RESUME_NOUN.scoring}`,
       });
       appendMessage({
         role: 'manager',
@@ -1301,7 +1401,7 @@ export function ManagerChat() {
       appendMessage({
         role: 'user',
         source: 'text',
-        content: RESUME_CHIP_CHANNELS,
+        content: clickedLabel ?? `Modifier ${RESUME_NOUN.channels}`,
       });
       appendMessage({
         role: 'manager',
@@ -1321,7 +1421,7 @@ export function ManagerChat() {
     appendMessage({
       role: 'user',
       source: 'text',
-      content: RESUME_CHIP_SOURCES,
+      content: clickedLabel ?? `Modifier ${RESUME_NOUN.sources}`,
     });
     appendMessage({
       role: 'manager',
@@ -1395,7 +1495,11 @@ export function ManagerChat() {
     const noun = entry.kind === 'fdp' ? 'campagne' : 'sollicitation';
     const messages: Record<CampaignStatus, string> = {
       closed: `J'ai marqué la ${noun} ${entry.id} comme terminée. Tu peux la rouvrir depuis le menu si besoin.`,
-      in_progress: `J'ai rouvert la ${noun} ${entry.id}. Tu peux reprendre où on s'est arrêté.`,
+      paused: `J'ai suspendu la ${noun} ${entry.id}. Tu peux la reprendre depuis le menu quand tu veux.`,
+      in_progress:
+        entry.status === 'paused'
+          ? `J'ai repris la ${noun} ${entry.id}. Tu peux poursuivre où on s'est arrêté.`
+          : `J'ai rouvert la ${noun} ${entry.id}. Tu peux reprendre où on s'est arrêté.`,
       active: `J'ai remis la ${noun} ${entry.id} en active.`,
       draft: `J'ai remis la ${noun} ${entry.id} en brouillon.`,
     };

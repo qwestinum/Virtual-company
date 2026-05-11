@@ -115,6 +115,89 @@ describe('campaigns-store', () => {
     ).not.toBeNull();
   });
 
+  it('markPublishedChannel is idempotent and bumps updatedAt', async () => {
+    const fdp = makeFDP('CAMP-2026-PUB', true);
+    const before = useCampaignsStore.getState().addCampaign({ fdp });
+    await new Promise((r) => setTimeout(r, 5));
+    useCampaignsStore
+      .getState()
+      .markPublishedChannel('CAMP-2026-PUB', 'linkedin');
+    useCampaignsStore
+      .getState()
+      .markPublishedChannel('CAMP-2026-PUB', 'linkedin');
+    const after = useCampaignsStore.getState().getById('CAMP-2026-PUB');
+    expect(after?.publishedChannels).toEqual(['linkedin']);
+    expect(after?.updatedAt).not.toBe(before.updatedAt);
+  });
+
+  it('markSourcesConfirmed flips the flag once', () => {
+    const fdp = makeFDP('CAMP-2026-SRC', true);
+    useCampaignsStore.getState().addCampaign({ fdp });
+    useCampaignsStore.getState().markSourcesConfirmed('CAMP-2026-SRC');
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-SRC')?.sourcesConfirmed,
+    ).toBe(true);
+  });
+
+  it('recomputeStatus stays draft when FDP is not validated', () => {
+    const fdp = makeFDP('CAMP-2026-REC1', false);
+    useCampaignsStore.getState().addCampaign({ fdp });
+    useCampaignsStore.getState().recomputeStatus('CAMP-2026-REC1');
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-REC1')?.status,
+    ).toBe('draft');
+  });
+
+  it('recomputeStatus → in_progress when FDP validated but artefacts missing', () => {
+    const fdp = makeFDP('CAMP-2026-REC2', true);
+    useCampaignsStore.getState().addCampaign({ fdp });
+    useCampaignsStore.getState().recomputeStatus('CAMP-2026-REC2');
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-REC2')?.status,
+    ).toBe('in_progress');
+  });
+
+  it('recomputeStatus → active when FDP + ad + sources + scoring all aligned', () => {
+    const fdp = makeFDP('CAMP-2026-REC3', true);
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-2026-REC3',
+      isValidated: true,
+      criteria: [
+        buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+      ],
+    };
+    useCampaignsStore
+      .getState()
+      .addCampaign({ fdp, scoringSheet: sheet });
+    useCampaignsStore
+      .getState()
+      .markPublishedChannel('CAMP-2026-REC3', 'linkedin');
+    useCampaignsStore.getState().markSourcesConfirmed('CAMP-2026-REC3');
+    useCampaignsStore.getState().recomputeStatus('CAMP-2026-REC3');
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-REC3')?.status,
+    ).toBe('active');
+  });
+
+  it('recomputeStatus does NOT override paused or closed', () => {
+    const fdp = makeFDP('CAMP-2026-REC4', true);
+    useCampaignsStore.getState().addCampaign({ fdp });
+    useCampaignsStore.getState().updateStatus('CAMP-2026-REC4', 'paused');
+    useCampaignsStore
+      .getState()
+      .markPublishedChannel('CAMP-2026-REC4', 'linkedin');
+    useCampaignsStore.getState().markSourcesConfirmed('CAMP-2026-REC4');
+    useCampaignsStore.getState().recomputeStatus('CAMP-2026-REC4');
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-REC4')?.status,
+    ).toBe('paused');
+    useCampaignsStore.getState().updateStatus('CAMP-2026-REC4', 'closed');
+    useCampaignsStore.getState().recomputeStatus('CAMP-2026-REC4');
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-REC4')?.status,
+    ).toBe('closed');
+  });
+
   it('addCampaign sets scoringSheet to null explicitly when null is passed', () => {
     const fdp = makeFDP('CAMP-2026-008', true);
     const sheet: ScoringSheet = {

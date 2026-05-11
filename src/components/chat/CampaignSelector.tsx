@@ -8,6 +8,8 @@ import {
   CircleDot,
   CircleSlash,
   FileText,
+  PauseCircle,
+  Play,
   Plus,
   RotateCcw,
 } from 'lucide-react';
@@ -202,6 +204,37 @@ export function CampaignSelector({
               ) : null}
             </div>
             <div className="border-t border-stone-100">
+              {current &&
+              onChangeStatus &&
+              current.status !== 'closed' &&
+              current.status !== 'paused' ? (
+                <Menu.Item
+                  onClick={() => onChangeStatus(current, 'paused')}
+                  className={cn(
+                    'flex items-center gap-2 w-full px-3 py-2.5',
+                    'text-yellow-700 font-medium font-body text-[12.5px]',
+                    'hover:bg-yellow-50 outline-none cursor-pointer',
+                    'data-[highlighted]:bg-yellow-50',
+                  )}
+                >
+                  <PauseCircle className="h-3.5 w-3.5" aria-hidden />
+                  Suspendre la campagne
+                </Menu.Item>
+              ) : null}
+              {current && onChangeStatus && current.status === 'paused' ? (
+                <Menu.Item
+                  onClick={() => onChangeStatus(current, 'in_progress')}
+                  className={cn(
+                    'flex items-center gap-2 w-full px-3 py-2.5',
+                    'text-sky-700 font-medium font-body text-[12.5px]',
+                    'hover:bg-sky-50 outline-none cursor-pointer',
+                    'data-[highlighted]:bg-sky-50',
+                  )}
+                >
+                  <Play className="h-3.5 w-3.5" aria-hidden />
+                  Reprendre la campagne
+                </Menu.Item>
+              ) : null}
               {current && onChangeStatus && current.status !== 'closed' ? (
                 <Menu.Item
                   onClick={() => onChangeStatus(current, 'closed')}
