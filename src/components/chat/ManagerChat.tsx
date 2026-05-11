@@ -705,6 +705,26 @@ export function ManagerChat() {
 
   function handleChipSelect(option: string) {
     if (isSending || isTranscribing) return;
+    // Phase 6.2 — interception PRIORITAIRE des chips d'options de
+    // reprise. Doit passer AVANT isAdjustmentSignal : les libellés
+    // commencent par "Modifier" qui matche le keyword d'ajustement
+    // vague et serait absorbé par le dismiss sans cette priorité.
+    if (option === RESUME_CHIP_FDP) {
+      void handleResumeAction('fdp');
+      return;
+    }
+    if (option === RESUME_CHIP_SCORING) {
+      void handleResumeAction('scoring');
+      return;
+    }
+    if (option === RESUME_CHIP_CHANNELS) {
+      void handleResumeAction('channels');
+      return;
+    }
+    if (option === RESUME_CHIP_SOURCES) {
+      void handleResumeAction('sources');
+      return;
+    }
     if (isAdjustmentSignal(option)) {
       // Pas de tour LLM : le DRH veut juste reprendre la main.
       dismissLastManagerChips();
@@ -721,23 +741,6 @@ export function ManagerChat() {
     if (pendingSwitch && (option === SWITCH_CHIP_NEW || option === SWITCH_CHIP_KEEP)) {
       pendingSwitchRef.current = null;
       void handleSwitchDialogChoice(pendingSwitch, option);
-      return;
-    }
-    // Phase 6.2 — interception des chips d'options de reprise.
-    if (option === RESUME_CHIP_FDP) {
-      void handleResumeAction('fdp');
-      return;
-    }
-    if (option === RESUME_CHIP_SCORING) {
-      void handleResumeAction('scoring');
-      return;
-    }
-    if (option === RESUME_CHIP_CHANNELS) {
-      void handleResumeAction('channels');
-      return;
-    }
-    if (option === RESUME_CHIP_SOURCES) {
-      void handleResumeAction('sources');
       return;
     }
     // Interception des chips de la nouvelle campagne après nom donné.

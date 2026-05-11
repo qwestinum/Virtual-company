@@ -44,4 +44,15 @@ describe('isAdjustmentSignal', () => {
     expect(isAdjustmentSignal('')).toBe(false);
     expect(isAdjustmentSignal('   ')).toBe(false);
   });
+
+  it('phases 6.2 resume chips also match (intentional collision)', () => {
+    // Documenté : ces libellés débutent par "Modifier" et matchent
+    // donc isAdjustmentSignal. handleChipSelect doit les intercepter
+    // EN PREMIER (avant ce détecteur) pour ne pas les absorber comme
+    // de simples dismissals.
+    expect(isAdjustmentSignal('Modifier la FDP')).toBe(true);
+    expect(isAdjustmentSignal('Modifier la fiche de scoring')).toBe(true);
+    expect(isAdjustmentSignal('Modifier les annonces')).toBe(true);
+    expect(isAdjustmentSignal('Modifier les flux')).toBe(true);
+  });
 });
