@@ -89,10 +89,15 @@ export type ChatBlock =
        * le dernier block de ce kind pour savoir si Manuel est actif.
        * Le futur agent Publisher lira aussi cette config pour
        * brancher les flux automatiques (API / MCP).
+       *
+       * Phase 3.2.2 — `confirmed` passe à true au clic du bouton
+       * « Valider la configuration ». Le block reste affiché pour
+       * traçabilité mais les toggles deviennent inactifs.
        */
       kind: 'cv-sources-picker';
       campaignId: string;
       activeSources: Record<CVSource, boolean>;
+      confirmed: boolean;
     };
 
 export type ChatMessage = {

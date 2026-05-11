@@ -22,6 +22,7 @@ import {
 } from '@/types/publication-channel';
 import {
   buildDefaultSourcesConfig,
+  CV_SOURCE_LABELS,
   type CVSource,
 } from '@/types/cv-source';
 import { ChatBubble } from '@/components/chat/ChatBubble';
@@ -801,26 +802,73 @@ export function ManagerChat() {
         kind: 'cv-sources-picker',
         campaignId: pending.fdp.campaignId,
         activeSources: buildDefaultSourcesConfig(channels),
+        confirmed: false,
       },
     });
   }
 
   /**
    * Phase 3.2 — toggle d'une source dans le cv-sources-picker.
-   * Met à jour le block via updateMessage. Pas de tour LLM.
+   * Met à jour le block via updateMessage. Pas de tour LLM. Inactif
+   * une fois `confirmed: true` (gardé par le composant + ici).
    */
   function handleSourceToggle(messageId: string, source: CVSource) {
     if (isSending || isTranscribing || isAgentBusy) return;
     const target = useChatStore
       .getState()
       .messages.find((m) => m.id === messageId);
-    if (!target || target.block?.kind !== 'cv-sources-picker') return;
+    if (
+      !target ||
+      target.block?.kind !== 'cv-sources-picker' ||
+      target.block.confirmed
+    ) {
+      return;
+    }
     const next = {
       ...target.block.activeSources,
       [source]: !target.block.activeSources[source],
     };
     updateMessage(messageId, {
       block: { ...target.block, activeSources: next },
+    });
+  }
+
+  /**
+   * Phase 3.2.2 — validation de la configuration des flux. Gèle le
+   * block (confirmed: true) et poste une bulle Manager récap avec la
+   * liste des flux activés. Pas de tour LLM. Le futur Publisher
+   * consommera la config validée pour brancher les flux automatiques.
+   */
+  function handleSourcesConfirm(messageId: string) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    const target = useChatStore
+      .getState()
+      .messages.find((m) => m.id === messageId);
+    if (
+      !target ||
+      target.block?.kind !== 'cv-sources-picker' ||
+      target.block.confirmed
+    ) {
+      return;
+    }
+    const active = (Object.entries(target.block.activeSources) as [
+      CVSource,
+      boolean,
+    ][])
+      .filter(([, on]) => on)
+      .map(([s]) => s);
+    if (active.length === 0) return;
+    updateMessage(messageId, {
+      block: { ...target.block, confirmed: true },
+    });
+    const activeLabels = active.map((s) => CV_SOURCE_LABELS[s]).join(', ');
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content:
+        active.length === 1
+          ? `Configuration validée pour ${target.block.campaignId} — flux actif : ${activeLabels}.`
+          : `Configuration validée pour ${target.block.campaignId} — ${active.length} flux actifs : ${activeLabels}.`,
     });
   }
 
@@ -943,6 +991,7 @@ export function ManagerChat() {
                 onChannelToggle={handleChannelToggle}
                 onChannelsConfirm={handleChannelsConfirm}
                 onSourceToggle={handleSourceToggle}
+                onSourcesConfirm={handleSourcesConfirm}
                 blocksDisabled={isSending || isTranscribing || isAgentBusy}
               />
               {showBelow && message.chips ? (

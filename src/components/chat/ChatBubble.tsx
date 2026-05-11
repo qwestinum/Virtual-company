@@ -44,6 +44,7 @@ export type ChatBubbleProps = {
   onChannelToggle?: (messageId: string, channel: PublicationChannel) => void;
   onChannelsConfirm?: (messageId: string) => void;
   onSourceToggle?: (messageId: string, source: CVSource) => void;
+  onSourcesConfirm?: (messageId: string) => void;
   blocksDisabled?: boolean;
 };
 
@@ -57,6 +58,7 @@ export function ChatBubble({
   onChannelToggle,
   onChannelsConfirm,
   onSourceToggle,
+  onSourcesConfirm,
   blocksDisabled,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
@@ -112,12 +114,16 @@ export function ChatBubble({
             </span>
           ) : null}
           <RenderedContent content={message.content} />
-          {message.block?.kind === 'cv-sources-picker' && onSourceToggle ? (
+          {message.block?.kind === 'cv-sources-picker' &&
+          onSourceToggle &&
+          onSourcesConfirm ? (
             <CVSourcesPicker
               campaignId={message.block.campaignId}
               activeSources={message.block.activeSources}
+              confirmed={message.block.confirmed}
               disabled={blocksDisabled}
               onToggle={(source) => onSourceToggle(message.id, source)}
+              onConfirm={() => onSourcesConfirm(message.id)}
             />
           ) : null}
           {message.block?.kind === 'cv-route-picker' && onRoutePick ? (
