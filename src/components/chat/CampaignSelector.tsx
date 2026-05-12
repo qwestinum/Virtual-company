@@ -328,9 +328,22 @@ function CampaignMenuItem({
           />
         ) : (
           <span
-            className="h-3.5 w-3.5 rounded-full border block"
+            className={cn(
+              'h-3.5 w-3.5 rounded-full border block',
+              // Round 4 — pulsation visuelle pour les campagnes actives
+              // (en écoute de flux CV). Le hover de la ligne reste
+              // fluide, l'animation est volontairement courte (1.6s)
+              // pour rester perceptible sans être agressive.
+              entry.status === 'active' && 'status-dot-active',
+            )}
             style={{
               borderColor: CAMPAIGN_STATUS_COLORS[entry.status],
+              ...(entry.status === 'active'
+                ? {
+                    backgroundColor: `${CAMPAIGN_STATUS_COLORS[entry.status]}33`,
+                    ['--pulse-color' as const]: `${CAMPAIGN_STATUS_COLORS[entry.status]}cc`,
+                  }
+                : {}),
             }}
             aria-hidden
           />
@@ -451,12 +464,26 @@ function InlineStatusActions({
 }
 
 function StatusDot({ status }: { status: CampaignStatus }) {
+  const color = CAMPAIGN_STATUS_COLORS[status];
+  const isActive = status === 'active';
   return (
     <span
-      className="h-2 w-2 rounded-full shrink-0"
-      style={{ backgroundColor: CAMPAIGN_STATUS_COLORS[status] }}
+      className={cn(
+        'h-2 w-2 rounded-full shrink-0',
+        isActive && 'status-dot-active',
+      )}
+      style={{
+        backgroundColor: color,
+        // CSS variable consommée par status-dot-pulse pour le halo.
+        // 80% opacity pour rester contrasté sur fond sand.
+        ...(isActive ? { ['--pulse-color' as const]: `${color}cc` } : {}),
+      }}
       aria-hidden
-      title={CAMPAIGN_STATUS_LABELS[status]}
+      title={
+        isActive
+          ? `${CAMPAIGN_STATUS_LABELS[status]} — en écoute de flux CV`
+          : CAMPAIGN_STATUS_LABELS[status]
+      }
     />
   );
 }

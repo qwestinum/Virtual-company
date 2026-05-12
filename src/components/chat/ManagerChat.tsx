@@ -12,6 +12,7 @@ import {
   type PendingSwitch,
 } from '@/types/switch-dialog';
 
+import { ActiveListeningChip } from '@/components/chat/ActiveListeningChip';
 import {
   CampaignSelector,
   type CampaignEntry,
@@ -1949,18 +1950,39 @@ export function ManagerChat() {
       isolatedCriteria ||
       archivedCampaigns.length > 0 ||
       archivedTasks.length > 0 ? (
-        <CampaignSelector
-          campaigns={buildCampaignEntries({
+        (() => {
+          const campaignEntries = buildCampaignEntries({
             currentFdp: fdp,
             currentCriteria: !fdp ? isolatedCriteria : null,
             archivedCampaigns,
             archivedTasks,
-          })}
-          onSelectCampaign={handleSelectCampaign}
-          onNewCampaign={handleNewCampaign}
-          onChangeStatus={handleCampaignStatusChange}
-          disabled={isSending || isTranscribing || isAgentBusy}
-        />
+          });
+          // Round 4 — bandeau « campagne active en attente de flux CV »
+          // posé sous le sélecteur quand le statut courant est `active`.
+          // Couleur orange (mode alerte douce), pulse synchronisée avec
+          // le point du sélecteur.
+          const currentEntry =
+            campaignEntries.find((e) => e.isCurrent) ?? null;
+          const showActiveChip =
+            currentEntry !== null && currentEntry.status === 'active';
+          return (
+            <>
+              <CampaignSelector
+                campaigns={campaignEntries}
+                onSelectCampaign={handleSelectCampaign}
+                onNewCampaign={handleNewCampaign}
+                onChangeStatus={handleCampaignStatusChange}
+                disabled={isSending || isTranscribing || isAgentBusy}
+              />
+              {showActiveChip && currentEntry ? (
+                <ActiveListeningChip
+                  campaignId={currentEntry.id}
+                  jobTitle={currentEntry.title}
+                />
+              ) : null}
+            </>
+          );
+        })()
       ) : null}
 
       {fdp ? (

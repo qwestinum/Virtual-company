@@ -176,9 +176,17 @@ export async function dispatchJobWriter(
     // Phase 7.1 — marque le channel comme publié pour cette campagne.
     // Idempotent côté store. Permet à recomputeStatus de basculer en
     // 'active' une fois tous les jalons franchis.
-    useCampaignsStore
-      .getState()
-      .markPublishedChannel(fdp.campaignId, channel);
+    //
+    // Exception `generic` (Round 4) — l'annonce générique n'est pas
+    // une publication : c'est juste un artefact rédigé pour diffusion
+    // manuelle. On ne la compte donc PAS comme un jalon publié, et
+    // une campagne qui n'aurait que `generic` reste en `in_progress`
+    // tant que le DRH n'a pas publié sur un vrai canal.
+    if (channel !== 'generic') {
+      useCampaignsStore
+        .getState()
+        .markPublishedChannel(fdp.campaignId, channel);
+    }
     useCampaignsStore.getState().recomputeStatus(fdp.campaignId);
 
     agents.pushEvent({
@@ -189,14 +197,22 @@ export async function dispatchJobWriter(
 
     // Round 4 — chaînage Publisher : une fois l'annonce produite,
     // l'agent Publisher la "dépose" sur le canal (simulation : URL
-    // fictive + timestamp). Bulle Manager + artefact preuve. Le
-    // failure ici ne casse pas le flux Job Writer — on log et
-    // continue.
-    await dispatchPublisher({
-      campaignId: fdp.campaignId,
-      channel,
-      channelLabel,
-    });
+    // fictive + timestamp). Bulle Manager + artefact preuve.
+    //
+    // Exception `generic` — le canal générique ne correspond à AUCUN
+    // jobboard réel, c'est juste une annonce neutre diffusable
+    // manuellement. Pas de publication à simuler ; on s'arrête après
+    // la production de l'artefact côté Job Writer. Idem côté store :
+    // on ne marque pas `generic` comme channel publié (sinon
+    // recomputeStatus ferait passer la campagne en `active` sans
+    // qu'aucune publication réelle ne soit attestée).
+    if (channel !== 'generic') {
+      await dispatchPublisher({
+        campaignId: fdp.campaignId,
+        channel,
+        channelLabel,
+      });
+    }
   } catch (err) {
     chat.appendMessage({
       role: 'manager',
@@ -769,17 +785,25 @@ export function clearAllPendingRoutings(): void {
 }
 
 function snapshotActiveCampaigns(): CampaignPickerEntry[] {
-  return selectActiveCampaigns(useCampaignsStore.getState()).map((c) => {
-    const jobTitle = c.fdp.fields.job_title?.value;
-    return {
-      id: c.id,
-      name: c.name,
-      jobTitle:
-        typeof jobTitle === 'string' && jobTitle.trim().length > 0
-          ? jobTitle
-          : c.name,
-    };
-  });
+  // Round 4+ : on ne propose que les campagnes au statut `active` —
+  // celles qui sont en écoute de flux CV (FDP validée + annonce
+  // publiée + flux confirmés + scoring validé). Une campagne `draft`
+  // ou `in_progress` n'a pas encore son cadrage complet, lui rattacher
+  // un CV serait prématuré : le DRH passe par « Nouvelle campagne »
+  // ou « Tâche isolée » dans ces cas.
+  return selectActiveCampaigns(useCampaignsStore.getState())
+    .filter((c) => c.status === 'active')
+    .map((c) => {
+      const jobTitle = c.fdp.fields.job_title?.value;
+      return {
+        id: c.id,
+        name: c.name,
+        jobTitle:
+          typeof jobTitle === 'string' && jobTitle.trim().length > 0
+            ? jobTitle
+            : c.name,
+      };
+    });
 }
 
 /**

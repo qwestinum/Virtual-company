@@ -196,6 +196,29 @@
   animation: flow-pulse 1.4s ease-in-out infinite;
 }
 
+/*
+ * Round 4 — pulsation du point statut quand une campagne est `active`
+ * (= tous les jalons franchis, en écoute de flux CV). Grossit/rétrécit
+ * en douceur autour de sa taille normale, avec un halo coloré pour
+ * souligner l'écoute. Hérite de la couleur via --pulse-color (passé
+ * en style inline depuis le composant).
+ */
+@keyframes status-dot-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--pulse-color, rgba(5, 150, 105, 0.4));
+  }
+  50% {
+    transform: scale(1.35);
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+.status-dot-active {
+  animation: status-dot-pulse 1.6s ease-in-out infinite;
+}
+
 .work-dot {
   animation: work-bounce 1.2s ease-in-out infinite;
 }

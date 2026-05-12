@@ -232,8 +232,17 @@ describe('manager-flow — CV routing', () => {
   });
 
   it('existing route surfaces a campaign-picker with active campaigns', async () => {
-    useCampaignsStore.getState().addCampaign({ fdp: makeFDP('CAMP-2026-001') });
-    useCampaignsStore.getState().addCampaign({ fdp: makeFDP('CAMP-2026-002') });
+    // Round 4 — snapshotActiveCampaigns ne propose QUE les campagnes
+    // au statut `active` (en écoute de flux CV). On force ce statut
+    // pour les deux fixtures.
+    useCampaignsStore.getState().addCampaign({
+      fdp: makeFDP('CAMP-2026-001'),
+      status: 'active',
+    });
+    useCampaignsStore.getState().addCampaign({
+      fdp: makeFDP('CAMP-2026-002'),
+      status: 'active',
+    });
 
     dispatchCVRouting([makeFile('a.pdf')]);
     const routerMsg = useChatStore
