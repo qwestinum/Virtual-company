@@ -49,19 +49,24 @@ import {
   DEFAULT_CV_THRESHOLD,
 } from '@/types/cv-analysis';
 
+/**
+ * MIME types acceptés par le poller. Alignés sur ce que
+ * `extractCVText` sait réellement parser — pas la liste plus large
+ * acceptée par la route /api/cv-analyzer (qui plante au moment de
+ * l'extraction sur .doc binaire). Inclure des formats non extractables
+ * créerait des entrées imap_cv_failed inutiles à chaque mail.
+ *
+ * Étendre cette liste : ajouter le format dans extractCVText d'abord,
+ * sinon les CV seront marqués comme reçus puis échoués.
+ */
 const PDF_MIMES = new Set([
   'application/pdf',
   'application/x-pdf',
 ]);
-const DOC_MIMES = new Set([
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/msword',
-]);
 
 function isCvMime(mime: string | undefined | null): boolean {
   if (!mime) return false;
-  const lower = mime.toLowerCase();
-  return PDF_MIMES.has(lower) || DOC_MIMES.has(lower);
+  return PDF_MIMES.has(mime.toLowerCase());
 }
 
 function matchCampaignInSubject(
@@ -81,7 +86,31 @@ export type PollOutcome = {
   matched: number;   // emails matchés (qu'ils aient été analysés ou non)
   errors: number;
   newLastUid: string | null;
+  /**
+   * True si on a sauté le poll parce que la mailbox était déjà en
+   * cours de traitement (mutex anti-overlap, cf. `inflight`).
+   */
+  skipped?: boolean;
 };
+
+/**
+ * Set en mémoire des mailboxes actuellement en cours de polling.
+ * Garde-fou contre l'overlap : `setInterval` peut lancer un tick #2
+ * alors que #1 n'a pas fini (IMAP + extraction + LLM dépassent
+ * facilement les 30s du cycle). Sans ce garde, deux polls liraient
+ * le même `last_uid_seen` simultanément et retraiteraient les
+ * mêmes UIDs.
+ *
+ * Stocké sur globalThis pour survivre au hot-reload Next.js dev
+ * (cf. scheduler.ts pour la même technique).
+ */
+declare global {
+  /* eslint-disable-next-line no-var */
+  var __imapInflightMailboxes__: Set<string> | undefined;
+}
+const inflight: Set<string> =
+  globalThis.__imapInflightMailboxes__ ?? new Set<string>();
+globalThis.__imapInflightMailboxes__ = inflight;
 
 /**
  * Poll une mailbox unique. Capture tout ce qu'on rencontre dans la
@@ -97,6 +126,23 @@ export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
     newLastUid: mailbox.last_uid_seen,
   };
 
+  // Anti-overlap : on saute si un autre tick polle déjà cette mailbox.
+  // Le scheduler relancera dans 30s, on aura toujours pris la suite.
+  if (inflight.has(mailbox.id)) {
+    return { ...outcome, skipped: true };
+  }
+  inflight.add(mailbox.id);
+  try {
+    return await pollMailboxImpl(mailbox, outcome);
+  } finally {
+    inflight.delete(mailbox.id);
+  }
+}
+
+async function pollMailboxImpl(
+  mailbox: MailboxRow,
+  outcome: PollOutcome,
+): Promise<PollOutcome> {
   let password: string;
   try {
     password = decryptCredential(mailbox.encrypted_password);
@@ -166,9 +212,10 @@ export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
       const fromUid = mailbox.last_uid_seen
         ? `${Number(mailbox.last_uid_seen) + 1}:*`
         : '1:*';
-      let maxUidSeen = mailbox.last_uid_seen
+      const previousLastUid = mailbox.last_uid_seen
         ? Number(mailbox.last_uid_seen)
         : 0;
+      let maxUidSeen = previousLastUid;
 
       // Garde-fou : si la mailbox est neuve (last_uid_seen null) et
       // contient déjà 10 000 messages anciens, on ne veut pas tous
@@ -186,7 +233,16 @@ export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
         inspected += 1;
 
         const uid = message.uid;
-        if (typeof uid === 'number' && uid > maxUidSeen) maxUidSeen = uid;
+        // Garde-fou anti-retraitement (Round 5 fix) : Gmail renvoie le
+        // dernier message même si le range start dépasse uidNext
+        // (sémantique IMAP du `*` quand la borne basse dépasse le
+        // max). Sans ce filtre, on retraite le même UID à chaque poll
+        // jusqu'à ce qu'un nouveau message arrive. On compare
+        // strictement à l'UID que l'on avait AVANT ce poll.
+        if (typeof uid === 'number') {
+          if (uid <= previousLastUid) continue;
+          if (uid > maxUidSeen) maxUidSeen = uid;
+        }
 
         // Parsing du message complet pour extraire subject + PJ.
         if (!message.source) continue;
@@ -225,7 +281,8 @@ export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
         }
 
         // Extraction des PJ exploitables.
-        const cvAttachments = (parsed.attachments ?? []).filter((a) =>
+        const allAttachments = parsed.attachments ?? [];
+        const cvAttachments = allAttachments.filter((a) =>
           isCvMime(a.contentType),
         );
         if (cvAttachments.length === 0) {
@@ -238,6 +295,14 @@ export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
               uid,
               subject,
               from: parsed.from?.text ?? null,
+              // Liste explicite des PJ rejetées : aide à diagnostiquer
+              // quand le DRH envoie un .doc et se demande pourquoi
+              // « rien ne se passe ». Le retour clair pointe vers
+              // « renvoyez en PDF ».
+              rejectedAttachments: allAttachments.map((a) => ({
+                filename: a.filename ?? null,
+                mime: a.contentType ?? null,
+              })),
             },
           }).catch(() => {});
           continue;
