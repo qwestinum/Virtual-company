@@ -1332,6 +1332,9 @@ export function ManagerChat() {
       .map(([s]) => s);
     if (active.length === 0) return;
     const campaignId = target.block.campaignId;
+    // Round 5 — propage le flag resume du picker vers la suite du
+    // workflow (mailbox-picker + décision de poser le scoring).
+    const fromResume = target.block.fromResume === true;
     updateMessage(messageId, {
       block: { ...target.block, confirmed: true },
     });
@@ -1368,13 +1371,19 @@ export function ManagerChat() {
       } catch (err) {
         console.error('[mailbox-picker] fetch failed', err);
       }
+      // Wording adapté : en flux initial, le scoring vient ensuite donc
+      // on l'annonce. En resume, on s'arrête au mailbox (le DRH décide
+      // de la suite via les chips).
+      const noMailboxTrailer = fromResume
+        ? "Pour activer la réception email, il faut configurer une boîte IMAP — je te laisse l'ajouter depuis la page de configuration."
+        : "Pour activer la réception email, il faut configurer une boîte IMAP — je te laisse l'ajouter depuis la page de configuration. On continue avec la fiche de scoring en attendant.";
       appendMessage({
         role: 'manager',
         source: 'text',
         content:
           mailboxes.length > 0
             ? `Tu as ${mailboxes.length === 1 ? 'une boîte' : `${mailboxes.length} boîtes`} configurée${mailboxes.length === 1 ? '' : 's'}. Sur laquelle tu veux que je branche ${campaignId} ?`
-            : `Pour activer la réception email, il faut configurer une boîte IMAP — je te laisse l'ajouter depuis la page de configuration. On continue avec la fiche de scoring en attendant.`,
+            : noMailboxTrailer,
         block: {
           kind: 'mailbox-picker',
           campaignId,
@@ -1384,6 +1393,9 @@ export function ManagerChat() {
             email: mb.user_email,
           })),
           selectedMailboxId: null,
+          // Round 5 — propage le flag : handleMailboxPick l'utilisera
+          // pour décider d'auto-chaîner ou non vers le scoring.
+          fromResume,
         },
       });
       if (mailboxes.length > 0) {
@@ -1391,8 +1403,17 @@ export function ManagerChat() {
       }
     }
 
-    if (!deferScoringForMailboxPick) {
+    // Auto-chain vers le scoring uniquement en flux INITIAL. En resume,
+    // le DRH a déjà ses chips de modification et conduit le workflow.
+    if (!deferScoringForMailboxPick && !fromResume) {
       await proposeScoringForCampaign(campaignId);
+    }
+    // En resume, on attache les chips de reprise à la dernière bulle
+    // pour que le DRH puisse naviguer vers la suite (sauf si on a
+    // posé le mailbox-picker — dans ce cas, c'est handleMailboxPick
+    // qui les attachera après la sélection).
+    if (fromResume && !deferScoringForMailboxPick) {
+      attachResumeChipsToLastBubble(campaignId, 'sources');
     }
   }
 
@@ -1484,6 +1505,7 @@ export function ManagerChat() {
     if (!target || target.block?.kind !== 'mailbox-picker') return;
     const picked = target.block.mailboxes.find((m) => m.id === mailboxId);
     if (!picked) return;
+    const fromResume = target.block.fromResume === true;
 
     // Lock optimiste du block — UI instantané, on rattrape l'erreur
     // serveur en posant une bulle d'erreur si l'API échoue.
@@ -1507,16 +1529,19 @@ export function ManagerChat() {
         content: `Parfait — j'écoute désormais la boîte « ${picked.label} » (${picked.email}) pour ${campaignId}. Les CVs reçus avec l'ID de campagne dans l'objet seront analysés automatiquement.`,
       });
       // Round 5 — la pose du picker mailbox a différé la proposition de
-      // fiche de scoring (cf. handleSourcesConfirm). Maintenant que
-      // l'association est faite, on relance la suite du workflow.
-      // Garde-fou : ne déclencher que si aucune scoring sheet n'est
-      // encore en cours pour cette campagne, pour ne pas re-poser
-      // l'éditeur si on revisite l'association plus tard.
+      // fiche de scoring (cf. handleSourcesConfirm) UNIQUEMENT en flux
+      // initial. Sur resume, on s'arrête là : le DRH conduit la suite
+      // via les chips de reprise (« Initier / Modifier le scoring »).
       const currentSheet = useScoringStore.getState().sheet;
       const hasScoringFlow =
         currentSheet?.campaignId === campaignId;
-      if (!hasScoringFlow) {
+      if (!fromResume && !hasScoringFlow) {
         await proposeScoringForCampaign(campaignId);
+      } else if (fromResume) {
+        // En resume, on rouvre une bulle avec les chips de reprise
+        // pour que le DRH puisse choisir l'étape suivante (scoring,
+        // FDP, channels…). Sinon l'écran est vide après pick.
+        attachResumeChipsToLastBubble(campaignId);
       }
     } catch (err) {
       // Rollback du verrou pour permettre une nouvelle tentative.
@@ -1885,6 +1910,10 @@ export function ManagerChat() {
         campaignId,
         activeSources: buildDefaultSourcesConfig([]),
         confirmed: false,
+        // Round 5 — flag resume : à la validation, on n'auto-chaîne
+        // PAS vers la fiche de scoring. Le DRH garde le contrôle
+        // via les chips de reprise.
+        fromResume: true,
       },
     });
   }

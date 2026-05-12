@@ -98,6 +98,14 @@ export type ChatBlock =
       campaignId: string;
       activeSources: Record<CVSource, boolean>;
       confirmed: boolean;
+      /**
+       * Round 5 — true quand ce picker est posé par handleResumeAction
+       * (« Modifier les flux » depuis le sélecteur). À la confirmation,
+       * handleSourcesConfirm n'auto-déclenche PAS la proposition de
+       * fiche de scoring : le DRH conduit le workflow via les chips
+       * de reprise. Absent / false = flux initial → auto-chain OK.
+       */
+      fromResume?: boolean;
     }
   | {
       /**
@@ -124,6 +132,13 @@ export type ChatBlock =
       campaignId: string;
       mailboxes: ReadonlyArray<{ id: string; label: string; email: string }>;
       selectedMailboxId: string | null;
+      /**
+       * Round 5 — propagé depuis le cv-sources-picker parent. Si true,
+       * handleMailboxPick n'auto-déclenche PAS le scoring après
+       * association (le DRH est en mode resume et conduit le
+       * workflow via les chips).
+       */
+      fromResume?: boolean;
     };
 
 export type ChatMessage = {
