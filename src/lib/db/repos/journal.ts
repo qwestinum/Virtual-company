@@ -28,3 +28,55 @@ export async function appendJournalEntry(
   });
   if (error) throw new Error(`appendJournalEntry: ${error.message}`);
 }
+
+export type JournalEntry = {
+  id: number;
+  campaignId: string | null;
+  actor: string;
+  action: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+};
+
+/**
+ * Liste les entrées récentes du journal. Filtres optionnels :
+ *   - actionPrefix : préfixe (« imap_ » récupère imap_cv_received,
+ *     imap_cv_analyzed, etc.)
+ *   - campaignId : restreint à une campagne
+ *   - limit : nombre max d'entrées (défaut 50, max 500)
+ */
+export async function listJournalEntries(args: {
+  actionPrefix?: string;
+  campaignId?: string;
+  limit?: number;
+}): Promise<JournalEntry[]> {
+  const supabase = requireServerSupabase();
+  const cappedLimit = Math.min(Math.max(args.limit ?? 50, 1), 500);
+  let q = supabase
+    .from('journal')
+    .select('id, campaign_id, actor, action, payload, created_at')
+    .order('created_at', { ascending: false })
+    .limit(cappedLimit);
+  if (args.campaignId) q = q.eq('campaign_id', args.campaignId);
+  if (args.actionPrefix) q = q.like('action', `${args.actionPrefix}%`);
+  const { data, error } = await q;
+  if (error) throw new Error(`listJournalEntries: ${error.message}`);
+  return (data ?? []).map((r) => {
+    const row = r as {
+      id: number;
+      campaign_id: string | null;
+      actor: string;
+      action: string;
+      payload: Record<string, unknown>;
+      created_at: string;
+    };
+    return {
+      id: row.id,
+      campaignId: row.campaign_id,
+      actor: row.actor,
+      action: row.action,
+      payload: row.payload,
+      createdAt: row.created_at,
+    };
+  });
+}
