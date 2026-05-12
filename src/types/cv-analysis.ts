@@ -28,12 +28,27 @@ export const CVAnalysisCriteriaSchema = z.object({
 export const CVAnalysisResultSchema = z.object({
   fileName: z.string().min(1),
   candidateName: z.string().min(1),
+  /**
+   * Round 4 — coordonnées extraites du CV. `email` est indispensable
+   * pour que Mail Composer envoie un refus/invitation ; s'il est null,
+   * le candidat passe en arbitrage humain (le DRH doit retrouver le
+   * contact manuellement). `phone` est nice-to-have, affiché dans le
+   * brief d'entretien.
+   */
+  email: z.string().email().nullable(),
+  phone: z.string().nullable(),
   skills: z.array(z.string().min(1)),
   experienceYears: z.number().nonnegative(),
   score: z.number().min(0).max(100),
   summary: z.string().min(1),
   strengths: z.array(z.string().min(1)),
   weaknesses: z.array(z.string()),
+  /**
+   * Round 4 — justification du verdict (accept/refuse) en 1-2 phrases.
+   * Utilisée par Mail Composer pour formuler un motif factuel dans le
+   * mail de refus (sans copier-coller — le ton est retravaillé).
+   */
+  justification: z.string().min(1),
   aboveThreshold: z.boolean(),
 });
 

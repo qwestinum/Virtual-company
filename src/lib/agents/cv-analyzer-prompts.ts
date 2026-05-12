@@ -55,14 +55,22 @@ export function buildCVAnalyzerSystemPrompt(
     "Sortie : JSON STRICT, exactement ce schéma :",
     '{',
     '  "candidateName": "<prénom + nom déduit du CV ; \\"Candidat anonyme\\" si introuvable>",',
+    '  "email": "<email du CV — adresse complète valide, ou null si rien d\'extractable>",',
+    '  "phone": "<téléphone du CV au format international quand possible, ou null si rien>",',
     '  "skills": ["<compétence>", ...],',
     '  "experienceYears": <nombre, années d\'expérience pro estimées>,',
     '  "score": <entier 0-100>,',
     '  "summary": "<3 phrases max, synthèse exécutive>",',
     '  "strengths": ["<3 à 5 points forts>", ...],',
     '  "weaknesses": ["<0 à 4 points d\'attention>", ...],',
+    '  "justification": "<1 à 2 phrases qui expliquent POURQUOI ce score, en ciblant les éléments concrets du CV vs critères ; sera réutilisée pour rédiger un mail de refus ou un brief d\'entretien — sois factuel, jamais condescendant>",',
     '  "aboveThreshold": <booléen>',
     '}',
+    '',
+    "Règles d'extraction des contacts :",
+    "- email : extrais l'adresse email TELLE QUELLE depuis le CV (ne reformate pas, n'invente rien). Si plusieurs emails (LinkedIn vs perso), prends l'adresse personnelle / directe en priorité. Si rien d'extractable ou format invalide, mets `null`. NE METS JAMAIS un placeholder ou un email d'exemple.",
+    "- phone : idem, prends-le tel quel ou null. Préserve le format international si présent (+33 …).",
+    "- candidateName : extrais le nom complet. Évite les titres (\"Mr\", \"Mme\"). Si pas de nom dans le CV, mets exactement \"Candidat anonyme\".",
   );
   return lines.join('\n');
 }

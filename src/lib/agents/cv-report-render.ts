@@ -27,6 +27,15 @@ export function renderCVBatchMarkdown(
         : `Statut : **À arbitrer** · Fichier : \`${cv.fileName}\``,
     );
     lines.push('');
+    // Round 4 — coordonnées extraites. Si email manquant, on signale
+    // explicitement « contact à retrouver » : le DRH sait qu'il faudra
+    // arbitrer manuellement (pas d'envoi automatique possible).
+    const contactBits: string[] = [];
+    if (cv.email) contactBits.push(`Email : ${cv.email}`);
+    else contactBits.push('Email : *manquant — contact à retrouver*');
+    if (cv.phone) contactBits.push(`Téléphone : ${cv.phone}`);
+    lines.push(contactBits.join('  · '));
+    lines.push('');
     lines.push(`Expérience estimée : ${cv.experienceYears} an(s)`);
     if (cv.skills.length > 0) {
       lines.push(`Compétences : ${cv.skills.join(', ')}`);
@@ -43,6 +52,7 @@ export function renderCVBatchMarkdown(
       for (const w of cv.weaknesses) lines.push(`- ${w}`);
       lines.push('');
     }
+    lines.push('### Verdict', cv.justification, '');
     lines.push('---', '');
   }
 

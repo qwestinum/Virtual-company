@@ -75,12 +75,15 @@ function fakeCVResult(
   const result: CVAnalysisResult = {
     fileName,
     candidateName: `Candidat ${fileName}`,
+    email: null,
+    phone: null,
     skills: ['SAP'],
     experienceYears: 5,
     score,
     summary: 'Synthèse',
     strengths: ['Expérience'],
     weaknesses: [],
+    justification: 'Verdict factice pour test',
     aboveThreshold,
   };
   return {

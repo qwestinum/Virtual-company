@@ -38,12 +38,16 @@ function fakeCompletion(content: string): FakeCompletion {
 
 const SAMPLE_RESULT = {
   candidateName: 'Jeanne Dupont',
+  email: 'jeanne.dupont@example.com',
+  phone: '+33 6 12 34 56 78',
   skills: ['SAP', 'IFRS', 'Excel'],
   experienceYears: 8,
   score: 82,
   summary: 'Profil sénior aligné avec le poste. Expérience solide en clôtures.',
   strengths: ['8 ans d\'expérience comptable', 'IFRS', 'Management junior'],
   weaknesses: ['Pas de certification DSCG'],
+  justification:
+    'Score élevé : expérience comptable cumulée et maîtrise IFRS clairement démontrées. Absence DSCG pondérée.',
   aboveThreshold: true,
 };
 

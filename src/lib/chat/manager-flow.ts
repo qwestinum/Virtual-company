@@ -48,11 +48,15 @@ import {
   DEFAULT_CV_THRESHOLD,
   type CVAnalysisCriteria,
   type CVAnalysisResult,
+  type CVBatchSummary,
 } from '@/types/cv-analysis';
 import type { FDPInProgress } from '@/types/field-collection';
 
 const JOB_WRITER_ID = 'agent.job-writer';
 const CV_ANALYZER_ID = 'agent.cv-analyzer';
+const PUBLISHER_ID = 'agent.publisher';
+const MAIL_COMPOSER_ID = 'agent.mail-composer';
+const SCHEDULER_ID = 'agent.scheduler';
 
 function nowTaskId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -182,6 +186,17 @@ export async function dispatchJobWriter(
       type: 'task_completed',
       payload: { taskId, metrics: result.metrics },
     });
+
+    // Round 4 — chaînage Publisher : une fois l'annonce produite,
+    // l'agent Publisher la "dépose" sur le canal (simulation : URL
+    // fictive + timestamp). Bulle Manager + artefact preuve. Le
+    // failure ici ne casse pas le flux Job Writer — on log et
+    // continue.
+    await dispatchPublisher({
+      campaignId: fdp.campaignId,
+      channel,
+      channelLabel,
+    });
   } catch (err) {
     chat.appendMessage({
       role: 'manager',
@@ -198,6 +213,97 @@ export async function dispatchJobWriter(
   } finally {
     agents.markAgentIdle(JOB_WRITER_ID);
     agents.setAgentStatus(JOB_WRITER_ID, 'idle');
+  }
+}
+
+/**
+ * Publisher (Round 4) — simulation de dépôt d'annonce. Appelé en
+ * cascade après chaque dispatchJobWriter réussi. Pose la carte
+ * Publisher en busy le temps de l'appel, écrit une preuve dans
+ * Storage, poste une bulle Manager avec le lien fictif. Best effort
+ * — si la simulation échoue (Supabase down, etc.), on logge et le
+ * flux principal continue.
+ */
+async function dispatchPublisher(args: {
+  campaignId: string;
+  channel: PublicationChannel;
+  channelLabel: string;
+}): Promise<void> {
+  const agents = useAgentsStore.getState();
+  const chat = useChatStore.getState();
+  const artifacts = useArtifactsStore.getState();
+  const taskId = nowTaskId('pub');
+
+  agents.setAgentStatus(PUBLISHER_ID, 'active');
+  agents.markAgentBusy(PUBLISHER_ID, taskId);
+  agents.pushEvent({
+    agentId: PUBLISHER_ID,
+    type: 'task_started',
+    payload: { taskId, campaignId: args.campaignId, channel: args.channel },
+  });
+
+  try {
+    const artifactId = `art_pub_${args.channel}_${Date.now().toString(36)}`;
+    const res = await fetch('/api/publisher', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        artifactId,
+        campaignId: args.campaignId,
+        channel: args.channel,
+      }),
+    });
+    if (!res.ok) throw new Error(`publisher status ${res.status}`);
+    const data = (await res.json()) as {
+      proof: { url: string; publishedAt: string; channelLabel: string };
+      fileName: string;
+      publicUrl: string | null;
+    };
+
+    // Seed l'artefact côté client (sans content — on l'a juste la
+    // metadata + URL Storage). AttachmentChip basculera sur "Ouvrir"
+    // directement.
+    artifacts.hydrateArtifact({
+      id: artifactId,
+      name: data.fileName,
+      mime: 'text/markdown',
+      createdAt: data.proof.publishedAt,
+      campaignId: args.campaignId.startsWith('TASK-') ? null : args.campaignId,
+      taskId: args.campaignId.startsWith('TASK-') ? args.campaignId : null,
+      kind: 'other',
+      publicUrl: data.publicUrl,
+    });
+
+    const time = new Date(data.proof.publishedAt).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    chat.appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Le Publisher a déposé l'annonce sur ${args.channelLabel} à ${time} — visible ici : ${data.proof.url}`,
+      attachment: {
+        artifactId,
+        label: `Preuve — ${args.channelLabel}`,
+        fileName: data.fileName,
+        mime: 'text/markdown',
+      },
+    });
+    agents.pushEvent({
+      agentId: PUBLISHER_ID,
+      type: 'task_completed',
+      payload: { taskId, channel: args.channel },
+    });
+  } catch (err) {
+    console.error('[publisher] dispatch failed', err);
+    agents.pushEvent({
+      agentId: PUBLISHER_ID,
+      type: 'task_failed',
+      payload: { taskId, error: err instanceof Error ? err.message : String(err) },
+    });
+  } finally {
+    agents.markAgentIdle(PUBLISHER_ID);
+    agents.setAgentStatus(PUBLISHER_ID, 'idle');
   }
 }
 
@@ -360,6 +466,252 @@ export async function dispatchCVBatch(args: {
   });
   agents.markAgentIdle(CV_ANALYZER_ID);
   agents.setAgentStatus(CV_ANALYZER_ID, 'idle');
+
+  // Round 4 — chaînage post-analyse :
+  //   - candidats sous seuil → Mail Composer (mail de refus)
+  //   - candidats au-dessus → Mail Composer (invitation Cal.com) +
+  //                           Scheduler (brief DRH avec trame
+  //                           d'entretien).
+  // En arrière-plan, séquentiel pour ne pas surcharger l'UI ; les
+  // bulles Manager s'enchaînent au fil de l'eau.
+  if (args.campaignId && summary.total > 0) {
+    const archive = useCampaignsStore.getState().getById(args.campaignId);
+    const jobTitleVal = archive?.fdp.fields.job_title?.value;
+    const jobTitle =
+      typeof jobTitleVal === 'string' && jobTitleVal.trim().length > 0
+        ? jobTitleVal.trim()
+        : null;
+    void dispatchPostAnalysisOutreach({
+      campaignId: args.campaignId,
+      jobTitle,
+      summary,
+    });
+  }
+}
+
+/**
+ * Round 4 — orchestration séquentielle Mail Composer + Scheduler.
+ *
+ * Pour chaque candidat :
+ *   - sous seuil  → 1 appel /api/mail-composer (mode reject).
+ *   - au-dessus   → 1 appel /api/mail-composer (mode invite) +
+ *                   1 appel /api/scheduler (brief DRH + trame).
+ *
+ * Les bulles Manager sont posées au fil de l'eau pour que le DRH
+ * voie le travail s'enchaîner — pas de batch silencieux.
+ *
+ * Le lien Cal.com vient de CAL_COM_EVENT_URL côté env. Si absent,
+ * placeholder visible dans les mails et la bulle.
+ */
+async function dispatchPostAnalysisOutreach(args: {
+  campaignId: string;
+  jobTitle: string | null;
+  summary: CVBatchSummary;
+}): Promise<void> {
+  const chat = useChatStore.getState();
+  const agents = useAgentsStore.getState();
+  const artifacts = useArtifactsStore.getState();
+  // Le lien Cal.com est résolu côté serveur (CAL_COM_EVENT_URL). Le
+  // client n'a pas besoin de le connaître ni de le transmettre.
+
+  for (const cv of args.summary.perCV) {
+    const mode = cv.aboveThreshold ? 'invite' : 'reject';
+    const agentId = MAIL_COMPOSER_ID;
+    const taskId = nowTaskId(`mail_${mode}`);
+
+    agents.setAgentStatus(agentId, 'active');
+    agents.markAgentBusy(agentId, taskId);
+    agents.pushEvent({
+      agentId,
+      type: 'task_started',
+      payload: { taskId, candidate: cv.candidateName, mode },
+    });
+
+    const artifactId = `art_mail_${mode}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    try {
+      // Le bookingUrl est résolu côté serveur via CAL_COM_EVENT_URL —
+      // pas besoin de le passer ici. La route renvoie 503 si rien
+      // n'est configuré en mode 'invite'.
+      const body: Record<string, unknown> = {
+        artifactId,
+        campaignId: args.campaignId,
+        jobTitle: args.jobTitle,
+        mode,
+        candidate: cv,
+      };
+      const res = await fetch('/api/mail-composer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json()) as {
+        status: 'sent' | 'skipped_no_email' | 'skipped_no_config' | 'send_failed';
+        sentTo: string | null;
+        subject: string;
+        fileName: string;
+        publicUrl: string | null;
+        error: string | null;
+      };
+
+      // Seed l'artefact pour AttachmentChip.
+      artifacts.hydrateArtifact({
+        id: artifactId,
+        name: data.fileName,
+        mime: 'text/markdown',
+        createdAt: new Date().toISOString(),
+        campaignId: args.campaignId.startsWith('TASK-') ? null : args.campaignId,
+        taskId: args.campaignId.startsWith('TASK-') ? args.campaignId : null,
+        kind: 'other',
+        publicUrl: data.publicUrl,
+      });
+
+      const verb = mode === 'reject' ? 'a rédigé un refus' : 'a rédigé une invitation';
+      let tail: string;
+      if (data.status === 'sent') {
+        tail = `et l'a envoyé à ${data.sentTo}.`;
+      } else if (data.status === 'skipped_no_email') {
+        tail =
+          '— pas d\'email extractible du CV, à transmettre manuellement.';
+      } else if (data.status === 'skipped_no_config') {
+        tail =
+          '— service email non configuré, le mail est prêt à être copié-collé.';
+      } else {
+        tail = `— échec d'envoi (${data.error ?? 'erreur inconnue'}). Le brouillon reste accessible.`;
+      }
+
+      chat.appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Le Mail Composer ${verb} pour ${cv.candidateName} ${tail}`,
+        attachment: {
+          artifactId,
+          label: `${mode === 'reject' ? 'Refus' : 'Invitation'} — ${cv.candidateName}`,
+          fileName: data.fileName,
+          mime: 'text/markdown',
+        },
+      });
+
+      agents.pushEvent({
+        agentId,
+        type: 'task_completed',
+        payload: { taskId, candidate: cv.candidateName, status: data.status },
+      });
+    } catch (err) {
+      console.error('[mail-composer] dispatch failed', err);
+      agents.pushEvent({
+        agentId,
+        type: 'task_failed',
+        payload: {
+          taskId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    } finally {
+      agents.markAgentIdle(agentId);
+      agents.setAgentStatus(agentId, 'idle');
+    }
+
+    // Round 4 — pour les candidats acceptés, on enchaîne avec le
+    // Scheduler : trame d'entretien + brief DRH par email.
+    if (mode === 'invite') {
+      await dispatchSchedulerBrief({
+        campaignId: args.campaignId,
+        jobTitle: args.jobTitle,
+        candidate: cv,
+      });
+    }
+  }
+}
+
+async function dispatchSchedulerBrief(args: {
+  campaignId: string;
+  jobTitle: string | null;
+  candidate: CVAnalysisResult;
+}): Promise<void> {
+  const chat = useChatStore.getState();
+  const agents = useAgentsStore.getState();
+  const artifacts = useArtifactsStore.getState();
+  const taskId = nowTaskId('sched');
+
+  agents.setAgentStatus(SCHEDULER_ID, 'active');
+  agents.markAgentBusy(SCHEDULER_ID, taskId);
+  agents.pushEvent({
+    agentId: SCHEDULER_ID,
+    type: 'task_started',
+    payload: { taskId, candidate: args.candidate.candidateName },
+  });
+
+  const artifactId = `art_brief_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    const res = await fetch('/api/scheduler', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        artifactId,
+        campaignId: args.campaignId,
+        jobTitle: args.jobTitle,
+        candidate: args.candidate,
+      }),
+    });
+    const data = (await res.json()) as {
+      status: 'sent' | 'skipped_no_drh' | 'skipped_no_config' | 'send_failed';
+      fileName: string;
+      publicUrl: string | null;
+      error: string | null;
+    };
+
+    artifacts.hydrateArtifact({
+      id: artifactId,
+      name: data.fileName,
+      mime: 'text/markdown',
+      createdAt: new Date().toISOString(),
+      campaignId: args.campaignId.startsWith('TASK-') ? null : args.campaignId,
+      taskId: args.campaignId.startsWith('TASK-') ? args.campaignId : null,
+      kind: 'other',
+      publicUrl: data.publicUrl,
+    });
+
+    let tail: string;
+    if (data.status === 'sent') {
+      tail = 'et te l\'a envoyé par email pour préparer l\'entretien.';
+    } else if (data.status === 'skipped_no_drh') {
+      tail =
+        '— EMAIL_DRH n\'est pas configurée, le brief reste accessible ici.';
+    } else if (data.status === 'skipped_no_config') {
+      tail =
+        '— service email non configuré, le brief reste accessible ici.';
+    } else {
+      tail = `— échec d'envoi (${data.error ?? 'erreur inconnue'}), le brief reste accessible ici.`;
+    }
+
+    chat.appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Le Scheduler a préparé une trame d'entretien pour ${args.candidate.candidateName} ${tail}`,
+      attachment: {
+        artifactId,
+        label: `Brief entretien — ${args.candidate.candidateName}`,
+        fileName: data.fileName,
+        mime: 'text/markdown',
+      },
+    });
+
+    agents.pushEvent({
+      agentId: SCHEDULER_ID,
+      type: 'task_completed',
+      payload: { taskId, candidate: args.candidate.candidateName },
+    });
+  } catch (err) {
+    console.error('[scheduler] dispatch failed', err);
+    agents.pushEvent({
+      agentId: SCHEDULER_ID,
+      type: 'task_failed',
+      payload: { taskId, error: err instanceof Error ? err.message : String(err) },
+    });
+  } finally {
+    agents.markAgentIdle(SCHEDULER_ID);
+    agents.setAgentStatus(SCHEDULER_ID, 'idle');
+  }
 }
 
 /**
