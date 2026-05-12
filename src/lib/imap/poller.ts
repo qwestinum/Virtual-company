@@ -31,6 +31,7 @@ import {
   renderCVBatchMarkdown,
 } from '@/lib/agents/cv-report-render';
 import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
+import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
@@ -492,6 +493,30 @@ async function processEmailAttachment(args: {
       taskId: isTaskOwner ? campaign.id : undefined,
     },
   });
+
+  // Round 5 fix — déclenche le mail au candidat (refus ou invitation)
+  // et, si accepté, le brief DRH avec trame d'entretien. Sans ça,
+  // le pipeline IMAP s'arrête à l'analyse sans suite côté humain —
+  // bug observé en démo où aucun mail n'arrivait au candidat.
+  const jobTitleVal = campaign.fdp.fields.job_title?.value;
+  const jobTitle =
+    typeof jobTitleVal === 'string' && jobTitleVal.trim().length > 0
+      ? jobTitleVal.trim()
+      : null;
+  try {
+    await dispatchImapCandidateOutreach({
+      mailboxId: mailbox.id,
+      campaignId: campaign.id,
+      jobTitle,
+      candidate: analysis,
+      uid,
+    });
+  } catch (err) {
+    // L'outreach orchestre déjà ses propres journals d'erreur ; ce
+    // catch est un filet pour ne pas tuer le poller si quelque
+    // chose s'échappe (logique métier vs réseau).
+    console.error('[imap-poller] outreach failed', err);
+  }
 }
 
 function slug(input: string): string {
