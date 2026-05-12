@@ -1349,9 +1349,14 @@ export function ManagerChat() {
     });
 
     // Round 5 — si le DRH a activé `email`, on enchaîne avec le
-    // picker de boîte mail. La récupération de la liste est async,
-    // donc on pose une bulle d'attente puis on met à jour. Si rien
-    // n'est configuré, le picker affiche le CTA settings.
+    // picker de boîte mail. Trois cas :
+    //   - au moins 1 boîte configurée → picker visible, on ATTEND la
+    //     sélection (handleMailboxPick déclenchera proposeScoringForCampaign)
+    //   - 0 boîte configurée → CTA settings + on continue le workflow
+    //     (le DRH pourra associer plus tard depuis settings sans
+    //     bloquer la suite)
+    //   - email non activé → on continue direct
+    let deferScoringForMailboxPick = false;
     if (active.includes('email')) {
       let mailboxes: Array<{ id: string; label: string; user_email: string }> = [];
       try {
@@ -1369,7 +1374,7 @@ export function ManagerChat() {
         content:
           mailboxes.length > 0
             ? `Tu as ${mailboxes.length === 1 ? 'une boîte' : `${mailboxes.length} boîtes`} configurée${mailboxes.length === 1 ? '' : 's'}. Sur laquelle tu veux que je branche ${campaignId} ?`
-            : `Pour activer la réception email, il faut d'abord configurer une boîte IMAP — un instant, je te montre.`,
+            : `Pour activer la réception email, il faut configurer une boîte IMAP — je te laisse l'ajouter depuis la page de configuration. On continue avec la fiche de scoring en attendant.`,
         block: {
           kind: 'mailbox-picker',
           campaignId,
@@ -1381,21 +1386,31 @@ export function ManagerChat() {
           selectedMailboxId: null,
         },
       });
+      if (mailboxes.length > 0) {
+        deferScoringForMailboxPick = true;
+      }
     }
 
-    // Phase 4.3 — auto-déclenche la proposition de fiche de scoring
-    // après validation des flux. La FDP doit être validée (le picker
-    // flows n'apparaît que sur ce chemin), donc on peut directement
-    // appeler le serveur.
+    if (!deferScoringForMailboxPick) {
+      await proposeScoringForCampaign(campaignId);
+    }
+  }
+
+  /**
+   * Phase 4.3 / Round 5 — déclenche la proposition de fiche de scoring
+   * pour la campagne. Extrait de handleSourcesConfirm pour pouvoir
+   * être appelé soit immédiatement (pas d'email dans les flux), soit
+   * différé (après handleMailboxPick).
+   */
+  async function proposeScoringForCampaign(campaignId: string): Promise<void> {
     const fdpForScoring = useFdpStore.getState().fdp;
     if (!fdpForScoring || !fdpForScoring.isValidated) return;
 
-    const proposeBubble = appendMessage({
+    appendMessage({
       role: 'manager',
       source: 'text',
       content: `Je prépare maintenant la fiche de scoring pour ${campaignId} — elle servira au CV Analyzer pour évaluer chaque candidature.`,
     });
-    void proposeBubble;
 
     setAgentBusy(true);
     try {
@@ -1411,7 +1426,6 @@ export function ManagerChat() {
           confirmed: false,
         },
       });
-      // Phase 7.4 — exclut 'scoring' (porté par l'éditeur posé).
       attachResumeChipsToLastBubble(campaignId, 'scoring');
     } catch (err) {
       appendMessage({
@@ -1492,6 +1506,18 @@ export function ManagerChat() {
         source: 'text',
         content: `Parfait — j'écoute désormais la boîte « ${picked.label} » (${picked.email}) pour ${campaignId}. Les CVs reçus avec l'ID de campagne dans l'objet seront analysés automatiquement.`,
       });
+      // Round 5 — la pose du picker mailbox a différé la proposition de
+      // fiche de scoring (cf. handleSourcesConfirm). Maintenant que
+      // l'association est faite, on relance la suite du workflow.
+      // Garde-fou : ne déclencher que si aucune scoring sheet n'est
+      // encore en cours pour cette campagne, pour ne pas re-poser
+      // l'éditeur si on revisite l'association plus tard.
+      const currentSheet = useScoringStore.getState().sheet;
+      const hasScoringFlow =
+        currentSheet?.campaignId === campaignId;
+      if (!hasScoringFlow) {
+        await proposeScoringForCampaign(campaignId);
+      }
     } catch (err) {
       // Rollback du verrou pour permettre une nouvelle tentative.
       updateMessage(target.id, {
