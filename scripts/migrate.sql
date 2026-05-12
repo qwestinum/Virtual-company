@@ -222,3 +222,49 @@ create index if not exists artifacts_meta_task_idx
 
 create index if not exists artifacts_meta_kind_idx
   on public.artifacts_meta (kind, created_at desc);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Session 5 round 5 — Flux email IMAP (réception auto de CV)
+-- ──────────────────────────────────────────────────────────────────────
+-- Boîtes mail surveillées par un poller IMAP côté serveur (intervalle
+-- 30s). Les credentials sont chiffrés application-level via AES-256-GCM
+-- avec MAILBOX_ENCRYPTION_KEY côté env. Le ciphertext est stocké en
+-- base64 dans encrypted_password : sans la master key, impossible de
+-- déchiffrer même avec accès Supabase.
+
+create table if not exists public.mailboxes (
+  id                  text primary key,
+  label               text not null,
+  imap_host           text not null,
+  imap_port           int  not null,
+  imap_ssl            boolean not null default true,
+  user_email          text not null,
+  encrypted_password  text not null,
+  is_enabled          boolean not null default true,
+  last_polled_at      timestamptz,
+  last_uid_seen       text,
+  last_error          text,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create index if not exists mailboxes_is_enabled_idx
+  on public.mailboxes (is_enabled);
+
+drop trigger if exists mailboxes_touch_updated_at on public.mailboxes;
+create trigger mailboxes_touch_updated_at
+  before update on public.mailboxes
+  for each row execute function public.touch_updated_at();
+
+-- Many-to-many : une boîte peut servir plusieurs campagnes (tri par
+-- objet du mail = campaignId), et une campagne peut écouter plusieurs
+-- boîtes.
+create table if not exists public.campaign_mailboxes (
+  campaign_id    text references public.campaigns(id) on delete cascade,
+  mailbox_id     text references public.mailboxes(id) on delete cascade,
+  associated_at  timestamptz not null default now(),
+  primary key (campaign_id, mailbox_id)
+);
+
+create index if not exists campaign_mailboxes_mailbox_idx
+  on public.campaign_mailboxes (mailbox_id);

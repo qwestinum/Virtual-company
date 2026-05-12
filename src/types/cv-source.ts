@@ -65,7 +65,7 @@ export const CV_SOURCE_LABELS: Record<CVSource, string> = {
 
 export const CV_SOURCE_HINTS: Record<CVSource, string> = {
   manual: 'Téléverser les CV via le trombone',
-  email: 'Réception auto depuis une boîte mail dédiée (à configurer)',
+  email: 'Réception auto depuis une boîte mail configurée',
   local_folder: 'Surveillance d\'un dossier local (à configurer)',
   linkedin: 'Réception auto via LinkedIn (Publisher — bientôt)',
   indeed: 'Réception auto via Indeed (Publisher — bientôt)',
@@ -83,7 +83,10 @@ export const CV_SOURCE_HINTS: Record<CVSource, string> = {
  */
 export const CV_SOURCE_OPERATIONAL: Record<CVSource, boolean> = {
   manual: true,
-  email: false,
+  // Round 5 — IMAP polling opérationnel. Une boîte mail configurée
+  // dans /settings/mailboxes peut être associée à une campagne pour
+  // déclencher l'analyse automatique des CV reçus par email.
+  email: true,
   local_folder: false,
   linkedin: false,
   indeed: false,

@@ -10,6 +10,7 @@ import { CVBatchSummaryBlock } from '@/components/chat/CVBatchSummaryBlock';
 import { CVProgressBlock } from '@/components/chat/CVProgressBlock';
 import { CVRoutePicker } from '@/components/chat/CVRoutePicker';
 import { CVSourcesPicker } from '@/components/chat/CVSourcesPicker';
+import { MailboxPicker } from '@/components/chat/MailboxPicker';
 import { parseMessageToBlocks } from '@/components/chat/chat-message-renderer';
 import { PublicationChannelPicker } from '@/components/chat/PublicationChannelPicker';
 import { ScoringSheetEditor } from '@/components/chat/ScoringSheetEditor';
@@ -59,6 +60,7 @@ export type ChatBubbleProps = {
   ) => void;
   onScoringRemove?: (id: string) => void;
   onScoringValidate?: (messageId: string) => void;
+  onMailboxPick?: (campaignId: string, mailboxId: string) => void;
   blocksDisabled?: boolean;
 };
 
@@ -78,6 +80,7 @@ export function ChatBubble({
   onScoringUpdate,
   onScoringRemove,
   onScoringValidate,
+  onMailboxPick,
   blocksDisabled,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
@@ -213,6 +216,15 @@ export function ChatBubble({
               disabled={blocksDisabled}
               onToggle={(channel) => onChannelToggle(message.id, channel)}
               onConfirm={() => onChannelsConfirm(message.id)}
+            />
+          ) : null}
+          {message.block?.kind === 'mailbox-picker' && onMailboxPick ? (
+            <MailboxPicker
+              campaignId={message.block.campaignId}
+              mailboxes={message.block.mailboxes}
+              selectedMailboxId={message.block.selectedMailboxId}
+              disabled={blocksDisabled}
+              onPick={onMailboxPick}
             />
           ) : null}
           {inlineChips && onChipSelect ? (

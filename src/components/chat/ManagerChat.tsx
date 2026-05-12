@@ -1348,6 +1348,41 @@ export function ManagerChat() {
           : `Configuration validée pour ${campaignId} — ${active.length} flux actifs : ${activeLabels}.`,
     });
 
+    // Round 5 — si le DRH a activé `email`, on enchaîne avec le
+    // picker de boîte mail. La récupération de la liste est async,
+    // donc on pose une bulle d'attente puis on met à jour. Si rien
+    // n'est configuré, le picker affiche le CTA settings.
+    if (active.includes('email')) {
+      let mailboxes: Array<{ id: string; label: string; user_email: string }> = [];
+      try {
+        const res = await fetch('/api/mailboxes');
+        if (res.ok) {
+          const data = await res.json();
+          mailboxes = data.mailboxes ?? [];
+        }
+      } catch (err) {
+        console.error('[mailbox-picker] fetch failed', err);
+      }
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content:
+          mailboxes.length > 0
+            ? `Tu as ${mailboxes.length === 1 ? 'une boîte' : `${mailboxes.length} boîtes`} configurée${mailboxes.length === 1 ? '' : 's'}. Sur laquelle tu veux que je branche ${campaignId} ?`
+            : `Pour activer la réception email, il faut d'abord configurer une boîte IMAP — un instant, je te montre.`,
+        block: {
+          kind: 'mailbox-picker',
+          campaignId,
+          mailboxes: mailboxes.map((mb) => ({
+            id: mb.id,
+            label: mb.label,
+            email: mb.user_email,
+          })),
+          selectedMailboxId: null,
+        },
+      });
+    }
+
     // Phase 4.3 — auto-déclenche la proposition de fiche de scoring
     // après validation des flux. La FDP doit être validée (le picker
     // flows n'apparaît que sur ce chemin), donc on peut directement
@@ -1414,6 +1449,62 @@ export function ManagerChat() {
     if (isSending || isTranscribing || isAgentBusy) return;
     if (!scoringSheet || scoringSheet.isValidated) return;
     removeScoringCriterion(id);
+  }
+
+  /**
+   * Round 5 — association d'une boîte mail à la campagne. Posté
+   * par handleSourcesConfirm quand `email` a été activé. La clic
+   * envoie l'association à l'API + verrouille le block + bulle de
+   * confirmation Manager.
+   */
+  async function handleMailboxPick(campaignId: string, mailboxId: string) {
+    if (isSending || isTranscribing || isAgentBusy) return;
+    const target = useChatStore
+      .getState()
+      .messages.findLast(
+        (m) =>
+          m.block?.kind === 'mailbox-picker' &&
+          m.block.campaignId === campaignId &&
+          m.block.selectedMailboxId === null,
+      );
+    if (!target || target.block?.kind !== 'mailbox-picker') return;
+    const picked = target.block.mailboxes.find((m) => m.id === mailboxId);
+    if (!picked) return;
+
+    // Lock optimiste du block — UI instantané, on rattrape l'erreur
+    // serveur en posant une bulle d'erreur si l'API échoue.
+    updateMessage(target.id, {
+      block: { ...target.block, selectedMailboxId: mailboxId },
+    });
+
+    try {
+      const res = await fetch(`/api/mailboxes/${mailboxId}/associate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || `HTTP ${res.status}`);
+      }
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `Parfait — j'écoute désormais la boîte « ${picked.label} » (${picked.email}) pour ${campaignId}. Les CVs reçus avec l'ID de campagne dans l'objet seront analysés automatiquement.`,
+      });
+    } catch (err) {
+      // Rollback du verrou pour permettre une nouvelle tentative.
+      updateMessage(target.id, {
+        block: { ...target.block, selectedMailboxId: null },
+      });
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `L'association n'a pas pu être enregistrée (${
+          err instanceof Error ? err.message : 'erreur inconnue'
+        }). Tu peux réessayer ou passer par la page de configuration.`,
+      });
+    }
   }
 
   /**
@@ -2038,6 +2129,7 @@ export function ManagerChat() {
                 onScoringUpdate={handleScoringUpdate}
                 onScoringRemove={handleScoringRemove}
                 onScoringValidate={handleScoringValidate}
+                onMailboxPick={handleMailboxPick}
                 blocksDisabled={isSending || isTranscribing || isAgentBusy}
               />
               {showBelow && message.chips ? (

@@ -110,6 +110,20 @@ export type ChatBlock =
       kind: 'scoring-sheet-editor';
       campaignId: string;
       confirmed: boolean;
+    }
+  | {
+      /**
+       * Sélecteur de boîte mail à associer à une campagne (Round 5 —
+       * source 'email' opérationnelle). Posé par handleSourcesConfirm
+       * quand le DRH a activé email dans les flux. `mailboxes` est
+       * une snapshot des boîtes configurées au moment du message
+       * (label + email) — on évite ainsi de re-fetcher au rendu.
+       * `selectedMailboxId` passe à l'id choisi (read-only après).
+       */
+      kind: 'mailbox-picker';
+      campaignId: string;
+      mailboxes: ReadonlyArray<{ id: string; label: string; email: string }>;
+      selectedMailboxId: string | null;
     };
 
 export type ChatMessage = {

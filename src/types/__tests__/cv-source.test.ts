@@ -7,10 +7,13 @@ import {
 } from '@/types/cv-source';
 
 describe('cv-source', () => {
-  it('manual is the only operational source in Session 4', () => {
+  it('manual and email are operational (Session 5 round 5 — IMAP polling activé)', () => {
     expect(CV_SOURCE_OPERATIONAL.manual).toBe(true);
+    expect(CV_SOURCE_OPERATIONAL.email).toBe(true);
+    // Les autres sources (local_folder + jobboards) restent placeholders
+    // tant que le Publisher réel n'est pas câblé.
     for (const source of CV_SOURCES) {
-      if (source === 'manual') continue;
+      if (source === 'manual' || source === 'email') continue;
       expect(CV_SOURCE_OPERATIONAL[source]).toBe(false);
     }
   });
