@@ -7,8 +7,11 @@
  *   3. Pour chaque message :
  *      - parsing via mailparser
  *      - matching sur le subject (insensible casse) contre les
- *        campaignIds associés à la mailbox
- *      - extraction des pièces jointes PDF/DOCX
+ *        campaignIds associés à la mailbox ET au statut `active`.
+ *        Une campagne associée mais paused/closed/in_progress/draft
+ *        n'écoute PAS — un mail qui pointe dessus est journalisé
+ *        comme `imap_match_inactive_campaign` puis ignoré.
+ *      - extraction des pièces jointes PDF
  *      - pour chaque PJ matchée : insert journal `imap_cv_received`,
  *        analyse via executeCVAnalyzer, upload artifact, journal
  *        `imap_cv_analyzed` ou `imap_cv_failed`
@@ -174,7 +177,9 @@ async function pollMailboxImpl(
     return outcome;
   }
 
-  // Cache des campagnes actives pour ne pas re-fetcher à chaque CV.
+  // Cache des campagnes pour ne pas re-fetcher à chaque CV. On garde
+  // l'ensemble complet pour distinguer plus tard les matches sur
+  // campagne inactive (audit dédié) vs les non-matches (silence).
   let campaignsById: Map<string, ActiveCampaign>;
   try {
     const all = await listCampaigns();
@@ -186,6 +191,18 @@ async function pollMailboxImpl(
     outcome.errors += 1;
     return outcome;
   }
+
+  // Round 5 fix — l'écoute IMAP est conditionnée au statut `active`.
+  // Une campagne draft / in_progress / paused / closed ne reçoit pas
+  // de CV automatique : on ignore les mails qui pointent dessus, et
+  // on log un événement dédié pour le futur dashboard (le DRH doit
+  // pouvoir voir « tu as reçu un CV pour CAMP-XXX mais la campagne
+  // est paused/closed »). Symétrique du filtre snapshotActiveCampaigns
+  // utilisé pour l'upload manuel.
+  const activeAssociatedIds = associatedIds.filter((id) => {
+    const c = campaignsById.get(id);
+    return c?.status === 'active';
+  });
 
   let client;
   try {
@@ -265,8 +282,37 @@ async function pollMailboxImpl(
         }
 
         const subject = parsed.subject ?? '';
-        const matchedCampaignId = matchCampaignInSubject(subject, associatedIds);
-        if (!matchedCampaignId) continue;
+        // On matche d'abord sur les campagnes ACTIVES uniquement. Si
+        // rien ne match là, on regarde aussi sur les inactives pour
+        // émettre un événement de visibilité (le DRH doit savoir
+        // qu'un CV est arrivé mais que la campagne n'écoutait pas).
+        const matchedCampaignId = matchCampaignInSubject(
+          subject,
+          activeAssociatedIds,
+        );
+        if (!matchedCampaignId) {
+          const inactiveMatch = matchCampaignInSubject(subject, associatedIds);
+          if (inactiveMatch) {
+            const inactiveCamp = campaignsById.get(inactiveMatch);
+            await appendJournalEntry({
+              action: 'imap_match_inactive_campaign',
+              actor: 'imap_poller',
+              campaignId: inactiveCamp?.id.startsWith('TASK-')
+                ? null
+                : inactiveMatch,
+              payload: {
+                mailboxId: mailbox.id,
+                uid,
+                subject,
+                from: parsed.from?.text ?? null,
+                campaignStatus: inactiveCamp?.status ?? 'unknown',
+                reason:
+                  'campaign_not_active — réactive la campagne ou attends qu\'elle franchisse les jalons',
+              },
+            }).catch(() => {});
+          }
+          continue;
+        }
 
         const campaign = campaignsById.get(matchedCampaignId);
         if (!campaign) {
