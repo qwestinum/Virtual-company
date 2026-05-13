@@ -1,5 +1,8 @@
 import Link from 'next/link';
 
+import { Breadcrumb } from '@/components/navigation/Breadcrumb';
+import { OrqaLogo } from '@/components/navigation/OrqaLogo';
+import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
 import { SettingsHub } from '@/components/settings/SettingsHub';
 
 export const metadata = {
@@ -7,22 +10,28 @@ export const metadata = {
 };
 
 /**
- * Hub de configuration (Session 6 v4).
+ * Hub de configuration (Session 7).
  *
- * Cinq sections :
- *   - Adresse d'intake (boîte mail de réception des CV)
- *   - Adresse de synthèse (DRH — briefs entretien)
- *   - Adresse expéditeur (mails envoyés aux candidats)
- *   - Intégrations Flux (sources d'arrivée des CV)
- *   - Intégrations Canaux de diffusion (jobboards)
- *
- * La page est un server component minimaliste — toute la logique vit
- * dans `<SettingsHub />` (client).
+ * Cinq sections : boîtes IMAP, synthèse, expéditeur, intégrations flux,
+ * intégrations canaux. Background atelier commun ; navigation via
+ * logo (retour Lobby) et breadcrumb (Lobby › Paramètres).
  */
 export default function SettingsPage() {
   return (
-    <main className="min-h-screen bg-stone-50">
-      <div className="max-w-4xl mx-auto px-6 py-10">
+    <main className="relative min-h-[100svh]">
+      <WorkspaceBackground />
+      <div className="relative mx-auto max-w-4xl px-6 py-8">
+        <div className="flex items-center gap-4 mb-8 flex-wrap">
+          <Link href="/" aria-label="Retour au Lobby">
+            <OrqaLogo width={120} />
+          </Link>
+          <Breadcrumb
+            items={[
+              { label: '🏠 Lobby', href: '/' },
+              { label: 'Paramètres' },
+            ]}
+          />
+        </div>
         <header className="mb-8">
           <p className="font-display text-[11px] uppercase tracking-[0.18em] text-stone-500 font-semibold mb-1">
             Configuration
@@ -34,12 +43,6 @@ export default function SettingsPage() {
             Adresses email, flux d&apos;arrivée et canaux de diffusion. Les
             modifications sont appliquées au pipeline live dès la sauvegarde.
           </p>
-          <Link
-            href="/"
-            className="font-body text-[12.5px] text-stone-500 hover:text-stone-900 mt-3 inline-block"
-          >
-            ← Retour au workspace
-          </Link>
         </header>
         <SettingsHub />
       </div>

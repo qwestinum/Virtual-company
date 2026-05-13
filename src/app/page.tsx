@@ -1,21 +1,16 @@
-import { ManagerChatLayout } from '@/components/chat/ManagerChatLayout';
-import { HydrationGate } from '@/components/HydrationGate';
-import { WorkspacePane } from '@/components/workspace/WorkspacePane';
+import { Lobby } from '@/components/lobby/Lobby';
 
-export default function Home() {
-  return (
-    <main className="relative flex h-[100svh] w-full overflow-hidden">
-      <HydrationGate />
-      <section
-        className="relative flex-1 min-w-0 overflow-hidden"
-        style={{
-          background:
-            'radial-gradient(ellipse at top, #fdfcf9 0%, #f3f1ec 70%, #ebe8e1 100%)',
-        }}
-      >
-        <WorkspacePane />
-      </section>
-      <ManagerChatLayout />
-    </main>
-  );
+export const metadata = {
+  title: 'QWESTINUM — Entreprise virtuelle',
+};
+
+/**
+ * Page racine — Lobby de l'entreprise virtuelle (Session 7).
+ *
+ * Chaque département est présenté en carte. Seul le RH ouvre vers
+ * `/rh` pour aujourd'hui. Le détail des animations vit dans
+ * `<Lobby />` (client component).
+ */
+export default function HomePage() {
+  return <Lobby />;
 }
