@@ -12,7 +12,7 @@ export const schedulerData: AgentContractData = AgentContractDataSchema.parse({
   department: 'rh',
   avatar: {
     modelUrl: '/models/scheduler.glb',
-    position: [3, 0, 2],
+    position: [1.76, 0, 2.93],
     animations: ['idle', 'working', 'talking', 'thinking'],
   },
   enabled: true,

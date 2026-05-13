@@ -12,7 +12,7 @@ export const jobWriterData: AgentContractData = AgentContractDataSchema.parse({
   department: 'rh',
   avatar: {
     modelUrl: '/models/creative.glb',
-    position: [-3, 0, 2],
+    position: [-1.76, 0, 2.93],
     animations: ['idle', 'working', 'talking', 'thinking'],
   },
   enabled: true,

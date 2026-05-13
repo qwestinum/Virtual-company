@@ -12,7 +12,7 @@ export const managerData: AgentContractData = AgentContractDataSchema.parse({
   department: 'rh',
   avatar: {
     modelUrl: '/models/manager.glb',
-    position: [0, 0, 0],
+    position: [0, 0, 0.5],
     animations: ['idle', 'working', 'talking', 'thinking'],
   },
   enabled: true,

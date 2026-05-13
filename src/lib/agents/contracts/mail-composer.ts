@@ -12,7 +12,7 @@ export const mailComposerData: AgentContractData = AgentContractDataSchema.parse
   department: 'rh',
   avatar: {
     modelUrl: '/models/writer.glb',
-    position: [3, 0, -2],
+    position: [2.85, 0, -0.43],
     animations: ['idle', 'working', 'talking', 'thinking'],
   },
   enabled: true,

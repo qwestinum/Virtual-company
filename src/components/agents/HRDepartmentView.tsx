@@ -10,35 +10,38 @@ import { AgentCard } from './AgentCard';
 import { FlowLines } from './FlowLines';
 
 const MANAGER_ID = 'agent.manager-rh';
-const UNIT_MIN = 55;
-const UNIT_MAX = 160;
-const UNIT_FALLBACK = 110;
+const UNIT_MIN = 45;
+const UNIT_MAX = 130;
+const UNIT_FALLBACK = 95;
 
-// Étendue des positions agents : x ∈ [-3,3] (6 unités d'écart), z ∈ [-3,2]
-// (5 unités). Empreinte visuelle d'une carte de bord (cercle 150 + label
-// nom/statut ≈ 50px) → 150 px de large, ~200 px de haut.
-const X_SPREAD = 6;
-const Z_SPREAD = 5;
-const EDGE_CARD_W = 150;
-const EDGE_CARD_H = 200;
+// Positions des agents : pentagone régulier autour du manager,
+// décalé de +0.5 en z pour pousser la composition vers le bas et
+// dégager le haut pour le publisher. Bornes effectives :
+//   x ∈ [-2.85, 2.85]  → |x|max = 2.85
+//   z ∈ [-2.5, 2.93]   → |z|max = 2.93 (la contrainte basse domine)
+// Empreinte d'une carte de bord (cercle 150 + label ≈ 50px) → 150 × 200.
+const ABS_X_MAX = 2.85;
+const ABS_Z_MAX = 2.93;
+const WRAPPER_HALF_W = 75;
+const WRAPPER_HALF_H = 100;
 const SAFETY_MARGIN = 8;
 
 /**
- * Calcule l'unité pixel pour qu'aucun agent ne déborde du cadre, en
- * tenant compte du label nom/statut qui s'étend sous le cercle. La
- * dimension critique est presque toujours la hauteur (le workspace
- * partage l'écran avec le chat à droite, donc il est plutôt large
- * et peu haut).
+ * Calcule l'unité pixel maximale telle que la carte la plus éloignée
+ * du centre rentre entièrement dans le cadre. On raisonne en demi-cadre
+ * autour du centre (qui sert d'ancre commune à toutes les cartes via
+ * `cardStyleFor`) ; la dimension critique est presque toujours la
+ * hauteur car le workspace partage la largeur avec le chat.
  */
 function clampUnit(width: number, height: number): number {
   if (!Number.isFinite(width) || !Number.isFinite(height)) {
     return UNIT_FALLBACK;
   }
   if (width <= 0 || height <= 0) return UNIT_FALLBACK;
-  const usableW = Math.max(0, width - EDGE_CARD_W - SAFETY_MARGIN * 2);
-  const usableH = Math.max(0, height - EDGE_CARD_H - SAFETY_MARGIN * 2);
-  const fitW = usableW / X_SPREAD;
-  const fitH = usableH / Z_SPREAD;
+  const halfW = width / 2 - WRAPPER_HALF_W - SAFETY_MARGIN;
+  const halfH = height / 2 - WRAPPER_HALF_H - SAFETY_MARGIN;
+  const fitW = Math.max(0, halfW) / ABS_X_MAX;
+  const fitH = Math.max(0, halfH) / ABS_Z_MAX;
   return Math.max(UNIT_MIN, Math.min(UNIT_MAX, Math.min(fitW, fitH)));
 }
 

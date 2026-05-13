@@ -25,7 +25,7 @@ export const publisherData: AgentContractData = AgentContractDataSchema.parse({
   department: 'rh',
   avatar: {
     modelUrl: '/models/publisher.glb',
-    position: [0, 0, -3],
+    position: [0, 0, -2.5],
     animations: ['idle', 'working', 'talking', 'thinking'],
   },
   enabled: true,
