@@ -19,6 +19,7 @@ import { archiveFdp } from '@/lib/db/repos/fdps-archived';
 import { archiveScoringSheet } from '@/lib/db/repos/scoring-sheets';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { CampaignStatusSchema } from '@/types/campaign-status';
+import { CVSourceSchema } from '@/types/cv-source';
 import { FDPInProgressSchema } from '@/types/field-collection';
 import { PublicationChannelSchema } from '@/types/publication-channel';
 import { ScoringSheetSchema } from '@/types/scoring';
@@ -33,6 +34,10 @@ const CampaignSchema = z.object({
   scoringSheet: ScoringSheetSchema.nullable(),
   publishedChannels: z.array(PublicationChannelSchema),
   sourcesConfirmed: z.boolean(),
+  // Optionnels pour rester rétro-compat avec un client encore en cours
+  // de déploiement qui n'enverrait pas le champ. Défauts côté repo.
+  threshold: z.number().int().min(0).max(100).optional(),
+  sources: z.array(CVSourceSchema).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -72,7 +77,11 @@ export async function PUT(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const saved = await upsertCampaign(parsed);
+    const saved = await upsertCampaign({
+      ...parsed,
+      threshold: parsed.threshold ?? 75,
+      sources: parsed.sources ?? ['manual'],
+    });
     // À la première validation de la FDP, on alimente l'index de
     // pré-recherche. Idempotent côté repo (upsert).
     if (saved.fdp.isValidated) {

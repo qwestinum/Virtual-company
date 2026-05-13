@@ -16,6 +16,8 @@ import {
   buildJobAdUserPrompt,
 } from '@/lib/agents/job-writer-prompts';
 import { chatComplete } from '@/lib/ai/provider';
+import { appendJournalEntry } from '@/lib/db/repos/journal';
+import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
   FDPInProgressSchema,
   type FDPInProgress,
@@ -77,6 +79,33 @@ export async function executeJobWriter(input: TaskInput): Promise<TaskOutput> {
       'invalid_response',
       err instanceof Error ? err.message : 'Invalid Job Writer response.',
     );
+  }
+
+  // Session 6 v2 — trace dans le journal pour alimenter l'activity feed
+  // du dashboard (« Annonce rédigée — <intitulé> (<canal>) »).
+  // best-effort : si Supabase n'est pas configuré, on n'interrompt pas
+  // l'exécution.
+  try {
+    const jobTitleVal = fdp.fields.job_title?.value;
+    const jobTitle =
+      typeof jobTitleVal === 'string' && jobTitleVal.trim().length > 0
+        ? jobTitleVal.trim()
+        : null;
+    await appendJournalEntry({
+      action: 'job_writer_rendered',
+      actor: 'job_writer',
+      campaignId: input.context.campaignId ?? null,
+      payload: {
+        jobTitle,
+        channel,
+        durationMs: completion.durationMs,
+        tokens: completion.usage.totalTokens,
+      },
+    });
+  } catch (err) {
+    if (!(err instanceof SupabaseNotConfiguredError)) {
+      console.error('[job-writer] journal append failed', err);
+    }
   }
 
   return {

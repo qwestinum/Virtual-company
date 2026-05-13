@@ -1,10 +1,10 @@
-import { ManagerChat } from '@/components/chat/ManagerChat';
+import { ManagerChatLayout } from '@/components/chat/ManagerChatLayout';
 import { HydrationGate } from '@/components/HydrationGate';
 import { WorkspacePane } from '@/components/workspace/WorkspacePane';
 
 export default function Home() {
   return (
-    <main className="flex h-[100svh] w-full overflow-hidden min-w-[1280px]">
+    <main className="relative flex h-[100svh] w-full overflow-hidden">
       <HydrationGate />
       <section
         className="relative flex-1 min-w-0 overflow-hidden"
@@ -15,12 +15,7 @@ export default function Home() {
       >
         <WorkspacePane />
       </section>
-      <aside
-        className="h-full shrink-0 border-l border-stone-200 bg-stone-50/70 backdrop-blur-sm"
-        style={{ width: 'min(50%, 720px)' }}
-      >
-        <ManagerChat />
-      </aside>
+      <ManagerChatLayout />
     </main>
   );
 }

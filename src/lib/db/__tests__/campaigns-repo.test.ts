@@ -34,6 +34,8 @@ function buildCampaign(overrides: Partial<ActiveCampaign> = {}): ActiveCampaign 
     scoringSheet: null,
     publishedChannels: ['linkedin'],
     sourcesConfirmed: false,
+    sources: ['manual'],
+    threshold: 75,
     status: 'in_progress',
     createdAt: '2026-05-01T00:00:00Z',
     updatedAt: '2026-05-01T00:00:00Z',

@@ -75,9 +75,18 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   if (!client) {
     return { ok: false, messageId: null, error: 'email_not_configured' };
   }
+  // Session 6 v4 — l'expéditeur dynamique vient de /settings s'il y est
+  // configuré, sinon on retombe sur la valeur instance par défaut.
+  let fromOverride: string | null = null;
+  try {
+    const { getSenderEmail } = await import('@/lib/email/addresses');
+    fromOverride = await getSenderEmail();
+  } catch {
+    // ignore — on garde le default Resend
+  }
   try {
     const { data, error } = await client.resend.emails.send({
-      from: client.from,
+      from: fromOverride ?? client.from,
       to: input.to,
       subject: input.subject,
       html: input.html,

@@ -23,6 +23,7 @@ const PatchSchema = z.object({
   status: CampaignStatusSchema.optional(),
   publishedChannels: z.array(PublicationChannelSchema).optional(),
   sourcesConfirmed: z.boolean().optional(),
+  threshold: z.number().int().min(0).max(100).optional(),
 });
 
 export async function PATCH(

@@ -129,6 +129,61 @@
   }
 }
 
+/*
+ * Tokens du dashboard recrutement (Session 6).
+ *
+ * La palette suit la maquette validée : un fond chaud très clair, des
+ * surfaces blanches et 8 accents francs avec leur déclinaison « light »
+ * pour les fonds de pills/icônes. Les noms restent fidèles à la
+ * référence (--dash-blue, --dash-blue-light, etc.) pour faciliter le
+ * recoupement visuel avec le HTML d'origine.
+ */
+:root {
+  --dash-bg: #faf8f5;
+  --dash-surface: #ffffff;
+  --dash-warm: #fff9f2;
+  --dash-hover: #f5f0eb;
+  --dash-border: #ede8e3;
+  --dash-border-strong: #d4cdc5;
+  --dash-text: #1b1b18;
+  --dash-text-secondary: #65625d;
+  --dash-text-tertiary: #9c9891;
+
+  --dash-blue: #2f6eeb;
+  --dash-blue-light: #ebf2ff;
+  --dash-purple: #7b5cfa;
+  --dash-purple-light: #f1edff;
+  --dash-green: #15a364;
+  --dash-green-light: #e8f8ef;
+  --dash-orange: #e8710a;
+  --dash-orange-light: #fff3e6;
+  --dash-red: #e5484d;
+  --dash-red-light: #feecee;
+  --dash-pink: #d6409f;
+  --dash-pink-light: #fce8f6;
+  --dash-teal: #12a594;
+  --dash-teal-light: #e6faf7;
+  --dash-indigo: #3e63dd;
+  --dash-indigo-light: #ecf0ff;
+  --dash-yellow: #d5a000;
+  --dash-yellow-light: #fff8e1;
+}
+
+@keyframes dash-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-fade-in {
+  animation: dash-fade-in 0.35s ease both;
+}
+
 @keyframes pulse-glow {
   0%,
   100% {

@@ -268,3 +268,73 @@ create table if not exists public.campaign_mailboxes (
 
 create index if not exists campaign_mailboxes_mailbox_idx
   on public.campaign_mailboxes (mailbox_id);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Session 6 — Seuil d'acceptation par campagne (édition dashboard)
+-- ──────────────────────────────────────────────────────────────────────
+-- Slider 0..100 ajustable depuis le dashboard. Le CV Analyzer relit
+-- cette valeur (ou retombe sur DEFAULT_CV_THRESHOLD=75) pour décider
+-- aboveThreshold sur les prochaines candidatures. Pas de recompute
+-- rétroactif en Session 6 — c'est explicite côté DRH dans la prise
+-- d'acte du Manager.
+alter table public.campaigns
+  add column if not exists threshold int not null default 75
+  check (threshold between 0 and 100);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Session 6 v3 — Flux de réception des CV par campagne
+-- ──────────────────────────────────────────────────────────────────────
+-- Distinct de published_channels (où l'annonce est diffusée). Un flux
+-- = un canal d'arrivée des CV (manual, email, scrape LinkedIn…). Le
+-- bloc Flux du sheet d'édition campagne pousse cette liste.
+alter table public.campaigns
+  add column if not exists sources text[] not null default array['manual']::text[];
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Session 6 v4 — Settings applicatifs (single-row)
+-- ──────────────────────────────────────────────────────────────────────
+-- Table single-row pour les réglages globaux configurables depuis
+-- /settings : adresses email (synthèse, expéditeur), credentials des
+-- intégrations flux et canaux. Le check id=1 garantit qu'il n'y a
+-- qu'une seule ligne. Les credentials sont volontairement en clair
+-- (jsonb) pour le MVP démo — un cycle ultérieur basculera sur le
+-- chiffrement application-level (cf. mailbox-credentials.ts).
+
+create table if not exists public.app_settings (
+  id                int primary key default 1 check (id = 1),
+  synthesis_email   text,
+  sender_email      text,
+  intake_email      text,
+  flux_config       jsonb not null default '{}'::jsonb,
+  channels_config   jsonb not null default '{}'::jsonb,
+  updated_at        timestamptz not null default now()
+);
+
+-- Seed de la ligne unique si absente.
+insert into public.app_settings (id) values (1)
+  on conflict (id) do nothing;
+
+drop trigger if exists app_settings_touch_updated_at on public.app_settings;
+create trigger app_settings_touch_updated_at
+  before update on public.app_settings
+  for each row execute function public.touch_updated_at();
+
+-- Multi-adresses synthèse et expéditeur (Session 6 v5).
+-- Le DRH peut enregistrer plusieurs adresses et choisir laquelle est
+-- l'adresse par défaut (synthesis_email / sender_email).
+alter table public.app_settings
+  add column if not exists synthesis_emails text[] not null default '{}'::text[],
+  add column if not exists sender_emails text[] not null default '{}'::text[];
+
+-- Migration de données (v6) — rapatrie les adresses singulières
+-- préexistantes dans les listes pour qu'elles soient visibles dans
+-- l'UI. Idempotent — re-exécutable sans casse.
+update public.app_settings
+set sender_emails = array[sender_email]
+where sender_email is not null
+  and (sender_emails is null or coalesce(array_length(sender_emails, 1), 0) = 0);
+
+update public.app_settings
+set synthesis_emails = array[synthesis_email]
+where synthesis_email is not null
+  and (synthesis_emails is null or coalesce(array_length(synthesis_emails, 1), 0) = 0);

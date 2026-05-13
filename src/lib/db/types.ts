@@ -8,6 +8,7 @@
  */
 
 import type { CampaignStatus } from '@/types/campaign-status';
+import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { PublicationChannel } from '@/types/publication-channel';
@@ -21,6 +22,17 @@ export type CampaignRow = {
   scoring_sheet: ScoringSheet | null;
   published_channels: PublicationChannel[];
   sources_confirmed: boolean;
+  /**
+   * Session 6 v3 — flux de réception des CV actifs sur cette campagne.
+   * Persistant en text[] côté Postgres.
+   */
+  sources: CVSource[];
+  /**
+   * Seuil d'acceptation 0..100 utilisé par le CV Analyzer pour décider
+   * `aboveThreshold`. Ajustable depuis le dashboard (Session 6).
+   * Default 75 — aligné sur `DEFAULT_CV_THRESHOLD`.
+   */
+  threshold: number;
   created_at: string;
   updated_at: string;
 };

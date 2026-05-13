@@ -13,6 +13,7 @@
 import { create } from 'zustand';
 
 import type { CampaignStatus } from '@/types/campaign-status';
+import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { PublicationChannel } from '@/types/publication-channel';
 import type { ScoringSheet } from '@/types/scoring';
@@ -38,6 +39,21 @@ export type ActiveCampaign = {
   publishedChannels: PublicationChannel[];
   sourcesConfirmed: boolean;
   /**
+   * Session 6 v3 — flux de réception des CV actifs pour cette campagne.
+   * Distinct des `publishedChannels` (où l'annonce est diffusée) — un
+   * flux = un canal d'arrivée (manual, email, scraping LinkedIn…). Le
+   * DRH édite ces flux via le bloc Flux du sheet d'édition campagne.
+   */
+  sources: CVSource[];
+  /**
+   * Session 6 — seuil d'acceptation 0..100 utilisé par le CV Analyzer
+   * pour décider `aboveThreshold`. Ajustable depuis le dashboard
+   * (slider). Default 75 (cohérent avec DEFAULT_CV_THRESHOLD).
+   * Le changement ne recompute pas rétroactivement les candidats déjà
+   * analysés — le nouveau seuil s'applique aux prochaines analyses.
+   */
+  threshold: number;
+  /**
    * Phase 5.1 — état d'avancement de la campagne. Dérivé par
    * recomputeStatus quand un jalon change, ou écrasé explicitement
    * par updateStatus (closed, paused).
@@ -58,7 +74,22 @@ export type CampaignsState = {
     scoringSheet?: ScoringSheet | null;
     publishedChannels?: PublicationChannel[];
     sourcesConfirmed?: boolean;
+    sources?: CVSource[];
+    threshold?: number;
   }) => ActiveCampaign;
+  /**
+   * Session 6 — ajuste le seuil d'acceptation d'une campagne. Le
+   * Manager prend acte en parallèle dans le chat (cf.
+   * pushManagerAcknowledgment). Aucun recompute rétroactif des
+   * candidats déjà analysés (cf. ActiveCampaign.threshold).
+   */
+  setThreshold: (id: string, threshold: number) => void;
+  /**
+   * Session 6 v3 — remplace la liste des sources actives d'une
+   * campagne. Le bloc Flux passe la liste complète (additive vs
+   * substractive) pour rester explicite côté UI.
+   */
+  setSources: (id: string, sources: CVSource[]) => void;
   /**
    * Écrase explicitement le statut d'une campagne (paused / closed
    * principalement). Pour les transitions dérivées (draft → in_progress
@@ -130,6 +161,10 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       input.publishedChannels ?? existing?.publishedChannels ?? [];
     const sourcesConfirmed =
       input.sourcesConfirmed ?? existing?.sourcesConfirmed ?? false;
+    const sources =
+      input.sources ?? existing?.sources ?? ['manual'];
+    const threshold =
+      input.threshold ?? existing?.threshold ?? 75;
     const campaign: ActiveCampaign = {
       id: input.fdp.campaignId,
       name,
@@ -137,6 +172,8 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       scoringSheet,
       publishedChannels,
       sourcesConfirmed,
+      sources,
+      threshold,
       status,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -164,6 +201,51 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
           [id]: {
             ...current,
             status,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  setThreshold: (id, threshold) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      const clamped = Math.max(0, Math.min(100, Math.round(threshold)));
+      if (clamped === current.threshold) return state;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            threshold: clamped,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  setSources: (id, sources) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      // Déduplique en préservant l'ordre.
+      const seen = new Set<string>();
+      const deduped: typeof current.sources = [];
+      for (const s of sources) {
+        if (!seen.has(s)) {
+          seen.add(s);
+          deduped.push(s);
+        }
+      }
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            sources: deduped,
             updatedAt: new Date().toISOString(),
           },
         },

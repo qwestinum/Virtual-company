@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { MailboxesManager } from '@/components/settings/MailboxesManager';
 
 export const metadata = {
@@ -26,12 +28,12 @@ export default function MailboxesSettingsPage() {
             campagne dans l&apos;objet et un CV en pièce jointe, l&apos;agent
             CV Analyzer s&apos;exécute automatiquement.
           </p>
-          <a
+          <Link
             href="/"
             className="font-body text-[12.5px] text-stone-500 hover:text-stone-900 mt-3 inline-block"
           >
             ← Retour au workspace
-          </a>
+          </Link>
         </header>
         <MailboxesManager />
       </div>

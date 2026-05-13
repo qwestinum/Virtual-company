@@ -29,6 +29,7 @@ import {
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { getSynthesisEmail } from '@/lib/email/addresses';
 import { sendEmail } from '@/lib/email/client';
 import { uploadArtifact } from '@/lib/storage/blob';
 import type { CVAnalysisResult } from '@/types/cv-analysis';
@@ -139,11 +140,12 @@ async function composeAndSendCandidateMail(args: {
   if (!candidate.email) {
     status = 'skipped_no_email';
   } else {
+    const synthesisAddress = await getSynthesisEmail();
     const sendResult = await sendEmail({
       to: candidate.email,
       subject: composed.subject,
       html: composed.html,
-      replyTo: process.env.EMAIL_DRH || undefined,
+      replyTo: synthesisAddress || undefined,
     });
     if (sendResult.ok) {
       status = 'sent';
@@ -269,7 +271,7 @@ async function composeAndSendInterviewBrief(args: {
     return;
   }
 
-  const drhAddress = process.env.EMAIL_DRH;
+  const drhAddress = await getSynthesisEmail();
   let status:
     | 'sent'
     | 'skipped_no_drh'
@@ -423,7 +425,7 @@ function renderBriefMarkdown(args: {
   const c = args.candidate;
   const label = {
     sent: 'envoyé au DRH',
-    skipped_no_drh: "non envoyé — EMAIL_DRH non configurée",
+    skipped_no_drh: "non envoyé — adresse de synthèse non configurée",
     skipped_no_config: 'non envoyé — service email non configuré',
     send_failed: `non envoyé — erreur (${args.sendError ?? 'inconnue'})`,
   }[args.status];

@@ -217,4 +217,37 @@ describe('campaigns-store', () => {
       useCampaignsStore.getState().getById('CAMP-2026-008')?.scoringSheet,
     ).toBeNull();
   });
+
+  it('addCampaign initialise le seuil par défaut à 75', () => {
+    const c = useCampaignsStore
+      .getState()
+      .addCampaign({ fdp: makeFDP('CAMP-2026-100') });
+    expect(c.threshold).toBe(75);
+  });
+
+  it('setThreshold borne la valeur entre 0 et 100', () => {
+    const fdp = makeFDP('CAMP-2026-101');
+    useCampaignsStore.getState().addCampaign({ fdp });
+    useCampaignsStore.getState().setThreshold('CAMP-2026-101', 150);
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-101')?.threshold,
+    ).toBe(100);
+    useCampaignsStore.getState().setThreshold('CAMP-2026-101', -10);
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-101')?.threshold,
+    ).toBe(0);
+  });
+
+  it('setThreshold met à jour updatedAt seulement quand la valeur change', () => {
+    const fdp = makeFDP('CAMP-2026-102');
+    useCampaignsStore.getState().addCampaign({ fdp });
+    const before = useCampaignsStore
+      .getState()
+      .getById('CAMP-2026-102')!.updatedAt;
+    useCampaignsStore.getState().setThreshold('CAMP-2026-102', 75);
+    // identique → updatedAt inchangé
+    expect(
+      useCampaignsStore.getState().getById('CAMP-2026-102')!.updatedAt,
+    ).toBe(before);
+  });
 });

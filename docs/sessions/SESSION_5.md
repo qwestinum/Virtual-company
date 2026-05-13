@@ -1,6 +1,6 @@
 # Session 5 — Persistance Supabase (round 1)
 
-> **Statut** : en cours
+> **Statut** : terminée — prolongée en pratique par les rounds 2 (Storage), 3 (artefacts sync), 4 (extraction de CV), 5 (flux IMAP). Voir le code des repos / sync pour le détail. La Session 6 (`SESSION_6.md`) prend le relais avec le dashboard.
 > **Pré-requis** : Sessions 1 à 4 complétées (chat manager, CV Analyzer, scoring, isolated criteria, sélecteur de campagne, status workflow).
 > **Spec de référence** : `docs/specs/entreprise-virtuelle-rh.md` — §5.2 (storage hybride), §4.1 (pré-recherche L1).
 

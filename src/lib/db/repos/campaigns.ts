@@ -22,6 +22,8 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     scoringSheet: row.scoring_sheet ?? null,
     publishedChannels: row.published_channels ?? [],
     sourcesConfirmed: row.sources_confirmed,
+    sources: row.sources ?? ['manual'],
+    threshold: row.threshold ?? 75,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -37,6 +39,8 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     scoring_sheet: campaign.scoringSheet,
     published_channels: campaign.publishedChannels,
     sources_confirmed: campaign.sourcesConfirmed,
+    sources: campaign.sources,
+    threshold: campaign.threshold,
     created_at: campaign.createdAt,
     updated_at: campaign.updatedAt,
   };
@@ -69,6 +73,7 @@ export type CampaignPatch = {
   status?: CampaignStatus;
   publishedChannels?: PublicationChannel[];
   sourcesConfirmed?: boolean;
+  threshold?: number;
 };
 
 export async function patchCampaign(
@@ -82,6 +87,7 @@ export async function patchCampaign(
     row.published_channels = patch.publishedChannels;
   if (patch.sourcesConfirmed !== undefined)
     row.sources_confirmed = patch.sourcesConfirmed;
+  if (patch.threshold !== undefined) row.threshold = patch.threshold;
   if (Object.keys(row).length === 0) return null;
   const { data, error } = await supabase
     .from(TABLE)

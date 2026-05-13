@@ -82,6 +82,11 @@ export function MailboxesManager() {
   }
 
   useEffect(() => {
+    // Fetch async sur mount — les setState ne sont déclenchés
+    // qu'après `await` (jamais en synchrone), donc le pattern est sûr.
+    // La règle react-hooks/set-state-in-effect ne peut pas le prouver
+    // statiquement, on l'apaise avec une justification.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadMailboxes();
   }, []);
 
