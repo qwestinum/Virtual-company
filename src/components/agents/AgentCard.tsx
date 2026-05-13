@@ -45,7 +45,7 @@ export function AgentCard({
   const avatarUrl = getAvatarUrl(agent.id);
   const isActive = agent.status === 'active';
 
-  const circleSize = isManager ? 144 : 120;
+  const circleSize = isManager ? 180 : 150;
 
   const buttonStyle: CSSProperties = {
     ['--glow-color' as string]: `${accent}66`,

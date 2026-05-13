@@ -187,10 +187,14 @@
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 var(--glow-color, rgba(0, 0, 0, 0));
+    box-shadow: 0 0 0 0 var(--glow-color, rgba(0, 0, 0, 0)),
+      0 4px 14px rgba(15, 23, 42, 0.06);
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 32px 6px var(--glow-color, rgba(0, 0, 0, 0));
+    box-shadow: 0 0 48px 14px var(--glow-color, rgba(0, 0, 0, 0)),
+      0 10px 28px var(--glow-color, rgba(15, 23, 42, 0.12));
+    transform: scale(1.045);
   }
 }
 
@@ -220,7 +224,7 @@
 }
 
 .agent-card-active {
-  animation: pulse-glow 2s ease-in-out infinite;
+  animation: pulse-glow 1.6s ease-in-out infinite;
 }
 
 .flow-line {

@@ -10,10 +10,10 @@ import { AgentCard } from './AgentCard';
 import { FlowLines } from './FlowLines';
 
 const MANAGER_ID = 'agent.manager-rh';
-const UNIT_MIN = 80;
-const UNIT_MAX = 150;
-const UNIT_RATIO = 0.18;
-const UNIT_FALLBACK = 130;
+const UNIT_MIN = 100;
+const UNIT_MAX = 195;
+const UNIT_RATIO = 0.22;
+const UNIT_FALLBACK = 170;
 
 function clampUnit(width: number, height: number): number {
   const minDim = Math.min(width, height);
