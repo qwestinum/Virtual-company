@@ -1,5 +1,9 @@
 /**
- * Middleware Next.js — gate d'authentification.
+ * Proxy Next.js (ex-middleware) — gate d'authentification.
+ *
+ * Convention Next 16 : le fichier doit s'appeler `proxy.ts` (et non
+ * plus `middleware.ts` — déprécié) et exporter une fonction nommée
+ * `proxy` ou un `default`.
  *
  * Protège `/app/*`, `/rh/*`, `/settings/*`. Si pas de session valide,
  * redirige vers `/login?next=<path-tenté>` pour reprendre la
@@ -23,7 +27,7 @@ function isProtected(pathname: string): boolean {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const { response, user } = await getUserFromMiddleware(request);
 

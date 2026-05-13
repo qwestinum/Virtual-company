@@ -52,21 +52,21 @@ export default function RootError({
             QWESTINUM — Entreprise virtuelle
           </p>
           <h1 className="font-display text-[24px] font-bold tracking-tight text-stone-900 leading-tight mt-1">
-            Accueil temporairement indisponible
+            Une erreur est survenue
           </h1>
           <p className="font-body text-[14px] text-stone-600 mt-3 leading-relaxed">
-            Le Lobby n&apos;a pas pu s&apos;afficher. Vous pouvez accéder
-            directement au département RH, ou recharger l&apos;accueil.
+            La page n&apos;a pas pu s&apos;afficher. Vous pouvez réessayer
+            ou continuer vers la connexion.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Link
-            href="/rh"
+            href="/login"
             className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 font-display text-[13px] font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5"
             style={{ background: 'linear-gradient(135deg, #FFB000, #FF8A00)' }}
           >
-            Aller au département RH
+            Se connecter
             <span aria-hidden>→</span>
           </Link>
           <button
@@ -78,11 +78,20 @@ export default function RootError({
           </button>
         </div>
 
-        {error.digest ? (
-          <p className="font-data text-[10.5px] text-stone-400">
-            ref&nbsp;: {error.digest}
-          </p>
-        ) : null}
+        {/*
+         * Affichage diagnostic du vrai message d'erreur. Crucial pour
+         * débugger les écarts local/Vercel — sans ça on tourne en rond.
+         * À retirer/conditionner par env var quand le MVP sera stable.
+         */}
+        <details className="mt-2 w-full text-left">
+          <summary className="cursor-pointer font-body text-[11.5px] text-stone-500 hover:text-stone-700">
+            Détails techniques
+          </summary>
+          <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-stone-200 bg-stone-50 p-3 font-data text-[10.5px] text-stone-700 whitespace-pre-wrap break-words">
+            {error.message || 'Erreur sans message'}
+            {error.digest ? `\n\nref: ${error.digest}` : null}
+          </pre>
+        </details>
       </div>
     </main>
   );

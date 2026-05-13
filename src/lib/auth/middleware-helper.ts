@@ -25,26 +25,34 @@ export async function getUserFromMiddleware(
     return { response, user: null };
   }
 
-  const supabase = createServerClient(url, anon, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+  try {
+    const supabase = createServerClient(url, anon, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(toSet) {
+          for (const { name, value } of toSet) {
+            request.cookies.set(name, value);
+          }
+          response = NextResponse.next({ request });
+          for (const { name, value, options } of toSet) {
+            response.cookies.set(name, value, options);
+          }
+        },
       },
-      setAll(toSet) {
-        for (const { name, value } of toSet) {
-          request.cookies.set(name, value);
-        }
-        response = NextResponse.next({ request });
-        for (const { name, value, options } of toSet) {
-          response.cookies.set(name, value, options);
-        }
-      },
-    },
-  });
+    });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  return { response, user };
+    return { response, user };
+  } catch {
+    // Si Supabase est injoignable / mal configuré, on retourne null
+    // plutôt que de jeter — sinon tout le site renvoie 500 (y compris
+    // les routes publiques). Les routes protégées seront bouncées
+    // vers /login, les publiques continueront de rendre normalement.
+    return { response, user: null };
+  }
 }
