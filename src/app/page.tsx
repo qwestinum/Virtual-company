@@ -1,16 +1,16 @@
-import { Lobby } from '@/components/lobby/Lobby';
+import { PublicLanding } from '@/components/landing/PublicLanding';
 
 export const metadata = {
   title: 'QWESTINUM — Entreprise virtuelle',
 };
 
 /**
- * Page racine — Lobby de l'entreprise virtuelle (Session 7).
+ * Page racine — landing publique.
  *
- * Chaque département est présenté en carte. Seul le RH ouvre vers
- * `/rh` pour aujourd'hui. Le détail des animations vit dans
- * `<Lobby />` (client component).
+ * Hero minimaliste avec CTA « Se connecter » vers `/login`. Le lobby
+ * des départements (composant `<Lobby />`) a déménagé sur `/app`,
+ * route protégée par le middleware.
  */
 export default function HomePage() {
-  return <Lobby />;
+  return <PublicLanding />;
 }

@@ -35,7 +35,7 @@ export function DepartmentView({ meta, services }: DepartmentViewProps) {
       <WorkspaceBackground />
       <TopBanner
         breadcrumb={[
-          { label: 'Lobby', href: '/' },
+          { label: 'Lobby', href: '/app' },
           { label: meta.name },
         ]}
       />

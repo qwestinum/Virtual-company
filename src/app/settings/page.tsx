@@ -20,7 +20,7 @@ export default function SettingsPage() {
       <WorkspaceBackground />
       <TopBanner
         breadcrumb={[
-          { label: 'Lobby', href: '/' },
+          { label: 'Lobby', href: '/app' },
           { label: 'Paramètres' },
         ]}
       />

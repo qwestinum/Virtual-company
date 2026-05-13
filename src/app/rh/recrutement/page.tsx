@@ -22,7 +22,7 @@ export default function RecrutementPage() {
       <WorkspaceBackground />
       <TopBanner
         breadcrumb={[
-          { label: 'Lobby', href: '/' },
+          { label: 'Lobby', href: '/app' },
           { label: 'RH', href: '/rh' },
           { label: 'Recrutement' },
         ]}
