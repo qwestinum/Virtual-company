@@ -17,20 +17,23 @@ export type OrqaLogoProps = {
   className?: string;
 };
 
-// Dimensions intrinsèques approximatives du PNG — ratio ≈ 4:1. Réglées
-// pour éviter le layout shift initial ; ne reflètent pas la taille
-// rendue (paramétrée par la prop width).
-const INTRINSIC_W = 800;
-const INTRINSIC_H = 200;
+// Dimensions intrinsèques réelles du PNG (844 × 238, ratio ≈ 3.55:1).
+// Servent au layout-shift prevention ; la taille rendue est pilotée
+// par la prop `width`. Si le logo est remplacé, mettre à jour ces
+// constantes ET incrémenter `LOGO_VERSION` pour casser le cache
+// navigateur + l'optimiseur d'images Next.
+const INTRINSIC_W = 844;
+const INTRINSIC_H = 238;
+const LOGO_VERSION = 4;
 
 export function OrqaLogo({
-  width = 140,
+  width = 110,
   priority = false,
   className,
 }: OrqaLogoProps) {
   return (
     <Image
-      src="/logo-orqa.png"
+      src={`/logo-orqa.png?v=${LOGO_VERSION}`}
       alt="ORQA"
       width={INTRINSIC_W}
       height={INTRINSIC_H}

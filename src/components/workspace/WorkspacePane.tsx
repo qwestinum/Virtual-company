@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { AgentDetailsPanel } from '@/components/agents/AgentDetailsPanel';
 import { HRDepartmentView } from '@/components/agents/HRDepartmentView';
 import { DashboardView } from '@/components/dashboard/DashboardView';
-import { Breadcrumb } from '@/components/navigation/Breadcrumb';
 import { cn } from '@/lib/utils';
 
 type Tab = 'rh' | 'dashboard';
@@ -19,15 +18,6 @@ export function WorkspacePane() {
   const [tab, setTab] = useState<Tab>('rh');
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden">
-      <div className="relative z-20 px-6 pt-3 pb-1 border-b border-stone-200/40 bg-white/40 backdrop-blur-sm">
-        <Breadcrumb
-          items={[
-            { label: '🏠 Lobby', href: '/' },
-            { label: 'RH', href: '/rh' },
-            { label: 'Recrutement' },
-          ]}
-        />
-      </div>
       <WorkspaceTabs current={tab} onChange={setTab} />
       <div className="relative flex-1 overflow-hidden">
         {tab === 'rh' ? (

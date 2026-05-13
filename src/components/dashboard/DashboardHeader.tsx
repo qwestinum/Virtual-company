@@ -78,7 +78,7 @@ export function DashboardHeader({ offline, isStale }: DashboardHeaderProps) {
               color: 'var(--dash-text)',
             }}
           >
-            QWESTINUM
+            ORQA
           </span>
         </div>
         <div

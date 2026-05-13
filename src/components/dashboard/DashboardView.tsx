@@ -58,7 +58,7 @@ export function DashboardView() {
         position: 'absolute',
         inset: 0,
         overflowY: 'auto',
-        background: 'var(--dash-bg)',
+        background: 'transparent',
         color: 'var(--dash-text)',
       }}
     >

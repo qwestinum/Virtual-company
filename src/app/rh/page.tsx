@@ -12,7 +12,7 @@ const RH_SERVICES: ServiceCardProps[] = [
     description:
       'Cadrage, diffusion, analyse des CV, entretiens, validation. Le service le plus mature, opérationnel sur démos clients.',
     icon: '🎯',
-    accent: 'linear-gradient(135deg, #2F6EEB, #7B5CFA)',
+    accent: 'linear-gradient(135deg, #FFB000, #FF8A00)',
     status: 'active',
     href: '/rh/recrutement',
   },
@@ -31,7 +31,7 @@ const RH_SERVICES: ServiceCardProps[] = [
     description:
       "Plans de développement, parcours métier, suivi des compétences. À l'étude.",
     icon: '🎓',
-    accent: 'linear-gradient(135deg, #E8710A, #D6409F)',
+    accent: 'linear-gradient(135deg, #FFB000, #E8710A)',
     status: 'coming',
   },
 ];
@@ -45,7 +45,7 @@ export default function RHDepartmentPage() {
         tagline:
           'Le département RH virtuel — Manager RH au centre, agents spécialisés autour. Sélectionnez un service pour entrer.',
         icon: '🧑‍💼',
-        accent: 'linear-gradient(135deg, #2F6EEB, #7B5CFA)',
+        accent: 'linear-gradient(135deg, #FFB000, #FF8A00)',
       }}
       services={RH_SERVICES}
     />

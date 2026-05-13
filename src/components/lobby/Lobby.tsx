@@ -1,19 +1,16 @@
 'use client';
 
 /**
- * Lobby — page racine de l'entreprise virtuelle (Session 7).
+ * Lobby — page racine de l'entreprise virtuelle (Session 7 fix).
  *
- * 5 disques département présentés en grille. Seul le RH est actif ;
- * les autres affichent un tag « Bientôt » et restent non cliquables.
- *
- * Stagger fade-in sur les disques via un container motion qui propage
- * `staggerChildren` aux DepartmentCard.
+ * Cartes rectangulaires alignées à gauche en grille, bandeau
+ * orange-jaune sticky en haut (logo + breadcrumb géré ailleurs).
  */
 
 import { motion } from 'framer-motion';
-import Link from 'next/link';
 
-import { OrqaLogo } from '@/components/navigation/OrqaLogo';
+import { SiteFooter } from '@/components/navigation/SiteFooter';
+import { TopBanner } from '@/components/navigation/TopBanner';
 import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
 
 import {
@@ -21,6 +18,8 @@ import {
   type DepartmentCardProps,
 } from './DepartmentCard';
 
+// Palette orange-jaune homogène — les icônes des cartes actives
+// reprennent un gradient amber/orange, les autres restent grises.
 const DEPARTMENTS: DepartmentCardProps[] = [
   {
     id: 'rh',
@@ -28,7 +27,7 @@ const DEPARTMENTS: DepartmentCardProps[] = [
     description:
       'Recrutement, administration du personnel, formation. Manager RH virtuel + agents IA spécialisés.',
     icon: '🧑‍💼',
-    accent: 'linear-gradient(135deg, #2F6EEB, #7B5CFA)',
+    accent: 'linear-gradient(135deg, #FFB000, #FF8A00)',
     status: 'active',
     href: '/rh',
   },
@@ -45,7 +44,7 @@ const DEPARTMENTS: DepartmentCardProps[] = [
     name: 'Commercial',
     description: 'Prospection, qualification, négociation.',
     icon: '📊',
-    accent: 'linear-gradient(135deg, #E8710A, #D6409F)',
+    accent: 'linear-gradient(135deg, #FFB000, #E8710A)',
     status: 'coming',
   },
   {
@@ -53,7 +52,7 @@ const DEPARTMENTS: DepartmentCardProps[] = [
     name: 'Tech',
     description: 'Développement, ops, sécurité.',
     icon: '⚙️',
-    accent: 'linear-gradient(135deg, #3E63DD, #12A594)',
+    accent: 'linear-gradient(135deg, #2F6EEB, #12A594)',
     status: 'coming',
   },
   {
@@ -61,41 +60,35 @@ const DEPARTMENTS: DepartmentCardProps[] = [
     name: 'Marketing',
     description: 'Contenu, social, growth.',
     icon: '🎨',
-    accent: 'linear-gradient(135deg, #D6409F, #E8710A)',
+    accent: 'linear-gradient(135deg, #FF8A00, #E8710A)',
     status: 'coming',
   },
 ];
 
 export function Lobby() {
   return (
-    <main className="relative min-h-[100svh]">
+    <main className="relative flex min-h-[100svh] flex-col">
       <WorkspaceBackground />
-      <div className="relative mx-auto max-w-6xl px-6 py-14">
+      <TopBanner />
+      <div className="relative mx-auto w-full max-w-6xl flex-1 px-6 pt-16 pb-12">
         <motion.header
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: [0.2, 0.7, 0.2, 1] }}
-          className="mb-12 flex items-start justify-between gap-4 flex-wrap"
+          className="mb-9 max-w-2xl"
         >
-          <div>
-            <OrqaLogo width={160} priority />
-            <h1 className="font-display text-[32px] font-bold tracking-tight text-stone-900 leading-tight mt-4">
-              Entreprise virtuelle
-            </h1>
-            <p className="font-body text-[14.5px] text-stone-600 mt-2 max-w-xl">
-              Choisissez un département pour entrer dans son espace de travail.
-              Chaque département dispose de ses propres agents IA, services et
-              artefacts.
-            </p>
-          </div>
-          <Link
-            href="/settings"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/70 backdrop-blur-sm border border-stone-200 text-[12.5px] font-body font-semibold text-stone-700 hover:bg-white hover:text-stone-900 transition-colors shadow-sm"
-            aria-label="Paramètres"
-          >
-            <span aria-hidden>⚙</span>
-            Paramètres
-          </Link>
+          <p className="font-display text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-semibold">
+            Départements
+          </p>
+          <h1 className="font-display text-[28px] sm:text-[32px] font-bold tracking-tight text-stone-900 leading-[1.15] mt-1">
+            Une entreprise complète,
+            <br />
+            virtualisée et pilotable
+          </h1>
+          <p className="font-body text-[14px] text-stone-600 mt-3 leading-relaxed">
+            Chaque département a son orchestrateur et ses agents spécialisés.
+            Commencez par un, étendez à tous.
+          </p>
         </motion.header>
 
         <motion.div
@@ -105,22 +98,15 @@ export function Lobby() {
             hidden: {},
             visible: { transition: { staggerChildren: 0.06 } },
           }}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-12 gap-x-8 place-items-center pt-4"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
         >
           {DEPARTMENTS.map((dept) => (
             <DepartmentCard key={dept.id} {...dept} />
           ))}
         </motion.div>
-
-        <motion.footer
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4, duration: 0.3 }}
-          className="mt-16 text-center font-body text-[12px] text-stone-400"
-        >
-          Process First — l&apos;IA appliquée à des processus métier réels.
-        </motion.footer>
       </div>
+
+      <SiteFooter />
     </main>
   );
 }

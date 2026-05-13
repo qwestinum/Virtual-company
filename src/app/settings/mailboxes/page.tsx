@@ -1,5 +1,6 @@
-import Link from 'next/link';
-
+import { SiteFooter } from '@/components/navigation/SiteFooter';
+import { TopBanner } from '@/components/navigation/TopBanner';
+import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
 import { MailboxesManager } from '@/components/settings/MailboxesManager';
 
 export const metadata = {
@@ -7,14 +8,22 @@ export const metadata = {
 };
 
 /**
- * Page de configuration des boîtes mail IMAP surveillées par le
- * poller (Session 5 round 5). Server component minimaliste — la
- * logique vit dans `<MailboxesManager />`.
+ * Page de configuration des boîtes mail IMAP surveillées par le poller.
+ * Server component minimaliste — la logique vit dans
+ * `<MailboxesManager />`.
  */
 export default function MailboxesSettingsPage() {
   return (
-    <main className="min-h-screen bg-stone-50">
-      <div className="max-w-4xl mx-auto px-6 py-10">
+    <main className="relative flex min-h-[100svh] flex-col">
+      <WorkspaceBackground />
+      <TopBanner
+        breadcrumb={[
+          { label: 'Lobby', href: '/' },
+          { label: 'Paramètres', href: '/settings' },
+          { label: 'Boîtes mail' },
+        ]}
+      />
+      <div className="relative mx-auto w-full max-w-4xl flex-1 px-6 py-10">
         <header className="mb-8">
           <p className="font-display text-[11px] uppercase tracking-[0.18em] text-stone-500 font-semibold mb-1">
             Configuration
@@ -28,15 +37,10 @@ export default function MailboxesSettingsPage() {
             campagne dans l&apos;objet et un CV en pièce jointe, l&apos;agent
             CV Analyzer s&apos;exécute automatiquement.
           </p>
-          <Link
-            href="/"
-            className="font-body text-[12.5px] text-stone-500 hover:text-stone-900 mt-3 inline-block"
-          >
-            ← Retour au workspace
-          </Link>
         </header>
         <MailboxesManager />
       </div>
+      <SiteFooter />
     </main>
   );
 }

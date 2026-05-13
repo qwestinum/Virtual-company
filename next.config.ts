@@ -13,6 +13,20 @@ const nextConfig: NextConfig = {
    * physique construit depuis `process.cwd()` dans cv-extract.ts.
    */
   serverExternalPackages: ['pdf-parse'],
+  /**
+   * Autorise les querystrings sur les images locales — utilisé pour
+   * busting de cache après remplacement d'un asset (ex. `logo-orqa.png`).
+   * Sans cette entrée, Next 16 jette un Runtime Error dès qu'une `src`
+   * contient `?…`.
+   */
+  images: {
+    localPatterns: [
+      // Pas de champ `search` ⇒ accepte toute querystring (utile pour
+      // les cache-busters genre `?v=4`). Avec `search: ''`, Next exige
+      // au contraire l'absence totale de querystring → on l'évite.
+      { pathname: '/**' },
+    ],
+  },
 };
 
 export default nextConfig;

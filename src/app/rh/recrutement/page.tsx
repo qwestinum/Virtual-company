@@ -1,5 +1,8 @@
 import { ManagerChatLayout } from '@/components/chat/ManagerChatLayout';
 import { HydrationGate } from '@/components/HydrationGate';
+import { SiteFooter } from '@/components/navigation/SiteFooter';
+import { TopBanner } from '@/components/navigation/TopBanner';
+import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
 import { WorkspacePane } from '@/components/workspace/WorkspacePane';
 
 export const metadata = {
@@ -7,28 +10,31 @@ export const metadata = {
 };
 
 /**
- * Service Recrutement — page MVP (Session 7).
+ * Service Recrutement — page MVP.
  *
- * Le contenu historique du root (`/`) — workspace bureau + chat
- * manager — vit désormais ici. Le `/` racine héberge le Lobby
- * (Session 7). Le breadcrumb est posé par `WorkspacePane` au-dessus
- * de ses onglets pour rester visible à l'utilisateur quel que soit
- * l'onglet (Bureau ou Dashboard).
+ * Bandeau ORQA + fond atelier commun à toutes les pages applicatives.
+ * Le breadcrumb est porté par `TopBanner` ; le `WorkspacePane` ne
+ * duplique plus son propre fil d'Ariane.
  */
 export default function RecrutementPage() {
   return (
-    <main className="relative flex h-[100svh] w-full overflow-hidden">
-      <HydrationGate />
-      <section
-        className="relative flex-1 min-w-0 overflow-hidden"
-        style={{
-          background:
-            'radial-gradient(ellipse at top, #fdfcf9 0%, #f3f1ec 70%, #ebe8e1 100%)',
-        }}
-      >
-        <WorkspacePane />
-      </section>
-      <ManagerChatLayout />
+    <main className="relative flex flex-col h-[100svh] w-full overflow-hidden">
+      <WorkspaceBackground />
+      <TopBanner
+        breadcrumb={[
+          { label: 'Lobby', href: '/' },
+          { label: 'RH', href: '/rh' },
+          { label: 'Recrutement' },
+        ]}
+      />
+      <div className="relative flex flex-1 min-h-0 w-full">
+        <HydrationGate />
+        <section className="relative flex-1 min-w-0 overflow-hidden">
+          <WorkspacePane />
+        </section>
+        <ManagerChatLayout />
+      </div>
+      <SiteFooter />
     </main>
   );
 }

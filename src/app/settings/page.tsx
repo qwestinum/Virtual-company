@@ -1,7 +1,5 @@
-import Link from 'next/link';
-
-import { Breadcrumb } from '@/components/navigation/Breadcrumb';
-import { OrqaLogo } from '@/components/navigation/OrqaLogo';
+import { SiteFooter } from '@/components/navigation/SiteFooter';
+import { TopBanner } from '@/components/navigation/TopBanner';
 import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
 import { SettingsHub } from '@/components/settings/SettingsHub';
 
@@ -10,28 +8,23 @@ export const metadata = {
 };
 
 /**
- * Hub de configuration (Session 7).
+ * Hub de configuration.
  *
  * Cinq sections : boîtes IMAP, synthèse, expéditeur, intégrations flux,
- * intégrations canaux. Background atelier commun ; navigation via
- * logo (retour Lobby) et breadcrumb (Lobby › Paramètres).
+ * intégrations canaux. Bandeau ORQA + fond atelier commun à toutes les
+ * pages applicatives.
  */
 export default function SettingsPage() {
   return (
-    <main className="relative min-h-[100svh]">
+    <main className="relative flex min-h-[100svh] flex-col">
       <WorkspaceBackground />
-      <div className="relative mx-auto max-w-4xl px-6 py-8">
-        <div className="flex items-center gap-4 mb-8 flex-wrap">
-          <Link href="/" aria-label="Retour au Lobby">
-            <OrqaLogo width={120} />
-          </Link>
-          <Breadcrumb
-            items={[
-              { label: '🏠 Lobby', href: '/' },
-              { label: 'Paramètres' },
-            ]}
-          />
-        </div>
+      <TopBanner
+        breadcrumb={[
+          { label: 'Lobby', href: '/' },
+          { label: 'Paramètres' },
+        ]}
+      />
+      <div className="relative mx-auto w-full max-w-4xl flex-1 px-6 py-8">
         <header className="mb-8">
           <p className="font-display text-[11px] uppercase tracking-[0.18em] text-stone-500 font-semibold mb-1">
             Configuration
@@ -46,6 +39,7 @@ export default function SettingsPage() {
         </header>
         <SettingsHub />
       </div>
+      <SiteFooter />
     </main>
   );
 }
