@@ -30,24 +30,33 @@ export function LoginForm() {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
-    const supabase = getAuthBrowserClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    if (authError) {
+    try {
+      const supabase = getAuthBrowserClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (authError) {
+        setError(
+          authError.message === 'Invalid login credentials'
+            ? 'Email ou mot de passe incorrect.'
+            : authError.message,
+        );
+        setSubmitting(false);
+        return;
+      }
+      // Force un refresh du Server Component pour que les cookies
+      // fraîchement posés soient lus côté serveur dès la prochaine nav.
+      router.refresh();
+      router.push(nextPath);
+    } catch (e) {
       setError(
-        authError.message === 'Invalid login credentials'
-          ? 'Email ou mot de passe incorrect.'
-          : authError.message,
+        e instanceof Error
+          ? e.message
+          : 'Connexion impossible. Réessayez plus tard.',
       );
       setSubmitting(false);
-      return;
     }
-    // Force un refresh du Server Component pour que les cookies
-    // fraîchement posés soient lus côté serveur dès la prochaine nav.
-    router.refresh();
-    router.push(nextPath);
   }
 
   return (

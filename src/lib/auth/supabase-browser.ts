@@ -17,14 +17,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 let cached: SupabaseClient | null = null;
 
+/**
+ * Retourne le client browser. Throw uniquement si les env vars sont
+ * manquantes — c'est l'appelant qui doit afficher un message d'erreur
+ * (cf. `LoginForm`), pas le module qui doit crasher la page entière.
+ */
 export function getAuthBrowserClient(): SupabaseClient {
   if (cached) return cached;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {
-    throw new Error(
-      'NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY manquantes',
-    );
+    throw new Error('Supabase non configuré (env vars manquantes).');
   }
   cached = createBrowserClient(url, anon);
   return cached;

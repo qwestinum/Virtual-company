@@ -13,14 +13,15 @@ import { cookies } from 'next/headers';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export async function getAuthServerClient(): Promise<SupabaseClient> {
+export async function getAuthServerClient(): Promise<SupabaseClient | null> {
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {
-    throw new Error(
-      'NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY manquantes',
-    );
+    // En prod sur Vercel, mieux vaut retourner null que de jeter — le
+    // Server Component appelant doit traiter ce cas (vérification de
+    // session optionnelle). Une vraie protection vit dans le proxy.
+    return null;
   }
   return createServerClient(url, anon, {
     cookies: {

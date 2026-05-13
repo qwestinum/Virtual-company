@@ -23,12 +23,20 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const supabase = await getAuthServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
   const params = await searchParams;
-  if (user) {
-    redirect(params.next ?? '/app');
+  if (supabase) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        redirect(params.next ?? '/app');
+      }
+    } catch {
+      // Supabase injoignable → on rend juste la page de login,
+      // le user pourra tenter de se logger ; le formulaire affichera
+      // l'erreur côté client si la requête échoue aussi.
+    }
   }
 
   return (

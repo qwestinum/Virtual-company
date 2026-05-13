@@ -30,6 +30,11 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = await getAuthServerClient();
+  if (!supabase) {
+    return NextResponse.redirect(
+      `${origin}/login?error=auth_unavailable`,
+    );
+  }
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     return NextResponse.redirect(
