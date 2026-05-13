@@ -10,15 +10,35 @@ import { AgentCard } from './AgentCard';
 import { FlowLines } from './FlowLines';
 
 const MANAGER_ID = 'agent.manager-rh';
-const UNIT_MIN = 100;
-const UNIT_MAX = 195;
-const UNIT_RATIO = 0.22;
-const UNIT_FALLBACK = 170;
+const UNIT_MIN = 80;
+const UNIT_MAX = 170;
+const UNIT_FALLBACK = 130;
 
+// Étendue des positions agents : x ∈ [-3,3] (6 unités), z ∈ [-3,2] (5 unités).
+// On veille à ce que les cartes en bord rentrent entièrement dans le cadre.
+const X_SPREAD = 6;
+const Z_SPREAD = 5;
+const LARGEST_CARD = 180; // diamètre du manager (cf. AgentCard)
+const SAFETY_MARGIN = 16;
+
+/**
+ * Calcule l'unité pixel pour qu'aucun agent ne déborde du cadre, quel
+ * que soit le ratio largeur/hauteur du conteneur (workspace partagé
+ * avec le chat à droite, donc plus large que haut ou l'inverse selon
+ * la fenêtre). On dérive l'unité maximale qui garantit que le centre
+ * du dernier agent ne dépasse pas la zone disponible (= cadre moins
+ * un demi-diamètre de carte de chaque côté + petite marge).
+ */
 function clampUnit(width: number, height: number): number {
-  const minDim = Math.min(width, height);
-  if (!Number.isFinite(minDim) || minDim <= 0) return UNIT_FALLBACK;
-  return Math.max(UNIT_MIN, Math.min(UNIT_MAX, minDim * UNIT_RATIO));
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return UNIT_FALLBACK;
+  }
+  if (width <= 0 || height <= 0) return UNIT_FALLBACK;
+  const usableW = Math.max(0, width - LARGEST_CARD - SAFETY_MARGIN * 2);
+  const usableH = Math.max(0, height - LARGEST_CARD - SAFETY_MARGIN * 2);
+  const fitW = usableW / X_SPREAD;
+  const fitH = usableH / Z_SPREAD;
+  return Math.max(UNIT_MIN, Math.min(UNIT_MAX, Math.min(fitW, fitH)));
 }
 
 function cardStyleFor(
