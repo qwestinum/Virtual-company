@@ -22,11 +22,8 @@ import { pollAllMailboxes } from '@/lib/imap/poller';
 const POLL_INTERVAL_MS = 30_000;
 
 declare global {
-  /* eslint-disable-next-line no-var */
   var __imapSchedulerHandle__: NodeJS.Timeout | undefined;
-  /* eslint-disable-next-line no-var */
   var __imapSchedulerStartedAt__: string | undefined;
-  /* eslint-disable-next-line no-var */
   var __imapSchedulerLastRun__: string | undefined;
 }
 

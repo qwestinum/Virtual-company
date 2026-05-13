@@ -59,7 +59,6 @@ import {
   chooseRouteIsolated,
   chooseRouteNewCampaign,
   consumeNewCampaignName,
-  dispatchCVBatch,
   dispatchCVRouting,
   dispatchIsolatedCVBatch,
   dispatchJobWriter,

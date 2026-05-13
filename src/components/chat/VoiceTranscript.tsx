@@ -18,10 +18,11 @@ export function VoiceTranscript({ state, onStop }: VoiceTranscriptProps) {
   useEffect(() => {
     if (state !== 'recording') return;
     const start = Date.now();
-    setElapsedMs(0);
-    const id = window.setInterval(() => {
-      setElapsedMs(Date.now() - start);
-    }, 200);
+    const tick = () => setElapsedMs(Date.now() - start);
+    // Reset immédiat différé (microtask) pour éviter setState synchrone
+    // dans le corps de l'effet — cf. `react-hooks/set-state-in-effect`.
+    queueMicrotask(tick);
+    const id = window.setInterval(tick, 200);
     return () => window.clearInterval(id);
   }, [state]);
 

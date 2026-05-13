@@ -62,7 +62,7 @@ export function CVSourcesPicker({
     <div className="mt-2 grid gap-1.5">
       <p className="font-body text-[11px] text-stone-500 mb-1">
         Flux de réception pour {campaignId}. Activez les sources
-        souhaitées — l'upload manuel est toujours disponible.
+        souhaitées — l&apos;upload manuel est toujours disponible.
       </p>
       {CV_SOURCES.map((source) => {
         const Icon = SOURCE_ICONS[source];

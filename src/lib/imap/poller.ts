@@ -109,7 +109,6 @@ export type PollOutcome = {
  * (cf. scheduler.ts pour la même technique).
  */
 declare global {
-  /* eslint-disable-next-line no-var */
   var __imapInflightMailboxes__: Set<string> | undefined;
 }
 const inflight: Set<string> =
