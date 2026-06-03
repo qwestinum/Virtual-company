@@ -1,7 +1,8 @@
 'use client';
 
 import { Mic, Paperclip, Send, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
+import type { Ref } from 'react';
 
 import { VoiceTranscript } from '@/components/chat/VoiceTranscript';
 import { useMicRecorder } from '@/lib/chat/use-mic-recorder';
@@ -25,6 +26,17 @@ export type ChatInputProps = {
    */
   focusToken?: number;
   onFilesSelected?: (files: File[]) => void;
+  /**
+   * Poignée impérative exposée au parent pour reprendre la main sur la
+   * zone de saisie de façon SYNCHRONE, dans le geste utilisateur (clic
+   * chip d'ajustement). Le focus différé via `focusToken` reste branché
+   * comme filet de sécurité post-render.
+   */
+  handleRef?: Ref<ChatInputHandle>;
+};
+
+export type ChatInputHandle = {
+  focus: () => void;
 };
 
 const ACCEPTED_FILE_TYPES = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
@@ -37,6 +49,7 @@ export function ChatInput({
   onTranscribe,
   focusToken,
   onFilesSelected,
+  handleRef,
 }: ChatInputProps) {
   const [draft, setDraft] = useState('');
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('idle');
@@ -46,6 +59,19 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorder = useMicRecorder();
+
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      focus: () => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        ta.focus();
+        ta.scrollIntoView({ block: 'nearest' });
+      },
+    }),
+    [],
+  );
 
   useEffect(() => {
     const ta = textareaRef.current;

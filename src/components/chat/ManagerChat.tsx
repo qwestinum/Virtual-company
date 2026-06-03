@@ -40,7 +40,7 @@ import {
 } from '@/stores/scoring-store';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { ChatChips } from '@/components/chat/ChatChips';
-import { ChatInput } from '@/components/chat/ChatInput';
+import { ChatInput, type ChatInputHandle } from '@/components/chat/ChatInput';
 import { FieldChecklist } from '@/components/chat/FieldChecklist';
 import { TypingDots } from '@/components/chat/TypingDots';
 import { IsolatedCriteriaChecklist } from '@/components/chat/IsolatedCriteriaChecklist';
@@ -529,6 +529,7 @@ export function ManagerChat() {
   const resetChat = useChatStore((s) => s.reset);
 
   const [inputFocusToken, setInputFocusToken] = useState(0);
+  const chatInputRef = useRef<ChatInputHandle>(null);
   const [isAgentBusy, setAgentBusy] = useState(false);
   const [openFirstMissingToken, setOpenFirstMissingToken] = useState(0);
   const [
@@ -1062,7 +1063,12 @@ export function ManagerChat() {
       return;
     }
     if (isAdjustmentSignal(option)) {
-      // Pas de tour LLM : le DRH veut juste reprendre la main.
+      // Pas de tour LLM : le DRH veut juste reprendre la main. On
+      // focus le textarea de façon SYNCHRONE, dans le geste de clic —
+      // le focus différé (focusToken + rAF) était ignoré par certains
+      // navigateurs en build prod, d'où l'impression que « Ajuster »
+      // ne faisait rien. Le token reste incrémenté en filet post-render.
+      chatInputRef.current?.focus();
       dismissLastManagerChips();
       setInputFocusToken((token) => token + 1);
       return;
@@ -2254,6 +2260,7 @@ export function ManagerChat() {
         onSendText={handleSendText}
         onTranscribe={handleTranscribe}
         focusToken={inputFocusToken}
+        handleRef={chatInputRef}
         onFilesSelected={handleFilesSelected}
       />
     </div>
