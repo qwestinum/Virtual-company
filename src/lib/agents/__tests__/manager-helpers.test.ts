@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ensureAdjustChip,
+  FALLBACK_CHIP_ADJUST,
   hasClarificationRequestKeyword,
   hasSwitchIntentKeyword,
 } from '@/lib/agents/manager';
@@ -98,5 +100,136 @@ describe('hasClarificationRequestKeyword', () => {
   it('does NOT match unrelated mentions of similar words', () => {
     // "comment" sans contexte d'explication
     expect(hasClarificationRequestKeyword('comment va le projet')).toBe(false);
+  });
+});
+
+describe('ensureAdjustChip', () => {
+  it('appends « Ajuster » to inline chips that lack any adjustment signal', () => {
+    const out = ensureAdjustChip({
+      message: 'Pour la fourchette, je vois 50-65K. On part là-dessus ?',
+      chips: {
+        placement: 'inline',
+        options: ['Utiliser 50-65K', 'Plus haut (60-75K)', 'Plus bas (45-58K)'],
+      },
+    });
+    expect(out.chips?.options).toEqual([
+      'Utiliser 50-65K',
+      'Plus haut (60-75K)',
+      'Plus bas (45-58K)',
+      FALLBACK_CHIP_ADJUST,
+    ]);
+  });
+
+  it('leaves inline chips untouched when an adjustment signal is already present', () => {
+    const chips = {
+      placement: 'inline' as const,
+      options: ['Garder cette liste', 'Ajuster'],
+    };
+    const out = ensureAdjustChip({ message: 'm', chips });
+    expect(out.chips?.options).toEqual(['Garder cette liste', 'Ajuster']);
+  });
+
+  it('recognizes alternative adjustment wordings (« Autre ») without duplicating', () => {
+    const out = ensureAdjustChip({
+      message: 'm',
+      chips: { placement: 'inline', options: ['Utiliser cette valeur', 'Autre'] },
+    });
+    expect(out.chips?.options).toEqual(['Utiliser cette valeur', 'Autre']);
+  });
+
+  it('respects the 5-option cap by evicting the last preset', () => {
+    const out = ensureAdjustChip({
+      message: 'm',
+      chips: {
+        placement: 'inline',
+        options: ['A', 'B', 'C', 'D', 'E'],
+      },
+    });
+    expect(out.chips?.options).toEqual(['A', 'B', 'C', 'D', FALLBACK_CHIP_ADJUST]);
+    expect(out.chips?.options.length).toBe(5);
+  });
+
+  it('appends « Ajuster » to a canonical seniority chip set (below_bubble)', () => {
+    const out = ensureAdjustChip({
+      message: 'Je verrais bien un profil confirmé.',
+      chips: { placement: 'below_bubble', options: ['junior', 'confirmé', 'senior'] },
+    });
+    expect(out.chips?.options).toEqual([
+      'junior',
+      'confirmé',
+      'senior',
+      FALLBACK_CHIP_ADJUST,
+    ]);
+  });
+
+  it('appends « Ajuster » to a canonical contract_type chip set, capped at 5', () => {
+    const out = ensureAdjustChip({
+      message: 'Je pars sur un CDI.',
+      chips: {
+        placement: 'below_bubble',
+        options: ['CDI', 'CDD', 'freelance', 'stage'],
+      },
+    });
+    expect(out.chips?.options).toEqual([
+      'CDI',
+      'CDD',
+      'freelance',
+      'stage',
+      FALLBACK_CHIP_ADJUST,
+    ]);
+    expect(out.chips?.options.length).toBe(5);
+  });
+
+  it('recognizes canonical values case-insensitively', () => {
+    const out = ensureAdjustChip({
+      message: 'm',
+      chips: { placement: 'below_bubble', options: ['Junior', 'Senior'] },
+    });
+    expect(out.chips?.options).toEqual(['Junior', 'Senior', FALLBACK_CHIP_ADJUST]);
+  });
+
+  it('does NOT touch non-canonical below_bubble sets (récap, switch, reuse)', () => {
+    const recap = {
+      message: 'm',
+      chips: {
+        placement: 'below_bubble' as const,
+        options: ['Valider la fiche de poste', 'Ajuster'],
+      },
+    };
+    expect(ensureAdjustChip(recap).chips?.options).toEqual([
+      'Valider la fiche de poste',
+      'Ajuster',
+    ]);
+    const reuse = {
+      message: 'm',
+      chips: {
+        placement: 'below_bubble' as const,
+        options: ['Tout valider', 'Examiner champ par champ'],
+      },
+    };
+    // Aucune option n'est une valeur d'enum → set non canonique → intact.
+    expect(ensureAdjustChip(reuse).chips?.options).toEqual([
+      'Tout valider',
+      'Examiner champ par champ',
+    ]);
+  });
+
+  it('does NOT touch above_input placements', () => {
+    const above = {
+      message: 'm',
+      chips: { placement: 'above_input' as const, options: ['Continuer', 'Voir un exemple'] },
+    };
+    expect(ensureAdjustChip(above).chips?.options).toEqual([
+      'Continuer',
+      'Voir un exemple',
+    ]);
+  });
+
+  it('is a no-op when there are no chips', () => {
+    const input: { message: string; chips?: { placement: string; options: string[] } } = {
+      message: 'm',
+    };
+    const out = ensureAdjustChip(input);
+    expect(out.chips).toBeUndefined();
   });
 });

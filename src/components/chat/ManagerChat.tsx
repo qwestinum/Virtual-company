@@ -2613,6 +2613,10 @@ export function ManagerChat() {
             <div key={message.id}>
               <ChatBubble
                 message={message}
+                // Règle B (chat forward-only) : les chips inline ne sont
+                // cliquables que sur la DERNIÈRE bulle Manager — une fois
+                // l'étape passée, ils se figent (comme below_bubble/above_input).
+                showInlineChips={isLast}
                 onChipSelect={handleChipSelect}
                 chipsDisabled={isSending || isTranscribing}
                 onRoutePick={handleRoutePick}

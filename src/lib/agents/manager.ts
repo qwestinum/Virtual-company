@@ -16,12 +16,17 @@
  * retournant un payload unique exploité par la route /api/manager/chat.
  */
 
+import { isAdjustmentSignal } from '@/components/chat/adjustment-signal';
 import { chatComplete } from '@/lib/ai/provider';
 import {
   searchExistingJobDescriptions,
   type JobDescription,
 } from '@/lib/storage/job-descriptions';
-import type { FDPInProgress } from '@/types/field-collection';
+import {
+  ContractTypeSchema,
+  SenioritySchema,
+  type FDPInProgress,
+} from '@/types/field-collection';
 import {
   IntentClassificationSchema,
   type Intent,
@@ -210,6 +215,71 @@ export function hasClarificationRequestKeyword(message: string): boolean {
  */
 export const FALLBACK_CHIP_CONTINUE = 'Continuer';
 export const FALLBACK_CHIP_ADJUST = 'Ajuster';
+
+/**
+ * Valeurs des enums FERMÉS (séniorité, type de contrat), normalisées en
+ * minuscules. Sert à reconnaître un tour de proposition de champ
+ * canonique (chips below_bubble) à ses VALEURS — ce qui exclut
+ * nativement le récap final, le dialogue de switch et la pré-recherche
+ * (leurs libellés ne sont jamais des valeurs d'enum).
+ */
+const CANONICAL_ENUM_VALUES: ReadonlySet<string> = new Set(
+  [...SenioritySchema.options, ...ContractTypeSchema.options].map((v) =>
+    v.toLowerCase(),
+  ),
+);
+
+/**
+ * `true` si ce set de chips propose un champ à options canoniques
+ * (séniorité ou type de contrat) : tous les chips non-ajustement sont
+ * des valeurs d'enum fermé. Robuste à la casse.
+ */
+function isCanonicalFieldChipSet(options: string[]): boolean {
+  const presets = options.filter((o) => !isAdjustmentSignal(o));
+  return (
+    presets.length > 0 &&
+    presets.every((o) => CANONICAL_ENUM_VALUES.has(o.trim().toLowerCase()))
+  );
+}
+
+/**
+ * Garde-fou DÉTERMINISTE : toute PROPOSITION DE CHAMP doit offrir un
+ * chemin « Ajuster », même si le LLM l'oublie. Deux familles de tours :
+ *   - champ libre → placement "inline" (salary_range, start_date,
+ *     missions, skills) ;
+ *   - champ à options canoniques → placement "below_bubble" dont les
+ *     options sont des valeurs d'enum fermé (seniority, contract_type),
+ *     reconnu par `isCanonicalFieldChipSet`.
+ *
+ * Sans ce filet, le DRH reste enfermé dans les presets (« Plus haut »,
+ * « junior/confirmé/senior »…) sans pouvoir saisir SA propre valeur.
+ * Règles :
+ *   - ne touche QUE ces deux familles (les autres below_bubble — récap,
+ *     switch, pré-recherche — gardent leur sémantique) ;
+ *   - no-op si un signal d'ajustement est déjà présent (« Ajuster »,
+ *     « Autre »… via isAdjustmentSignal) ;
+ *   - sinon ajoute « Ajuster » en DERNIER, plafond 5 options respecté
+ *     (on évince le dernier preset si besoin).
+ */
+export function ensureAdjustChip<
+  T extends { chips?: { placement: string; options: string[] } },
+>(response: T): T {
+  const chips = response.chips;
+  if (!chips) return response;
+  const targetsFieldProposal =
+    chips.placement === 'inline' ||
+    (chips.placement === 'below_bubble' &&
+      isCanonicalFieldChipSet(chips.options));
+  if (!targetsFieldProposal) return response;
+  if (chips.options.some((o) => isAdjustmentSignal(o))) return response;
+  // Plafond schéma = 5 options. Si déjà plein, on évince le dernier
+  // preset pour faire place au chip d'ajustement (qui prime).
+  const kept = chips.options.slice(0, 4);
+  return {
+    ...response,
+    chips: { ...chips, options: [...kept, FALLBACK_CHIP_ADJUST] },
+  };
+}
 
 /**
  * Garde-fou anti-régression : si le LLM oublie d'inclure des chips
@@ -478,6 +548,10 @@ export async function runManagerTurn(
   // demande explicite d'éclaircissement par le DRH (le Manager peut
   // alors répondre en prose libre).
   response = ensureChipsPresent(response, lastUserMessage);
+  // Garde-fou déterministe : toute proposition de champ (valeur libre
+  // "inline" OU champ canonique "below_bubble") DOIT toujours offrir
+  // « Ajuster », même si le LLM l'oublie.
+  response = ensureAdjustChip(response);
 
   const campaignId =
     !input.fdp &&
