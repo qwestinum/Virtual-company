@@ -13,6 +13,8 @@ import {
   CLARIFICATION_THRESHOLD,
   ManagerError,
   MANAGER_AGENT_ID,
+  buildOtherIntentResponse,
+  ensureNonEmptyMessage,
   generateCampaignId,
   runManagerTurn,
   type ConversationTurn,
@@ -62,6 +64,20 @@ const VALID_RESPONSE = JSON.stringify({
 const SIMPLE_HISTORY: ConversationTurn[] = [
   { role: 'user', content: 'Je veux recruter un comptable senior à Paris.' },
 ];
+
+describe('ensureNonEmptyMessage', () => {
+  it('remplace un message blanc par une relance', () => {
+    const out = ensureNonEmptyMessage({ message: '   ' });
+    expect(out.message).toMatch(/reformuler/i);
+  });
+  it('laisse intact un message non vide', () => {
+    const out = ensureNonEmptyMessage({ message: 'Bonjour' });
+    expect(out.message).toBe('Bonjour');
+  });
+  it('buildOtherIntentResponse propose des chips d’amorçage', () => {
+    expect(buildOtherIntentResponse().chips?.options).toHaveLength(2);
+  });
+});
 
 describe('manager — constants and helpers', () => {
   it('exports MANAGER_AGENT_ID and CLARIFICATION_THRESHOLD', () => {
@@ -249,6 +265,26 @@ describe('runManagerTurn — orchestration', () => {
     // Surtout PAS la réponse absurde.
     expect(result.response.message).not.toMatch(/pas trouvé/i);
     expect(result.preSearchHits).toEqual([]);
+  });
+
+  it('intention `other` (salutation) → recadrage déterministe sans LLM conversationnel', async () => {
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          intent: 'other',
+          confidence: 0.9,
+          reasoning: 'Salutation.',
+          needsClarification: false,
+        }),
+      ),
+    );
+    const result = await runManagerTurn({
+      history: [{ role: 'user', content: 'bonjour' }],
+      fdp: null,
+    });
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(result.response.message).toMatch(/Manager RH/i);
+    expect(result.response.chips?.options).toContain('Lancer un recrutement');
   });
 
   it('promotes needsClarification when confidence < CLARIFICATION_THRESHOLD', async () => {

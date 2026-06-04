@@ -370,6 +370,39 @@ export function buildAskRoleResponse(): ManagerResponse {
   };
 }
 
+/**
+ * Réponse DÉTERMINISTE pour l'intention `other` (salutations, hors-sujet,
+ * demande non RH). Sans ce garde, ces messages traversaient le prompt de
+ * collecte FDP et le LLM pouvait répondre à côté (tenter de collecter des
+ * champs sur un « bonjour »). On recadre brièvement vers la mission RH,
+ * avec des chips d'amorçage. Pas de LLM → pas de dérive.
+ */
+export function buildOtherIntentResponse(): ManagerResponse {
+  return {
+    message:
+      "Je suis votre Manager RH — je vous accompagne sur vos recrutements. Souhaitez-vous lancer un recrutement, ou faire un point sur une campagne en cours ?",
+    chips: {
+      placement: 'below_bubble',
+      options: ['Lancer un recrutement', 'Faire un point sur une campagne'],
+    },
+  };
+}
+
+/**
+ * Filet anti-bulle-vide. Le schéma autorise un message d'espaces
+ * (`min(1)`) ; un message blanc afficherait une bulle vide côté chat.
+ * On le remplace par une relance neutre — universel, appliqué à TOUTE
+ * réponse LLM.
+ */
+export function ensureNonEmptyMessage(response: ManagerResponse): ManagerResponse {
+  if (response.message.trim().length > 0) return response;
+  return {
+    ...response,
+    message:
+      "Je n'ai pas saisi votre demande — pouvez-vous reformuler en une phrase ?",
+  };
+}
+
 export async function runManagerTurn(
   input: ManagerTurnInput,
 ): Promise<ManagerTurnOutput> {
@@ -488,6 +521,25 @@ export async function runManagerTurn(
     };
   }
 
+  // VERROU DÉTERMINISTE — intention `other` (salutation, hors-sujet).
+  // On ne fait PAS tourner le prompt de collecte FDP dessus : recadrage
+  // fixe vers la mission RH. Exception : si une FDP est en cours (le DRH
+  // glisse un aparté en pleine collecte), on laisse le LLM gérer le fil.
+  if (classification.intent === 'other' && input.fdp === null) {
+    return {
+      classification,
+      response: buildOtherIntentResponse(),
+      preSearchHits: [],
+      campaignId: null,
+      pendingSwitch: null,
+      metrics: {
+        durationMs: intentCompletion.durationMs,
+        tokensUsed: intentCompletion.usage.totalTokens,
+        costEstimate: intentCompletion.costEstimate,
+      },
+    };
+  }
+
   // VERROU DÉTERMINISTE — démarrage de recrutement SANS poste précisé.
   // On ne lance NI la pré-recherche NI le tour conversationnel : on
   // demande d'abord l'intitulé, par une réponse fixe. Sans ce garde, le
@@ -595,6 +647,8 @@ export async function runManagerTurn(
   // "inline" OU champ canonique "below_bubble") DOIT toujours offrir
   // « Ajuster », même si le LLM l'oublie.
   response = ensureAdjustChip(response);
+  // Filet universel : jamais de bulle vide (message d'espaces).
+  response = ensureNonEmptyMessage(response);
 
   const campaignId =
     !input.fdp &&
