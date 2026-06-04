@@ -58,6 +58,40 @@ describe('journalToGlobalKPIs', () => {
     expect(kpis.conversion).toBe(0);
   });
 
+  it('shortlisted reste figé après un refus ou un GO (décisions DRH)', () => {
+    const base = [
+      entry({
+        id: 1,
+        action: 'imap_cv_analyzed',
+        payload: { uid: 'u1', candidate: 'A', score: 90, aboveThreshold: true },
+      }),
+      entry({
+        id: 2,
+        action: 'imap_cv_analyzed',
+        payload: { uid: 'u2', candidate: 'B', score: 88, aboveThreshold: true },
+      }),
+    ];
+    // Sans décision : 2 shortlistés.
+    expect(journalToGlobalKPIs(base).shortlisted).toBe(2);
+    // A validé (GO), B refusé au verdict → shortlisted reste 2.
+    const withDecisions = [
+      ...base,
+      entry({
+        id: 3,
+        action: 'candidate_validation_marked',
+        payload: { uid: 'u1', status: 'validated' },
+      }),
+      entry({
+        id: 4,
+        action: 'candidate_validation_marked',
+        payload: { uid: 'u2', status: 'rejected' },
+      }),
+    ];
+    const kpis = journalToGlobalKPIs(withDecisions);
+    expect(kpis.shortlisted).toBe(2);
+    expect(kpis.go).toBe(1);
+  });
+
   it('protège la division par zéro pour la conversion', () => {
     const kpis = journalToGlobalKPIs([
       entry({

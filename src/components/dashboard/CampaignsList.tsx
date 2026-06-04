@@ -101,8 +101,8 @@ export function CampaignsList({
   // a déjà tout chargé).
   //
   // Sémantique alignée sur derive-metrics (KPIs globaux) :
-  //   - shortlisted : aboveThreshold (recommendation === 'go') ET pas
-  //                   marqué « non validé » au verdict final ;
+  //   - shortlisted : aboveThreshold (recommendation === 'go'). Fait figé à
+  //                   l'analyse — ne varie PAS selon les décisions DRH ;
   //   - invited     : a au moins reçu une invitation — proxy par
   //                   « statut !== analyzed » (analysé = pre-invite) ;
   //   - interviews  : DRH a cliqué « Entretien réalisé » ;
@@ -132,10 +132,7 @@ export function CampaignsList({
         goCount: 0,
       };
       cur.candidates += 1;
-      if (
-        c.recommendation === 'go' &&
-        c.validationMarked !== 'rejected'
-      ) {
+      if (c.recommendation === 'go') {
         cur.shortlisted += 1;
       }
       if (c.status !== 'analyzed') cur.invited += 1;

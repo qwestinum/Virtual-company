@@ -139,8 +139,8 @@ export type ActivityColorKey =
  *
  * Définitions (Session 6 v2 — alignées sur les boutons d'action UI)
  *   - cvReceived  : entrées `imap_cv_received`
- *   - shortlisted : candidats dont la dernière analyse a `aboveThreshold=true`
- *                   ET dont le DRH n'a pas marqué « non réalisé » derrière.
+ *   - shortlisted : candidats dont l'analyse a `aboveThreshold=true`. Fait
+ *                   figé — ne varie PAS selon les décisions DRH ultérieures.
  *   - interviews  : candidats dont le DRH a cliqué « Entretien réalisé »
  *                   (dernière action wins).
  *   - go          : candidats validés définitivement (« Validation
@@ -165,7 +165,10 @@ export function journalToGlobalKPIs(rows: JournalEntry[]): GlobalKPIs {
   let interviews = 0;
   let go = 0;
   for (const c of candidates) {
-    if (c.recommendation === 'go' && c.validationMarked !== 'rejected') {
+    // « Shortlisté » est un fait figé à l'analyse (CV au-dessus du seuil) :
+    // il ne doit PAS varier selon les décisions DRH ultérieures (entretien,
+    // GO, refus). On compte donc tous les candidats recommandés, point.
+    if (c.recommendation === 'go') {
       shortlisted += 1;
     }
     if (c.interviewMarked === 'realized') interviews += 1;
