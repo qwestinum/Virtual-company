@@ -24,6 +24,14 @@ type Option = {
   icon: typeof Briefcase;
 };
 
+/**
+ * Désactivé temporairement : les briques « tâche isolée » (TASK-XXXX) ne
+ * fonctionnent pas correctement. On ne propose donc que les parcours
+ * campagne. Repasser à `true` pour réafficher l'option — toute la
+ * mécanique isolated reste branchée en aval.
+ */
+const ISOLATED_TASK_ENABLED = false;
+
 export function CVRoutePicker({
   pendingId,
   fileCount,
@@ -50,12 +58,16 @@ export function CVRoutePicker({
         : 'Choisir une campagne existante dans la liste',
       icon: Briefcase,
     },
-    {
-      id: 'isolated',
-      label: 'Tâche isolée',
-      hint: 'Analyse atomique sans campagne (TASK-XXXX)',
-      icon: Sparkles,
-    },
+    ...(ISOLATED_TASK_ENABLED
+      ? [
+          {
+            id: 'isolated' as const,
+            label: 'Tâche isolée',
+            hint: 'Analyse atomique sans campagne (TASK-XXXX)',
+            icon: Sparkles,
+          },
+        ]
+      : []),
   ];
 
   return (

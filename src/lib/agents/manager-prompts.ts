@@ -193,7 +193,6 @@ export function buildConversationalPrompt(
         '- Poser UNE question de clarification métier, jamais technique.',
         '- Inclure 2 à 3 chips canoniques placement: "below_bubble" qui couvrent les intentions plausibles. Exemples canoniques :',
         '  * « Lancer une campagne complète »',
-        '  * « Préparer une fiche isolée »',
         '  * « Faire un point sur une campagne »',
         "- Ne PAS extraire de champ tant que la clarification n'est pas levée.",
         '',
