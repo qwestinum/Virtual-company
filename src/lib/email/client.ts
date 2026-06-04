@@ -105,6 +105,51 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   }
 }
 
+export type EmailDeliveryStatus = {
+  ok: boolean;
+  id: string;
+  /**
+   * Dernier évènement Resend connu : 'sent', 'delivered', 'bounced',
+   * 'complained', 'delivery_delayed', 'queued'… ou null si inconnu.
+   * 'delivered' = arrivé ; 'bounced' = rejeté ; un statut bloqué sur
+   * 'sent'/'queued' alors que le destinataire ne reçoit rien pointe
+   * vers un classement spam côté destinataire.
+   */
+  lastEvent: string | null;
+  error?: string;
+};
+
+/**
+ * Interroge Resend pour le statut de livraison d'un email déjà envoyé,
+ * via son message-id (stocké dans le journal `imap_outreach_*`). Permet
+ * de distinguer « livré », « bounce » et « accepté mais jamais livré »
+ * (spam) sans webhook.
+ */
+export async function getEmailDeliveryStatus(
+  id: string,
+): Promise<EmailDeliveryStatus> {
+  const client = getEmailClient();
+  if (!client) {
+    return { ok: false, id, lastEvent: null, error: 'email_not_configured' };
+  }
+  try {
+    const { data, error } = await client.resend.emails.get(id);
+    if (error) {
+      return { ok: false, id, lastEvent: null, error: error.message };
+    }
+    const lastEvent =
+      (data as { last_event?: string } | null)?.last_event ?? null;
+    return { ok: true, id, lastEvent };
+  } catch (err) {
+    return {
+      ok: false,
+      id,
+      lastEvent: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 /**
  * Exposé pour les tests — réinitialise le cache du module.
  */

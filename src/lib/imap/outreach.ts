@@ -130,6 +130,7 @@ async function composeAndSendCandidateMail(args: {
   }
 
   let sentTo: string | null = null;
+  let providerMessageId: string | null = null;
   let status:
     | 'sent'
     | 'skipped_no_email'
@@ -150,6 +151,7 @@ async function composeAndSendCandidateMail(args: {
     if (sendResult.ok) {
       status = 'sent';
       sentTo = candidate.email;
+      providerMessageId = sendResult.messageId;
     } else if (sendResult.error === 'email_not_configured') {
       status = 'skipped_no_config';
     } else {
@@ -170,6 +172,7 @@ async function composeAndSendCandidateMail(args: {
     sentTo,
     status,
     sendError,
+    providerMessageId,
   });
 
   const artifactId = `art_imap_mail_${input.uid}_${mode}_${Math.random().toString(36).slice(2, 6)}`;
@@ -228,6 +231,7 @@ async function composeAndSendCandidateMail(args: {
       status,
       candidate: candidate.candidateName,
       sentTo,
+      providerMessageId,
       artifactId,
       publicUrl,
       uid: input.uid,
@@ -272,6 +276,7 @@ async function composeAndSendInterviewBrief(args: {
   }
 
   const drhAddress = await getSynthesisEmail();
+  let providerMessageId: string | null = null;
   let status:
     | 'sent'
     | 'skipped_no_drh'
@@ -292,8 +297,10 @@ async function composeAndSendInterviewBrief(args: {
       subject: `Brief entretien — ${candidate.candidateName} (${input.jobTitle ?? input.campaignId})`,
       html,
     });
-    if (sendResult.ok) status = 'sent';
-    else if (sendResult.error === 'email_not_configured')
+    if (sendResult.ok) {
+      status = 'sent';
+      providerMessageId = sendResult.messageId;
+    } else if (sendResult.error === 'email_not_configured')
       status = 'skipped_no_config';
     else {
       status = 'send_failed';
@@ -365,6 +372,7 @@ async function composeAndSendInterviewBrief(args: {
     payload: {
       candidate: candidate.candidateName,
       status,
+      providerMessageId,
       artifactId,
       publicUrl,
       uid: input.uid,
@@ -386,6 +394,7 @@ function renderMailTrace(args: {
   sentTo: string | null;
   status: 'sent' | 'skipped_no_email' | 'skipped_no_config' | 'send_failed';
   sendError?: string;
+  providerMessageId?: string | null;
 }): string {
   const label = {
     sent: 'envoyé',
@@ -398,6 +407,9 @@ function renderMailTrace(args: {
     '',
     `Statut : **${label}**`,
     args.sentTo ? `Destinataire effectif : ${args.sentTo}` : '',
+    args.providerMessageId
+      ? `Resend message-id : ${args.providerMessageId} (statut livraison : GET /api/email/status?id=${args.providerMessageId})`
+      : '',
     `Campagne : ${args.campaignId}`,
     args.jobTitle ? `Poste : ${args.jobTitle}` : '',
     `Score CV : ${args.candidate.score}/100`,

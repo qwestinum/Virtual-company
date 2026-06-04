@@ -5,6 +5,33 @@ Format : titre, contexte, risque, piste de résolution.
 
 ---
 
+## Délivrabilité email + traçage des envois
+
+**Statut** : envois tracés (message-id en journal + endpoint statut), mais
+délivrabilité dépendante d'une config DNS externe.
+
+### Délivrabilité (config, hors code)
+Domaine d'envoi `send.qwestinum.fr` côté Resend = `partially_failed` :
+- DKIM + SPF **vérifiés** (l'envoi est correctement authentifié).
+- **Receiving MX `failed`** — concerne la *réception* Resend, pas l'envoi.
+- **Pas de DMARC** visible → Gmail/Yahoo classent volontiers en spam.
+→ Action ops : poser un enregistrement DMARC, et vérifier que les boîtes
+destinataires (extraites des CV) existent réellement. Un `status: sent` en
+journal = accepté par Resend, PAS forcément délivré.
+
+### Traçage (fait, à étendre)
+`imap_outreach_mail` / `imap_outreach_brief` stockent désormais
+`providerMessageId` ; statut de livraison via `GET /api/email/status?id=…`
+(`delivered` / `bounced` / `sent`=spam probable).
+À étendre :
+- **UI dashboard** : bouton « vérifier la livraison » sur chaque ligne
+  outreach de l'activité (appelle /api/email/status avec le providerMessageId).
+- **Chemins chat** : `mail-composer` et `scheduler` envoient de vrais emails
+  mais **ne journalisent pas** (artefact seulement) → invisibles au dashboard
+  et non traçables. À câbler comme l'outreach IMAP.
+
+---
+
 ## Actions journal `imap_cv_*` réutilisées pour les CV uploadés par chat
 
 **Statut** : fonctionnel, naming trompeur.
