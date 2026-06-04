@@ -166,14 +166,15 @@ describe('campaigns-store', () => {
         buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
       ],
     };
-    useCampaignsStore
-      .getState()
-      .addCampaign({ fdp, scoringSheet: sheet });
-    useCampaignsStore
-      .getState()
-      .markPublishedChannel('CAMP-2026-REC3', 'linkedin');
-    useCampaignsStore.getState().markSourcesConfirmed('CAMP-2026-REC3');
-    useCampaignsStore.getState().recomputeStatus('CAMP-2026-REC3');
+    const store = useCampaignsStore.getState();
+    store.addCampaign({ fdp, scoringSheet: sheet });
+    store.markPublishedChannel('CAMP-2026-REC3', 'linkedin');
+    store.markSourcesConfirmed('CAMP-2026-REC3');
+    // 2c-3 — annonce/publication sont pilotées par transitions (le flux
+    // les complète explicitement), plus par markPublishedChannel.
+    store.completePhase('CAMP-2026-REC3', 'announcement');
+    store.completePhase('CAMP-2026-REC3', 'publication');
+    store.recomputeStatus('CAMP-2026-REC3');
     expect(
       useCampaignsStore.getState().getById('CAMP-2026-REC3')?.status,
     ).toBe('active');
@@ -236,8 +237,9 @@ describe('campaigns-store', () => {
     };
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
-    store.markPublishedChannel('CAMP-2026-LC2', 'linkedin');
     store.markSourcesConfirmed('CAMP-2026-LC2');
+    store.completePhase('CAMP-2026-LC2', 'announcement');
+    store.completePhase('CAMP-2026-LC2', 'publication');
     store.recomputeStatus('CAMP-2026-LC2');
     const c = useCampaignsStore.getState().getById('CAMP-2026-LC2')!;
     expect(c.lifecycle.phases.scoring.status).toBe('done');
@@ -257,6 +259,9 @@ describe('campaigns-store', () => {
     store.addCampaign({ fdp, scoringSheet: sheet });
     store.markPublishedChannel(id, 'linkedin');
     store.markSourcesConfirmed(id);
+    // 2c-3 — annonce/publication via transitions (le vrai flux les complète).
+    store.completePhase(id, 'announcement');
+    store.completePhase(id, 'publication');
     store.recomputeStatus(id);
   }
 

@@ -402,16 +402,25 @@ describe('reconcileLifecycle', () => {
     expect(reconcileLifecycle(null, allDone)).toEqual(lifecycleFromLegacy(allDone));
   });
 
-  it('un artefact présent force done même si le prev disait postponed', () => {
+  it('annonce/publication sont PILOTÉES PAR TRANSITIONS : prev préservé, jamais forcé par le booléen', () => {
+    // 2c-3 : un postponed explicite N'EST PAS écrasé par hasPublishedChannel
+    // (les booléens ne pilotent plus ces deux phases).
     const prev = buildLifecycle({
       scoring: 'done',
       intake: 'done',
       announcement: 'postponed',
       publication: 'postponed',
     });
-    const next = reconcileLifecycle(prev, allDone); // l'annonce a finalement été publiée
-    expect(next.phases.announcement.status).toBe('done');
-    expect(next.phases.publication.status).toBe('done');
+    const next = reconcileLifecycle(prev, allDone);
+    expect(next.phases.announcement.status).toBe('postponed');
+    expect(next.phases.publication.status).toBe('postponed');
+  });
+
+  it('pont legacy : SANS prev, hasPublishedChannel pilote annonce/publication (reload storage)', () => {
+    expect(reconcileLifecycle(null, allDone).phases.announcement.status).toBe('done');
+    expect(reconcileLifecycle(null, allDone).phases.publication.status).toBe('done');
+    const noPub = { ...allDone, hasPublishedChannel: false };
+    expect(reconcileLifecycle(null, noPub).phases.announcement.status).toBe('pending');
   });
 
   it('PRÉSERVE un postponed quand l’artefact reste absent', () => {
@@ -433,15 +442,23 @@ describe('reconcileLifecycle', () => {
     expect(deriveActiveStatus(next)).toBe('active');
   });
 
-  it('redescend un done devenu absent (réouverture) à pending', () => {
-    const prev = buildLifecycle({ scoring: 'done', intake: 'done', announcement: 'done', publication: 'done' });
+  it('annonce/publication done sont PRÉSERVÉES même sans publishedChannels (annonce rédigée, pas publiée)', () => {
+    // Cas 2c-3 : annonce RÉDIGÉE (done via completePhase) mais publication
+    // pas encore faite → hasPublishedChannel false ne doit PAS redescendre
+    // l'annonce. Seul applyTransition('reopen') la rouvre.
+    const prev = buildLifecycle({
+      scoring: 'done',
+      intake: 'done',
+      announcement: 'done',
+      publication: 'pending',
+    });
     const next = reconcileLifecycle(prev, {
       fdpValidated: true,
       scoringValidated: true,
       sourcesConfirmed: true,
       hasPublishedChannel: false,
     });
-    expect(next.phases.announcement.status).toBe('pending');
+    expect(next.phases.announcement.status).toBe('done');
     expect(next.phases.publication.status).toBe('pending');
   });
 });

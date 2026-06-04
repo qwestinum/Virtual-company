@@ -327,17 +327,25 @@ export function reconcileLifecycle(
     hasPublishedChannel: boolean;
   },
 ): CampaignLifecycle {
-  const done: Record<PhaseId, boolean> = {
+  // Phases réconciliées depuis les booléens d'artefacts.
+  const done: Partial<Record<PhaseId, boolean>> = {
     fdp: input.fdpValidated,
     scoring: input.scoringValidated,
     intake: input.sourcesConfirmed,
-    // NB : rédaction et publication restent fusionnées côté legacy
-    // (`publishedChannels`) — séparées en Inc. 2c.
-    announcement: input.hasPublishedChannel,
-    publication: input.hasPublishedChannel,
   };
   const overrides = {} as Record<PhaseId, PhaseStatus>;
   for (const id of PHASE_IDS) {
+    // Inc. 2c-3 — annonce et publication sont PILOTÉES PAR TRANSITIONS
+    // (rédiger / publier / à remettre à plus tard), pas par les booléens :
+    // on préserve TOUJOURS leur état explicite. Pont legacy (campagne
+    // rechargée du storage sans machine) seulement à défaut de `prev` :
+    // `publishedChannels > 0` ⇒ les deux `done`, sinon `pending`.
+    if (id === 'announcement' || id === 'publication') {
+      overrides[id] =
+        prev?.phases[id].status ??
+        (input.hasPublishedChannel ? 'done' : 'pending');
+      continue;
+    }
     if (done[id]) {
       overrides[id] = 'done';
       continue;
