@@ -120,13 +120,12 @@ export async function dispatchJobWriter(
   const taskId = nowTaskId('job');
 
   const isTask = fdp.campaignId.startsWith('TASK-');
-  const noun = isTask ? 'sollicitation' : 'campagne';
   const channelLabel = PUBLICATION_CHANNEL_LABELS[channel];
 
   chat.appendMessage({
     role: 'manager',
     source: 'text',
-    content: `Tout est en ordre — ${noun} ${fdp.campaignId} lancée. Je passe la main au Job Writer pour rédiger l'annonce ${channelLabel}, je reviens vers vous dès qu'elle est prête.`,
+    content: `Je passe la main au Job Writer pour rédiger l'annonce ${channelLabel}…`,
   });
 
   agents.setAgentStatus(JOB_WRITER_ID, 'active');
@@ -173,20 +172,6 @@ export async function dispatchJobWriter(
     // cv-sources-picker UNE FOIS toutes les annonces générées, avec
     // les channels choisis activés par défaut.
 
-    // Phase 7.1 — marque le channel comme publié pour cette campagne.
-    // Idempotent côté store. Permet à recomputeStatus de basculer en
-    // 'active' une fois tous les jalons franchis.
-    //
-    // Exception `generic` (Round 4) — l'annonce générique n'est pas
-    // une publication : c'est juste un artefact rédigé pour diffusion
-    // manuelle. On ne la compte donc PAS comme un jalon publié, et
-    // une campagne qui n'aurait que `generic` reste en `in_progress`
-    // tant que le DRH n'a pas publié sur un vrai canal.
-    if (channel !== 'generic') {
-      useCampaignsStore
-        .getState()
-        .markPublishedChannel(fdp.campaignId, channel);
-    }
     useCampaignsStore.getState().recomputeStatus(fdp.campaignId);
 
     agents.pushEvent({
@@ -194,25 +179,6 @@ export async function dispatchJobWriter(
       type: 'task_completed',
       payload: { taskId, metrics: result.metrics },
     });
-
-    // Round 4 — chaînage Publisher : une fois l'annonce produite,
-    // l'agent Publisher la "dépose" sur le canal (simulation : URL
-    // fictive + timestamp). Bulle Manager + artefact preuve.
-    //
-    // Exception `generic` — le canal générique ne correspond à AUCUN
-    // jobboard réel, c'est juste une annonce neutre diffusable
-    // manuellement. Pas de publication à simuler ; on s'arrête après
-    // la production de l'artefact côté Job Writer. Idem côté store :
-    // on ne marque pas `generic` comme channel publié (sinon
-    // recomputeStatus ferait passer la campagne en `active` sans
-    // qu'aucune publication réelle ne soit attestée).
-    if (channel !== 'generic') {
-      await dispatchPublisher({
-        campaignId: fdp.campaignId,
-        channel,
-        channelLabel,
-      });
-    }
   } catch (err) {
     chat.appendMessage({
       role: 'manager',
@@ -240,7 +206,7 @@ export async function dispatchJobWriter(
  * — si la simulation échoue (Supabase down, etc.), on logge et le
  * flux principal continue.
  */
-async function dispatchPublisher(args: {
+export async function dispatchPublisher(args: {
   campaignId: string;
   channel: PublicationChannel;
   channelLabel: string;
@@ -259,6 +225,12 @@ async function dispatchPublisher(args: {
   });
 
   try {
+    // Mark the channel as published for this campaign when publishing starts
+    if (args.channel !== 'generic') {
+      useCampaignsStore.getState().markPublishedChannel(args.campaignId, args.channel);
+      useCampaignsStore.getState().recomputeStatus(args.campaignId);
+    }
+
     const artifactId = `art_pub_${args.channel}_${Date.now().toString(36)}`;
     const res = await fetch('/api/publisher', {
       method: 'POST',

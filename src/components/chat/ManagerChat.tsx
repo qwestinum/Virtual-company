@@ -64,6 +64,7 @@ import {
   dispatchCVRouting,
   dispatchIsolatedCVBatch,
   dispatchJobWriter,
+  dispatchPublisher,
   findPendingByResolvedId,
   newCampaignFullSetup,
   newCampaignSkipSetup,
@@ -123,6 +124,10 @@ const REUSE_FDP_VALIDATE_LABEL = 'Valider telle quelle';
 // Récap final FDP complète (#3) : chip explicite de validation, intercepté
 // côté client comme « Valider telle quelle » (appelle handleValidateFDP).
 const FDP_VALIDATE_LABEL = 'Valider la fiche de poste';
+
+const REDIGER_AD_LABEL = "Rédiger l'annonce";
+const PUBLISH_AD_LABEL = "Publier l'annonce";
+const POSTPONE_PHASE_LABEL = 'À remettre à plus tard';
 
 /**
  * Phase 7.2 — verbe contextuel sur les chips de reprise. Chaque
@@ -669,6 +674,8 @@ export function ManagerChat() {
    */
   const pendingChannelPickRef = useRef<{ fdp: FDPInProgress } | null>(null);
 
+  const pendingPublishRef = useRef<{ campaignId: string; channels: PublicationChannel[] } | null>(null);
+
   /**
    * Phase 7.4 — pose les chips contextuels d'options de reprise sur la
    * dernière bulle Manager du chat. Utilisé à la fin de chaque étape
@@ -891,8 +898,10 @@ export function ManagerChat() {
         postFluxStep(campaignId);
         break;
       case 'announcement':
+        postAnnouncementChoice(campaignId);
+        break;
       case 'publication':
-        postAnnouncementStep(campaignId, camp.fdp);
+        postPublicationChoice(campaignId);
         break;
       case 'launched':
         postLaunched(campaignId);
@@ -932,6 +941,36 @@ export function ManagerChat() {
   }
 
   /**
+   * Posts the announcement choice step.
+   */
+  function postAnnouncementChoice(_campaignId: string) {
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Veux-tu que je rédige l'annonce maintenant, ou on remet ça à plus tard ?`,
+      chips: {
+        placement: 'below_bubble',
+        options: [REDIGER_AD_LABEL, POSTPONE_PHASE_LABEL],
+      },
+    });
+  }
+
+  /**
+   * Posts the publication choice step.
+   */
+  function postPublicationChoice(_campaignId: string) {
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `L'annonce est prête. On la publie maintenant, ou à remettre à plus tard ?`,
+      chips: {
+        placement: 'below_bubble',
+        options: [PUBLISH_AD_LABEL, POSTPONE_PHASE_LABEL],
+      },
+    });
+  }
+
+  /**
    * Posts the announcement (publication channels) picker step. This is the
    * LAST step in the flow - after scoring and flux.
    */
@@ -955,18 +994,28 @@ export function ManagerChat() {
    * Posts the final "launched" message when all phases are complete.
    */
   function postLaunched(campaignId: string) {
-    const status = useCampaignsStore.getState().getById(campaignId)?.status;
-    if (status === 'active') {
+    const camp = useCampaignsStore.getState().getById(campaignId);
+    if (camp?.status === 'active') {
+      // Wording adapté à l'état RÉEL des phases optionnelles : une annonce/
+      // publication reportée ne doit pas être annoncée comme « publiée ».
+      const adDone = camp.lifecycle.phases.announcement.status === 'done';
+      const pubDone = camp.lifecycle.phases.publication.status === 'done';
+      const adLine = pubDone
+        ? 'annonce publiée'
+        : adDone
+          ? 'annonce rédigée (publication à faire plus tard)'
+          : 'annonce et publication à faire plus tard';
       appendMessage({
         role: 'manager',
         source: 'text',
-        content: `🎯 Campagne ${campaignId} ACTIVE. Tous les jalons sont alignés (FDP validée, annonces publiées, flux configurés, scoring validé). La campagne est en attente de CV — tu peux les déposer via le trombone ou attendre l'arrivée automatique des flux configurés.`,
+        content: `🎯 Campagne ${campaignId} lancée. Jalons obligatoires alignés (FDP validée, scoring validé, flux configurés) — ${adLine}. La campagne reçoit les CV via les flux ; tu peux reprendre l'annonce/publication à tout moment via les chips ci-dessous.`,
       });
     } else {
       appendMessage({
         role: 'manager',
         source: 'text',
-        content: "Il reste des étapes à franchir avant de basculer en active. Utilise les chips ci-dessous pour finaliser.",
+        content:
+          'Il reste des étapes à franchir avant de lancer. Utilise les chips ci-dessous pour finaliser.',
       });
     }
     attachResumeChipsToLastBubble(campaignId);
@@ -1386,6 +1435,75 @@ export function ManagerChat() {
       }
       return;
     }
+    // Interception des chips d'annonce/publication et postpone
+    if (option === REDIGER_AD_LABEL || option === PUBLISH_AD_LABEL || option === POSTPONE_PHASE_LABEL) {
+      const cid = useFdpStore.getState().fdp?.campaignId;
+      if (!cid) return;
+
+      if (option === REDIGER_AD_LABEL) {
+        appendMessage({
+          role: 'user',
+          source: 'text',
+          content: option,
+        });
+        const camp = useCampaignsStore.getState().getById(cid);
+        if (camp) {
+          postAnnouncementStep(cid, camp.fdp);
+        }
+        return;
+      }
+
+      if (option === PUBLISH_AD_LABEL) {
+        appendMessage({
+          role: 'user',
+          source: 'text',
+          content: option,
+        });
+        const pending = pendingPublishRef.current;
+        if (pending) {
+          void (async () => {
+            setAgentBusy(true);
+            try {
+              for (const channel of pending.channels) {
+                const channelLabel = PUBLICATION_CHANNEL_LABELS[channel];
+                await dispatchPublisher({ campaignId: pending.campaignId, channel, channelLabel });
+              }
+              useCampaignsStore.getState().completePhase(pending.campaignId, 'publication');
+              advanceFlow(pending.campaignId);
+            } finally {
+              setAgentBusy(false);
+            }
+          })();
+        }
+        return;
+      }
+
+      if (option === POSTPONE_PHASE_LABEL) {
+        appendMessage({
+          role: 'user',
+          source: 'text',
+          content: option,
+        });
+        const lifecycle = useCampaignsStore.getState().getById(cid)?.lifecycle;
+        if (lifecycle) {
+          const step = nextFlowStep(lifecycle);
+          if (step.phase === 'announcement') {
+            // Both announcement and publication need to be postponed
+            useCampaignsStore.getState().postponePhase(cid, 'announcement');
+            useCampaignsStore.getState().postponePhase(cid, 'publication');
+          } else if (step.phase === 'publication') {
+            useCampaignsStore.getState().postponePhase(cid, 'publication');
+          }
+          appendMessage({
+            role: 'manager',
+            source: 'text',
+            content: "Entendu, on remet ça à plus tard.",
+          });
+          advanceFlow(cid);
+        }
+        return;
+      }
+    }
     if (isAdjustmentSignal(option)) {
       // « Ajuster » édite la SOURCE, EN PLACE sous la bulle, mais UNIQUEMENT
       // le champ que la bulle a proposé ce tour (`proposalField`, déclaré
@@ -1602,12 +1720,11 @@ export function ManagerChat() {
     } finally {
       setAgentBusy(false);
     }
-    // 2c-2 — une annonce a été RÉDIGÉE (et diffusée) : on marque
-    // explicitement les phases via la machine, plutôt que de dépendre de
-    // `publishedChannels > 0` (qui exclut le canal « generic » et ferait
-    // boucler advanceFlow sur le picker). Ainsi le flux avance toujours.
+    // 2c-3 — une annonce a été RÉDIGÉE : on marque seulement la phase
+    // 'announcement' comme terminée. La publication devient une phase séparée.
     useCampaignsStore.getState().completePhase(pending.fdp.campaignId, 'announcement');
-    useCampaignsStore.getState().completePhase(pending.fdp.campaignId, 'publication');
+    // Store channels for the publication step
+    pendingPublishRef.current = { campaignId: pending.fdp.campaignId, channels };
     advanceFlow(pending.fdp.campaignId);
   }
 
