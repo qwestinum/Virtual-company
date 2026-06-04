@@ -349,7 +349,8 @@ function CandidateLine({
               marginTop: 1,
             }}
           >
-            {candidate.role ?? 'Sans campagne'} ·{' '}
+            {candidate.role ?? 'Sans campagne'}
+            {candidate.campaignId ? ` (${candidate.campaignId})` : ''} ·{' '}
             {relativeTime(candidate.receivedAt)}
           </div>
         </div>

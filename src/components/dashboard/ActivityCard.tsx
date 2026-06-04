@@ -148,6 +148,12 @@ function ActivityRow({
         style={{ flex: 1, fontSize: 13, color: 'var(--dash-text)' }}
       >
         {item.message}
+        {item.campaignId ? (
+          <span style={{ color: 'var(--dash-text-tertiary)' }}>
+            {' '}
+            ({item.campaignId})
+          </span>
+        ) : null}
       </span>
       <span
         className="font-data"
