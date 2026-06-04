@@ -48,6 +48,8 @@ export function buildIntentClassificationPrompt(
     '- la confidence est faible (signal explicite que tu hésites),',
     '- OU plusieurs intentions sont plausibles (ex. ambigu entre new_campaign et out_of_campaign_task : « peux-tu me préparer une fiche pour un comptable ? » — campagne complète ou simple template ?).',
     '',
+    '`specifiedRole` (string ou null) — UNIQUEMENT pour intent new_campaign : l\'intitulé du poste à recruter SI le DRH l\'a nommé quelque part dans la conversation (« un comptable », « développeur python », « Quality Engineer »). Mets `null` quand le DRH veut recruter mais N\'A PAS précisé quel poste (« je veux un recrutement », « j\'aimerais recruter quelqu\'un », « ouvrons un poste », « lance une recherche »). Pour tout autre intent, mets `null`.',
+    '',
   ];
 
   if (currentJobTitle) {
@@ -72,8 +74,8 @@ export function buildIntentClassificationPrompt(
   }
 
   const schemaLine = currentJobTitle
-    ? '  "needsClarification": <booléen>,\n  "isDistinctNewCampaign": <booléen>,\n  "candidateNewJobTitle": <string ou null>'
-    : '  "needsClarification": <booléen>';
+    ? '  "needsClarification": <booléen>,\n  "specifiedRole": <string ou null>,\n  "isDistinctNewCampaign": <booléen>,\n  "candidateNewJobTitle": <string ou null>'
+    : '  "needsClarification": <booléen>,\n  "specifiedRole": <string ou null>';
 
   lines.push(
     "Sortie : JSON UNIQUEMENT, exactement ce schéma :",
@@ -134,8 +136,9 @@ export function buildConversationalPrompt(
     ctx.preSearchHits.length === 0
       ? [
           'Aucune fiche archivée trouvée pour ce profil. Tu opères en MODE PROPOSITION (cf. plus bas) : tu proposes les valeurs par défaut, le DRH valide ou ajuste.',
+          "GARDE-FOU ABSOLU — Tu ne dis JAMAIS « je n'ai pas trouvé de fiche de poste » (ni variante) tant qu'AUCUN poste n'est nommé. Si le DRH n'a pas encore précisé l'intitulé, ta seule action est de DEMANDER pour quel poste il recrute (une question chaleureuse) — surtout pas d'annoncer une recherche d'archive vide.",
           isFirstCampaignTurn
-            ? "VERBALISATION OBLIGATOIRE — c'est le PREMIER tour de cadrage de cette campagne. Ta toute première phrase DOIT rendre visible que tu as consulté la base, exemple : « Je vérifie d'abord si on a déjà une fiche archivée pour ce profil… aucune ne correspond, on va la construire ensemble. » Enchaîne ensuite sur ta première proposition de champ. À ne dire qu'UNE FOIS, pas aux tours suivants."
+            ? "VERBALISATION (seulement SI un poste est déjà nommé) — au PREMIER tour de cadrage, rends visible que tu as consulté la base, exemple : « Je vérifie d'abord si on a déjà une fiche archivée pour ce poste… aucune ne correspond, on va la construire ensemble. » Enchaîne IMMÉDIATEMENT sur ta première proposition de champ. À ne dire qu'UNE FOIS, pas aux tours suivants."
             : '',
         ]
           .filter((s) => s.length > 0)

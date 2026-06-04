@@ -39,6 +39,17 @@ export const IntentClassificationSchema = z.object({
    * jamais depuis l'historique.
    */
   candidateNewJobTitle: z.string().min(1).nullable().optional(),
+  /**
+   * Intitulé du poste à recruter quand l'intention est `new_campaign`,
+   * SI le DRH l'a nommé (« un comptable », « développeur python »). `null`
+   * quand il veut recruter sans préciser de poste (« je veux un
+   * recrutement », « ouvrons un poste »).
+   *
+   * Garde déterministe (manager.ts) : sur un démarrage new_campaign SANS
+   * poste, le Manager demande d'abord « pour quel poste ? » au lieu de
+   * lancer une pré-recherche vide et d'annoncer « aucune fiche trouvée ».
+   */
+  specifiedRole: z.string().min(1).nullable().optional(),
 });
 
 export type Intent = z.infer<typeof IntentSchema>;

@@ -48,6 +48,9 @@ const VALID_INTENT = JSON.stringify({
   confidence: 0.92,
   reasoning: 'Le DRH demande explicitement un recrutement.',
   needsClarification: false,
+  // Le message nomme le poste → le classifier le renvoie ; le verrou
+  // « demande d'abord le poste » ne doit donc PAS se déclencher.
+  specifiedRole: 'Comptable senior',
 });
 
 const VALID_RESPONSE = JSON.stringify({
@@ -150,7 +153,7 @@ describe('manager-prompts — content', () => {
     expect(prompt).toContain('Aucune fiche archivée');
   });
 
-  it('forces pre-search verbalization on first campaign turn (empty FDP)', () => {
+  it('first campaign turn: verbalise la pré-recherche mais interdit l’annonce d’échec sans poste', () => {
     const prompt = buildConversationalPrompt({
       intent: 'new_campaign',
       confidence: 0.9,
@@ -158,8 +161,11 @@ describe('manager-prompts — content', () => {
       fdp: null,
       preSearchHits: [],
     });
-    expect(prompt).toContain('VERBALISATION OBLIGATOIRE');
+    expect(prompt).toContain('VERBALISATION');
     expect(prompt).toMatch(/PREMIER tour/i);
+    // Garde-fou : jamais « pas trouvé de fiche » tant qu'aucun poste nommé.
+    expect(prompt).toMatch(/jamais/i);
+    expect(prompt).toMatch(/pas trouvé de fiche/i);
   });
 
   it('skips pre-search verbalization once at least one field is filled', () => {
@@ -215,6 +221,34 @@ describe('runManagerTurn — orchestration', () => {
     expect(result.response.message).toContain('séniorité');
     expect(result.response.chips?.options).toContain('junior');
     expect(result.response.fieldExtractions?.job_title).toBe('Comptable senior');
+  });
+
+  it('démarrage de recrutement SANS poste → demande l’intitulé, sans appeler le LLM conversationnel ni la pré-recherche', async () => {
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          intent: 'new_campaign',
+          confidence: 0.95,
+          reasoning: 'Demande de recrutement sans poste précisé.',
+          needsClarification: false,
+          specifiedRole: null,
+        }),
+      ),
+    );
+
+    const result = await runManagerTurn({
+      history: [{ role: 'user', content: 'je veux un recrutement' }],
+      fdp: null,
+    });
+
+    // Verrou déterministe : un seul appel LLM (la classification), pas de
+    // tour conversationnel.
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(searchMock).not.toHaveBeenCalled();
+    expect(result.response.message).toMatch(/pour quel poste/i);
+    // Surtout PAS la réponse absurde.
+    expect(result.response.message).not.toMatch(/pas trouvé/i);
+    expect(result.preSearchHits).toEqual([]);
   });
 
   it('promotes needsClarification when confidence < CLARIFICATION_THRESHOLD', async () => {

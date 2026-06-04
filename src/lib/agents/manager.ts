@@ -354,6 +354,22 @@ export function buildSwitchDialogResponse(
   };
 }
 
+/**
+ * Réponse DÉTERMINISTE au démarrage d'un recrutement quand AUCUN poste
+ * n'est précisé (« je veux un recrutement »). Aucun appel LLM, aucune
+ * pré-recherche → il est IMPOSSIBLE de produire la réponse absurde
+ * « je n'ai pas trouvé de fiche de poste » : on demande simplement
+ * l'intitulé. C'est le verrou côté serveur, plus fiable qu'une consigne
+ * de prompt. Pas de chips : question ouverte (le DRH saisit le poste),
+ * couverte par l'exception « demande d'éclaircissement ».
+ */
+export function buildAskRoleResponse(): ManagerResponse {
+  return {
+    message:
+      "Avec plaisir, on lance un recrutement. Pour quel poste ? Donnez-moi l'intitulé et je prépare la fiche de poste avec vous.",
+  };
+}
+
 export async function runManagerTurn(
   input: ManagerTurnInput,
 ): Promise<ManagerTurnOutput> {
@@ -464,6 +480,33 @@ export async function runManagerTurn(
       preSearchHits: [],
       campaignId: input.fdp.campaignId,
       pendingSwitch,
+      metrics: {
+        durationMs: intentCompletion.durationMs,
+        tokensUsed: intentCompletion.usage.totalTokens,
+        costEstimate: intentCompletion.costEstimate,
+      },
+    };
+  }
+
+  // VERROU DÉTERMINISTE — démarrage de recrutement SANS poste précisé.
+  // On ne lance NI la pré-recherche NI le tour conversationnel : on
+  // demande d'abord l'intitulé, par une réponse fixe. Sans ce garde, le
+  // LLM annonçait « je n'ai pas trouvé de fiche de poste » sur « je veux
+  // un recrutement » — absurde puisqu'aucun poste n'est encore nommé.
+  const isColdStartNoFdp =
+    input.fdp === null || !fdpHasJobTitle(input.fdp);
+  if (
+    classification.intent === 'new_campaign' &&
+    !classification.needsClarification &&
+    isColdStartNoFdp &&
+    !classification.specifiedRole
+  ) {
+    return {
+      classification,
+      response: buildAskRoleResponse(),
+      preSearchHits: [],
+      campaignId: input.fdp?.campaignId ?? null,
+      pendingSwitch: null,
       metrics: {
         durationMs: intentCompletion.durationMs,
         tokensUsed: intentCompletion.usage.totalTokens,
