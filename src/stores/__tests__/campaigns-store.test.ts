@@ -260,6 +260,26 @@ describe('campaigns-store', () => {
     store.recomputeStatus(id);
   }
 
+  it('completePhase marque une phase done quand les dépendances sont faites', () => {
+    const id = 'CAMP-2026-CP1';
+    useCampaignsStore.getState().addCampaign({ fdp: makeFDP(id, true) });
+    useCampaignsStore.getState().completePhase(id, 'scoring');
+    expect(
+      useCampaignsStore.getState().getById(id)?.lifecycle.phases.scoring.status,
+    ).toBe('done');
+  });
+
+  it('completePhase est un no-op si les dépendances ne sont pas faites', () => {
+    const id = 'CAMP-2026-CP2';
+    useCampaignsStore.getState().addCampaign({ fdp: makeFDP(id, true) });
+    // publication dépend de announcement (pending) → refusé
+    useCampaignsStore.getState().completePhase(id, 'publication');
+    expect(
+      useCampaignsStore.getState().getById(id)?.lifecycle.phases.publication
+        .status,
+    ).toBe('pending');
+  });
+
   it('postponePhase reporte annonce + publication → campagne active sans publier', () => {
     const id = 'CAMP-2026-PP1';
     const fdp = makeFDP(id, true);

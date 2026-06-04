@@ -9,6 +9,7 @@ import {
   deriveActiveStatus,
   lifecycleFromLegacy,
   missingDependencies,
+  nextFlowStep,
   parseLifecycle,
   reconcileLifecycle,
   transitiveDependents,
@@ -348,6 +349,44 @@ describe('lifecycleFromLegacy (bridge Inc. 0)', () => {
       hasPublishedChannel: false,
     });
     expect(lc.phases.scoring.status).toBe('in_progress');
+  });
+});
+
+describe('nextFlowStep', () => {
+  it('suit l’ordre canonique FDP→Scoring→Flux→Annonce→Publication', () => {
+    expect(nextFlowStep(buildLifecycle()).kind).toBe('scoring');
+    expect(nextFlowStep(buildLifecycle({ scoring: 'done' })).kind).toBe('intake');
+    expect(
+      nextFlowStep(buildLifecycle({ scoring: 'done', intake: 'done' })).kind,
+    ).toBe('announcement');
+    expect(
+      nextFlowStep(
+        buildLifecycle({ scoring: 'done', intake: 'done', announcement: 'done' }),
+      ).kind,
+    ).toBe('publication');
+  });
+
+  it('collect-fdp quand la FDP est rouverte', () => {
+    expect(nextFlowStep(buildLifecycle({ fdp: 'pending' })).kind).toBe('collect-fdp');
+  });
+
+  it('launched quand tout est réglé (annonce/publication reportées)', () => {
+    const step = nextFlowStep(
+      buildLifecycle({
+        scoring: 'done',
+        intake: 'done',
+        announcement: 'postponed',
+        publication: 'postponed',
+      }),
+    );
+    expect(step.kind).toBe('launched');
+    expect(step.phase).toBeNull();
+  });
+
+  it('expose les actions légales de la phase (annonce optionnelle → postpone)', () => {
+    const step = nextFlowStep(buildLifecycle({ scoring: 'done', intake: 'done' }));
+    expect(step.kind).toBe('announcement');
+    expect(step.actions).toContain('postpone');
   });
 });
 

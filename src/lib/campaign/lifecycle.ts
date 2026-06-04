@@ -172,6 +172,43 @@ export function deriveActiveStatus(
   return requiredDone && optionalSettled ? 'active' : 'in_progress';
 }
 
+/**
+ * Étape de flux à présenter au DRH, dérivée DÉTERMINISTIQUEMENT de la
+ * machine. C'est le seul juge de « quoi montrer / faire ensuite » — il
+ * remplacera le chaînage impératif dispersé (Inc. 2c-2). `actions` reprend
+ * les actions légales de la phase (Configurer/Valider/Reporter…).
+ */
+export type FlowStep =
+  | { kind: 'collect-fdp'; phase: 'fdp'; actions: PhaseAction[] }
+  | { kind: 'scoring'; phase: 'scoring'; actions: PhaseAction[] }
+  | { kind: 'intake'; phase: 'intake'; actions: PhaseAction[] }
+  | { kind: 'announcement'; phase: 'announcement'; actions: PhaseAction[] }
+  | { kind: 'publication'; phase: 'publication'; actions: PhaseAction[] }
+  | { kind: 'launched'; phase: null; actions: [] };
+
+/**
+ * Prochaine étape du flux pour une campagne, depuis sa machine. Pure et
+ * totale. `launched` quand toutes les phases sont réglées (la campagne est
+ * « lancée »). Le `kind` mappe 1-1 sur la phase courante (sauf `launched`).
+ */
+export function nextFlowStep(lifecycle: CampaignLifecycle): FlowStep {
+  const phase = currentPhase(lifecycle);
+  if (phase === null) return { kind: 'launched', phase: null, actions: [] };
+  const actions = availableActions(lifecycle, phase);
+  switch (phase) {
+    case 'fdp':
+      return { kind: 'collect-fdp', phase, actions };
+    case 'scoring':
+      return { kind: 'scoring', phase, actions };
+    case 'intake':
+      return { kind: 'intake', phase, actions };
+    case 'announcement':
+      return { kind: 'announcement', phase, actions };
+    case 'publication':
+      return { kind: 'publication', phase, actions };
+  }
+}
+
 function cloneWith(
   lifecycle: CampaignLifecycle,
   patch: Partial<Record<PhaseId, PhaseStatus>>,

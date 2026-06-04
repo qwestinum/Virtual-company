@@ -135,6 +135,12 @@ export type CampaignsState = {
    */
   recomputeStatus: (id: string) => void;
   /**
+   * Inc. 2c-1 — marque une phase `done` via la machine (dépendances
+   * requises). No-op si illégal (statut de départ incompatible, dépendances
+   * non faites). Sera appelée par les handlers de validation en 2c-2.
+   */
+  completePhase: (id: string, phaseId: PhaseId) => void;
+  /**
    * Inc. 2b — « à remettre à plus tard » : reporte une phase OPTIONNELLE
    * (annonce, publication) via la machine d'états. No-op si la transition
    * est illégale (phase obligatoire, statut incompatible) — jamais d'état
@@ -419,6 +425,31 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
           [id]: {
             ...current,
             status: nextStatus,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  completePhase: (id, phaseId) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      const result = applyTransition(current.lifecycle, {
+        kind: 'complete',
+        phaseId,
+      });
+      // Garde : dépendances non satisfaites ou statut incompatible → no-op.
+      if (!result.ok) return state;
+      const lifecycle = result.lifecycle;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            lifecycle,
+            status: statusForLifecycle(current.status, lifecycle),
             updatedAt: new Date().toISOString(),
           },
         },
