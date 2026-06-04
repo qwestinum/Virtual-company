@@ -140,9 +140,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
   } catch (err) {
     if (err instanceof CVExtractError) {
+      // pdf_engine_unavailable = défaillance serveur (polyfill PDF
+      // manquant) → 503. Les autres = fichier client invalide → 422.
+      const status = err.code === 'pdf_engine_unavailable' ? 503 : 422;
       return NextResponse.json(
         { error: err.code, message: err.message },
-        { status: 422 },
+        { status },
       );
     }
     if (err instanceof CVAnalyzerError) {

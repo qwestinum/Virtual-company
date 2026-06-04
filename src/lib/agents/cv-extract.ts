@@ -22,12 +22,48 @@ export type ExtractedCV = {
 
 export class CVExtractError extends Error {
   constructor(
-    public readonly code: 'unsupported_type' | 'empty_text' | 'parse_failed',
+    public readonly code:
+      | 'unsupported_type'
+      | 'empty_text'
+      | 'parse_failed'
+      | 'pdf_engine_unavailable',
     message: string,
   ) {
     super(message);
     this.name = 'CVExtractError';
   }
+}
+
+/**
+ * Message métier affiché au DRH quand le moteur PDF est hors service.
+ * On NE laisse PAS fuiter le détail technique (« DOMMatrix is not
+ * defined ») dans le chat Manager — voir CLAUDE.md : le Manager parle
+ * métier, jamais technique.
+ */
+const PDF_ENGINE_UNAVAILABLE_MESSAGE =
+  "La lecture des PDF est momentanément indisponible côté serveur. Le CV n'a pas pu être lu — réessayez plus tard ou envoyez-le en .txt.";
+
+/**
+ * Le moteur pdfjs (via pdf-parse) a besoin de globals navigateur
+ * (`DOMMatrix`, `ImageData`, `Path2D`) pour décoder polices et images.
+ * En Node, pdfjs les polyfille depuis `@napi-rs/canvas` — si ce paquet
+ * manque, pdfjs laisse les globals indéfinis et lève un
+ * `ReferenceError: DOMMatrix is not defined` au milieu du parsing, avec
+ * un message cryptique. On détecte la condition en amont pour lever une
+ * erreur métier explicite et diagnosticable.
+ */
+const PDF_REQUIRED_GLOBALS = ['DOMMatrix', 'ImageData', 'Path2D'] as const;
+
+function isPdfEnginePolyfilled(): boolean {
+  const g = globalThis as Record<string, unknown>;
+  return PDF_REQUIRED_GLOBALS.every((name) => typeof g[name] === 'function');
+}
+
+function isMissingPdfGlobalError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return PDF_REQUIRED_GLOBALS.some((name) =>
+    new RegExp(`\\b${name}\\b`).test(err.message),
+  );
 }
 
 export async function extractCVText(file: File): Promise<ExtractedCV> {
@@ -51,11 +87,30 @@ export async function extractCVText(file: File): Promise<ExtractedCV> {
       const data = new Uint8Array(await file.arrayBuffer());
       const { PDFParse } = await import('pdf-parse');
       await ensurePdfWorkerConfigured(PDFParse);
+      // Précondition : pdfjs doit avoir polyfillé DOMMatrix & co.
+      // (paquet @napi-rs/canvas présent). Sinon on échoue proprement
+      // AVANT de lancer le parsing plutôt que sur un ReferenceError opaque.
+      if (!isPdfEnginePolyfilled()) {
+        throw new CVExtractError(
+          'pdf_engine_unavailable',
+          PDF_ENGINE_UNAVAILABLE_MESSAGE,
+        );
+      }
       const instance = new PDFParse({ data });
       parser = instance;
       const result = await instance.getText();
       text = result.text ?? '';
     } catch (err) {
+      if (err instanceof CVExtractError) throw err;
+      // Filet de sécurité : si malgré la précondition un global manque
+      // au cœur du parsing, on traduit le ReferenceError technique en
+      // erreur métier au lieu de le laisser fuiter dans le chat.
+      if (isMissingPdfGlobalError(err)) {
+        throw new CVExtractError(
+          'pdf_engine_unavailable',
+          PDF_ENGINE_UNAVAILABLE_MESSAGE,
+        );
+      }
       throw new CVExtractError(
         'parse_failed',
         err instanceof Error ? err.message : 'Échec parsing PDF.',
