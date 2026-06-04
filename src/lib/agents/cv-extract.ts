@@ -46,17 +46,46 @@ const PDF_ENGINE_UNAVAILABLE_MESSAGE =
 /**
  * Le moteur pdfjs (via pdf-parse) a besoin de globals navigateur
  * (`DOMMatrix`, `ImageData`, `Path2D`) pour décoder polices et images.
- * En Node, pdfjs les polyfille depuis `@napi-rs/canvas` — si ce paquet
- * manque, pdfjs laisse les globals indéfinis et lève un
- * `ReferenceError: DOMMatrix is not defined` au milieu du parsing, avec
- * un message cryptique. On détecte la condition en amont pour lever une
- * erreur métier explicite et diagnosticable.
+ * En Node, pdfjs tente de les polyfiller lui-même depuis `@napi-rs/canvas`
+ * via `require("@napi-rs/canvas")` (createRequire(import.meta.url)).
+ *
+ * PROBLÈME : ce mécanisme casse en build de production. Next encapsule
+ * `pdf-parse` en « external module » (`pdf-parse-<hash>`) et le require
+ * interne de pdfjs ne se résout plus → pas de polyfill → `ReferenceError:
+ * DOMMatrix is not defined` au cœur du parsing (visible en preview/prod
+ * alors que le dev passe). On NE compte donc PAS sur l'auto-polyfill de
+ * pdfjs : on installe nous-mêmes les globals depuis un import direct de
+ * `@napi-rs/canvas` (que l'on contrôle) AVANT de charger pdf-parse.
  */
 const PDF_REQUIRED_GLOBALS = ['DOMMatrix', 'ImageData', 'Path2D'] as const;
 
 function isPdfEnginePolyfilled(): boolean {
   const g = globalThis as Record<string, unknown>;
   return PDF_REQUIRED_GLOBALS.every((name) => typeof g[name] === 'function');
+}
+
+/**
+ * Installe DOMMatrix/ImageData/Path2D sur globalThis depuis
+ * `@napi-rs/canvas`, idempotent et tolérant : si le binaire natif n'est
+ * pas disponible pour la plateforme, on n'échoue pas ici — la
+ * précondition `isPdfEnginePolyfilled` lèvera ensuite un message métier.
+ */
+async function ensurePdfDomPolyfills(): Promise<void> {
+  // Déjà présents (navigateur, ou polyfillés lors d'un précédent appel —
+  // `import()` est mis en cache par le module system) : rien à faire.
+  if (isPdfEnginePolyfilled()) return;
+  const g = globalThis as Record<string, unknown>;
+  try {
+    const canvas = (await import('@napi-rs/canvas')) as Record<string, unknown>;
+    for (const name of PDF_REQUIRED_GLOBALS) {
+      if (typeof g[name] !== 'function' && typeof canvas[name] === 'function') {
+        g[name] = canvas[name];
+      }
+    }
+  } catch {
+    // @napi-rs/canvas indisponible (binaire natif manquant) — on laisse
+    // la précondition produire l'erreur métier.
+  }
 }
 
 function isMissingPdfGlobalError(err: unknown): boolean {
@@ -85,11 +114,14 @@ export async function extractCVText(file: File): Promise<ExtractedCV> {
     let parser: { destroy: () => Promise<void> } | null = null;
     try {
       const data = new Uint8Array(await file.arrayBuffer());
+      // Polyfille DOMMatrix & co. AVANT de charger pdf-parse, sans
+      // dépendre de l'auto-polyfill (cassé en build de prod).
+      await ensurePdfDomPolyfills();
       const { PDFParse } = await import('pdf-parse');
       await ensurePdfWorkerConfigured(PDFParse);
-      // Précondition : pdfjs doit avoir polyfillé DOMMatrix & co.
-      // (paquet @napi-rs/canvas présent). Sinon on échoue proprement
-      // AVANT de lancer le parsing plutôt que sur un ReferenceError opaque.
+      // Précondition : si le polyfill a échoué (binaire canvas manquant),
+      // on échoue proprement AVANT le parsing plutôt que sur un
+      // ReferenceError opaque qui fuiterait dans le chat.
       if (!isPdfEnginePolyfilled()) {
         throw new CVExtractError(
           'pdf_engine_unavailable',

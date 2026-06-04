@@ -23,6 +23,25 @@ vi.mock('pdf-parse', () => {
   return { PDFParse };
 });
 
+/**
+ * On mocke aussi `@napi-rs/canvas` (binaire natif) pour piloter, sans
+ * dépendre de la plateforme, si le polyfill DOMMatrix/ImageData/Path2D
+ * réussit (`canvasImpl` peuplé) ou échoue (`canvasImpl` vide).
+ */
+const noopFn = function stub() {};
+let canvasImpl: Record<string, unknown> = {};
+vi.mock('@napi-rs/canvas', () => ({
+  get DOMMatrix() {
+    return canvasImpl.DOMMatrix;
+  },
+  get ImageData() {
+    return canvasImpl.ImageData;
+  },
+  get Path2D() {
+    return canvasImpl.Path2D;
+  },
+}));
+
 function makeFile(name: string, content: string, type = ''): File {
   return new File([content], name, { type });
 }
@@ -76,6 +95,8 @@ describe('extractCVText — PDF', () => {
       Promise.resolve({
         text: 'Imad BELFAQIR — Expert test management, 20 ans d’expérience.',
       });
+    // Par défaut, @napi-rs/canvas expose les globals (polyfill OK).
+    canvasImpl = { DOMMatrix: noopFn, ImageData: noopFn, Path2D: noopFn };
   });
 
   afterEach(() => {
@@ -83,17 +104,23 @@ describe('extractCVText — PDF', () => {
     vi.clearAllMocks();
   });
 
-  it('extrait le texte quand le moteur PDF est polyfillé', async () => {
-    restore = setPdfGlobals(true);
+  it('polyfille DOMMatrix & co. depuis @napi-rs/canvas puis extrait le texte', async () => {
+    // Globals absents au départ → c'est le polyfill qui doit les installer.
+    restore = setPdfGlobals(false);
     const out = await extractCVText(
       makeFile('CV.pdf', '%PDF-1.4 binaire factice', 'application/pdf'),
     );
     expect(out.mime).toBe('application/pdf');
     expect(out.text).toContain('Imad BELFAQIR');
+    // Le polyfill a bien posé les globals.
+    expect(typeof (globalThis as Record<string, unknown>).DOMMatrix).toBe(
+      'function',
+    );
   });
 
-  it('lève pdf_engine_unavailable (pas parse_failed) si un global manque (précondition)', async () => {
+  it('lève pdf_engine_unavailable si @napi-rs/canvas n’expose pas les globals (binaire manquant)', async () => {
     restore = setPdfGlobals(false);
+    canvasImpl = {}; // import OK mais pas de DOMMatrix/ImageData/Path2D
     const err = await extractCVText(
       makeFile('CV.pdf', '%PDF-1.4 binaire factice', 'application/pdf'),
     ).catch((e) => e);
