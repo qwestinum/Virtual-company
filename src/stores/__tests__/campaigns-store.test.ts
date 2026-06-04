@@ -246,6 +246,74 @@ describe('campaigns-store', () => {
     expect(c.status).toBe('active');
   });
 
+  function makeActiveCampaign(id: string): void {
+    const fdp = makeFDP(id, true);
+    const sheet: ScoringSheet = {
+      campaignId: id,
+      isValidated: true,
+      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+    };
+    const store = useCampaignsStore.getState();
+    store.addCampaign({ fdp, scoringSheet: sheet });
+    store.markPublishedChannel(id, 'linkedin');
+    store.markSourcesConfirmed(id);
+    store.recomputeStatus(id);
+  }
+
+  it('postponePhase reporte annonce + publication → campagne active sans publier', () => {
+    const id = 'CAMP-2026-PP1';
+    const fdp = makeFDP(id, true);
+    const sheet: ScoringSheet = {
+      campaignId: id,
+      isValidated: true,
+      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+    };
+    const store = useCampaignsStore.getState();
+    store.addCampaign({ fdp, scoringSheet: sheet });
+    store.markSourcesConfirmed(id);
+    store.recomputeStatus(id);
+    expect(useCampaignsStore.getState().getById(id)?.status).toBe('in_progress');
+    store.postponePhase(id, 'announcement');
+    store.postponePhase(id, 'publication');
+    const c = useCampaignsStore.getState().getById(id)!;
+    expect(c.lifecycle.phases.announcement.status).toBe('postponed');
+    expect(c.lifecycle.phases.publication.status).toBe('postponed');
+    expect(c.status).toBe('active');
+  });
+
+  it('postponePhase sur une phase obligatoire est un no-op', () => {
+    const id = 'CAMP-2026-PP2';
+    useCampaignsStore.getState().addCampaign({ fdp: makeFDP(id, true) });
+    useCampaignsStore.getState().postponePhase(id, 'scoring');
+    const c = useCampaignsStore.getState().getById(id)!;
+    expect(c.lifecycle.phases.scoring.status).toBe('pending');
+    expect(c.status).toBe('in_progress');
+  });
+
+  it('reopenPhase(annonce) retire la publication et redescend le statut', () => {
+    const id = 'CAMP-2026-RO1';
+    makeActiveCampaign(id);
+    expect(useCampaignsStore.getState().getById(id)?.status).toBe('active');
+    useCampaignsStore.getState().reopenPhase(id, 'announcement');
+    const c = useCampaignsStore.getState().getById(id)!;
+    expect(c.publishedChannels).toEqual([]);
+    expect(c.lifecycle.phases.announcement.status).toBe('pending');
+    expect(c.lifecycle.phases.publication.status).toBe('pending');
+    expect(c.status).toBe('in_progress');
+  });
+
+  it('reopenPhase(fdp) cascade tout l’aval et réinitialise les artefacts', () => {
+    const id = 'CAMP-2026-RO2';
+    makeActiveCampaign(id);
+    useCampaignsStore.getState().reopenPhase(id, 'fdp');
+    const c = useCampaignsStore.getState().getById(id)!;
+    expect(c.fdp.isValidated).toBe(false);
+    expect(c.scoringSheet?.isValidated).toBe(false);
+    expect(c.sourcesConfirmed).toBe(false);
+    expect(c.publishedChannels).toEqual([]);
+    expect(c.status).toBe('draft');
+  });
+
   it('addCampaign initialise le seuil par défaut à 75', () => {
     const c = useCampaignsStore
       .getState()

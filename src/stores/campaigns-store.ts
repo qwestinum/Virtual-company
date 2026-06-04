@@ -13,10 +13,15 @@
 import { create } from 'zustand';
 
 import {
+  applyTransition,
   deriveActiveStatus,
   reconcileLifecycle,
 } from '@/lib/campaign/lifecycle';
-import type { CampaignLifecycle } from '@/types/campaign-lifecycle';
+import {
+  PHASE_IDS,
+  type CampaignLifecycle,
+  type PhaseId,
+} from '@/types/campaign-lifecycle';
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
@@ -129,6 +134,19 @@ export type CampaignsState = {
    * recompute ne sort jamais quelqu'un de la pause ou de la clôture.
    */
   recomputeStatus: (id: string) => void;
+  /**
+   * Inc. 2b — « à remettre à plus tard » : reporte une phase OPTIONNELLE
+   * (annonce, publication) via la machine d'états. No-op si la transition
+   * est illégale (phase obligatoire, statut incompatible) — jamais d'état
+   * illégal. Recalcule le statut (peut faire passer la campagne en active).
+   */
+  postponePhase: (id: string, phaseId: PhaseId) => void;
+  /**
+   * Inc. 2b — rouvre une phase réglée (done/postponed) via la machine :
+   * cascade sur les dérivés (cohérence source→dérivés) ET réinitialisation
+   * des artefacts correspondants dans le snapshot campagne. No-op si illégal.
+   */
+  reopenPhase: (id: string, phaseId: PhaseId) => void;
   getById: (id: string) => ActiveCampaign | undefined;
   list: () => ActiveCampaign[];
   reset: () => void;
@@ -169,6 +187,51 @@ function syncLifecycle(input: {
   lifecycle?: CampaignLifecycle;
 }): CampaignLifecycle {
   return reconcileLifecycle(input.lifecycle ?? null, artifactBooleans(input));
+}
+
+/** Statut après changement de machine : préserve paused/closed (explicites). */
+function statusForLifecycle(
+  current: CampaignStatus,
+  lifecycle: CampaignLifecycle,
+): CampaignStatus {
+  if (current === 'paused' || current === 'closed') return current;
+  return deriveActiveStatus(lifecycle);
+}
+
+/**
+ * Réinitialise, dans le SNAPSHOT campagne, les artefacts des phases que la
+ * cascade de réouverture a redescendues à `pending`. Garde la cohérence
+ * entre la machine et les booléens d'artefacts.
+ */
+function resetArtifactsForPending(
+  campaign: ActiveCampaign,
+  lifecycle: CampaignLifecycle,
+): Pick<
+  ActiveCampaign,
+  'fdp' | 'scoringSheet' | 'sourcesConfirmed' | 'publishedChannels'
+> {
+  let { fdp, scoringSheet, sourcesConfirmed, publishedChannels } = campaign;
+  for (const pid of PHASE_IDS) {
+    if (lifecycle.phases[pid].status !== 'pending') continue;
+    switch (pid) {
+      case 'fdp':
+        if (fdp.isValidated) fdp = { ...fdp, isValidated: false };
+        break;
+      case 'scoring':
+        if (scoringSheet?.isValidated) {
+          scoringSheet = { ...scoringSheet, isValidated: false };
+        }
+        break;
+      case 'intake':
+        sourcesConfirmed = false;
+        break;
+      case 'announcement':
+      case 'publication':
+        publishedChannels = [];
+        break;
+    }
+  }
+  return { fdp, scoringSheet, sourcesConfirmed, publishedChannels };
 }
 
 export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
@@ -356,6 +419,58 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
           [id]: {
             ...current,
             status: nextStatus,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  postponePhase: (id, phaseId) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      const result = applyTransition(current.lifecycle, {
+        kind: 'postpone',
+        phaseId,
+      });
+      // Garde : transition illégale (phase obligatoire, statut incompatible)
+      // → no-op silencieux, jamais d'état illégal.
+      if (!result.ok) return state;
+      const lifecycle = result.lifecycle;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            lifecycle,
+            status: statusForLifecycle(current.status, lifecycle),
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  reopenPhase: (id, phaseId) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current) return state;
+      const result = applyTransition(current.lifecycle, {
+        kind: 'reopen',
+        phaseId,
+      });
+      if (!result.ok) return state;
+      const lifecycle = result.lifecycle;
+      const artifacts = resetArtifactsForPending(current, lifecycle);
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            ...artifacts,
+            lifecycle,
+            status: statusForLifecycle(current.status, lifecycle),
             updatedAt: new Date().toISOString(),
           },
         },

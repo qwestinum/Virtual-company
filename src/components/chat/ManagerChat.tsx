@@ -48,6 +48,7 @@ import { IsolatedCriteriaChecklist } from '@/components/chat/IsolatedCriteriaChe
 import { ValidateFDPButton } from '@/components/chat/ValidateFDPButton';
 import { ValidateIsolatedCriteriaButton } from '@/components/chat/ValidateIsolatedCriteriaButton';
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
+import { sanitizeFieldExtractions } from '@/lib/agents/extraction-guard';
 import {
   postIsolatedManagerChat,
   postManagerChat,
@@ -1081,6 +1082,12 @@ export function ManagerChat() {
         fdp: useFdpStore.getState().fdp,
       });
 
+      // GARDE déterministe sur la sortie LLM (Inc. 2b) : on n'applique
+      // jamais `fieldExtractions` tel quel — on l'assainit contre la liste
+      // fermée des 8 champs et les types attendus. `null` si rien de valide.
+      const extractions = sanitizeFieldExtractions(result.response.fieldExtractions);
+      const hasExtractions = Object.keys(extractions).length > 0;
+
       // Si le serveur a renvoyé un dialogue de switch, on stocke le
       // payload pour que handleChipSelect puisse l'exploiter au clic.
       // Le payload reste valide tant qu'un nouveau tour Manager n'est
@@ -1106,15 +1113,15 @@ export function ManagerChat() {
           source: 'text',
           content: triggerUserMessage,
         });
-        if (result.response.fieldExtractions) {
-          applyExtractions(result.response.fieldExtractions);
+        if (hasExtractions) {
+          applyExtractions(extractions);
         }
         appendMessage({
           role: 'manager',
           source: 'text',
           content: result.response.message,
           chips: result.response.chips,
-          proposedExtractions: result.response.fieldExtractions,
+          proposedExtractions: hasExtractions ? extractions : undefined,
         });
         return;
       }
@@ -1124,8 +1131,8 @@ export function ManagerChat() {
       if (result.campaignId && !useFdpStore.getState().fdp) {
         createFDP(result.campaignId);
       }
-      if (result.response.fieldExtractions) {
-        applyExtractions(result.response.fieldExtractions);
+      if (hasExtractions) {
+        applyExtractions(extractions);
       }
 
       appendMessage({
@@ -1133,7 +1140,7 @@ export function ManagerChat() {
         source: 'text',
         content: result.response.message,
         chips: result.response.chips,
-        proposedExtractions: result.response.fieldExtractions,
+        proposedExtractions: hasExtractions ? extractions : undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur Manager.');
