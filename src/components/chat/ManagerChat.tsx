@@ -95,6 +95,7 @@ import {
   type IsolatedCriteriaInProgress,
   type IsolatedCriteriaKey,
 } from '@/types/isolated-criteria';
+import { nextFlowStep } from '@/lib/campaign/lifecycle';
 
 const MANAGER_ID = 'agent.manager-rh';
 
@@ -855,6 +856,103 @@ export function ManagerChat() {
     }
   }
 
+  /**
+   * Campaign lifecycle flow controller: reads the campaign's lifecycle state
+   * and posts the next step (scoring → intake → announcement → launched).
+   */
+  function advanceFlow(campaignId: string) {
+    const camp = useCampaignsStore.getState().getById(campaignId);
+    if (!camp) return;
+    const step = nextFlowStep(camp.lifecycle);
+    switch (step.kind) {
+      case 'scoring':
+        void proposeScoringForCampaign(campaignId);
+        break;
+      case 'intake':
+        postFluxStep(campaignId);
+        break;
+      case 'announcement':
+      case 'publication':
+        postAnnouncementStep(campaignId, camp.fdp);
+        break;
+      case 'launched':
+        postLaunched(campaignId);
+        break;
+      case 'collect-fdp':
+        // Reopened FDP handled by resume flow; no-op here
+        break;
+    }
+  }
+
+  /**
+   * Posts the scoring proposal step for a campaign.
+   * Already exists - reused as-is.
+   */
+  // proposeScoringForCampaign is already defined below
+
+  /**
+   * Posts the flux (CV sources) picker step. Channel-independent default:
+   * manual ON, all others OFF.
+   */
+  function postFluxStep(campaignId: string) {
+    // Use buildDefaultSourcesConfig with empty array for channel-independent default
+    const defaultSources = buildDefaultSourcesConfig([]);
+
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Maintenant, configure les flux de réception CV pour ${campaignId}. J'ai activé l'upload manuel par défaut — tu peux ajuster ci-dessous.`,
+      block: {
+        kind: 'cv-sources-picker',
+        campaignId,
+        activeSources: defaultSources,
+        confirmed: false,
+      },
+    });
+    attachResumeChipsToLastBubble(campaignId, 'sources');
+  }
+
+  /**
+   * Posts the announcement (publication channels) picker step. This is the
+   * LAST step in the flow - after scoring and flux.
+   */
+  function postAnnouncementStep(campaignId: string, fdp: FDPInProgress) {
+    pendingChannelPickRef.current = { fdp };
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Dernière étape : sur quels réseaux veux-tu diffuser l'annonce pour ${campaignId} ? Tu peux en sélectionner plusieurs — je produirai une annonce adaptée à chacun.`,
+      block: {
+        kind: 'publication-channel-picker',
+        campaignId,
+        selectedChannels: [],
+        confirmed: false,
+      },
+    });
+    attachResumeChipsToLastBubble(campaignId, 'channels');
+  }
+
+  /**
+   * Posts the final "launched" message when all phases are complete.
+   */
+  function postLaunched(campaignId: string) {
+    const status = useCampaignsStore.getState().getById(campaignId)?.status;
+    if (status === 'active') {
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: `🎯 Campagne ${campaignId} ACTIVE. Tous les jalons sont alignés (FDP validée, annonces publiées, flux configurés, scoring validé). La campagne est en attente de CV — tu peux les déposer via le trombone ou attendre l'arrivée automatique des flux configurés.`,
+      });
+    } else {
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content: "Il reste des étapes à franchir avant de basculer en active. Utilise les chips ci-dessous pour finaliser.",
+      });
+    }
+    attachResumeChipsToLastBubble(campaignId);
+  }
+
   async function handleValidateFDP() {
     const current = useFdpStore.getState().fdp;
     if (!current || !current.isComplete || current.isValidated) return;
@@ -936,23 +1034,14 @@ export function ManagerChat() {
       return;
     }
 
-    // Première validation : workflow standard avec picker channels.
-    pendingChannelPickRef.current = { fdp: validated };
+    // Première validation : post short confirmation with FDP attachment, then advance flow.
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `Fiche validée pour ${validated.campaignId}. Sur quels réseaux veux-tu publier l'annonce ? Tu peux en sélectionner plusieurs — je produirai une annonce adaptée à chacun.`,
-      block: {
-        kind: 'publication-channel-picker',
-        campaignId: validated.campaignId,
-        selectedChannels: [],
-        confirmed: false,
-      },
+      content: `Fiche validée pour ${validated.campaignId}.`,
       attachment: fdpAttachment,
     });
-    // Phase 7.4 — chips contextuels pour les autres jalons. Exclut
-    // 'channels' (porté par le picker juste posé).
-    attachResumeChipsToLastBubble(validated.campaignId, 'channels');
+    advanceFlow(validated.campaignId);
   }
 
   /**
@@ -1491,24 +1580,13 @@ export function ManagerChat() {
     } finally {
       setAgentBusy(false);
     }
-    // Phase 3.2 — flux de réception. Activations par défaut alignées
-    // sur les channels choisis pour publier (cf. buildDefaultSourcesConfig).
-    appendMessage({
-      role: 'manager',
-      source: 'text',
-      content:
-        channels.length === 1
-          ? `Pour la suite, je suis prêt à recevoir les CV. J'ai déjà activé le flux ${labels} et l'upload manuel — tu peux ajuster ci-dessous.`
-          : `Pour la suite, je suis prêt à recevoir les CV. J'ai déjà activé les flux ${labels} et l'upload manuel — tu peux ajuster ci-dessous.`,
-      block: {
-        kind: 'cv-sources-picker',
-        campaignId: pending.fdp.campaignId,
-        activeSources: buildDefaultSourcesConfig(channels),
-        confirmed: false,
-      },
-    });
-    // Phase 7.4 — exclut 'sources' (porté par le picker).
-    attachResumeChipsToLastBubble(pending.fdp.campaignId, 'sources');
+    // 2c-2 — une annonce a été RÉDIGÉE (et diffusée) : on marque
+    // explicitement les phases via la machine, plutôt que de dépendre de
+    // `publishedChannels > 0` (qui exclut le canal « generic » et ferait
+    // boucler advanceFlow sur le picker). Ainsi le flux avance toujours.
+    useCampaignsStore.getState().completePhase(pending.fdp.campaignId, 'announcement');
+    useCampaignsStore.getState().completePhase(pending.fdp.campaignId, 'publication');
+    advanceFlow(pending.fdp.campaignId);
   }
 
   /**
@@ -1605,9 +1683,9 @@ export function ManagerChat() {
       // Wording adapté : en flux initial, le scoring vient ensuite donc
       // on l'annonce. En resume, on s'arrête au mailbox (le DRH décide
       // de la suite via les chips).
-      const noMailboxTrailer = fromResume
-        ? "Pour activer la réception email, il faut configurer une boîte IMAP — je te laisse l'ajouter depuis la page de configuration."
-        : "Pour activer la réception email, il faut configurer une boîte IMAP — je te laisse l'ajouter depuis la page de configuration. On continue avec la fiche de scoring en attendant.";
+      const noMailboxTrailer =
+        "Pour activer la réception email, il faut configurer une boîte IMAP — je te laisse l'ajouter depuis la page de configuration." +
+        (fromResume ? '' : ' On continue en attendant.');
       appendMessage({
         role: 'manager',
         source: 'text',
@@ -1637,7 +1715,7 @@ export function ManagerChat() {
     // Auto-chain vers le scoring uniquement en flux INITIAL. En resume,
     // le DRH a déjà ses chips de modification et conduit le workflow.
     if (!deferScoringForMailboxPick && !fromResume) {
-      await proposeScoringForCampaign(campaignId);
+      advanceFlow(campaignId);
     }
     // En resume, on attache les chips de reprise à la dernière bulle
     // pour que le DRH puisse naviguer vers la suite (sauf si on a
@@ -1759,16 +1837,14 @@ export function ManagerChat() {
         source: 'text',
         content: `Parfait — j'écoute désormais la boîte « ${picked.label} » (${picked.email}) pour ${campaignId}. Les CVs reçus avec l'ID de campagne dans l'objet seront analysés automatiquement.`,
       });
-      // Round 5 — la pose du picker mailbox a différé la proposition de
-      // fiche de scoring (cf. handleSourcesConfirm) UNIQUEMENT en flux
-      // initial. Sur resume, on s'arrête là : le DRH conduit la suite
-      // via les chips de reprise (« Initier / Modifier le scoring »).
-      const currentSheet = useScoringStore.getState().sheet;
-      const hasScoringFlow =
-        currentSheet?.campaignId === campaignId;
-      if (!fromResume && !hasScoringFlow) {
-        await proposeScoringForCampaign(campaignId);
-      } else if (fromResume) {
+      // 2c-2 — le mailbox-picker faisait partie de la phase Flux ; une
+      // fois la boîte associée, on AVANCE la machine (en flux initial).
+      // Nouvel ordre : le scoring est déjà fait → l'étape suivante est
+      // l'annonce. (On ne gate plus sur la présence d'une fiche de
+      // scoring, ce qui bloquait le flux dans le nouvel ordre.)
+      if (!fromResume) {
+        advanceFlow(campaignId);
+      } else {
         // En resume, on rouvre une bulle avec les chips de reprise
         // pour que le DRH puisse choisir l'étape suivante (scoring,
         // FDP, channels…). Sinon l'écran est vide après pick.
@@ -1864,21 +1940,14 @@ export function ManagerChat() {
       }
     }
     useCampaignsStore.getState().recomputeStatus(campaignId);
-    const resolvedStatus =
-      useCampaignsStore.getState().getById(campaignId)?.status ??
-      'in_progress';
-    const tail =
-      resolvedStatus === 'active'
-        ? `🎯 Campagne ${campaignId} ACTIVE. Tous les jalons sont alignés (FDP validée, annonces publiées, flux configurés, scoring validé). La campagne est en attente de CV — tu peux les déposer via le trombone ou attendre l'arrivée automatique des flux configurés.`
-        : "Il reste des étapes à franchir avant de basculer en active. Utilise les chips ci-dessous pour finaliser.";
+
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}. ${tail}`,
+      content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}.`,
     });
-    // Phase 7.4 — fin du workflow nominal : on propose les CTA sur
-    // les 4 artefacts (le DRH peut tout modifier librement).
-    attachResumeChipsToLastBubble(campaignId);
+
+    advanceFlow(campaignId);
   }
 
   /**
