@@ -18,6 +18,15 @@ export const ManagerResponseSchema = z.object({
   message: z.string().min(1),
   chips: ChipSetSchema.optional(),
   fieldExtractions: z.record(FieldKeySchema, z.unknown()).optional(),
+  /**
+   * Champ FDP que CE tour PROPOSE/demande (celui que vise un éventuel chip
+   * « Ajuster »). Permet à l'UI de savoir quel UNIQUE champ éditer en place,
+   * sans le deviner depuis `fieldExtractions` (qui contient tout l'extrait).
+   * Obligatoire côté prompt en MODE PROPOSITION ; optionnel ici (fallback).
+   * `.catch(undefined)` : une valeur hors enum (hallucination LLM) est
+   * ignorée plutôt que de faire échouer tout le tour.
+   */
+  proposalField: FieldKeySchema.optional().catch(undefined),
 });
 
 /**

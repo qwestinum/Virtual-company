@@ -120,6 +120,9 @@ const RESUME_PAUSED_CHIP_LABEL = 'Reprendre la campagne'; // status === 'paused'
  * round-trip LLM.
  */
 const REUSE_FDP_VALIDATE_LABEL = 'Valider telle quelle';
+// Récap final FDP complète (#3) : chip explicite de validation, intercepté
+// côté client comme « Valider telle quelle » (appelle handleValidateFDP).
+const FDP_VALIDATE_LABEL = 'Valider la fiche de poste';
 
 /**
  * Phase 7.2 — verbe contextuel sur les chips de reprise. Chaque
@@ -788,17 +791,27 @@ export function ManagerChat() {
    * pertinent, retire les chips de la bulle et sort de l'édition.
    */
   function handleProposalEditSubmit(
-    messageId: string,
+    _messageId: string,
     edits: { fieldKey: FieldKey; raw: string }[],
   ) {
-    let anyStructuralChanged = false;
+    // Applique l'ajustement à la SOURCE (FDP).
     for (const { fieldKey, raw } of edits) {
-      const { changed, structural } = applyFieldToSource(fieldKey, raw);
-      if (changed && structural) anyStructuralChanged = true;
+      applyFieldToSource(fieldKey, raw);
     }
-    updateMessage(messageId, { chips: undefined });
     setEditingMessageId(null);
-    maybeProposeAdRegeneration(anyStructuralChanged);
+    // Visibilité + CONTINUITÉ du flux : on poste une bulle DRH récapitulant
+    // l'ajustement, puis on relance le Manager pour qu'il enchaîne (propose
+    // le champ suivant ou récapitule si la FDP est complète). C'est ce qui
+    // évite que le déroulement se bloque après « Valider ».
+    const fdpNow = useFdpStore.getState().fdp;
+    const summary = edits
+      .map(({ fieldKey }) => {
+        const f = fdpNow?.fields[fieldKey];
+        return `${f?.label ?? fieldKey} : ${formatFieldValueForEdit(f?.value)}`;
+      })
+      .join(' · ');
+    appendMessage({ role: 'user', source: 'text', content: `J'ajuste — ${summary}` });
+    void sendToManager(useChatStore.getState().messages);
   }
 
   /** Annuler : on sort de l'édition, les chips masqués réapparaissent. */
@@ -807,15 +820,21 @@ export function ManagerChat() {
   }
 
   /**
-   * Champs éditables d'une bulle (clic « Ajuster ») : dérivés de ses
-   * `proposedExtractions`, pré-remplis depuis la valeur ACTUELLE du champ
-   * source (FDP), libellés. Vide si la bulle n'a rien proposé.
+   * Le champ éditable d'une bulle (clic « Ajuster ») : l'UNIQUE champ que la
+   * bulle a proposé (`proposalField`, déclaré par le LLM), pré-rempli depuis
+   * la valeur ACTUELLE de la source (FDP). Vide si la bulle n'a pas de
+   * proposalField (récap pré-recherche en bloc → on déplie la checklist).
    */
   function editableFieldsForMessage(message: ChatMessage): EditableField[] {
-    const proposed = message.proposedExtractions;
     const fdpNow = useFdpStore.getState().fdp;
-    if (!proposed || !fdpNow) return [];
-    return (Object.keys(proposed) as FieldKey[])
+    if (!fdpNow) return [];
+    // Champ UNIQUE proposé (MODE PROPOSITION) → on n'édite que lui ; sinon
+    // (récap / pré-recherche en bloc) → tous les champs que la bulle a
+    // proposés, pour permettre d'ajuster la fiche entière en place.
+    const keys: FieldKey[] = message.proposalField
+      ? [message.proposalField]
+      : (Object.keys(message.proposedExtractions ?? {}) as FieldKey[]);
+    return keys
       .filter((k) => fdpNow.fields[k])
       .map((k) => ({
         fieldKey: k,
@@ -1211,6 +1230,7 @@ export function ManagerChat() {
           content: result.response.message,
           chips: result.response.chips,
           proposedExtractions: hasExtractions ? extractions : undefined,
+          proposalField: result.response.proposalField,
         });
         return;
       }
@@ -1230,6 +1250,7 @@ export function ManagerChat() {
         content: result.response.message,
         chips: result.response.chips,
         proposedExtractions: hasExtractions ? extractions : undefined,
+        proposalField: result.response.proposalField,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur Manager.');
@@ -1366,24 +1387,25 @@ export function ManagerChat() {
       return;
     }
     if (isAdjustmentSignal(option)) {
-      // « Ajuster » édite la SOURCE (les champs FDP proposés par la bulle),
-      // EN PLACE sous la bulle. On NE détruit PAS les chips : ils sont
-      // masqués pendant l'édition (cf. rendu) pour qu'« Annuler » les
-      // restaure ; « Valider » les retire alors.
+      // « Ajuster » édite la SOURCE, EN PLACE sous la bulle, mais UNIQUEMENT
+      // le champ que la bulle a proposé ce tour (`proposalField`, déclaré
+      // par le LLM) — pas tous les champs extraits. On NE détruit PAS les
+      // chips : ils sont masqués pendant l'édition (cf. rendu) pour
+      // qu'« Annuler » les restaure.
       const lastManager = [...useChatStore.getState().messages]
         .reverse()
         .find((m) => m.role === 'manager');
-      const fieldCount = lastManager
-        ? Object.keys(lastManager.proposedExtractions ?? {}).length
-        : 0;
-      if (lastManager && fieldCount >= 1) {
-        // ≥1 champ proposé → édition en place (un éditeur par champ,
-        // y compris la fiche réutilisée en bloc = les 8 champs).
-        setEditingMessageId(lastManager.id);
+      const hasEditable =
+        !!lastManager &&
+        !!useFdpStore.getState().fdp &&
+        (!!lastManager.proposalField ||
+          Object.keys(lastManager.proposedExtractions ?? {}).length > 0);
+      if (hasEditable) {
+        // Champ unique proposé → édition de ce champ ; récap en bloc →
+        // édition de tous les champs proposés (cf. editableFieldsForMessage).
+        setEditingMessageId(lastManager!.id);
       } else {
-        // 0 champ (vieux message / bulle sans lien source) → on déplie la
-        // checklist : le DRH y édite n'importe quel champ (même éditeur
-        // multi-ligne, même propagation source).
+        // Aucun lien source (vieux message, bulle non-proposition) → checklist.
         setExpandChecklistToken((t) => t + 1);
       }
       return;
@@ -1405,7 +1427,7 @@ export function ManagerChat() {
     // (MODE RÉUTILISATION L1). Le DRH valide en un geste — on appelle
     // directement handleValidateFDP() sans passer par le LLM, et on
     // pose une bulle user pour préserver la cohérence du fil.
-    if (option === REUSE_FDP_VALIDATE_LABEL) {
+    if (option === REUSE_FDP_VALIDATE_LABEL || option === FDP_VALIDATE_LABEL) {
       const current = useFdpStore.getState().fdp;
       if (current && current.isComplete && !current.isValidated) {
         appendMessage({

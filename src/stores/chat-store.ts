@@ -167,6 +167,12 @@ export type ChatMessage = {
    * bulle. Voir memory feedback_single_source_of_truth.
    */
   proposedExtractions?: Partial<Record<FieldKey, unknown>>;
+  /**
+   * Champ FDP UNIQUE que cette bulle propose ce tour (déclaré par le LLM
+   * via `proposalField`). C'est le seul champ que « Ajuster » édite. Si
+   * absent (récap pré-recherche en bloc), « Ajuster » déplie la checklist.
+   */
+  proposalField?: FieldKey;
 };
 
 export type ChatState = {
