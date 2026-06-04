@@ -6,9 +6,12 @@ import {
   executeCVAnalyzer,
 } from '@/lib/agents/server/cv-analyzer-execute';
 import { AIProviderError } from '@/lib/ai/errors';
+import { appendJournalEntry } from '@/lib/db/repos/journal';
+import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
   CVAnalysisCriteriaSchema,
   CVAnalysisResultSchema,
+  type CVAnalysisResult,
   DEFAULT_CV_THRESHOLD,
 } from '@/types/cv-analysis';
 
@@ -133,6 +136,19 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
 
     const result = CVAnalysisResultSchema.parse(output.data.result);
+
+    // Trace le candidat dans le journal d'audit pour qu'il soit
+    // comptabilisé au dashboard, comme un CV reçu par email. Sans ça,
+    // les CV uploadés via le chat n'apparaissaient nulle part dans les
+    // métriques (seul le poller IMAP journalisait). Best-effort : un
+    // échec de journalisation ne casse pas la réponse d'analyse.
+    await journalChatCV({
+      uid: taskId,
+      campaignId,
+      fileName: extracted.fileName,
+      result,
+    });
+
     return NextResponse.json({
       result,
       threshold,
@@ -169,5 +185,58 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
       { status: 500 },
     );
+  }
+}
+
+/**
+ * Journalise un CV analysé via le chat avec les MÊMES actions que le
+ * poller IMAP (`imap_cv_received` + `imap_cv_analyzed`), pour que le
+ * dashboard le comptabilise sans changement de la dérivation des
+ * métriques. Le champ `source: 'chat'` distingue l'origine si besoin.
+ *
+ * Note dette : le préfixe `imap_` est trompeur pour un upload chat —
+ * conservé sciemment pour ne pas réécrire derive-metrics ni perdre
+ * l'historique. Voir docs/BACKLOG.md.
+ *
+ * `uid` = taskId (unique par CV du lot, cf. manager-flow runCVBatch) :
+ * c'est la clé d'unicité côté `journalToCandidatesList`.
+ */
+async function journalChatCV(args: {
+  uid: string;
+  campaignId: string | undefined;
+  fileName: string;
+  result: CVAnalysisResult;
+}): Promise<void> {
+  const { uid, campaignId, fileName, result } = args;
+  const base = {
+    uid,
+    fileName,
+    candidate: result.candidateName,
+    source: 'chat' as const,
+  };
+  try {
+    await appendJournalEntry({
+      action: 'imap_cv_received',
+      actor: 'manager-chat',
+      campaignId: campaignId ?? null,
+      payload: base,
+    });
+    await appendJournalEntry({
+      action: 'imap_cv_analyzed',
+      actor: 'manager-chat',
+      campaignId: campaignId ?? null,
+      payload: {
+        ...base,
+        email: result.email,
+        score: result.score,
+        aboveThreshold: result.aboveThreshold,
+      },
+    });
+  } catch (err) {
+    // Pas de persistance configurée (démo locale) → silencieux. Toute
+    // autre erreur est loggée serveur sans casser l'analyse.
+    if (!(err instanceof SupabaseNotConfiguredError)) {
+      console.error('[cv-analyzer] journal candidate failed', err);
+    }
   }
 }

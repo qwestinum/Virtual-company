@@ -5,6 +5,25 @@ Format : titre, contexte, risque, piste de résolution.
 
 ---
 
+## Actions journal `imap_cv_*` réutilisées pour les CV uploadés par chat
+
+**Statut** : fonctionnel, naming trompeur.
+**Code concerné** : `src/app/api/cv-analyzer/route.ts` (`journalChatCV`),
+`src/lib/dashboard/derive-metrics.ts`.
+
+Les CV analysés via le chat sont journalisés avec les actions `imap_cv_received`
+et `imap_cv_analyzed` (préfixe `imap_`) pour être comptés au dashboard sans
+réécrire la dérivation des métriques ni perdre l'historique Supabase. Le champ
+`payload.source: 'chat'` distingue l'origine.
+
+**Limite** : le préfixe `imap_` ment sur la source (upload chat ≠ email IMAP).
+
+**Piste** : introduire des actions neutres (`cv_received` / `cv_analyzed`) et
+faire lire à `derive-metrics` l'ancien ET le nouveau nom (compat historique),
+puis migrer les écritures. Cosmétique tant que la distinction `source` suffit.
+
+---
+
 ## Robustesse du parsing PDF (extraction CV) — à durcir avant prod VPS
 
 **Statut** : fonctionnel, mais repose sur des hypothèses fragiles.
