@@ -12,6 +12,10 @@
 
 import { create } from 'zustand';
 
+import {
+  deriveActiveStatus,
+  lifecycleFromLegacy,
+} from '@/lib/campaign/lifecycle';
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
@@ -129,12 +133,40 @@ function jobTitleFromFDP(fdp: FDPInProgress): string {
 }
 
 /**
- * Dérive le status initial d'une campagne au moment de l'archivage.
- * La FDP validée mène à 'in_progress' (cadrage fait, reste annonce
- * + scoring) ; sinon 'draft'.
+ * Inc. 1 — Dérive le statut « dérivable » (draft/in_progress/active) d'une
+ * campagne à partir de ses artefacts, via la MACHINE D'ÉTATS (engine pur).
+ * Remplace l'ancienne logique 3-booléens inline. Tant qu'aucune phase n'est
+ * `postponed` (Inc. 2+), le résultat est strictement équivalent à l'ancien :
+ * active = FDP validée + ≥1 canal publié + flux confirmés + scoring validé.
+ */
+function deriveDerivableStatus(input: {
+  fdp: FDPInProgress;
+  scoringSheet: ScoringSheet | null;
+  sourcesConfirmed: boolean;
+  publishedChannels: PublicationChannel[];
+}): Extract<CampaignStatus, 'draft' | 'in_progress' | 'active'> {
+  return deriveActiveStatus(
+    lifecycleFromLegacy({
+      fdpValidated: input.fdp.isValidated,
+      scoringValidated: input.scoringSheet?.isValidated === true,
+      scoringStarted: input.scoringSheet != null,
+      sourcesConfirmed: input.sourcesConfirmed,
+      hasPublishedChannel: input.publishedChannels.length > 0,
+    }),
+  );
+}
+
+/**
+ * Status initial au moment de l'archivage (campagne neuve, sans artefact
+ * aval) : FDP validée → 'in_progress', sinon 'draft'. Dérivé via l'engine.
  */
 function deriveInitialStatus(fdp: FDPInProgress): CampaignStatus {
-  return fdp.isValidated ? 'in_progress' : 'draft';
+  return deriveDerivableStatus({
+    fdp,
+    scoringSheet: null,
+    sourcesConfirmed: false,
+    publishedChannels: [],
+  });
 }
 
 export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
@@ -297,18 +329,9 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       if (current.status === 'paused' || current.status === 'closed') {
         return state;
       }
-      let nextStatus: CampaignStatus;
-      if (!current.fdp.isValidated) {
-        nextStatus = 'draft';
-      } else if (
-        current.publishedChannels.length > 0 &&
-        current.sourcesConfirmed &&
-        current.scoringSheet?.isValidated === true
-      ) {
-        nextStatus = 'active';
-      } else {
-        nextStatus = 'in_progress';
-      }
+      // Statut DÉRIVÉ de la machine d'états (Inc. 1) — plus de logique
+      // 3-booléens inline. Une seule source de dérivation.
+      const nextStatus = deriveDerivableStatus(current);
       if (nextStatus === current.status) return state;
       return {
         ...state,
