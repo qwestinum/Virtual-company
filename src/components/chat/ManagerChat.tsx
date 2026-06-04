@@ -727,7 +727,12 @@ export function ManagerChat() {
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [messages.length, isSending, isTranscribing]);
+    // `editingMessageId` est dans les deps : l'ouverture de l'éditeur en
+    // place (clic « Ajuster ») n'ajoute PAS de message, donc sans ce
+    // déclencheur l'éditeur s'ouvrait sous la zone visible pour les bulles
+    // longues (missions / compétences = listes multi-lignes) — le DRH avait
+    // l'impression qu'« Ajuster » ne faisait rien. On scrolle pour le révéler.
+  }, [messages.length, isSending, isTranscribing, editingMessageId]);
 
   function handleReset() {
     resetChat();
