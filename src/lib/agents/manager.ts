@@ -17,6 +17,11 @@
  */
 
 import { isAdjustmentSignal } from '@/components/chat/adjustment-signal';
+import {
+  buildCampaignFollowupResponse,
+  buildReportingResponse,
+  type ReportingSnapshot,
+} from '@/lib/agents/manager-reporting';
 import { chatComplete } from '@/lib/ai/provider';
 import {
   searchExistingJobDescriptions,
@@ -80,6 +85,14 @@ export type ConversationTurn = {
 export type ManagerTurnInput = {
   history: ConversationTurn[];
   fdp: FDPInProgress | null;
+  /**
+   * Chargeur paresseux des données de reporting (campagnes + journal).
+   * Invoqué UNIQUEMENT pour les intentions `campaign_followup` /
+   * `reporting_request` — aucune requête DB sur les tours de collecte.
+   * Renvoie null si la persistance n'est pas configurée → réponse
+   * dégradée. Injecté par la route (découple le Manager de Supabase).
+   */
+  loadReportingSnapshot?: () => Promise<ReportingSnapshot | null>;
 };
 
 export type ManagerTurnMetrics = {
@@ -531,6 +544,34 @@ export async function runManagerTurn(
       response: buildOtherIntentResponse(),
       preSearchHits: [],
       campaignId: null,
+      pendingSwitch: null,
+      metrics: {
+        durationMs: intentCompletion.durationMs,
+        tokensUsed: intentCompletion.usage.totalTokens,
+        costEstimate: intentCompletion.costEstimate,
+      },
+    };
+  }
+
+  // SUIVI / REPORTING — réponses déterministes alimentées par les
+  // données réelles (campagnes + journal), pas par le LLM. On charge le
+  // snapshot paresseusement (aucune requête DB sur les tours de collecte).
+  if (
+    classification.intent === 'campaign_followup' ||
+    classification.intent === 'reporting_request'
+  ) {
+    const snapshot = input.loadReportingSnapshot
+      ? await input.loadReportingSnapshot().catch(() => null)
+      : null;
+    const response =
+      classification.intent === 'reporting_request'
+        ? buildReportingResponse(snapshot)
+        : buildCampaignFollowupResponse(snapshot, lastUserMessage);
+    return {
+      classification,
+      response,
+      preSearchHits: [],
+      campaignId: input.fdp?.campaignId ?? null,
       pendingSwitch: null,
       metrics: {
         durationMs: intentCompletion.durationMs,

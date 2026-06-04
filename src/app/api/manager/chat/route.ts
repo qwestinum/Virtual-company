@@ -6,8 +6,31 @@ import {
   runManagerTurn,
   type ConversationTurn,
 } from '@/lib/agents/manager';
+import type { ReportingSnapshot } from '@/lib/agents/manager-reporting';
 import { AIProviderError } from '@/lib/ai/errors';
+import { listCampaigns } from '@/lib/db/repos/campaigns';
+import { listJournalEntries } from '@/lib/db/repos/journal';
+import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { FDPInProgressSchema } from '@/types/field-collection';
+
+/**
+ * Charge les données de reporting depuis Supabase. Appelé paresseusement
+ * par runManagerTurn seulement pour les intentions suivi/reporting. Si la
+ * persistance n'est pas configurée → null (réponse dégradée côté Manager).
+ */
+async function loadReportingSnapshot(): Promise<ReportingSnapshot | null> {
+  try {
+    const [campaigns, journal] = await Promise.all([
+      listCampaigns(),
+      listJournalEntries({ limit: 500 }),
+    ]);
+    return { campaigns, journal };
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return null;
+    console.error('[manager/chat] loadReportingSnapshot failed', err);
+    return null;
+  }
+}
 
 export const runtime = 'nodejs';
 // runManagerTurn enchaîne 2 appels OpenAI (classification + conversation),
@@ -44,6 +67,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const result = await runManagerTurn({
       history: parsedBody.messages as ConversationTurn[],
       fdp: parsedBody.fdp ?? null,
+      loadReportingSnapshot,
     });
 
     return NextResponse.json({
