@@ -6,6 +6,7 @@
  * pas `CampaignRow`.
  */
 
+import { reconcileLifecycle } from '@/lib/campaign/lifecycle';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { CampaignRow } from '@/lib/db/types';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
@@ -15,16 +16,29 @@ import type { PublicationChannel } from '@/types/publication-channel';
 const TABLE = 'campaigns';
 
 function rowToCampaign(row: CampaignRow): ActiveCampaign {
+  const scoringSheet = row.scoring_sheet ?? null;
+  const publishedChannels = row.published_channels ?? [];
+  const sourcesConfirmed = row.sources_confirmed;
   return {
     id: row.id,
     name: row.name,
     fdp: row.fdp,
-    scoringSheet: row.scoring_sheet ?? null,
-    publishedChannels: row.published_channels ?? [],
-    sourcesConfirmed: row.sources_confirmed,
+    scoringSheet,
+    publishedChannels,
+    sourcesConfirmed,
     sources: row.sources ?? ['manual'],
     threshold: row.threshold ?? 75,
     status: row.status,
+    // Inc. 2a — lifecycle non persisté : re-dérivé des artefacts au
+    // chargement (les `postponed` ne survivent pas encore au reload ;
+    // persistance prévue à un incrément ultérieur).
+    lifecycle: reconcileLifecycle(null, {
+      fdpValidated: row.fdp.isValidated,
+      scoringValidated: scoringSheet?.isValidated === true,
+      scoringStarted: scoringSheet != null,
+      sourcesConfirmed,
+      hasPublishedChannel: publishedChannels.length > 0,
+    }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

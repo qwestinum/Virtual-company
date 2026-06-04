@@ -11,6 +11,7 @@ vi.mock('@/lib/db/supabase-server', async () => {
   };
 });
 
+import { buildLifecycle } from '@/lib/campaign/lifecycle';
 import {
   listCampaigns,
   patchCampaign,
@@ -37,6 +38,7 @@ function buildCampaign(overrides: Partial<ActiveCampaign> = {}): ActiveCampaign 
     sources: ['manual'],
     threshold: 75,
     status: 'in_progress',
+    lifecycle: buildLifecycle(),
     createdAt: '2026-05-01T00:00:00Z',
     updatedAt: '2026-05-01T00:00:00Z',
     ...overrides,

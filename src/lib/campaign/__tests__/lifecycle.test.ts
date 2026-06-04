@@ -10,6 +10,7 @@ import {
   lifecycleFromLegacy,
   missingDependencies,
   parseLifecycle,
+  reconcileLifecycle,
   transitiveDependents,
 } from '@/lib/campaign/lifecycle';
 import {
@@ -347,5 +348,61 @@ describe('lifecycleFromLegacy (bridge Inc. 0)', () => {
       hasPublishedChannel: false,
     });
     expect(lc.phases.scoring.status).toBe('in_progress');
+  });
+});
+
+describe('reconcileLifecycle', () => {
+  const allDone = {
+    fdpValidated: true,
+    scoringValidated: true,
+    sourcesConfirmed: true,
+    hasPublishedChannel: true,
+  };
+
+  it('sans prev = projection pure des booléens (comportement actuel)', () => {
+    expect(reconcileLifecycle(null, allDone)).toEqual(lifecycleFromLegacy(allDone));
+  });
+
+  it('un artefact présent force done même si le prev disait postponed', () => {
+    const prev = buildLifecycle({
+      scoring: 'done',
+      intake: 'done',
+      announcement: 'postponed',
+      publication: 'postponed',
+    });
+    const next = reconcileLifecycle(prev, allDone); // l'annonce a finalement été publiée
+    expect(next.phases.announcement.status).toBe('done');
+    expect(next.phases.publication.status).toBe('done');
+  });
+
+  it('PRÉSERVE un postponed quand l’artefact reste absent', () => {
+    const prev = buildLifecycle({
+      scoring: 'done',
+      intake: 'done',
+      announcement: 'postponed',
+      publication: 'postponed',
+    });
+    const next = reconcileLifecycle(prev, {
+      fdpValidated: true,
+      scoringValidated: true,
+      sourcesConfirmed: true,
+      hasPublishedChannel: false, // toujours pas publié
+    });
+    expect(next.phases.announcement.status).toBe('postponed');
+    expect(next.phases.publication.status).toBe('postponed');
+    // → campagne lancée malgré l'absence de publication
+    expect(deriveActiveStatus(next)).toBe('active');
+  });
+
+  it('redescend un done devenu absent (réouverture) à pending', () => {
+    const prev = buildLifecycle({ scoring: 'done', intake: 'done', announcement: 'done', publication: 'done' });
+    const next = reconcileLifecycle(prev, {
+      fdpValidated: true,
+      scoringValidated: true,
+      sourcesConfirmed: true,
+      hasPublishedChannel: false,
+    });
+    expect(next.phases.announcement.status).toBe('pending');
+    expect(next.phases.publication.status).toBe('pending');
   });
 });

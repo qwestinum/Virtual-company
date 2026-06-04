@@ -266,17 +266,55 @@ export function lifecycleFromLegacy(input: {
   sourcesConfirmed: boolean;
   hasPublishedChannel: boolean;
 }): CampaignLifecycle {
-  const scoring: PhaseStatus = input.scoringValidated
-    ? 'done'
-    : input.scoringStarted
-      ? 'in_progress'
-      : 'pending';
-  const adDone: PhaseStatus = input.hasPublishedChannel ? 'done' : 'pending';
-  return buildLifecycle({
-    fdp: input.fdpValidated ? 'done' : 'pending',
-    scoring,
-    intake: input.sourcesConfirmed ? 'done' : 'pending',
-    announcement: adDone,
-    publication: adDone,
-  });
+  return reconcileLifecycle(null, input);
+}
+
+/**
+ * Réconcilie une machine STOCKÉE avec les artefacts legacy (booléens).
+ * Une phase « faite » (artefact présent) passe `done` ; sinon on PRÉSERVE
+ * un état explicite antérieur (`postponed` → reste reporté, `in_progress`
+ * → reste en cours), faute de quoi `pending`. C'est ce qui permettra,
+ * dès l'introduction du report (« à remettre à plus tard »), de NE PAS
+ * écraser un `postponed` à chaque recompute.
+ *
+ * Tant qu'aucune phase n'est `postponed` (avant Inc. 2 report), le
+ * résultat est une projection pure des booléens = comportement actuel.
+ */
+export function reconcileLifecycle(
+  prev: CampaignLifecycle | null,
+  input: {
+    fdpValidated: boolean;
+    scoringValidated: boolean;
+    scoringStarted?: boolean;
+    sourcesConfirmed: boolean;
+    hasPublishedChannel: boolean;
+  },
+): CampaignLifecycle {
+  const done: Record<PhaseId, boolean> = {
+    fdp: input.fdpValidated,
+    scoring: input.scoringValidated,
+    intake: input.sourcesConfirmed,
+    // NB : rédaction et publication restent fusionnées côté legacy
+    // (`publishedChannels`) — séparées en Inc. 2c.
+    announcement: input.hasPublishedChannel,
+    publication: input.hasPublishedChannel,
+  };
+  const overrides = {} as Record<PhaseId, PhaseStatus>;
+  for (const id of PHASE_IDS) {
+    if (done[id]) {
+      overrides[id] = 'done';
+      continue;
+    }
+    const prevStatus = prev?.phases[id].status;
+    if (prevStatus === 'postponed' || prevStatus === 'in_progress') {
+      overrides[id] = prevStatus;
+      continue;
+    }
+    if (id === 'scoring' && input.scoringStarted) {
+      overrides[id] = 'in_progress';
+      continue;
+    }
+    overrides[id] = 'pending';
+  }
+  return buildLifecycle(overrides);
 }

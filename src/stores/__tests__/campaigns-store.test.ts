@@ -218,6 +218,34 @@ describe('campaigns-store', () => {
     ).toBeNull();
   });
 
+  it('addCampaign initialise le lifecycle (FDP done, aval pending)', () => {
+    const c = useCampaignsStore
+      .getState()
+      .addCampaign({ fdp: makeFDP('CAMP-2026-LC1', true) });
+    expect(c.lifecycle.phases.fdp.status).toBe('done');
+    expect(c.lifecycle.phases.scoring.status).toBe('pending');
+    expect(c.lifecycle.phases.announcement.status).toBe('pending');
+  });
+
+  it('les mutations de jalon tiennent le lifecycle à jour → active', () => {
+    const fdp = makeFDP('CAMP-2026-LC2', true);
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-2026-LC2',
+      isValidated: true,
+      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+    };
+    const store = useCampaignsStore.getState();
+    store.addCampaign({ fdp, scoringSheet: sheet });
+    store.markPublishedChannel('CAMP-2026-LC2', 'linkedin');
+    store.markSourcesConfirmed('CAMP-2026-LC2');
+    store.recomputeStatus('CAMP-2026-LC2');
+    const c = useCampaignsStore.getState().getById('CAMP-2026-LC2')!;
+    expect(c.lifecycle.phases.scoring.status).toBe('done');
+    expect(c.lifecycle.phases.intake.status).toBe('done');
+    expect(c.lifecycle.phases.announcement.status).toBe('done');
+    expect(c.status).toBe('active');
+  });
+
   it('addCampaign initialise le seuil par défaut à 75', () => {
     const c = useCampaignsStore
       .getState()

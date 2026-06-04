@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { reconcileLifecycle } from '@/lib/campaign/lifecycle';
 import { listCampaigns, upsertCampaign } from '@/lib/db/repos/campaigns';
 import { archiveFdp } from '@/lib/db/repos/fdps-archived';
 import { archiveScoringSheet } from '@/lib/db/repos/scoring-sheets';
@@ -77,10 +78,20 @@ export async function PUT(request: Request): Promise<NextResponse> {
   }
 
   try {
+    const sources = parsed.sources ?? ['manual'];
     const saved = await upsertCampaign({
       ...parsed,
       threshold: parsed.threshold ?? 75,
-      sources: parsed.sources ?? ['manual'],
+      sources,
+      // lifecycle non persisté (campaignToRow le drop) — fourni pour
+      // satisfaire le type ActiveCampaign ; re-dérivé au chargement.
+      lifecycle: reconcileLifecycle(null, {
+        fdpValidated: parsed.fdp.isValidated,
+        scoringValidated: parsed.scoringSheet?.isValidated === true,
+        scoringStarted: parsed.scoringSheet != null,
+        sourcesConfirmed: parsed.sourcesConfirmed,
+        hasPublishedChannel: (parsed.publishedChannels ?? []).length > 0,
+      }),
     });
     // À la première validation de la FDP, on alimente l'index de
     // pré-recherche. Idempotent côté repo (upsert).

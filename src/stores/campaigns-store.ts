@@ -14,8 +14,9 @@ import { create } from 'zustand';
 
 import {
   deriveActiveStatus,
-  lifecycleFromLegacy,
+  reconcileLifecycle,
 } from '@/lib/campaign/lifecycle';
+import type { CampaignLifecycle } from '@/types/campaign-lifecycle';
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
@@ -63,6 +64,13 @@ export type ActiveCampaign = {
    * par updateStatus (closed, paused).
    */
   status: CampaignStatus;
+  /**
+   * Inc. 2a — machine d'états des phases (source de vérité du déroulé).
+   * Tenue à jour par les mutations de jalon (addCampaign / markPublished /
+   * markSources) via `reconcileLifecycle`. `status` en est dérivé. Volatile
+   * (non persistée pour l'instant — re-dérivée des artefacts au chargement).
+   */
+  lifecycle: CampaignLifecycle;
   createdAt: string;
   updatedAt: string;
 };
@@ -132,41 +140,35 @@ function jobTitleFromFDP(fdp: FDPInProgress): string {
   return 'Poste non précisé';
 }
 
-/**
- * Inc. 1 — Dérive le statut « dérivable » (draft/in_progress/active) d'une
- * campagne à partir de ses artefacts, via la MACHINE D'ÉTATS (engine pur).
- * Remplace l'ancienne logique 3-booléens inline. Tant qu'aucune phase n'est
- * `postponed` (Inc. 2+), le résultat est strictement équivalent à l'ancien :
- * active = FDP validée + ≥1 canal publié + flux confirmés + scoring validé.
- */
-function deriveDerivableStatus(input: {
+/** Projette les artefacts d'une campagne en booléens pour la machine. */
+function artifactBooleans(input: {
   fdp: FDPInProgress;
   scoringSheet: ScoringSheet | null;
   sourcesConfirmed: boolean;
   publishedChannels: PublicationChannel[];
-}): Extract<CampaignStatus, 'draft' | 'in_progress' | 'active'> {
-  return deriveActiveStatus(
-    lifecycleFromLegacy({
-      fdpValidated: input.fdp.isValidated,
-      scoringValidated: input.scoringSheet?.isValidated === true,
-      scoringStarted: input.scoringSheet != null,
-      sourcesConfirmed: input.sourcesConfirmed,
-      hasPublishedChannel: input.publishedChannels.length > 0,
-    }),
-  );
+}) {
+  return {
+    fdpValidated: input.fdp.isValidated,
+    scoringValidated: input.scoringSheet?.isValidated === true,
+    scoringStarted: input.scoringSheet != null,
+    sourcesConfirmed: input.sourcesConfirmed,
+    hasPublishedChannel: input.publishedChannels.length > 0,
+  };
 }
 
 /**
- * Status initial au moment de l'archivage (campagne neuve, sans artefact
- * aval) : FDP validée → 'in_progress', sinon 'draft'. Dérivé via l'engine.
+ * Inc. 2a — réconcilie la machine STOCKÉE d'une campagne avec ses artefacts
+ * courants (préserve les `postponed`/`in_progress` explicites). À appeler
+ * dans toute mutation de jalon avant d'écrire la campagne.
  */
-function deriveInitialStatus(fdp: FDPInProgress): CampaignStatus {
-  return deriveDerivableStatus({
-    fdp,
-    scoringSheet: null,
-    sourcesConfirmed: false,
-    publishedChannels: [],
-  });
+function syncLifecycle(input: {
+  fdp: FDPInProgress;
+  scoringSheet: ScoringSheet | null;
+  sourcesConfirmed: boolean;
+  publishedChannels: PublicationChannel[];
+  lifecycle?: CampaignLifecycle;
+}): CampaignLifecycle {
+  return reconcileLifecycle(input.lifecycle ?? null, artifactBooleans(input));
 }
 
 export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
@@ -180,8 +182,7 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
     // courant (ne le redescend pas à 'in_progress' alors qu'elle est
     // peut-être déjà 'active' / 'closed').
     const existing = get().byId[input.fdp.campaignId];
-    const status =
-      input.status ?? existing?.status ?? deriveInitialStatus(input.fdp);
+    // (lifecycle/status calculés plus bas, une fois scoringSheet etc. résolus)
     // Le snapshot de scoring du caller prime ; sinon on garde l'existant
     // (on évite de l'effacer accidentellement quand un addCampaign
     // ultérieur ne porte que la FDP).
@@ -197,6 +198,16 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       input.sources ?? existing?.sources ?? ['manual'];
     const threshold =
       input.threshold ?? existing?.threshold ?? 75;
+    const lifecycle = syncLifecycle({
+      fdp: input.fdp,
+      scoringSheet,
+      sourcesConfirmed,
+      publishedChannels,
+      lifecycle: existing?.lifecycle,
+    });
+    // Statut : surcharge explicite > statut existant préservé > dérivé.
+    const status =
+      input.status ?? existing?.status ?? deriveActiveStatus(lifecycle);
     const campaign: ActiveCampaign = {
       id: input.fdp.campaignId,
       name,
@@ -207,6 +218,7 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       sources,
       threshold,
       status,
+      lifecycle,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -289,13 +301,15 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       const current = state.byId[id];
       if (!current) return state;
       if (current.publishedChannels.includes(channel)) return state;
+      const publishedChannels = [...current.publishedChannels, channel];
       return {
         ...state,
         byId: {
           ...state.byId,
           [id]: {
             ...current,
-            publishedChannels: [...current.publishedChannels, channel],
+            publishedChannels,
+            lifecycle: syncLifecycle({ ...current, publishedChannels }),
             updatedAt: new Date().toISOString(),
           },
         },
@@ -314,6 +328,7 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
           [id]: {
             ...current,
             sourcesConfirmed: true,
+            lifecycle: syncLifecycle({ ...current, sourcesConfirmed: true }),
             updatedAt: new Date().toISOString(),
           },
         },
@@ -329,9 +344,10 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       if (current.status === 'paused' || current.status === 'closed') {
         return state;
       }
-      // Statut DÉRIVÉ de la machine d'états (Inc. 1) — plus de logique
-      // 3-booléens inline. Une seule source de dérivation.
-      const nextStatus = deriveDerivableStatus(current);
+      // Statut DÉRIVÉ de la machine d'états stockée (Inc. 2a). Le lifecycle
+      // est tenu à jour par les mutations de jalon ; ici on ne fait que
+      // dériver. Une seule source de vérité.
+      const nextStatus = deriveActiveStatus(current.lifecycle);
       if (nextStatus === current.status) return state;
       return {
         ...state,
