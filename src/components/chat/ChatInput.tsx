@@ -1,8 +1,7 @@
 'use client';
 
 import { Mic, Paperclip, Send, X } from 'lucide-react';
-import { useEffect, useImperativeHandle, useRef, useState } from 'react';
-import type { Ref } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { VoiceTranscript } from '@/components/chat/VoiceTranscript';
 import { useMicRecorder } from '@/lib/chat/use-mic-recorder';
@@ -19,24 +18,7 @@ export type ChatInputProps = {
   disabled: boolean;
   onSendText: (text: string, source: 'text' | 'voice') => Promise<void>;
   onTranscribe: (audio: File) => Promise<string>;
-  /**
-   * Token incrémental qui force le focus du textarea quand il change.
-   * Utilisé par le parent pour reprendre la main après un clic chip
-   * d'ajustement (cf. dismissLastManagerChips dans chat-store).
-   */
-  focusToken?: number;
   onFilesSelected?: (files: File[]) => void;
-  /**
-   * Poignée impérative exposée au parent pour reprendre la main sur la
-   * zone de saisie de façon SYNCHRONE, dans le geste utilisateur (clic
-   * chip d'ajustement). Le focus différé via `focusToken` reste branché
-   * comme filet de sécurité post-render.
-   */
-  handleRef?: Ref<ChatInputHandle>;
-};
-
-export type ChatInputHandle = {
-  focus: () => void;
 };
 
 const ACCEPTED_FILE_TYPES = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
@@ -47,9 +29,7 @@ export function ChatInput({
   disabled,
   onSendText,
   onTranscribe,
-  focusToken,
   onFilesSelected,
-  handleRef,
 }: ChatInputProps) {
   const [draft, setDraft] = useState('');
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('idle');
@@ -60,30 +40,12 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorder = useMicRecorder();
 
-  useImperativeHandle(
-    handleRef,
-    () => ({
-      focus: () => {
-        const ta = textareaRef.current;
-        if (!ta) return;
-        ta.focus();
-        ta.scrollIntoView({ block: 'nearest' });
-      },
-    }),
-    [],
-  );
-
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
   }, [draft]);
-
-  useEffect(() => {
-    if (focusToken === undefined) return;
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [focusToken]);
 
   function handleDraftChange(value: string) {
     setDraft(value);
@@ -195,11 +157,16 @@ export function ChatInput({
               }
             }}
             placeholder="Décris ta demande au Manager RH"
-            disabled={disabled}
+            // Le textarea reste TOUJOURS éditable : on ne le passe jamais
+            // `disabled`. Un état busy transitoire (tour Manager en cours,
+            // travail de fond d'un agent) ne doit pas désactiver le champ —
+            // sinon le navigateur retire le focus (focusout) et les frappes
+            // du DRH sont perdues. Le `disabled` ne gèle que l'ENVOI et le
+            // micro (cf. sendDisabled / boutons), jamais la saisie.
             rows={1}
             className={cn(
               'font-body flex-1 resize-none bg-transparent text-[14px] leading-relaxed',
-              'outline-none placeholder:text-stone-400 disabled:opacity-60 py-1',
+              'outline-none placeholder:text-stone-400 py-1',
             )}
           />
           {draftFromVoice && draft.length > 0 ? (

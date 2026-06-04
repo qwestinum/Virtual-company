@@ -16,6 +16,7 @@ import { create } from 'zustand';
 
 import type { CVBatchSummary } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
+import type { FieldKey } from '@/types/field-collection';
 import type { ChipSet } from '@/types/manager-response';
 import type { PublicationChannel } from '@/types/publication-channel';
 
@@ -158,6 +159,14 @@ export type ChatMessage = {
   chips?: ChipSet;
   attachment?: ChatAttachment;
   block?: ChatBlock;
+  /**
+   * Champs SOURCE (FDP) que cette bulle a proposés ce tour, copiés
+   * depuis les `fieldExtractions` de la réponse Manager. C'est le LIEN
+   * bulle → source de vérité : un clic « Ajuster » sur cette bulle édite
+   * ces champs dans la FDP (via applyExtractions), jamais le texte de la
+   * bulle. Voir memory feedback_single_source_of_truth.
+   */
+  proposedExtractions?: Partial<Record<FieldKey, unknown>>;
 };
 
 export type ChatState = {

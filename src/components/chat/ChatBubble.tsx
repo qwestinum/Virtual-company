@@ -11,10 +11,15 @@ import { CVProgressBlock } from '@/components/chat/CVProgressBlock';
 import { CVRoutePicker } from '@/components/chat/CVRoutePicker';
 import { CVSourcesPicker } from '@/components/chat/CVSourcesPicker';
 import { MailboxPicker } from '@/components/chat/MailboxPicker';
+import {
+  MessageTextEditor,
+  type EditableField,
+} from '@/components/chat/MessageTextEditor';
 import { parseMessageToBlocks } from '@/components/chat/chat-message-renderer';
 import { PublicationChannelPicker } from '@/components/chat/PublicationChannelPicker';
 import { ScoringSheetEditor } from '@/components/chat/ScoringSheetEditor';
 import type { CVSource } from '@/types/cv-source';
+import type { FieldKey } from '@/types/field-collection';
 import type { PublicationChannel } from '@/types/publication-channel';
 import type {
   ScoringCriterion,
@@ -62,6 +67,17 @@ export type ChatBubbleProps = {
   onScoringValidate?: (messageId: string) => void;
   onMailboxPick?: (campaignId: string, mailboxId: string) => void;
   blocksDisabled?: boolean;
+  /**
+   * Édition en place des CHAMPS SOURCE proposés par la bulle (clic
+   * « Ajuster »). Quand `isEditing` est true, un éditeur multi-ligne par
+   * champ (`editFields`, pré-rempli depuis la FDP) apparaît SOUS le texte.
+   * `onEditSubmit` applique les valeurs à la source (FDP) ; `onEditCancel`
+   * abandonne. Le texte de la bulle n'est jamais réécrit (dérivé, pas source).
+   */
+  isEditing?: boolean;
+  editFields?: EditableField[];
+  onEditSubmit?: (edits: { fieldKey: FieldKey; raw: string }[]) => void;
+  onEditCancel?: () => void;
 };
 
 export function ChatBubble({
@@ -82,12 +98,17 @@ export function ChatBubble({
   onScoringValidate,
   onMailboxPick,
   blocksDisabled,
+  isEditing,
+  editFields,
+  onEditSubmit,
+  onEditCancel,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const isVoice = message.source === 'voice';
   const time = formatTime(message.createdAt);
   const inlineChips =
     showInlineChips &&
+    !isEditing &&
     message.chips &&
     message.chips.placement === 'inline' &&
     onChipSelect
@@ -104,7 +125,11 @@ export function ChatBubble({
       {isUser ? <UserAvatar /> : <ManagerAvatar />}
       <div
         className={cn(
-          'flex flex-col max-w-[78%]',
+          'flex flex-col',
+          // En édition de texte, la bulle s'élargit pour offrir une zone
+          // confortable (sinon le textarea hérite de la largeur du texte
+          // court et paraît minuscule).
+          isEditing ? 'w-full max-w-[94%]' : 'max-w-[78%]',
           isUser ? 'items-end' : 'items-start',
         )}
       >
@@ -120,6 +145,7 @@ export function ChatBubble({
         <div
           className={cn(
             'font-body text-[14px] leading-relaxed px-3.5 py-2.5 shadow-sm',
+            isEditing && 'w-full',
             isUser
               ? 'text-white rounded-2xl rounded-br-md'
               : 'bg-white text-stone-900 border border-stone-200 border-l-[3px] rounded-2xl rounded-bl-md',
@@ -136,6 +162,17 @@ export function ChatBubble({
             </span>
           ) : null}
           <RenderedContent content={message.content} />
+          {isEditing &&
+          editFields &&
+          editFields.length > 0 &&
+          onEditSubmit &&
+          onEditCancel ? (
+            <MessageTextEditor
+              fields={editFields}
+              onSubmit={onEditSubmit}
+              onCancel={onEditCancel}
+            />
+          ) : null}
           {/*
             Round 3 — l'attachment (livrable produit) est rendu AVANT
             les blocks (actions/widgets de pilotage). Logique narrative :

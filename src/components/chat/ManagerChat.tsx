@@ -40,7 +40,8 @@ import {
 } from '@/stores/scoring-store';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { ChatChips } from '@/components/chat/ChatChips';
-import { ChatInput, type ChatInputHandle } from '@/components/chat/ChatInput';
+import { ChatInput } from '@/components/chat/ChatInput';
+import type { EditableField } from '@/components/chat/MessageTextEditor';
 import { FieldChecklist } from '@/components/chat/FieldChecklist';
 import { TypingDots } from '@/components/chat/TypingDots';
 import { IsolatedCriteriaChecklist } from '@/components/chat/IsolatedCriteriaChecklist';
@@ -86,6 +87,7 @@ import {
   buildEmptyFDP,
   FIELD_KEYS,
   type FDPInProgress,
+  type FieldKey,
 } from '@/types/field-collection';
 import {
   ISOLATED_CRITERIA_KEYS,
@@ -513,6 +515,55 @@ function buildIsolatedCriteriaPayload(
   return out;
 }
 
+/**
+ * Champs FDP qui constituent matériellement le contenu d'une annonce.
+ * Si l'un d'eux change réellement alors qu'une annonce existe déjà, le
+ * changement est jugé « structurel » → le Manager propose de la refaire
+ * (le DRH tranche). `start_date` n'apparaît pas dans l'annonce : un
+ * ajustement de date seul n'en déclenche pas la régénération.
+ */
+const STRUCTURAL_AD_FIELDS = new Set<FieldKey>([
+  'job_title',
+  'seniority',
+  'contract_type',
+  'location',
+  'salary_range',
+  'main_missions',
+  'key_skills',
+]);
+
+const AD_ARRAY_FIELDS = new Set<FieldKey>(['main_missions', 'key_skills']);
+
+// Libellés des chips de la proposition de régénération d'annonce —
+// interceptés côté client (cf. handleChipSelect).
+const REGEN_AD_YES = "Refaire l'annonce";
+const REGEN_AD_NO = 'Laisser tel quel';
+
+/** Valeur d'un champ FDP → texte d'édition (liste = un item par ligne). */
+function formatFieldValueForEdit(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) {
+    return value.map((v) => (typeof v === 'string' ? v : String(v))).join('\n');
+  }
+  if (typeof value === 'string') return value;
+  return String(value);
+}
+
+/** Texte d'édition → valeur de champ (liste re-splittée pour les arrays). */
+function parseFieldValue(fieldKey: FieldKey, raw: string): unknown {
+  const trimmed = raw.trim();
+  if (!AD_ARRAY_FIELDS.has(fieldKey)) return trimmed;
+  return trimmed
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/** Comparaison « valeur de champ » stable (ordre/format insensibles). */
+function fieldValuesEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
 export function ManagerChat() {
   const messages = useChatStore(selectMessages);
   const isSending = useChatStore((s) => s.isSending);
@@ -528,9 +579,18 @@ export function ManagerChat() {
   );
   const resetChat = useChatStore((s) => s.reset);
 
-  const [inputFocusToken, setInputFocusToken] = useState(0);
-  const chatInputRef = useRef<ChatInputHandle>(null);
+  // Édition en place d'un CHAMP SOURCE (clic « Ajuster ») : la bulle et
+  // le champ FDP visés. null = aucune édition en cours.
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(
+    null,
+  );
   const [isAgentBusy, setAgentBusy] = useState(false);
+  // Token incrémental : déplie la checklist FDP (clic « Ajuster » sur une
+  // bulle sans lien source — vieux message).
+  const [expandChecklistToken, setExpandChecklistToken] = useState(0);
+  // Contexte de la proposition de régénération d'annonce en attente
+  // (campagne dont la source a changé de façon structurelle).
+  const pendingRegenRef = useRef<{ campaignId: string } | null>(null);
   const [openFirstMissingToken, setOpenFirstMissingToken] = useState(0);
   const [
     openFirstMissingIsolatedToken,
@@ -664,6 +724,134 @@ export function ManagerChat() {
     resetCampaigns();
     resetIsolated();
     resetAgents();
+  }
+
+  /**
+   * Applique UN ajustement de champ à la FDP (la source). Retourne si la
+   * valeur a réellement changé ET si ce champ est structurel pour
+   * l'annonce — l'appelant décide ensuite de proposer une régénération.
+   */
+  function applyFieldToSource(
+    fieldKey: FieldKey,
+    raw: string,
+  ): { changed: boolean; structural: boolean } {
+    const current = useFdpStore.getState().fdp;
+    if (!current) return { changed: false, structural: false };
+    const oldValue = current.fields[fieldKey]?.value;
+    const newValue = parseFieldValue(fieldKey, raw);
+    applyExtractions({ [fieldKey]: newValue } as Partial<
+      Record<FieldKey, unknown>
+    >);
+    return {
+      changed: !fieldValuesEqual(oldValue, newValue),
+      structural: STRUCTURAL_AD_FIELDS.has(fieldKey),
+    };
+  }
+
+  /**
+   * Après application d'un (ou plusieurs) ajustement(s) : si un champ
+   * structurel a réellement changé ET qu'une annonce existe déjà pour la
+   * campagne, le Manager propose de la refaire (chips). Le DRH tranche.
+   */
+  function maybeProposeAdRegeneration(structuralChanged: boolean) {
+    if (!structuralChanged) return;
+    const current = useFdpStore.getState().fdp;
+    if (!current) return;
+    const campaignId = current.campaignId;
+    const hasJobAd = Object.values(
+      useArtifactsStore.getState().byId,
+    ).some((a) => a.kind === 'job_ad' && a.campaignId === campaignId);
+    if (!hasJobAd) return;
+    pendingRegenRef.current = { campaignId };
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `J'ai mis à jour la fiche. Ce changement modifie l'annonce déjà publiée — voulez-vous que je la refasse à partir de la fiche à jour, ou qu'on la laisse telle quelle ?`,
+      chips: { placement: 'below_bubble', options: [REGEN_AD_YES, REGEN_AD_NO] },
+    });
+  }
+
+  /**
+   * Cœur « source de vérité » : un ajustement de champ unique (pencil de
+   * la checklist) → applique à la source + propage aux dérivés.
+   */
+  function handleFieldAdjust(fieldKey: FieldKey, raw: string) {
+    const { changed, structural } = applyFieldToSource(fieldKey, raw);
+    maybeProposeAdRegeneration(changed && structural);
+  }
+
+  /**
+   * Valider l'édition EN PLACE d'une bulle (clic « Ajuster ») : applique
+   * chaque champ proposé à la source, propose UNE régénération si
+   * pertinent, retire les chips de la bulle et sort de l'édition.
+   */
+  function handleProposalEditSubmit(
+    messageId: string,
+    edits: { fieldKey: FieldKey; raw: string }[],
+  ) {
+    let anyStructuralChanged = false;
+    for (const { fieldKey, raw } of edits) {
+      const { changed, structural } = applyFieldToSource(fieldKey, raw);
+      if (changed && structural) anyStructuralChanged = true;
+    }
+    updateMessage(messageId, { chips: undefined });
+    setEditingMessageId(null);
+    maybeProposeAdRegeneration(anyStructuralChanged);
+  }
+
+  /** Annuler : on sort de l'édition, les chips masqués réapparaissent. */
+  function handleProposalEditCancel() {
+    setEditingMessageId(null);
+  }
+
+  /**
+   * Champs éditables d'une bulle (clic « Ajuster ») : dérivés de ses
+   * `proposedExtractions`, pré-remplis depuis la valeur ACTUELLE du champ
+   * source (FDP), libellés. Vide si la bulle n'a rien proposé.
+   */
+  function editableFieldsForMessage(message: ChatMessage): EditableField[] {
+    const proposed = message.proposedExtractions;
+    const fdpNow = useFdpStore.getState().fdp;
+    if (!proposed || !fdpNow) return [];
+    return (Object.keys(proposed) as FieldKey[])
+      .filter((k) => fdpNow.fields[k])
+      .map((k) => ({
+        fieldKey: k,
+        label: fdpNow.fields[k]?.label ?? k,
+        initialValue: formatFieldValueForEdit(fdpNow.fields[k]?.value),
+      }));
+  }
+
+  /**
+   * Régénération de l'annonce après accord du DRH : le Job Writer la
+   * refait depuis la FDP à jour, sur les canaux déjà publiés.
+   */
+  async function handleRegenerateAd(campaignId: string) {
+    const fdpNow = useFdpStore.getState().fdp;
+    const camp = useCampaignsStore.getState().getById(campaignId);
+    const channels = camp?.publishedChannels ?? [];
+    if (!fdpNow || fdpNow.campaignId !== campaignId || channels.length === 0) {
+      appendMessage({
+        role: 'manager',
+        source: 'text',
+        content:
+          "Je n'ai pas retrouvé d'annonce publiée à refaire pour cette campagne — rien à régénérer.",
+      });
+      return;
+    }
+    appendMessage({
+      role: 'user',
+      source: 'text',
+      content: REGEN_AD_YES,
+    });
+    setAgentBusy(true);
+    try {
+      for (const channel of channels) {
+        await dispatchJobWriter(fdpNow, channel);
+      }
+    } finally {
+      setAgentBusy(false);
+    }
   }
 
   async function handleValidateFDP() {
@@ -926,6 +1114,7 @@ export function ManagerChat() {
           source: 'text',
           content: result.response.message,
           chips: result.response.chips,
+          proposedExtractions: result.response.fieldExtractions,
         });
         return;
       }
@@ -944,6 +1133,7 @@ export function ManagerChat() {
         source: 'text',
         content: result.response.message,
         chips: result.response.chips,
+        proposedExtractions: result.response.fieldExtractions,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur Manager.');
@@ -1062,15 +1252,44 @@ export function ManagerChat() {
       void handleResumeAction(fallbackAction, option);
       return;
     }
-    if (isAdjustmentSignal(option)) {
-      // Pas de tour LLM : le DRH veut juste reprendre la main. On
-      // focus le textarea de façon SYNCHRONE, dans le geste de clic —
-      // le focus différé (focusToken + rAF) était ignoré par certains
-      // navigateurs en build prod, d'où l'impression que « Ajuster »
-      // ne faisait rien. Le token reste incrémenté en filet post-render.
-      chatInputRef.current?.focus();
+    // Proposition de régénération d'annonce (chips posés par
+    // handleFieldAdjust) — le DRH tranche. PRIORITAIRE sur le reste.
+    if (pendingRegenRef.current && (option === REGEN_AD_YES || option === REGEN_AD_NO)) {
+      const { campaignId } = pendingRegenRef.current;
+      pendingRegenRef.current = null;
       dismissLastManagerChips();
-      setInputFocusToken((token) => token + 1);
+      if (option === REGEN_AD_YES) {
+        void handleRegenerateAd(campaignId);
+      } else {
+        appendMessage({
+          role: 'manager',
+          source: 'text',
+          content: "Entendu, je laisse l'annonce en l'état.",
+        });
+      }
+      return;
+    }
+    if (isAdjustmentSignal(option)) {
+      // « Ajuster » édite la SOURCE (les champs FDP proposés par la bulle),
+      // EN PLACE sous la bulle. On NE détruit PAS les chips : ils sont
+      // masqués pendant l'édition (cf. rendu) pour qu'« Annuler » les
+      // restaure ; « Valider » les retire alors.
+      const lastManager = [...useChatStore.getState().messages]
+        .reverse()
+        .find((m) => m.role === 'manager');
+      const fieldCount = lastManager
+        ? Object.keys(lastManager.proposedExtractions ?? {}).length
+        : 0;
+      if (lastManager && fieldCount >= 1) {
+        // ≥1 champ proposé → édition en place (un éditeur par champ,
+        // y compris la fiche réutilisée en bloc = les 8 champs).
+        setEditingMessageId(lastManager.id);
+      } else {
+        // 0 champ (vieux message / bulle sans lien source) → on déplie la
+        // checklist : le DRH y édite n'importe quel champ (même éditeur
+        // multi-ligne, même propagation source).
+        setExpandChecklistToken((t) => t + 1);
+      }
       return;
     }
     // Interception du dialogue de switch déterministe (sub-phase 1.3).
@@ -2144,6 +2363,8 @@ export function ManagerChat() {
             fdp.isValidated || isSending || isTranscribing || isAgentBusy
           }
           openFirstMissingToken={openFirstMissingToken}
+          expandToken={expandChecklistToken}
+          onFieldEdit={handleFieldAdjust}
         />
       ) : null}
 
@@ -2170,6 +2391,7 @@ export function ManagerChat() {
             isLast &&
             message.role === 'manager' &&
             message.chips?.placement === 'below_bubble' &&
+            message.id !== editingMessageId &&
             !isSending &&
             !isTranscribing;
           return (
@@ -2177,7 +2399,7 @@ export function ManagerChat() {
               <ChatBubble
                 message={message}
                 onChipSelect={handleChipSelect}
-                chipsDisabled={isSending || isTranscribing || isAgentBusy}
+                chipsDisabled={isSending || isTranscribing}
                 onRoutePick={handleRoutePick}
                 onCampaignPick={handleCampaignPick}
                 onChannelToggle={handleChannelToggle}
@@ -2191,12 +2413,22 @@ export function ManagerChat() {
                 onScoringValidate={handleScoringValidate}
                 onMailboxPick={handleMailboxPick}
                 blocksDisabled={isSending || isTranscribing || isAgentBusy}
+                isEditing={message.id === editingMessageId}
+                editFields={
+                  message.id === editingMessageId
+                    ? editableFieldsForMessage(message)
+                    : undefined
+                }
+                onEditSubmit={(edits) =>
+                  handleProposalEditSubmit(message.id, edits)
+                }
+                onEditCancel={handleProposalEditCancel}
               />
               {showBelow && message.chips ? (
                 <ChatChips
                   chips={message.chips}
                   onSelect={handleChipSelect}
-                  disabled={isSending || isTranscribing || isAgentBusy}
+                  disabled={isSending || isTranscribing}
                 />
               ) : null}
             </div>
@@ -2214,6 +2446,7 @@ export function ManagerChat() {
           !last ||
           last.role !== 'manager' ||
           last.chips?.placement !== 'above_input' ||
+          last.id === editingMessageId ||
           isSending ||
           isTranscribing
         )
@@ -2256,11 +2489,9 @@ export function ManagerChat() {
       ) : null}
 
       <ChatInput
-        disabled={isSending || isTranscribing || isAgentBusy}
+        disabled={isSending || isTranscribing}
         onSendText={handleSendText}
         onTranscribe={handleTranscribe}
-        focusToken={inputFocusToken}
-        handleRef={chatInputRef}
         onFilesSelected={handleFilesSelected}
       />
     </div>

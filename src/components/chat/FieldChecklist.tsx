@@ -2,6 +2,7 @@
 
 import { Check, ChevronDown, Loader2, Pencil, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 import { useFdpStore } from '@/stores/fdp-store';
@@ -26,6 +27,19 @@ export type FieldChecklistProps = {
    * point d'entrée explicite quand le LLM oublie une extraction.
    */
   openFirstMissingToken?: number;
+  /**
+   * Token incrémental : quand il change, on déplie simplement la
+   * checklist (sans ouvrir d'éditeur). Utilisé par « Ajuster » sur une
+   * proposition multi-champ (fiche réutilisée en bloc).
+   */
+  expandToken?: number;
+  /**
+   * Applique un ajustement de champ à la SOURCE. Si fourni, la checklist
+   * délègue au parent (qui écrit dans la FDP ET propage aux dérivés —
+   * ex. proposition de refaire l'annonce). Sinon, fallback local direct
+   * sur applyExtractions (collecte simple, sans dérivés).
+   */
+  onFieldEdit?: (fieldKey: FieldKey, raw: string) => void;
 };
 
 const ARRAY_FIELDS = new Set<FieldKey>(['main_missions', 'key_skills']);
@@ -35,9 +49,19 @@ export function FieldChecklist({
   defaultCollapsed = false,
   editingDisabled = false,
   openFirstMissingToken,
+  expandToken,
+  onFieldEdit,
 }: FieldChecklistProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [editingKey, setEditingKey] = useState<FieldKey | null>(null);
+
+  // Déplie la checklist quand expandToken change (« Ajuster » multi-champ).
+  // Différé hors du cycle de rendu (règle « pas de setState sync en effet »).
+  useEffect(() => {
+    if (expandToken === undefined || expandToken === 0) return;
+    const id = requestAnimationFrame(() => setCollapsed(false));
+    return () => cancelAnimationFrame(id);
+  }, [expandToken]);
 
   useEffect(() => {
     if (openFirstMissingToken === undefined || openFirstMissingToken === 0)
@@ -68,6 +92,14 @@ export function FieldChecklist({
       setEditingKey(null);
       return;
     }
+    if (onFieldEdit) {
+      // Propagation source : le parent écrit dans la FDP et gère les
+      // dérivés (ex. proposer de refaire l'annonce).
+      onFieldEdit(key, trimmed);
+      setEditingKey(null);
+      return;
+    }
+    // Fallback local (pas de parent) : application directe sur la source.
     const value: unknown = ARRAY_FIELDS.has(key)
       ? trimmed
           .split(/[\n,;]+/)
@@ -238,54 +270,174 @@ function FieldEditor({
   onSubmit: (value: string) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(initialValue ?? '');
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const placeholder = ARRAY_FIELDS.has(fieldKey)
-    ? 'séparé par des virgules'
-    : 'votre valeur';
+  const isArray = ARRAY_FIELDS.has(fieldKey);
+  // Champ liste → une valeur par ligne (multi-ligne confortable) ;
+  // champ scalaire → une seule ligne.
+  const [draft, setDraft] = useState(() =>
+    isArray
+      ? (initialValue ?? '')
+          .split(/[\n,;]+/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+          .join('\n')
+      : (initialValue ?? ''),
+  );
 
-  useEffect(() => {
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
+  // Champ liste : éditeur multi-ligne pleine largeur, empilé.
+  if (isArray) {
+    return (
+      <div className="flex flex-col gap-1.5 w-full mt-1">
+        <ArrayFieldTextarea
+          value={draft}
+          onChange={setDraft}
+          onSubmit={() => onSubmit(draft)}
+          onCancel={onCancel}
+        />
+        <div className="flex items-center justify-end gap-1">
+          <EditorIconButton label="Annuler" onClick={onCancel} variant="cancel">
+            <X className="h-3 w-3" aria-hidden />
+          </EditorIconButton>
+          <EditorIconButton
+            label="Enregistrer"
+            onClick={() => onSubmit(draft)}
+            variant="save"
+          >
+            <Check className="h-3 w-3" aria-hidden />
+          </EditorIconButton>
+        </div>
+      </div>
+    );
+  }
 
+  // Champ scalaire : input compact en ligne.
   return (
     <div className="flex items-center gap-1 max-w-[65%] min-w-0">
-      <input
-        ref={inputRef}
+      <ScalarFieldInput
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            onSubmit(draft);
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            onCancel();
-          }
-        }}
-        placeholder={placeholder}
-        className={cn(
-          'font-body text-[12px] flex-1 min-w-0 px-2 py-0.5 rounded border',
-          'border-indigo-300 bg-white outline-none',
-          'focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300',
-        )}
+        onChange={setDraft}
+        onSubmit={() => onSubmit(draft)}
+        onCancel={onCancel}
       />
-      <button
-        type="button"
-        aria-label="Enregistrer"
+      <EditorIconButton
+        label="Enregistrer"
         onClick={() => onSubmit(draft)}
-        className="h-5 w-5 grid place-items-center rounded text-emerald-600 hover:bg-emerald-50 shrink-0"
+        variant="save"
       >
         <Check className="h-3 w-3" aria-hidden />
-      </button>
-      <button
-        type="button"
-        aria-label="Annuler"
-        onClick={onCancel}
-        className="h-5 w-5 grid place-items-center rounded text-stone-500 hover:bg-stone-100 shrink-0"
-      >
+      </EditorIconButton>
+      <EditorIconButton label="Annuler" onClick={onCancel} variant="cancel">
         <X className="h-3 w-3" aria-hidden />
-      </button>
+      </EditorIconButton>
     </div>
+  );
+}
+
+function ArrayFieldTextarea({
+  value,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const ta = ref.current;
+    if (!ta) return;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }, []);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          onSubmit();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      rows={3}
+      placeholder="une valeur par ligne"
+      className={cn(
+        'font-body text-[12px] w-full resize-y min-h-[68px] px-2 py-1 rounded border',
+        'border-indigo-300 bg-white outline-none',
+        'focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300',
+      )}
+    />
+  );
+}
+
+function ScalarFieldInput({
+  value,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    requestAnimationFrame(() => ref.current?.focus());
+  }, []);
+  return (
+    <input
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onSubmit();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      placeholder="votre valeur"
+      className={cn(
+        'font-body text-[12px] flex-1 min-w-0 px-2 py-0.5 rounded border',
+        'border-indigo-300 bg-white outline-none',
+        'focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300',
+      )}
+    />
+  );
+}
+
+function EditorIconButton({
+  label,
+  onClick,
+  variant,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  variant: 'save' | 'cancel';
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        'h-5 w-5 grid place-items-center rounded shrink-0',
+        variant === 'save'
+          ? 'text-emerald-600 hover:bg-emerald-50'
+          : 'text-stone-500 hover:bg-stone-100',
+      )}
+    >
+      {children}
+    </button>
   );
 }
