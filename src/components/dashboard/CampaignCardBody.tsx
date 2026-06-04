@@ -68,13 +68,7 @@ export function CampaignCardBody({
           icon="⭐"
           color={DASH_COLORS.purple.solid}
           value={stats.shortlisted}
-          label="Shortlistés"
-        />
-        <StatBox
-          icon="✉️"
-          color={DASH_COLORS.orange.solid}
-          value={stats.invited}
-          label="Invités"
+          label="Shortlistés / Invités"
         />
         <StatBox
           icon="🎯"

@@ -33,7 +33,7 @@ export function KPIGrid({ kpis }: KPIGridProps) {
       color: 'blue',
     },
     {
-      label: 'Shortlistés',
+      label: 'Shortlistés / Invités',
       value: kpis.shortlisted,
       icon: '⭐',
       color: 'purple',

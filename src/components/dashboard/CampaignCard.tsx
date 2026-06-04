@@ -266,7 +266,7 @@ function QuickStats({
       <MiniStat
         value={shortlisted}
         color={DASH_COLORS.purple.solid}
-        label="Shortlistés"
+        label="Shortlistés / Invités"
       />
       <MiniStat
         value={goCount}
