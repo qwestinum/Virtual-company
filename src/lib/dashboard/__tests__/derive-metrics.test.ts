@@ -364,6 +364,21 @@ describe('journalToActivityFeed', () => {
     expect(journalToActivityFeed(rows)).toEqual([]);
   });
 
+  it('affiche un avertissement quand aucun email exploitable dans le CV', () => {
+    const rows = [
+      entry({
+        id: 12,
+        action: 'imap_outreach_mail',
+        payload: { candidate: 'Sans Email', mode: 'reject', status: 'skipped_no_email' },
+      }),
+    ];
+    const feed = journalToActivityFeed(rows);
+    expect(feed).toHaveLength(1);
+    expect(feed[0].message).toContain('non envoyé');
+    expect(feed[0].message).toContain('aucun email');
+    expect(feed[0].colorKey).toBe('red');
+  });
+
   it('respecte la limite', () => {
     const rows = Array.from({ length: 30 }, (_, i) =>
       entry({

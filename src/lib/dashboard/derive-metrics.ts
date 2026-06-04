@@ -475,8 +475,18 @@ function activityItemFor(row: JournalEntry): ActivityItem | null {
     case 'imap_outreach_mail': {
       const name = String(row.payload?.candidate ?? 'un candidat');
       const mode = row.payload?.mode;
-      const sent = row.payload?.status === 'sent';
-      if (!sent) return null;
+      const status = row.payload?.status;
+      // Avertissement visible : aucun email exploitable dans le CV →
+      // rien n'a été envoyé, le DRH doit reprendre la main.
+      if (status === 'skipped_no_email') {
+        return {
+          ...base,
+          message: `${mode === 'invite' ? 'Invitation' : 'Refus'} non envoyé — aucun email dans le CV de ${name}, à traiter manuellement`,
+          iconKey: 'mail',
+          colorKey: 'red',
+        };
+      }
+      if (status !== 'sent') return null;
       if (mode === 'invite') {
         return {
           ...base,

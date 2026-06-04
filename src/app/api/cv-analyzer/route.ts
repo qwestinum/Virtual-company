@@ -5,6 +5,7 @@ import {
   CVAnalyzerError,
   executeCVAnalyzer,
 } from '@/lib/agents/server/cv-analyzer-execute';
+import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { AIProviderError } from '@/lib/ai/errors';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -135,7 +136,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
     });
 
-    const result = CVAnalysisResultSchema.parse(output.data.result);
+    const resultRaw = CVAnalysisResultSchema.parse(output.data.result);
+
+    // Déterminisme du destinataire — on force une adresse présente dans
+    // le CV (cf. resolveCandidateEmail), au lieu de l'email potentiellement
+    // erroné du LLM, pour que tout envoi en aval vise le bon candidat.
+    const emailResolution = resolveCandidateEmail(
+      extracted.text,
+      resultRaw.email,
+    );
+    const result = { ...resultRaw, email: emailResolution.email };
 
     // Trace le candidat dans le journal d'audit pour qu'il soit
     // comptabilisé au dashboard, comme un CV reçu par email. Sans ça,
@@ -145,6 +155,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     await journalChatCV({
       uid: taskId,
       campaignId,
+      emailStatus: emailResolution.status,
       fileName: extracted.fileName,
       result,
     });
@@ -205,9 +216,10 @@ async function journalChatCV(args: {
   uid: string;
   campaignId: string | undefined;
   fileName: string;
+  emailStatus: string;
   result: CVAnalysisResult;
 }): Promise<void> {
-  const { uid, campaignId, fileName, result } = args;
+  const { uid, campaignId, fileName, emailStatus, result } = args;
   const base = {
     uid,
     fileName,
@@ -228,6 +240,7 @@ async function journalChatCV(args: {
       payload: {
         ...base,
         email: result.email,
+        emailStatus,
         score: result.score,
         aboveThreshold: result.aboveThreshold,
       },

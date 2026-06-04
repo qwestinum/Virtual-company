@@ -27,6 +27,7 @@
 import { simpleParser } from 'mailparser';
 
 import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
+import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
 import { executeCVAnalyzer } from '@/lib/agents/server/cv-analyzer-execute';
 import {
@@ -468,9 +469,19 @@ async function processEmailAttachment(args: {
       campaignId: campaign.id,
     },
   });
-  const analysis = CVAnalysisResultSchema.parse(
+  const analysisRaw = CVAnalysisResultSchema.parse(
     (output.data as { result: unknown }).result,
   );
+
+  // Déterminisme du destinataire — l'email LLM peut viser l'expéditeur de
+  // l'enveloppe ou halluciner. On force une adresse littéralement présente
+  // dans le CV (ou null si aucune), pour ne JAMAIS envoyer au mauvais
+  // destinataire. cf. resolveCandidateEmail.
+  const emailResolution = resolveCandidateEmail(
+    extracted.text,
+    analysisRaw.email,
+  );
+  const analysis = { ...analysisRaw, email: emailResolution.email };
 
   // Rapport markdown single-CV — réutilise le renderer batch avec un
   // tableau d'un élément.
@@ -531,6 +542,7 @@ async function processEmailAttachment(args: {
       fileName,
       candidate: analysis.candidateName,
       email: analysis.email,
+      emailStatus: emailResolution.status,
       score: analysis.score,
       aboveThreshold: analysis.aboveThreshold,
       artifactId,
