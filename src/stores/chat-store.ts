@@ -207,7 +207,7 @@ export type ChatState = {
 };
 
 const GREETING =
-  "Bonjour, je suis votre Manager RH. Décrivez-moi votre demande — recrutement, fiche isolée, point sur une campagne — et je m'occupe du reste.";
+  "Bonjour, je suis votre Manager RH. Décrivez-moi votre demande — lancer un recrutement, faire le point sur une campagne — et je m'occupe du reste.";
 
 /**
  * Identifiant et timestamp déterministes du message d'accueil. Sans
