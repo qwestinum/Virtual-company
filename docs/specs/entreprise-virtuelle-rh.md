@@ -1,7 +1,7 @@
 # Entreprise virtuelle — département RH
 
 > **Statut** : spécification fonctionnelle de référence
-> **Version** : 1.2 — pré-recherche et proposition par le Manager
+> **Version** : 1.3 — le Manager est l'orchestrateur et le point de contact unique (SPOC) ; la notion d'Orchestrateur séparé est supprimée
 > **Périmètre** : MVP du département RH, scénario recrutement complet et sollicitations hors campagne
 
 Ce document définit le **quoi** du département RH virtuel. Les décisions techniques (Next.js, Zustand, Supabase, Drive, OpenAI) sont dans `CLAUDE.md`. Les briefs de session définissent le **quand** et le **comment**.
@@ -33,8 +33,7 @@ Le département RH virtuel n'est pas un workflow. C'est une organisation. Chaque
 | Rôle virtuel | Équivalent réel | Mission principale |
 |---|---|---|
 | Donneur d'ordre | Dirigeant / Hiring Manager | Exprime un besoin, valide les jalons, reçoit le reporting |
-| Manager RH | Responsable RH | Interface unique avec le donneur d'ordre. Reformule, qualifie, lance, escalade |
-| Orchestrateur | Chef d'équipe | Distribue les tâches, surveille, gère les dépendances. Invisible du donneur d'ordre |
+| Manager RH | Responsable RH | Point de contact unique (SPOC) du donneur d'ordre **et** orchestrateur de l'équipe : reformule, qualifie, lance, dispatche aux agents, surveille les dépendances, escalade, rend compte |
 | Job Writer | Chargé de communication RH | Rédige l'annonce publique à partir de la FDP |
 | Publisher | Community Manager RH | Publie l'annonce sur les jobboards et réseaux sociaux |
 | CV Analyzer | Sourceur / pré-sélectionneur | Surveille la boîte mail, score, statue selon un seuil |
@@ -44,12 +43,14 @@ Le département RH virtuel n'est pas un workflow. C'est une organisation. Chaque
 ### 2.1 Chaîne de commandement
 
 ```
-Donneur d'ordre → Manager RH → Orchestrateur → Agents exécutants
-                                                      ↓
-Donneur d'ordre ← Manager RH ← Orchestrateur ← Agents exécutants
+Donneur d'ordre → Manager RH → Agents exécutants
+                                      ↓
+Donneur d'ordre ← Manager RH ← Agents exécutants
 ```
 
-Règle d'or : un agent exécutant ne reçoit jamais d'ordre direct du donneur d'ordre, et ne lui rapporte jamais directement.
+Le Manager RH cumule les deux fonctions : **interface** (il est le seul à parler au donneur d'ordre) et **orchestration** (il est le seul à dispatcher et coordonner les agents exécutants). Il n'existe pas de couche d'orchestration séparée — la coordination est une responsabilité du Manager, exposée côté donneur d'ordre comme un simple « je m'en occupe ».
+
+Règle d'or : un agent exécutant ne reçoit jamais d'ordre direct du donneur d'ordre, et ne lui rapporte jamais directement. Tout passe par le Manager.
 
 ---
 
@@ -62,11 +63,11 @@ Le système ne fonctionne pas en flux continu indifférencié. Il s'articule aut
 | Code | Nom | Déclencheur | Acteurs | Artefacts produits | Validation humaine |
 |---|---|---|---|---|---|
 | R1 | Cadrage | Le donneur d'ordre ouvre une conversation | Donneur d'ordre, Manager | FDP, Brief de campagne | Bloquante avant R2 |
-| R2 | Lancement | Validation explicite de la FDP | Manager, Orchestrateur | CAMP-XXXX, notifications | Aucune |
-| R3 | Production | Campagne ouverte | Job Writer, Publisher, Orchestrateur | Annonce versionnée, preuves de publication | Configurable, activée par défaut sur l'annonce |
-| R4 | Réception | Publication effective | CV Analyzer, Orchestrateur, Scheduler, Rejection Writer | Dossiers candidats, invitations, refus | Configurable sur les borderline |
-| R5 | Point hebdomadaire | Cron ou demande explicite | Manager, Orchestrateur | Compte-rendu hebdo | Aucune |
-| R6 | Clôture | Décision du donneur d'ordre | Donneur d'ordre, Manager, Orchestrateur | Bilan de campagne PDF | Bloquante |
+| R2 | Lancement | Validation explicite de la FDP | Manager | CAMP-XXXX, notifications | Aucune |
+| R3 | Production | Campagne ouverte | Manager (dispatch), Job Writer, Publisher | Annonce versionnée, preuves de publication | Configurable, activée par défaut sur l'annonce |
+| R4 | Réception | Publication effective | Manager (dispatch), CV Analyzer, Scheduler, Rejection Writer | Dossiers candidats, invitations, refus | Configurable sur les borderline |
+| R5 | Point hebdomadaire | Cron ou demande explicite | Manager | Compte-rendu hebdo | Aucune |
+| R6 | Clôture | Décision du donneur d'ordre | Donneur d'ordre, Manager | Bilan de campagne PDF | Bloquante |
 
 ### 3.2 Sollicitations hors campagne
 
@@ -134,29 +135,22 @@ Toutes les demandes ne donnent pas lieu à une campagne. Le département doit sa
 
 - Le Manager confirme par une phrase de prise en charge (« Je vous prépare ça ») avant de lancer une action interne.
 - Une seule question à la fois en cas d'info manquante critique. Jamais de rafale.
-- Les blocages de l'orchestrateur sont traduits en termes métier, jamais techniques (« la diffusion sur LinkedIn est en attente, le compte semble déconnecté », pas « erreur 401 »).
+- Les blocages internes (échec d'un agent, dépendance non satisfaite) sont traduits en termes métier, jamais techniques (« la diffusion sur LinkedIn est en attente, le compte semble déconnecté », pas « erreur 401 »).
 - Propose des alternatives plutôt que de signaler des erreurs.
 
-### 4.2 Orchestrateur
+### 4.2 Orchestration (responsabilité du Manager)
 
-**Mission.** Coordonner les agents exécutants. Invisible du donneur d'ordre. Garantit qu'aucune tâche ne tombe entre deux chaises et que les dépendances sont respectées.
+Il n'existe pas d'agent Orchestrateur séparé. **Le Manager EST l'orchestrateur.** La coordination des agents exécutants est une de ses responsabilités, invisible du donneur d'ordre : côté conversation elle se résume à « je m'en occupe, je reviens vers vous ». Cette fonction garantit qu'aucune tâche ne tombe entre deux chaises et que les dépendances sont respectées.
 
-| Aspect | Détail |
-|---|---|
-| Inputs | Briefs validés, statuts des agents, événements externes (mail reçu, publication réussie, créneau réservé). |
-| Outputs | Tâches typées dispatchées avec inputs complets. Synthèses au Manager. Demandes d'arbitrage. |
-| Validation humaine | Aucune directe — toute escalade passe par le Manager. |
-| Modes de déclenchement | Réactif (événement) ; proactif (timers, watchdog). |
-| Mémoire | État courant de chaque campagne. |
-| Limites | Ne reformule jamais, ne juge jamais. Si quelque chose ne colle pas, il escalade au Manager. |
-
-**Responsabilités clés.**
+**Responsabilités d'orchestration du Manager.**
 
 - Génération des identifiants (CAMP-XXXX, TASK-XXXX) — pivot du système.
-- Routage : pour chaque événement, qui agit avec quels inputs.
-- Surveillance des SLA internes.
-- Tenue à jour des métriques.
+- Routage : pour chaque événement (mail reçu, publication réussie, créneau réservé), décider quel agent agit avec quels inputs.
 - Gestion des dépendances (Publisher après Job Writer, etc.).
+- Surveillance des SLA internes et des statuts des agents.
+- Tenue à jour des métriques.
+
+**Frontière déterministe.** L'orchestration est de la mécanique, pas de la conversation : le routage, l'ordre des phases et les dépendances sont **déterministes et pilotés par le code** (machine d'états du cycle de vie, cf. `CLAUDE.md`), jamais par le LLM. Le LLM du Manager ne possède que le dialogue (intention, collecte FDP, formulation) ; il ne décide jamais quel agent s'exécute ni dans quel ordre. Doctrine : « le LLM propose, le code verrouille ».
 
 ### 4.3 Job Writer
 
@@ -286,7 +280,7 @@ L'arborescence logique mime un système de partage de fichiers d'entreprise. Ell
 - Envoi des invitations d'entretien (immédiat, configurable)
 
 **Pas de validation.** L'agent agit en autonomie complète :
-- Routages internes de l'orchestrateur
+- Routages internes du Manager (dispatch aux agents)
 - Métriques et dashboard
 - Déduplication
 
@@ -362,16 +356,16 @@ Cette vue n'est pas montrée par défaut au donneur d'ordre — accessible en mo
 
 ### 9.1 Évolution post-MVP vers n8n
 
-La mimétique reste identique — seule l'implémentation change. Les agents deviennent des workflows n8n, l'orchestrateur devient un workflow chef d'orchestre, le Manager reste exposé via Next.js. La sémantique métier (rituels, artefacts, validations, escalades) ne bouge pas.
+La mimétique reste identique — seule l'implémentation change. Les agents exécutants deviennent des workflows n8n ; la logique d'orchestration du Manager (routage, dépendances, machine d'états) devient un workflow chef d'orchestre, mais reste **conceptuellement portée par le Manager** ; le Manager reste exposé via Next.js. La sémantique métier (rituels, artefacts, validations, escalades) ne bouge pas.
 
 ---
 
 ## Glossaire
 
 - **Donneur d'ordre** : humain qui exprime un besoin. Seul humain à entrer dans le système.
-- **Manager RH** : agent IA, interface unique avec le donneur d'ordre.
-- **Orchestrateur** : agent IA chef d'équipe interne. Invisible du donneur d'ordre.
-- **Agent exécutant** : agent IA spécialisé (Job Writer, Publisher, CV Analyzer, Scheduler, Rejection Writer).
+- **Manager RH** : agent IA, point de contact unique (SPOC) du donneur d'ordre **et** orchestrateur de l'équipe. Cumule interface et coordination ; aucune couche d'orchestration séparée.
+- **Orchestration** : responsabilité du Manager (routage, dépendances, identifiants, SLA), pas un agent distinct. Déterministe, pilotée par le code.
+- **Agent exécutant** : agent IA spécialisé (Job Writer, Publisher, CV Analyzer, Scheduler, Rejection Writer). Reçoit ses tâches du Manager.
 - **Campagne** : instance d'un processus de recrutement complet. CAMP-XXXX. Couvre R1 à R6.
 - **Sollicitation hors campagne** : demande atomique produisant un livrable unique sans cycle. TASK-XXXX.
 - **FDP** : fiche de poste — document interne décrivant le poste à pourvoir.

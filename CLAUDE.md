@@ -2,7 +2,7 @@
 
 ## Projet
 
-Prototype d'entreprise virtuelle où des agents IA jouent les rôles d'une équipe RH. Le donneur d'ordre dialogue avec un Manager RH virtuel qui supervise une équipe d'agents spécialisés (Job Writer, Publisher, CV Analyzer, Scheduler, Rejection Writer) coordonnés par un Orchestrateur invisible.
+Prototype d'entreprise virtuelle où des agents IA jouent les rôles d'une équipe RH. Le donneur d'ordre dialogue avec un Manager RH virtuel qui est à la fois son **point de contact unique (SPOC)** et l'**orchestrateur** de l'équipe d'agents spécialisés (Job Writer, Publisher, CV Analyzer, Scheduler, Rejection Writer) qu'il dispatche et coordonne. Il n'y a pas d'agent Orchestrateur séparé.
 
 Le MVP couvre le département RH avec deux modalités de travail : **campagnes complètes de recrutement** (cycle R1 à R6) et **sollicitations hors campagne** (livrables atomiques). Le donneur d'ordre interagit par deux canaux : **conversation avec le Manager** et **actions directes via l'interface** (toggles, sliders, clics).
 
@@ -45,8 +45,7 @@ Le MVP couvre le département RH avec deux modalités de travail : **campagnes c
 ## Architecture agents
 
 - Chaque agent = `{ id, name, role, skills[], inputs[], outputs[], trigger, humanValidation, individualToggle }`
-- L'**Orchestrateur** reçoit les briefs validés du Manager et dispatche aux agents exécutants. Il est invisible du donneur d'ordre.
-- Le **Manager RH** est le seul interlocuteur du donneur d'ordre. Il classe l'intention, fait la pré-recherche, collecte progressivement, et prend acte des actions UI.
+- Le **Manager RH** est le seul interlocuteur du donneur d'ordre (SPOC) **et** l'orchestrateur de l'équipe : il classe l'intention, fait la pré-recherche, collecte progressivement, prend acte des actions UI, **et** dispatche aux agents exécutants en gérant les dépendances. Il n'y a pas d'agent Orchestrateur séparé — l'orchestration est une responsabilité du Manager, déterministe et pilotée par le code (machine d'états du cycle de vie), jamais par le LLM.
 - Les agents communiquent via **appels de fonction internes** dans le MVP. Les hooks Zustand exposent l'état nécessaire à chaque agent.
 - Chaque exécution d'agent produit des **métriques** (durée, tokens, coût, statut, queue depth) — le contrat `AgentMetrics` est défini dans `src/types/agent.ts`.
 - Chaque agent expose un **toggle d'activation individuel** et un **toggle de validation humaine indépendant** — voir spec §6.3 (actions directes UI).
@@ -78,7 +77,7 @@ Trois niveaux progressifs (L1 récupération, L2 suggestion, L3 inspiration) —
 
 - **Le projet est un prototype client-facing.** Il doit être visuellement crédible en démo. L'effet wow compte autant que la fonctionnalité — un client doit voir « une équipe » au travail, pas un dashboard technique.
 - **La mimétique entreprise réelle est le différenciateur.** Quand un comportement est ambigu, demande-toi : que ferait un responsable RH humain dans cette situation ? Si la réponse est « il ne ferait jamais ça comme ça », c'est que le design est à revoir.
-- **Le Manager parle métier, jamais technique.** Pas de « tâche dispatchée à l'orchestrateur », pas de « erreur 401 ». Plutôt « je m'en occupe, je reviens vers vous » et « la diffusion sur LinkedIn semble en panne, je publie sur les autres canaux en attendant ».
+- **Le Manager parle métier, jamais technique.** Pas de « tâche dispatchée », pas de « erreur 401 ». Même quand il orchestre en coulisse, côté donneur d'ordre cela se résume à « je m'en occupe, je reviens vers vous » et « la diffusion sur LinkedIn semble en panne, je publie sur les autres canaux en attendant ».
 - **Une seule question à la fois** dans les phases de collecte. Jamais de rafale de questions, jamais de formulaire déguisé.
 - **Priorité actuelle** : fonctionnel > beau > performant. C'est un prototype — le code doit être propre et lisible, pas optimisé prématurément.
 - **Toujours respecter le périmètre de la session courante** (`SESSION_X.md`). La spec couvre tout, mais une session n'implémente qu'un sous-ensemble. Si une fonctionnalité hors session semble nécessaire, on l'ajoute au backlog plutôt qu'à la session en cours.

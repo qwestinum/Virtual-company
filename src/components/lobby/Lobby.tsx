@@ -86,7 +86,7 @@ export function Lobby() {
             virtualisée et pilotable
           </h1>
           <p className="font-body text-[14px] text-stone-600 mt-3 leading-relaxed">
-            Chaque département a son orchestrateur et ses agents spécialisés.
+            Chaque département a son manager et ses agents spécialisés.
             Commencez par un, étendez à tous.
           </p>
         </motion.header>
