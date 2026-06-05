@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { isAdjustmentSignal } from '@/components/chat/adjustment-signal';
+import { resolveEditableFieldKeys } from '@/components/chat/edit-target';
 
 import {
   SWITCH_CHIP_KEEP,
@@ -840,19 +841,14 @@ export function ManagerChat() {
   function editableFieldsForMessage(message: ChatMessage): EditableField[] {
     const fdpNow = useFdpStore.getState().fdp;
     if (!fdpNow) return [];
-    // Champ UNIQUE proposé (MODE PROPOSITION) → on n'édite que lui ; sinon
-    // (récap / pré-recherche en bloc) → tous les champs que la bulle a
-    // proposés, pour permettre d'ajuster la fiche entière en place.
-    const keys: FieldKey[] = message.proposalField
-      ? [message.proposalField]
-      : (Object.keys(message.proposedExtractions ?? {}) as FieldKey[]);
-    return keys
-      .filter((k) => fdpNow.fields[k])
-      .map((k) => ({
-        fieldKey: k,
-        label: fdpNow.fields[k]?.label ?? k,
-        initialValue: formatFieldValueForEdit(fdpNow.fields[k]?.value),
-      }));
+    // Résolution déterministe du / des champ(s) cible(s) — cf. resolveEditableFieldKeys.
+    // Inclut le filet « champ en cours de collecte » quand la bulle n'a pas
+    // d'ancrage explicite (proposalField oublié + rien d'extrait).
+    return resolveEditableFieldKeys(message, fdpNow).map((k) => ({
+      fieldKey: k,
+      label: fdpNow.fields[k]?.label ?? k,
+      initialValue: formatFieldValueForEdit(fdpNow.fields[k]?.value),
+    }));
   }
 
   /**
@@ -1518,17 +1514,15 @@ export function ManagerChat() {
       const lastManager = [...useChatStore.getState().messages]
         .reverse()
         .find((m) => m.role === 'manager');
-      const hasEditable =
-        !!lastManager &&
-        !!useFdpStore.getState().fdp &&
-        (!!lastManager.proposalField ||
-          Object.keys(lastManager.proposedExtractions ?? {}).length > 0);
-      if (hasEditable) {
-        // Champ unique proposé → édition de ce champ ; récap en bloc →
-        // édition de tous les champs proposés (cf. editableFieldsForMessage).
+      // On décide via editableFieldsForMessage — MÊME source que ce que
+      // l'éditeur affichera : impossible que « ouvrable » et « champs à
+      // éditer » divergent (le bug précédent). Inclut le filet « champ en
+      // cours de collecte » quand la bulle n'a pas d'ancrage explicite.
+      const editable = lastManager ? editableFieldsForMessage(lastManager) : [];
+      if (editable.length > 0) {
         setEditingMessageId(lastManager!.id);
       } else {
-        // Aucun lien source (vieux message, bulle non-proposition) → checklist.
+        // FDP complète sans ancrage, ou bulle non-proposition → checklist.
         setExpandChecklistToken((t) => t + 1);
       }
       return;
