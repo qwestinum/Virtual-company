@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { AIProviderError } from '@/lib/ai/errors';
 import { estimateCost } from '@/lib/ai/pricing';
@@ -14,6 +15,14 @@ vi.mock('openai', async () => {
   }
   return { ...actual, default: MockOpenAI, OpenAI: MockOpenAI };
 });
+
+function okCompletion(content: string, model = 'gpt-4o-mini') {
+  return {
+    model,
+    choices: [{ message: { content } }],
+    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+  };
+}
 
 describe('estimateCost', () => {
   it('computes gpt-4o-mini cost', () => {
@@ -105,5 +114,117 @@ describe('chatComplete', () => {
     });
     const call = chatCreateMock.mock.calls[0][0];
     expect(call.response_format).toEqual({ type: 'json_object' });
+  });
+});
+
+describe('chatComplete — déterminisme (seed)', () => {
+  beforeEach(async () => {
+    chatCreateMock.mockReset();
+    const mod = await import('@/lib/ai/provider');
+    mod.__resetClientForTests();
+    process.env.OPENAI_API_KEY = 'sk-test';
+  });
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it('passe le seed au body quand fourni', async () => {
+    chatCreateMock.mockResolvedValueOnce(okCompletion('hi'));
+    const { chatComplete } = await import('@/lib/ai/provider');
+    await chatComplete({ messages: [{ role: 'user', content: 'x' }], seed: 42 });
+    expect(chatCreateMock.mock.calls[0][0].seed).toBe(42);
+  });
+
+  it('omet le seed et garde temperature 0.3 par défaut (non-régression)', async () => {
+    chatCreateMock.mockResolvedValueOnce(okCompletion('hi'));
+    const { chatComplete } = await import('@/lib/ai/provider');
+    await chatComplete({ messages: [{ role: 'user', content: 'x' }] });
+    const body = chatCreateMock.mock.calls[0][0];
+    expect(body.seed).toBeUndefined();
+    expect(body.temperature).toBe(0.3);
+  });
+});
+
+describe('chatCompleteJson — validation Zod stricte + retry', () => {
+  const SchemaT = z.object({ value: z.number() });
+
+  beforeEach(async () => {
+    chatCreateMock.mockReset();
+    const mod = await import('@/lib/ai/provider');
+    mod.__resetClientForTests();
+    process.env.OPENAI_API_KEY = 'sk-test';
+  });
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it('défaut déterministe : temperature 0 + seed 42 + json_object', async () => {
+    chatCreateMock.mockResolvedValueOnce(okCompletion('{"value":1}'));
+    const { chatCompleteJson } = await import('@/lib/ai/provider');
+    const r = await chatCompleteJson([{ role: 'user', content: 'x' }], SchemaT);
+    expect(r.data).toEqual({ value: 1 });
+    expect(r.attempts).toBe(1);
+    const body = chatCreateMock.mock.calls[0][0];
+    expect(body.temperature).toBe(0);
+    expect(body.seed).toBe(42);
+    expect(body.response_format).toEqual({ type: 'json_object' });
+  });
+
+  it('réessaie sur JSON invalide puis réussit (correction injectée)', async () => {
+    chatCreateMock
+      .mockResolvedValueOnce(okCompletion('pas du json'))
+      .mockResolvedValueOnce(okCompletion('{"value":7}'));
+    const { chatCompleteJson } = await import('@/lib/ai/provider');
+    const r = await chatCompleteJson([{ role: 'user', content: 'x' }], SchemaT);
+    expect(r.data).toEqual({ value: 7 });
+    expect(r.attempts).toBe(2);
+    expect(chatCreateMock).toHaveBeenCalledTimes(2);
+    const firstMsgs = chatCreateMock.mock.calls[0][0].messages;
+    const secondMsgs = chatCreateMock.mock.calls[1][0].messages;
+    expect(secondMsgs.length).toBeGreaterThan(firstMsgs.length);
+  });
+
+  it('réessaie sur schéma invalide (JSON ok, mauvaise forme)', async () => {
+    chatCreateMock
+      .mockResolvedValueOnce(okCompletion('{"value":"pas-un-nombre"}'))
+      .mockResolvedValueOnce(okCompletion('{"value":3}'));
+    const { chatCompleteJson } = await import('@/lib/ai/provider');
+    const r = await chatCompleteJson([{ role: 'user', content: 'x' }], SchemaT);
+    expect(r.data).toEqual({ value: 3 });
+    expect(r.attempts).toBe(2);
+  });
+
+  it('échoue après 3 tentatives ⇒ AIValidationError (attempts=3)', async () => {
+    chatCreateMock.mockResolvedValue(okCompletion('toujours invalide'));
+    const { chatCompleteJson } = await import('@/lib/ai/provider');
+    const { AIValidationError } = await import('@/lib/ai/errors');
+    const err = await chatCompleteJson(
+      [{ role: 'user', content: 'x' }],
+      SchemaT,
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(AIValidationError);
+    expect(err.attempts).toBe(3);
+    expect(chatCreateMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('ne réessaie PAS sur erreur API (propagation immédiate)', async () => {
+    chatCreateMock.mockRejectedValueOnce(new Error('boom réseau'));
+    const { chatCompleteJson } = await import('@/lib/ai/provider');
+    await expect(
+      chatCompleteJson([{ role: 'user', content: 'x' }], SchemaT),
+    ).rejects.toBeInstanceOf(AIProviderError);
+    expect(chatCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('seed / temperature surchargeables via options', async () => {
+    chatCreateMock.mockResolvedValueOnce(okCompletion('{"value":1}'));
+    const { chatCompleteJson } = await import('@/lib/ai/provider');
+    await chatCompleteJson([{ role: 'user', content: 'x' }], SchemaT, {
+      seed: 7,
+      temperature: 0.5,
+    });
+    const body = chatCreateMock.mock.calls[0][0];
+    expect(body.seed).toBe(7);
+    expect(body.temperature).toBe(0.5);
   });
 });
