@@ -103,3 +103,64 @@ est indisponible, pas de crash ni de fuite technique dans le chat).
 
 **Recommandation** : garder l'actuel pour le prototype ; faire les durcissements
 cheap OU migrer vers `unpdf` avant la mise en prod VPS (Session 8).
+
+---
+
+## Convergence vers la machine d'états du cycle de vie (levier de stabilité #1)
+
+**Statut** : moteur déterministe en place (`src/lib/campaign/lifecycle.ts`,
+pur et testé), mais migration **inachevée** — trois représentations de la
+progression coexistent et peuvent diverger.
+
+**Contexte.** Le moteur devait remplacer deux représentations legacy :
+- `recomputeStatus` (3 booléens) dans `src/stores/campaigns-store.ts:407` ;
+- `computeProgressSnapshot` (4 étages) dans `src/components/chat/ManagerChat.tsx:187`.
+
+Aujourd'hui les trois vivent en parallèle. `recomputeStatus` est appelée
+impérativement en **8 call-sites** (6 dans `ManagerChat.tsx` : ~1050, 1796,
+2086, 2234, 2302, 2378 ; 2 dans `manager-flow.ts` : 175, 231).
+`computeProgressSnapshot` alimente encore les chips de reprise alors que
+`nextFlowStep(lifecycle)` n'est lue qu'en 2 points (ManagerChat ~897, 1494).
+
+**Risque** : un chemin met à jour une représentation sans l'autre → `status`
+diverge du `lifecycle` (campagne bloquée ou mal affichée). Ce qui empêche de
+supprimer `computeProgressSnapshot` = les chips de reprise lisent encore les
+4 étages, pas la phase courante.
+
+**Piste de résolution (incrément 2c).**
+1. Mapper `FlowStep → chips de reprise` (helper dérivant des chips depuis
+   `nextFlowStep`/`lifecycle`).
+2. Remplacer les 8 `recomputeStatus` par les transitions explicites déjà
+   présentes dans le store (`completePhase` / `postponePhase` / `reopenPhase`).
+3. Supprimer `computeProgressSnapshot`, puis découper `ManagerChat.tsx`
+   (2838 lignes — viole la règle des 200) une fois la logique de statut sortie.
+
+**Conséquence** : source de vérité unique + testabilité + ManagerChat allégé.
+
+---
+
+## Nettoyage de la couche d'orchestration (suite de la décision Manager = orchestrateur)
+
+**Statut** : décision de conception actée (spec v1.3 + CLAUDE.md, commit
+`c397853`) — l'Orchestrateur séparé est supprimé, le Manager EST l'orchestrateur
+et le SPOC. Reste l'alignement **code**.
+
+**Contexte.** Le contrat `AgentContract` est à moitié abandonné : le `.execute()`
+des `src/lib/agents/contracts/*.ts` (Publisher, Scheduler…) jette
+`NOT_IMPLEMENTED` et **n'est jamais appelé**. L'exécution réelle vit dans
+`src/lib/agents/server/*-execute.ts` + routes `/api/*`, et le dispatch dans
+`src/lib/chat/manager-flow.ts`. Ce code mort a induit en erreur l'audit de
+conception (faux « agents absents »).
+
+**Risque** : aucun en runtime, mais dette d'honnêteté architecturale — le code
+ment sur le mécanisme d'exécution et la spec/CLAUDE annoncent un contrat non
+respecté.
+
+**Piste de résolution.**
+- Purger les `.execute()` morts des contrats, OU recâbler l'exécution dessus si
+  on veut conserver l'abstraction `AgentContract`.
+- Documenter `manager-flow.ts` (+ routes `/api/*`) comme **la** couche
+  d'orchestration du Manager (nommage explicite).
+- Vérifier qu'aucun prompt/sortie Manager ne mentionne un « orchestrateur » au
+  donneur d'ordre (déjà fait pour le Lobby ; prompts internes OK car « orchestrer »
+  y est employé comme verbe générique).
