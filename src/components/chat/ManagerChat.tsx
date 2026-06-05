@@ -122,6 +122,12 @@ const RESUME_PAUSED_CHIP_LABEL = 'Reprendre la campagne'; // status === 'paused'
  * round-trip LLM.
  */
 const REUSE_FDP_VALIDATE_LABEL = 'Valider telle quelle';
+// Session — 3ᵉ choix sur une fiche archivée retrouvée : on n'utilise PAS
+// l'archive, on reconstruit. Libellé imposé par le prompt, intercepté côté
+// client. On garde l'intitulé (le poste est déjà exprimé) et on repart en
+// MODE PROPOSITION sur les autres champs — ce qui évite de redemander le
+// poste ET empêche la pré-recherche de reproposer la même fiche en boucle.
+const REUSE_FDP_RESET_LABEL = 'Repartir à zéro';
 // Récap final FDP complète (#3) : chip explicite de validation, intercepté
 // côté client comme « Valider telle quelle » (appelle handleValidateFDP).
 const FDP_VALIDATE_LABEL = 'Valider la fiche de poste';
@@ -1557,6 +1563,26 @@ export function ManagerChat() {
       }
       // FDP incomplète ou déjà validée : on laisse passer en LLM
       // normal (le Manager s'expliquera).
+    }
+    // 3ᵉ choix sur une fiche archivée : « Repartir à zéro ». On abandonne
+    // l'archive et on reconstruit la fiche depuis le début. On PRÉSERVE
+    // l'intitulé du poste (déjà exprimé par le DRH, c'est ce qui a déclenché
+    // la recherche) et on remet tous les autres champs à vide, puis on relance
+    // un tour Manager : la FDP n'étant plus « toute vide » (job_title rempli),
+    // le serveur sort du MODE RÉUTILISATION L1 et passe en MODE PROPOSITION
+    // sans reproposer l'archive (cf. isFirstCampaignTurn / manager-prompts).
+    if (option === REUSE_FDP_RESET_LABEL) {
+      const current = useFdpStore.getState().fdp;
+      if (current) {
+        appendMessage({ role: 'user', source: 'text', content: option });
+        const jobTitle = current.fields.job_title?.value;
+        createFDP(current.campaignId);
+        if (typeof jobTitle === 'string' && jobTitle.trim().length > 0) {
+          applyExtractions({ job_title: jobTitle });
+        }
+        void sendToManager(useChatStore.getState().messages);
+        return;
+      }
     }
     // Interception des chips de la nouvelle campagne après nom donné.
     if (option === "Juste l'analyse CV pour l'instant") {
