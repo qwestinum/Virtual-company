@@ -29,8 +29,10 @@ import {
 } from '@/lib/storage/job-descriptions';
 import {
   ContractTypeSchema,
+  FIELD_KEYS,
   SenioritySchema,
   type FDPInProgress,
+  type FieldKey,
 } from '@/types/field-collection';
 import {
   IntentClassificationSchema,
@@ -318,6 +320,51 @@ export function ensureChipsPresent(
       options: [FALLBACK_CHIP_CONTINUE, FALLBACK_CHIP_ADJUST],
     },
   };
+}
+
+/** Premier champ de l'ordre canonique de collecte encore non rempli. */
+function firstIncompleteField(fdp: FDPInProgress): FieldKey | null {
+  for (const key of FIELD_KEYS) {
+    if (fdp.fields[key]?.status !== 'filled') return key;
+  }
+  return null;
+}
+
+/**
+ * Garde-fou DÉTERMINISTE : « Ajuster » a besoin d'un champ cible
+ * (`proposalField`) pour ouvrir l'éditeur en place. Le LLM est censé le
+ * renseigner en MODE PROPOSITION (cf. prompt), mais il l'oublie — typiquement
+ * sur les champs longs (missions / compétences), souvent EN MÊME TEMPS que les
+ * chips, ce qui fait retomber la réponse sur la paire fallback `above_input`
+ * (« le bandeau blanc séparé »). Sans `proposalField`, le clic « Ajuster » ne
+ * sait pas quoi éditer et déplie la checklist au lieu d'ouvrir l'éditeur — d'où
+ * l'impression qu'« Ajuster ne fait rien ».
+ *
+ * On ANCRE donc `proposalField` quand il manque, sur une PROPOSITION DE CHAMP :
+ *   - exactement UNE extraction ce tour → c'est CE champ qui est proposé ;
+ *   - sinon, le premier champ encore à remplir (= le champ que le Manager
+ *     collecte, l'ordre canonique étant l'ordre de collecte).
+ * On NE touche PAS :
+ *   - une réponse déjà ancrée (`proposalField` présent) ;
+ *   - un récap pré-recherche en bloc (≥ 2 extractions, ancrage multiple voulu) ;
+ *   - une réponse sans chips (prose libre / demande d'éclaircissement) ;
+ *   - une réponse hors collecte FDP (pas de FDP) ou FDP déjà complète.
+ *
+ * Doctrine « le LLM propose, le code verrouille » : « Ajuster » ne dépend plus
+ * de la mémoire du LLM.
+ */
+export function ensureProposalAnchor(
+  response: ManagerResponse,
+  fdp: FDPInProgress | null,
+): ManagerResponse {
+  if (response.proposalField) return response;
+  if (!fdp || !response.chips) return response;
+  const extracted = Object.keys(response.fieldExtractions ?? {}) as FieldKey[];
+  if (extracted.length > 1) return response; // récap en bloc : pas d'ancrage unique
+  const target =
+    extracted.length === 1 ? extracted[0]! : firstIncompleteField(fdp);
+  if (!target) return response; // FDP complète → rien à proposer
+  return { ...response, proposalField: target };
 }
 
 /**
@@ -688,6 +735,11 @@ export async function runManagerTurn(
   // "inline" OU champ canonique "below_bubble") DOIT toujours offrir
   // « Ajuster », même si le LLM l'oublie.
   response = ensureAdjustChip(response);
+  // Garde-fou déterministe : « Ajuster » a besoin d'un champ cible. Si le LLM
+  // a oublié `proposalField` (typiquement missions / compétences, qui retombent
+  // alors sur le fallback above_input), on l'ancre sur le champ proposé / en
+  // cours de collecte — sinon le clic « Ajuster » ne fait rien d'utile.
+  response = ensureProposalAnchor(response, input.fdp);
   // Filet universel : jamais de bulle vide (message d'espaces).
   response = ensureNonEmptyMessage(response);
 

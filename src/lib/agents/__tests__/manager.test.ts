@@ -15,6 +15,7 @@ import {
   MANAGER_AGENT_ID,
   buildOtherIntentResponse,
   ensureNonEmptyMessage,
+  ensureProposalAnchor,
   generateCampaignId,
   runManagerTurn,
   type ConversationTurn,
@@ -76,6 +77,91 @@ describe('ensureNonEmptyMessage', () => {
   });
   it('buildOtherIntentResponse propose des chips d’amorçage', () => {
     expect(buildOtherIntentResponse().chips?.options).toHaveLength(2);
+  });
+});
+
+describe('ensureProposalAnchor — « Ajuster » a toujours un champ cible', () => {
+  // FDP dont tous les champs jusqu'à start_date sont remplis : le premier
+  // champ encore à collecter est donc main_missions.
+  function fdpUpToStartDate() {
+    const fdp = buildEmptyFDP('CAMP-2026-077');
+    for (const key of [
+      'job_title',
+      'seniority',
+      'contract_type',
+      'location',
+      'salary_range',
+      'start_date',
+    ] as const) {
+      fdp.fields[key]!.status = 'filled';
+    }
+    return fdp;
+  }
+
+  it('ancre proposalField sur l’unique champ extrait (fallback above_input)', () => {
+    const out = ensureProposalAnchor(
+      {
+        message: 'Voici une proposition de missions.',
+        chips: { placement: 'above_input', options: ['Continuer', 'Ajuster'] },
+        fieldExtractions: { main_missions: ['Piloter la clôture'] },
+      },
+      buildEmptyFDP('CAMP-2026-077'),
+    );
+    expect(out.proposalField).toBe('main_missions');
+  });
+
+  it('ancre sur le premier champ manquant quand aucune extraction', () => {
+    const out = ensureProposalAnchor(
+      {
+        message: 'On passe aux missions.',
+        chips: { placement: 'above_input', options: ['Continuer', 'Ajuster'] },
+      },
+      fdpUpToStartDate(),
+    );
+    expect(out.proposalField).toBe('main_missions');
+  });
+
+  it('respecte un proposalField déjà posé par le LLM', () => {
+    const out = ensureProposalAnchor(
+      {
+        message: 'Compétences clés ?',
+        chips: { placement: 'inline', options: ['Ajuster'] },
+        proposalField: 'key_skills',
+      },
+      fdpUpToStartDate(),
+    );
+    expect(out.proposalField).toBe('key_skills');
+  });
+
+  it('ne touche pas un récap pré-recherche en bloc (≥ 2 extractions)', () => {
+    const out = ensureProposalAnchor(
+      {
+        message: 'Voici la fiche archivée.',
+        chips: { placement: 'below_bubble', options: ['Valider telle quelle'] },
+        fieldExtractions: { job_title: 'Comptable', seniority: 'senior' },
+      },
+      buildEmptyFDP('CAMP-2026-077'),
+    );
+    expect(out.proposalField).toBeUndefined();
+  });
+
+  it('ne touche pas une réponse sans chips (prose libre / éclaircissement)', () => {
+    const out = ensureProposalAnchor(
+      { message: 'Pouvez-vous préciser le périmètre ?' },
+      fdpUpToStartDate(),
+    );
+    expect(out.proposalField).toBeUndefined();
+  });
+
+  it('ne touche pas hors collecte FDP (pas de FDP)', () => {
+    const out = ensureProposalAnchor(
+      {
+        message: 'Bonjour !',
+        chips: { placement: 'above_input', options: ['Continuer', 'Ajuster'] },
+      },
+      null,
+    );
+    expect(out.proposalField).toBeUndefined();
   });
 });
 
