@@ -164,3 +164,40 @@ respecté.
 - Vérifier qu'aucun prompt/sortie Manager ne mentionne un « orchestrateur » au
   donneur d'ordre (déjà fait pour le Lobby ; prompts internes OK car « orchestrer »
   y est employé comme verbe générique).
+
+---
+
+## C7 — Critères versionnés & immutables à R4 (+ re-scoring + historique)
+
+**Statut** : reporté. Issu du refactor scoring (extraction/scoring/narration,
+commits C1→C6). À traiter **en parallèle de la Session 5 (dashboard)**, où le
+versioning trouvera son premier usage visible.
+
+**Pré-requis bloquants** : C1→C6 stables et livrés —
+- C1 types fondation (`ScoringBehavior`, `CRITICITY_TO_BEHAVIOR`, `ScoreResult`,
+  `JobApplicationData`),
+- C2 `scoreCandidat` pur + golden tests (le re-scoring s'appuie dessus),
+- C3 déterminisme provider (seed:42, temp:0, retry×3),
+- C4 phase extraction, C5 phase narration, C6 adaptation flow + UI.
+
+**Périmètre.**
+- Quand une campagne entre en **R4**, ses critères (fiche de scoring) deviennent
+  **immutables** : le store doit geler `ScoringSheet` (plus de `updateCriterion`
+  libre — cf. `src/stores/scoring-store.ts:107-133` aujourd'hui non gelé).
+- Toute modification ultérieure (seuil, pondération via action directe UI) **crée
+  une nouvelle version horodatée** plutôt que de muter en place.
+- Chaque nouvelle version **déclenche un re-scoring** de tous les CV déjà
+  analysés via `scoreCandidat` (déterministe, sans appel LLM — réutilise les
+  `JobApplicationData` + décisions par critère déjà extraites si possible).
+- Le **dossier candidat conserve l'historique des scores par version**.
+
+**Dépendances machine d'états** : touche `src/lib/campaign/lifecycle.ts` et
+`campaign-status` — **ne pas démarrer tant que le refactor `refactor/campaign-
+lifecycle` n'est pas convergé** (cf. ticket « Convergence vers la machine
+d'états » ci-dessus).
+
+**Risque** : élevé (lifecycle + scoring-store + dashboard candidat). Isolable une
+fois C1→C6 stables.
+
+**Tolérance golden tests** : ±2 pts en première vague, à resserrer à ±1 pt une
+fois le système stabilisé (seuil progressif — même logique que C2).

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import { ScoringSheetSchema } from './scoring';
+import { CVSourceSchema } from './cv-source';
+import { ScoreResultSchema, ScoringSheetSchema } from './scoring';
 
 /**
  * Critères passés au CV Analyzer. Dérivés de la FDP en mode campagne ;
@@ -69,3 +70,60 @@ export type CVBatchSummary = z.infer<typeof CVBatchSummarySchema>;
  * exposé, on tient sur 75 (cohérent avec les exemples du brief).
  */
 export const DEFAULT_CV_THRESHOLD = 75;
+
+// ───────────────────────────────────────────────────────────────────────────
+// Modèle cible C1 — séparation extraction / scoring / narration.
+//
+// `JobApplicationData` = données candidat FACTUELLES ANNEXES uniquement.
+// `CVApplication`      = candidature complète (annexe + ScoreResult explicable).
+// Les LEGACY `CVAnalysisResultSchema` / `CVBatchSummarySchema` ci-dessus restent
+// en place tant que les consommateurs ne sont pas migrés (route, flow, UI — C6).
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Données candidat factuelles ANNEXES attachées à une candidature.
+ *
+ * Périmètre strict (arbitrage DRH) :
+ *   - coordonnées : nom complet, email, téléphone ;
+ *   - métadonnées CV : langue détectée, nom de fichier, source/canal, date de
+ *     réception ;
+ *   - conformité / identifiant : droit de travailler, localisation ;
+ *   - présence de photo.
+ *
+ * Ce schéma ne contient AUCUNE donnée factuelle servant au scoring (années
+ * d'expérience, technologies, diplômes…) ni AUCUNE appréciation (note, points
+ * forts, tags libres) : ces éléments vivent dans les décisions par critère du
+ * `ScoreResult` (breakdown). `.strict()` matérialise ce cloisonnement — toute
+ * clé inconnue (`experienceYears`, `score`, `strengths`…) est rejetée au
+ * parsing, ce qui empêche un champ d'appréciation d'y entrer par accident.
+ */
+export const JobApplicationDataSchema = z
+  .object({
+    // Coordonnées
+    fullName: z.string().min(1),
+    email: z.string().email().nullable(),
+    phone: z.string().nullable(),
+    // Métadonnées CV
+    detectedLanguage: z.string().nullable(),
+    fileName: z.string().min(1),
+    source: CVSourceSchema,
+    receivedAt: z.string().min(1), // ISO 8601
+    // Conformité / identifiant
+    rightToWork: z.boolean().nullable(),
+    location: z.string().nullable(),
+    // Photo
+    photoPresent: z.boolean(),
+  })
+  .strict();
+export type JobApplicationData = z.infer<typeof JobApplicationDataSchema>;
+
+/**
+ * Candidature complète : donnée factuelle annexe + résultat de scoring
+ * explicable. Cible de remplacement de `CVAnalysisResult` (legacy), branchée
+ * progressivement aux phases extraction (C4), narration (C5) et UI (C6).
+ */
+export const CVApplicationSchema = z.object({
+  candidate: JobApplicationDataSchema,
+  scoringResult: ScoreResultSchema,
+});
+export type CVApplication = z.infer<typeof CVApplicationSchema>;
