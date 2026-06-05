@@ -5,7 +5,7 @@
  * du cadrage. La fiche de scoring sert au CV Analyzer pour évaluer
  * objectivement chaque candidature : liste de critères pondérés avec
  * un niveau de criticité, et un signal knockout pour les critères
- * rédhibitoires (absence → score automatique 0 sur le CV).
+ * rédhibitoires (absence → rejet sur le CV).
  *
  * Modèle de poids hybride (cf. memory/project_scoring_sheet.md) :
  *   - chaque niveau a un poids par défaut canonique,
@@ -14,8 +14,9 @@
  *
  * Les critères rédhibitoires sont traités à part : leur poids
  * n'intervient PAS dans la moyenne pondérée — leur seule présence
- * conditionne l'éligibilité du CV (knockout). Si un critère
- * rédhibitoire est absent du CV, le score final est forcé à 0.
+ * conditionne l'éligibilité du CV (knockout). Un critère rédhibitoire
+ * non démontré force le statut `rejected` (le score réel est néanmoins
+ * conservé pour l'audit — cf. CandidateStatus / DECISION_OUTCOME_MATRIX).
  */
 
 import { z } from 'zod';
@@ -131,8 +132,8 @@ export function buildCriterion(input: {
 // ───────────────────────────────────────────────────────────────────────────
 
 export const SCORING_BEHAVIORS = [
-  'HARD_KNOCKOUT', // absence ⇒ score forcé à 0, point final (statut knocked_out)
-  'HARD_CAP', //      échec ⇒ score plafonné + statut borderline (jamais auto-rejet)
+  'HARD_KNOCKOUT', // dur non démontré ⇒ rejected (score réel conservé pour audit)
+  'HARD_CAP', //      dur non démontré ⇒ score plafonné à (seuil - 1) ⇒ rejected par le seuil
   'SOFT_WEIGHTED', //  contribution proportionnelle au poids, pas de cap
   'SIGNAL_BONUS', //   bonus uniquement, jamais de malus ni de cap
 ] as const;
@@ -146,8 +147,8 @@ export type ScoringBehavior = z.infer<typeof ScoringBehaviorSchema>;
  * (cf. memory/feedback_single_source_of_truth.md).
  *
  * Arbitrage DRH acté :
- *   - redhibitoire   → HARD_KNOCKOUT : seul niveau pouvant mettre le total à 0.
- *   - obligatoire    → HARD_CAP      : dur, mais jamais d'auto-rejet (spec §4.5).
+ *   - redhibitoire   → HARD_KNOCKOUT : non démontré ⇒ rejected.
+ *   - obligatoire    → HARD_CAP      : non démontré ⇒ cap, jamais auto-rejet sec.
  *   - critique       → SOFT_WEIGHTED : écart coûteux mais non bloquant (poids fort).
  *   - tres_important → SOFT_WEIGHTED
  *   - important      → SOFT_WEIGHTED
@@ -174,7 +175,8 @@ export function criterionBehavior(level: ScoringLevel): ScoringBehavior {
  * Décision rendue par le LLM POUR UN CRITÈRE lors de l'évaluation (phase 2 du
  * pipeline extraction → scoring → narration). Le LLM ne produit JAMAIS de
  * note : seulement ce verdict qualitatif, assorti d'une justification et d'une
- * citation littérale du CV.
+ * citation littérale du CV. Les 4 valeurs sont conservées pour l'audit même si
+ * seules `non` et `non_verifiable` mènent à un échec sur critère dur.
  */
 export const LLM_DECISIONS = [
   'satisfait',
@@ -186,132 +188,79 @@ export const LlmDecisionSchema = z.enum(LLM_DECISIONS);
 export type LlmDecision = z.infer<typeof LlmDecisionSchema>;
 
 /**
- * Statut métier d'un candidat à l'issue du scoring. Chaque valeur porte une
- * conséquence aval EXPLICITE (pas de statut technique sans valeur métier) :
- *   - 'accepted'    : score ≥ seuil et aucune escalade dure → Scheduler.
- *   - 'rejected'    : score < seuil, aucune escalade dure   → Rejection Writer.
- *   - 'borderline'  : ≥ 1 critère dur non satisfait ou non vérifiable →
- *                     le Manager arbitre (jamais d'auto-rejet, spec §4.5).
- *   - 'knocked_out' : ≥ 1 critère HARD_KNOCKOUT non satisfait → score 0,
- *                     sort du flow normal.
+ * Statut métier d'un candidat — DEUX valeurs seulement.
+ *
+ * Pourquoi 2 et pas plus : un rejet « knockout » et un rejet « par score »
+ * déclenchent le MÊME comportement aval (mail de refus du Rejection Writer) ;
+ * les distinguer au niveau du statut SYSTÈME n'apporte rien fonctionnellement.
+ * L'information fine (knockout vs cap vs score, unsatisfied vs unverifiable)
+ * reste disponible dans `breakdown` / `hardFailures` pour le recruteur qui
+ * audite ou filtre (sujet UI — C6).
+ *
+ *   - 'accepted' : score ≥ seuil d'acceptation ET tous les critères durs
+ *                  démontrés → Scheduler envoie l'invitation.
+ *   - 'rejected' : tout le reste → Rejection Writer envoie le mail de refus.
  *
  * Précédence (appliquée par `scoreCandidat`, C2, sur un breakdown COMPLET) :
- *   1. HARD_KNOCKOUT non satisfait   → knocked_out
- *   2. HARD_KNOCKOUT non vérifiable  → borderline (hard_unverifiable)
- *   3. HARD_CAP non satisfait        → borderline + cap appliqué (hard_capped)
- *   4. HARD_CAP non vérifiable       → borderline sans cap (hard_cap_unverifiable)
- *   5. score ≥ seuil acceptance      → accepted
- *   6. score < seuil rejection       → rejected
- *   7. sinon (zone d'incertitude)    → borderline (score_in_uncertainty_zone)
- * DEUX seuils, pas un (cf. `ScoringThresholds`). accepted/rejected ne sont
- * JAMAIS produits par un critère isolé : ils dépendent de la comparaison
- * score/seuils, calculée à l'agrégation (C2).
+ *   1. HARD_KNOCKOUT non satisfait OU non vérifiable → rejected (marqueur
+ *      knockout dans hardFailures ; le SCORE RÉEL est conservé tel quel, jamais
+ *      forcé à 0 — un repêchage cross-poste reste auditable).
+ *   2. HARD_CAP non satisfait OU non vérifiable → score plafonné à (seuil - 1)
+ *      → tombe en rejected par le seuil.
+ *   3. score ≥ seuil d'acceptation → accepted.
+ *   4. score < seuil d'acceptation → rejected.
+ *
+ * Seuil d'acceptation = `DEFAULT_CV_THRESHOLD` (75) par défaut, configurable
+ * par campagne (cf. cv-analysis.ts).
  */
-export const CANDIDATE_STATUSES = [
-  'accepted',
-  'rejected',
-  'borderline',
-  'knocked_out',
-] as const;
+export const CANDIDATE_STATUSES = ['accepted', 'rejected'] as const;
 export const CandidateStatusSchema = z.enum(CANDIDATE_STATUSES);
 export type CandidateStatus = z.infer<typeof CandidateStatusSchema>;
 
 /**
- * Le modèle de décision a DEUX seuils, pas un :
- *   - `acceptance` : score ≥ acceptance ⇒ `accepted` ;
- *   - `rejection`  : score < rejection ⇒ `rejected` ;
- *   - entre les deux ⇒ `borderline` pur (zone d'incertitude, arbitrage Manager).
- *
- * Migration depuis l'ancien seuil unique : `DEFAULT_CV_THRESHOLD` (= 75, dans
- * cv-analysis.ts) devient le seuil `acceptance`. `rejection` est NOUVEAU ; sa
- * valeur par défaut (50) est PROVISOIRE et sera calibrée en C2 (numérique).
- * Tant que les consommateurs legacy (route, flow) ne sont pas migrés (C4), ils
- * continuent d'utiliser le seuil unique — `ScoringThresholds` est le contrat
- * cible. `rejection ≤ acceptance` est invariant (sinon pas de zone borderline).
- */
-export const ScoringThresholdsSchema = z
-  .object({
-    acceptance: z.number().min(0).max(100),
-    rejection: z.number().min(0).max(100),
-  })
-  .refine((t) => t.rejection <= t.acceptance, {
-    message: 'rejection doit être ≤ acceptance (sinon zone borderline incohérente).',
-  });
-export type ScoringThresholds = z.infer<typeof ScoringThresholdsSchema>;
-
-/**
- * Défaut cible. `acceptance` reprend l'ancien seuil unique (75) ; `rejection`
- * (50) est provisoire, à calibrer en C2. Volontairement défini ici (et non
- * importé de cv-analysis.ts) pour éviter un cycle d'import — l'alignement avec
- * `DEFAULT_CV_THRESHOLD` est à maintenir jusqu'à la migration C4.
- */
-export const DEFAULT_SCORING_THRESHOLDS: ScoringThresholds = {
-  acceptance: 75,
-  rejection: 50,
-};
-
-/**
- * Raison du passage en `borderline` — le Manager qui arbitre doit savoir
- * POURQUOI pour prioriser : tous les borderlines ne se valent pas. Présent
- * SSI `status === 'borderline'`. Mappe la précédence (cf. `CandidateStatus`) :
- *   - 'hard_unverifiable'        : critère rédhibitoire non vérifiable (#2).
- *   - 'hard_capped'              : critère HARD_CAP non satisfait, cap appliqué (#3).
- *   - 'hard_cap_unverifiable'    : critère HARD_CAP non vérifiable, sans cap (#4).
- *   - 'score_in_uncertainty_zone': rejection ≤ score < acceptance (#7).
- * Si plusieurs causes coexistent, la plus prioritaire l'emporte (même ordre que
- * la précédence : hard_unverifiable > hard_capped > hard_cap_unverifiable >
- * score_in_uncertainty_zone).
- */
-export const BORDERLINE_REASONS = [
-  'hard_unverifiable',
-  'hard_capped',
-  'hard_cap_unverifiable',
-  'score_in_uncertainty_zone',
-] as const;
-export const BorderlineReasonSchema = z.enum(BORDERLINE_REASONS);
-export type BorderlineReason = z.infer<typeof BorderlineReasonSchema>;
-
-/**
  * Effet d'un verdict (behavior × décision) sur le scoring d'UN critère.
- * Contrat métier — les politiques de points sont qualitatives ici ; le ratio
- * numérique exact (`half`, valeur du plafond `capsTotal`, échelle du bonus)
- * est figé et testé en C2, mais le PRINCIPE est posé dès C1.
+ * Contrat métier — les politiques de points sont qualitatives ici ; les nombres
+ * sont figés en C2 (PARTIAL_RATIO = 0.5, plafond HARD_CAP = seuil - 1,
+ * SIGNAL_BONUS ≤ 5 par critère et ≤ 15 cumulé).
  */
 export type DecisionOutcome = {
   /** Politique de contribution en points (full / half / zero). */
   points: 'full' | 'half' | 'zero';
-  /** true ⇒ knockout sec : le score total est forcé à 0. */
-  knockout: boolean;
-  /** true ⇒ le score total est plafonné (cap HARD_CAP non satisfait). */
-  capsTotal: boolean;
   /**
-   * Statut imposé par ce verdict, indépendamment du seuil. `null` ⇒ pas
-   * d'escalade : le statut final (accepted/rejected) est décidé au seuil (C2).
+   * true ⇒ knockout : statut forcé à `rejected` + entrée dans `hardFailures`.
+   * Le SCORE RÉEL n'est PAS modifié (conservé pour l'audit / repêchage).
    */
+  knockout: boolean;
+  /** true ⇒ score total plafonné à (seuil - 1) ⇒ tombe en rejected via le seuil. */
+  capsTotal: boolean;
+  /** Statut imposé indépendamment du score : 'rejected' (knockout) ou null (le seuil décide). */
   forcedStatus: CandidateStatus | null;
 };
 
 /**
  * Matrice de décision métier — comportement × verdict LLM → effet de scoring.
- * C'est la règle, lisible dans le code (pas seulement dans la spec) :
+ * La règle est lisible dans le code (pas seulement dans la spec) :
  *
- *                    | satisfait | partiel   | non          | non_verifiable
- *  ------------------|-----------|-----------|--------------|----------------
- *  HARD_KNOCKOUT     | full pts  | half pts  | KNOCKOUT     | BORDERLINE
- *  HARD_CAP          | full pts  | half pts  | CAP + border | BORDERLINE
- *  SOFT_WEIGHTED     | full pts  | half pts  | 0 pts        | 0 pts (audit)
- *  SIGNAL_BONUS      | bonus     | half bonus| 0 (neutre)   | 0 (neutre)
+ *                    | satisfait | partiel   | non             | non_verifiable
+ *  ------------------|-----------|-----------|-----------------|----------------
+ *  HARD_KNOCKOUT     | full pts  | half pts  | KNOCKOUT→reject | KNOCKOUT→reject
+ *  HARD_CAP          | full pts  | half pts  | CAP (seuil-1)   | CAP (seuil-1)
+ *  SOFT_WEIGHTED     | full pts  | half pts  | 0 pts           | 0 pts (audit)
+ *  SIGNAL_BONUS      | bonus     | half bonus| 0 (neutre)      | 0 (neutre)
  *
- * Principe métier clé : un critère DUR non vérifiable ne déclenche JAMAIS
- * d'auto-rejet (ni knockout, ni cap). Si le CV ne dit rien, le candidat
- * bascule en `borderline` et le Manager humain tranche (demande de complément
- * ou décision sur la base disponible). Alignement strict avec spec §4.5.
+ * Modèle à 2 statuts : `non` et `non_verifiable` produisent le MÊME effet sur un
+ * critère dur (knockout ou cap). La distinction est conservée pour l'audit via
+ * `CriterionFailure.reason` (unsatisfied vs unverifiable) et le
+ * `behavior`/`criticityLevel` du breakdown — jamais au niveau du statut.
  *
- * Cas de bord — critère binaire : si le recruteur considère un critère comme
- * binaire (diplôme acquis ou non), c'est au LLM de calibrer sa décision en
- * `satisfait` ou `non` — le code ne traite PAS ce cas spécialement, il applique
- * la règle générale `partiel = half pts`. Un `partiel` n'est jamais un échec :
- * c'est un niveau d'atteinte intermédiaire, donc pas d'escalade de statut.
+ * Knockout NE force PAS le score à 0 : il force seulement le statut `rejected`
+ * et marque `hardFailures`. Le score réel (calculé hors knockout) est conservé
+ * pour qu'un recruteur puisse auditer ou envisager un repêchage cross-poste.
+ *
+ * Cas de bord — critère binaire : un critère binaire (diplôme acquis ou non) se
+ * calibre côté LLM en `satisfait`/`non` ; le code applique `partiel = half pts`
+ * sans escalade — un `partiel` n'est jamais un échec, c'est un niveau d'atteinte
+ * intermédiaire.
  */
 export const DECISION_OUTCOME_MATRIX: Record<
   ScoringBehavior,
@@ -320,14 +269,14 @@ export const DECISION_OUTCOME_MATRIX: Record<
   HARD_KNOCKOUT: {
     satisfait: { points: 'full', knockout: false, capsTotal: false, forcedStatus: null },
     partiel: { points: 'half', knockout: false, capsTotal: false, forcedStatus: null },
-    non: { points: 'zero', knockout: true, capsTotal: false, forcedStatus: 'knocked_out' },
-    non_verifiable: { points: 'zero', knockout: false, capsTotal: false, forcedStatus: 'borderline' },
+    non: { points: 'zero', knockout: true, capsTotal: false, forcedStatus: 'rejected' },
+    non_verifiable: { points: 'zero', knockout: true, capsTotal: false, forcedStatus: 'rejected' },
   },
   HARD_CAP: {
     satisfait: { points: 'full', knockout: false, capsTotal: false, forcedStatus: null },
     partiel: { points: 'half', knockout: false, capsTotal: false, forcedStatus: null },
-    non: { points: 'zero', knockout: false, capsTotal: true, forcedStatus: 'borderline' },
-    non_verifiable: { points: 'zero', knockout: false, capsTotal: false, forcedStatus: 'borderline' },
+    non: { points: 'zero', knockout: false, capsTotal: true, forcedStatus: null },
+    non_verifiable: { points: 'zero', knockout: false, capsTotal: true, forcedStatus: null },
   },
   SOFT_WEIGHTED: {
     satisfait: { points: 'full', knockout: false, capsTotal: false, forcedStatus: null },
@@ -370,8 +319,10 @@ export type CriterionDecision = z.infer<typeof CriterionDecisionSchema>;
 
 /**
  * Index minimal d'un échec sur critère dur — pour l'affichage rapide et
- * l'audit, sans dupliquer toute la `CriterionDecision`. Le détail complet
- * reste accessible dans `breakdown` via `criterionId`.
+ * l'audit, sans dupliquer toute la `CriterionDecision`. Contient knockout ET
+ * cap : `criticityLevel` (redhibitoire vs obligatoire) et le `behavior` joint
+ * via `criterionId` dans `breakdown` permettent de distinguer ce qui s'est
+ * passé. Le détail complet reste accessible dans `breakdown` via `criterionId`.
  *   - reason 'unsatisfied'  : décision 'non' sur un critère dur.
  *   - reason 'unverifiable' : décision 'non_verifiable' sur un critère dur.
  */
@@ -388,41 +339,30 @@ export type CriterionFailure = z.infer<typeof CriterionFailureSchema>;
  * (règle d'explicabilité native). Produit par `scoreCandidat` (C2), consommé
  * par la narration LLM (C5) puis le dashboard (C6).
  *
- * `criteriaVersion` / `computedAt` ancrent l'audit dans le temps. En C1 ce
- * sont de simples étiquettes ; la machine de versionnement de fiche qui les
+ * `totalScore` est ENTIER (arrondi en sortie). Pour un candidat knockouté, ce
+ * score reste le score RÉEL calculé hors knockout (peut donc être élevé) — le
+ * statut `rejected` suffit à l'exclure du flow `accepted`.
+ *
+ * `criteriaVersion` / `computedAt` ancrent l'audit dans le temps. En C1 ce sont
+ * de simples étiquettes ; la machine de versionnement de fiche qui les
  * alimentera réellement est C7 (hors session).
  */
-export const ScoreResultSchema = z
-  .object({
-    totalScore: z.number().min(0).max(100),
-    status: CandidateStatusSchema,
-    /**
-     * Raison du borderline (cf. `BorderlineReason`). Présent SSI
-     * `status === 'borderline'` — invariant garanti par le refine ci-dessous.
-     */
-    borderlineReason: BorderlineReasonSchema.optional(),
-    /**
-     * Breakdown TOUJOURS complet : tous les critères sont évalués, même pour un
-     * `knocked_out`. Aucun court-circuit — la précédence n'est appliquée qu'à la
-     * fin, sur un breakdown intégral. Raisons : réutilisation cross-poste (un
-     * knocked_out peut intéresser ailleurs), audit qualité, robustesse à un
-     * changement ultérieur de criticité. Un éventuel mode `fastFail` resterait
-     * opt-in, jamais le défaut.
-     */
-    breakdown: z.array(CriterionDecisionSchema),
-    hardFailures: z.array(CriterionFailureSchema),
-    criteriaVersion: z.string().min(1),
-    /** Horodatage ISO 8601 du calcul. */
-    computedAt: z.string().min(1),
-  })
-  .refine(
-    (r) => (r.status === 'borderline') === (r.borderlineReason !== undefined),
-    {
-      message:
-        'borderlineReason doit être défini SSI status === "borderline".',
-      path: ['borderlineReason'],
-    },
-  );
+export const ScoreResultSchema = z.object({
+  totalScore: z.number().int().min(0).max(100),
+  status: CandidateStatusSchema,
+  /**
+   * Breakdown TOUJOURS complet : tous les critères sont évalués, même pour un
+   * candidat knockouté. Aucun court-circuit — la précédence n'est appliquée
+   * qu'à la fin, sur un breakdown intégral (réutilisation cross-poste, audit
+   * qualité, robustesse à un changement ultérieur de criticité). Un éventuel
+   * mode `fastFail` resterait opt-in, jamais le défaut.
+   */
+  breakdown: z.array(CriterionDecisionSchema),
+  hardFailures: z.array(CriterionFailureSchema),
+  criteriaVersion: z.string().min(1),
+  /** Horodatage ISO 8601 du calcul. */
+  computedAt: z.string().min(1),
+});
 export type ScoreResult = z.infer<typeof ScoreResultSchema>;
 
 /**
