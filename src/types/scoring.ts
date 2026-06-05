@@ -95,6 +95,12 @@ export const ScoringSheetSchema = z.object({
   campaignId: z.string().min(1),
   criteria: z.array(ScoringCriterionSchema),
   isValidated: z.boolean(),
+  /**
+   * Seuil d'acceptation (0-100) configurable par campagne. Optionnel :
+   * `scoreCandidat` retombe sur `DEFAULT_CV_THRESHOLD` (75) si absent. Co-localisé
+   * avec la fiche car c'est un paramètre de scoring propre à la campagne.
+   */
+  acceptanceThreshold: z.number().int().min(0).max(100).optional(),
 });
 export type ScoringSheet = z.infer<typeof ScoringSheetSchema>;
 
