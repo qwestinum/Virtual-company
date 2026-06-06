@@ -236,16 +236,68 @@ describe('cv-analyzer-prompts', () => {
 });
 
 describe('cv-report-render', () => {
-  it('buildCVBatchSummary counts above-threshold correctly', () => {
+  function cvApp(opts: {
+    fileName: string;
+    status: 'accepted' | 'rejected';
+    score: number;
+    knockout?: boolean;
+  }) {
+    return {
+      candidate: {
+        fullName: 'Jeanne Dupont',
+        email: 'jeanne@example.com',
+        phone: null,
+        detectedLanguage: 'fr',
+        fileName: opts.fileName,
+        source: 'manual' as const,
+        receivedAt: '2026-06-06T00:00:00.000Z',
+        rightToWork: null,
+        location: null,
+        photoPresent: false,
+      },
+      scoringResult: {
+        totalScore: opts.score,
+        status: opts.status,
+        breakdown: [
+          {
+            criterionId: 's1',
+            criterionLabel: 'Maîtrise IFRS',
+            criticityLevel: 'critique' as const,
+            weight: 8,
+            behavior: 'SOFT_WEIGHTED' as const,
+            llmDecision: 'satisfait' as const,
+            llmJustification: 'IFRS démontré.',
+            llmCVQuote: 'normes IFRS',
+            contribution: 40,
+          },
+        ],
+        hardFailures: opts.knockout
+          ? [
+              {
+                criterionId: 'ko',
+                criterionLabel: 'Diplôme DEC',
+                criticityLevel: 'redhibitoire' as const,
+                reason: 'unsatisfied' as const,
+              },
+            ]
+          : [],
+        criteriaVersion: 'v1',
+        computedAt: '2026-06-06T00:00:00.000Z',
+      },
+      narration: {
+        summary: 'Profil sénior.',
+        strengths: ['Maîtrise IFRS'],
+        weaknesses: [],
+        justification: 'Verdict factuel.',
+      },
+    };
+  }
+
+  it('buildCVBatchSummary compte les acceptés', () => {
     const summary = buildCVBatchSummary(
       [
-        { ...SAMPLE_RESULT, fileName: 'a.pdf', aboveThreshold: true },
-        {
-          ...SAMPLE_RESULT,
-          fileName: 'b.pdf',
-          score: 50,
-          aboveThreshold: false,
-        },
+        cvApp({ fileName: 'a.pdf', status: 'accepted', score: 82 }),
+        cvApp({ fileName: 'b.pdf', status: 'rejected', score: 50 }),
       ],
       75,
     );
@@ -254,17 +306,12 @@ describe('cv-report-render', () => {
     expect(summary.threshold).toBe(75);
   });
 
-  it('renderCVBatchMarkdown includes both retenu and à arbitrer sections', () => {
+  it('renderCVBatchMarkdown : Retenu/Écarté, évaluation par critère, (knockout) et décompo', () => {
     const md = renderCVBatchMarkdown(
       buildCVBatchSummary(
         [
-          { ...SAMPLE_RESULT, fileName: 'a.pdf' },
-          {
-            ...SAMPLE_RESULT,
-            fileName: 'b.pdf',
-            score: 50,
-            aboveThreshold: false,
-          },
+          cvApp({ fileName: 'a.pdf', status: 'accepted', score: 82 }),
+          cvApp({ fileName: 'b.pdf', status: 'rejected', score: 90, knockout: true }),
         ],
         75,
       ),
@@ -272,7 +319,10 @@ describe('cv-report-render', () => {
     );
     expect(md).toContain('CAMP-2026-007');
     expect(md).toContain('Retenu');
-    expect(md).toContain('À arbitrer');
+    expect(md).toContain('Écarté');
+    expect(md).toContain('Évaluation par critère');
+    expect(md).toContain('(knockout)'); // score brut conservé + marqueur
+    expect(md).toContain('Knockout critère rédhibitoire : 1');
   });
 
   it('suggestCVReportFileName uses campaignId and date', () => {

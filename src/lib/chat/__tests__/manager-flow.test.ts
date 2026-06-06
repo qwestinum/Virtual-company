@@ -31,7 +31,7 @@ import { useArtifactsStore } from '@/stores/artifacts-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
-import type { CVAnalysisResult } from '@/types/cv-analysis';
+import type { CVApplication } from '@/types/cv-analysis';
 import { buildEmptyFDP, type FDPInProgress } from '@/types/field-collection';
 
 const postJobWriterMock = vi.mocked(postJobWriter);
@@ -72,22 +72,36 @@ function fakeCVResult(
   score = 80,
   aboveThreshold = true,
 ): CVAnalyzerResult {
-  const result: CVAnalysisResult = {
-    fileName,
-    candidateName: `Candidat ${fileName}`,
-    email: null,
-    phone: null,
-    skills: ['SAP'],
-    experienceYears: 5,
-    score,
-    summary: 'Synthèse',
-    strengths: ['Expérience'],
-    weaknesses: [],
-    justification: 'Verdict factice pour test',
-    aboveThreshold,
+  const application: CVApplication = {
+    candidate: {
+      fullName: `Candidat ${fileName}`,
+      email: null,
+      phone: null,
+      detectedLanguage: 'fr',
+      fileName,
+      source: 'manual',
+      receivedAt: '2026-06-06T00:00:00.000Z',
+      rightToWork: null,
+      location: null,
+      photoPresent: false,
+    },
+    scoringResult: {
+      totalScore: score,
+      status: aboveThreshold ? 'accepted' : 'rejected',
+      breakdown: [],
+      hardFailures: [],
+      criteriaVersion: 'v1',
+      computedAt: '2026-06-06T00:00:00.000Z',
+    },
+    narration: {
+      summary: 'Synthèse',
+      strengths: ['Expérience'],
+      weaknesses: [],
+      justification: 'Verdict factice pour test',
+    },
   };
   return {
-    result,
+    application,
     threshold: 75,
     metrics: { durationMs: 2500, tokensUsed: 1000, costEstimate: 0.005 },
   };

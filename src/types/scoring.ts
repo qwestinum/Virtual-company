@@ -224,6 +224,15 @@ export const CandidateStatusSchema = z.enum(CANDIDATE_STATUSES);
 export type CandidateStatus = z.infer<typeof CandidateStatusSchema>;
 
 /**
+ * Libellés métier des statuts — SOURCE UNIQUE pour l'UI, le rapport, les mails
+ * et les logs. Jamais de « accepted »/« rejected » bruts côté donneur d'ordre.
+ */
+export const CANDIDATE_STATUS_LABELS: Record<CandidateStatus, string> = {
+  accepted: 'Retenu',
+  rejected: 'Écarté',
+};
+
+/**
  * Effet d'un verdict (behavior × décision) sur le scoring d'UN critère.
  * Contrat métier — les politiques de points sont qualitatives ici ; les nombres
  * sont figés en C2 (PARTIAL_RATIO = 0.5, plafond HARD_CAP = seuil - 1,

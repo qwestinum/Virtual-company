@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 
 import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
-import { toLegacyCVResult } from '@/lib/agents/cv-application-legacy-adapter';
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { ScoringError } from '@/lib/scoring';
 import { AIProviderError } from '@/lib/ai/errors';
@@ -10,8 +9,7 @@ import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
   CVAnalysisCriteriaSchema,
-  CVAnalysisResultSchema,
-  type CVAnalysisResult,
+  type CVApplication,
   DEFAULT_CV_THRESHOLD,
 } from '@/types/cv-analysis';
 
@@ -144,11 +142,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       acceptanceThreshold: threshold,
     });
 
-    // Adapter TRANSITOIRE → ancienne forme (UI/rapport migrés en 6b). L'email
-    // est déjà résolu déterministe dans analyzeCVApplication ; on recalcule le
-    // STATUT de résolution pour le journal (compat dashboard).
-    const result = CVAnalysisResultSchema.parse(toLegacyCVResult(application));
-    const emailResolution = resolveCandidateEmail(extracted.text, result.email);
+    // L'email est déjà résolu déterministe dans analyzeCVApplication ; on
+    // recalcule le STATUT de résolution pour le journal (compat dashboard).
+    const emailResolution = resolveCandidateEmail(
+      extracted.text,
+      application.candidate.email,
+    );
 
     // Trace le candidat dans le journal d'audit pour qu'il soit
     // comptabilisé au dashboard, comme un CV reçu par email. Sans ça,
@@ -160,11 +159,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       campaignId,
       emailStatus: emailResolution.status,
       fileName: extracted.fileName,
-      result,
+      application,
     });
 
     return NextResponse.json({
-      result,
+      application,
       threshold,
       metrics,
     });
@@ -220,13 +219,14 @@ async function journalChatCV(args: {
   campaignId: string | undefined;
   fileName: string;
   emailStatus: string;
-  result: CVAnalysisResult;
+  application: CVApplication;
 }): Promise<void> {
-  const { uid, campaignId, fileName, emailStatus, result } = args;
+  const { uid, campaignId, fileName, emailStatus, application } = args;
+  const { candidate, scoringResult } = application;
   const base = {
     uid,
     fileName,
-    candidate: result.candidateName,
+    candidate: candidate.fullName,
     source: 'chat' as const,
   };
   try {
@@ -242,10 +242,11 @@ async function journalChatCV(args: {
       campaignId: campaignId ?? null,
       payload: {
         ...base,
-        email: result.email,
+        email: candidate.email,
         emailStatus,
-        score: result.score,
-        aboveThreshold: result.aboveThreshold,
+        // Compat dashboard : score = totalScore, aboveThreshold = statut accepted.
+        score: scoringResult.totalScore,
+        aboveThreshold: scoringResult.status === 'accepted',
       },
     });
   } catch (err) {

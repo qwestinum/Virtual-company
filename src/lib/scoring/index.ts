@@ -3,3 +3,4 @@
  * et son contrat d'entrée `LlmCriterionVerdict`.
  */
 export * from './score-candidat';
+export * from './rejection-cause';

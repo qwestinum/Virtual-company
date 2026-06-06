@@ -53,16 +53,8 @@ export const CVAnalysisResultSchema = z.object({
   aboveThreshold: z.boolean(),
 });
 
-export const CVBatchSummarySchema = z.object({
-  total: z.number().int().nonnegative(),
-  aboveThreshold: z.number().int().nonnegative(),
-  threshold: z.number().min(0).max(100),
-  perCV: z.array(CVAnalysisResultSchema),
-});
-
 export type CVAnalysisCriteria = z.infer<typeof CVAnalysisCriteriaSchema>;
 export type CVAnalysisResult = z.infer<typeof CVAnalysisResultSchema>;
-export type CVBatchSummary = z.infer<typeof CVBatchSummarySchema>;
 
 /**
  * Seuil d'acceptation hardcodé pour la Session 4. La spec §6.3 prévoit
@@ -147,3 +139,16 @@ export const CVApplicationSchema = z.object({
   narration: CVNarrationSchema,
 });
 export type CVApplication = z.infer<typeof CVApplicationSchema>;
+
+/**
+ * Récapitulatif d'un batch de CV analysés (bloc chat + rapport markdown).
+ * `aboveThreshold` = nombre de candidats `accepted`. `perCV` porte désormais le
+ * modèle complet `CVApplication` (C6/6b).
+ */
+export const CVBatchSummarySchema = z.object({
+  total: z.number().int().nonnegative(),
+  aboveThreshold: z.number().int().nonnegative(),
+  threshold: z.number().min(0).max(100),
+  perCV: z.array(CVApplicationSchema),
+});
+export type CVBatchSummary = z.infer<typeof CVBatchSummarySchema>;

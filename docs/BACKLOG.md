@@ -227,3 +227,34 @@ future) : `manager-isolated.ts`, `/api/manager/isolated-criteria`,
 isolé vers le nouveau pipeline (extraction/scoring/narration) — l'analyse `freeText`
 sans fiche devra être repensée avec une fiche de scoring minimale ou un mode
 dédié, car `scoreCandidat` exige une `ScoringSheet`.
+
+---
+
+## Migration mail-composer + scheduler vers CVApplication (6c-mail)
+
+**Statut** : différé. Issu de C6/6b — le sous-système mail/scheduler est resté
+sur `CVAnalysisResult` (cascade trop profonde pour 6b).
+
+**Contexte.** `composeCandidateMail` / `composeInterviewGuide`
+(`mail-composer-execute.ts`), les routes `/api/mail-composer` et `/api/scheduler`
+(+ leurs schémas Zod `candidate: CVAnalysisResultSchema`), et l'outreach IMAP
+(`imap/outreach.ts`) consomment encore `CVAnalysisResult`. En 6b, les deux
+frontières outreach (chat `manager-flow.ts` + poller `imap/poller.ts`) projettent
+`CVApplication → CVAnalysisResult` via l'adapter transitoire
+`cv-application-legacy-adapter.ts` (`toLegacyCVResult`).
+
+**Conséquence visible (transitoire)** : l'adapter pose `experienceYears: 0` /
+`skills: []` → les briefs DRH et mails affichent « 0 an(s) » (cosmétique).
+
+**Périmètre.**
+- Migrer `composeCandidateMail` / `composeInterviewGuide` + les 2 routes
+  (schémas) sur `CVApplication` (ou une projection narrow `MailCandidate`
+  dédiée — interface étroite, comme `OutreachCandidate` envisagé).
+- Migrer `imap/outreach.ts`.
+- Retirer les projections `toLegacyCVResult` aux 2 frontières, **puis supprimer
+  l'adapter** + son test.
+- Retirer les usages `experienceYears`/`skills` des templates mail/brief.
+
+**Pré-requis** : 6b livré. À faire avant ou avec 6d (cleanup `executeCVAnalyzer`
+/ `CVAnalysisResult`) — l'adapter et `CVAnalysisResult` ne peuvent disparaître
+qu'une fois ce ticket fait.

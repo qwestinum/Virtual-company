@@ -1,7 +1,7 @@
 import type { JobDescription } from '@/lib/storage/job-descriptions';
 import type {
   CVAnalysisCriteria,
-  CVAnalysisResult,
+  CVApplication,
 } from '@/types/cv-analysis';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { IntentClassification } from '@/types/intent';
@@ -128,7 +128,7 @@ export async function postManagerScoring(params: {
 }
 
 export type CVAnalyzerResult = {
-  result: CVAnalysisResult;
+  application: CVApplication;
   threshold: number;
   metrics: {
     durationMs: number;

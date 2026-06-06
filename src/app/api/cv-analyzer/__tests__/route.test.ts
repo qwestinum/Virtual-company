@@ -117,12 +117,12 @@ describe('POST /api/cv-analyzer', () => {
     expect(arg.source).toBe('manual');
     expect(arg.acceptanceThreshold).toBe(75);
 
-    // Réponse projetée sur l'ancienne forme (adapter).
+    // Réponse = CVApplication (nouveau modèle).
     const body = await res.json();
-    expect(body.result.candidateName).toBe('Jean Test');
-    expect(body.result.score).toBe(90);
-    expect(body.result.aboveThreshold).toBe(true);
-    expect(body.result.summary).toBe('Profil solide.');
+    expect(body.application.candidate.fullName).toBe('Jean Test');
+    expect(body.application.scoringResult.totalScore).toBe(90);
+    expect(body.application.scoringResult.status).toBe('accepted');
+    expect(body.application.narration.summary).toBe('Profil solide.');
     // Journalisé pour le dashboard (action imap_cv_analyzed avec score).
     expect(appendJournalEntryMock).toHaveBeenCalled();
   });

@@ -26,10 +26,10 @@
 
 import { simpleParser } from 'mailparser';
 
-import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
-import { executeCVAnalyzer } from '@/lib/agents/server/cv-analyzer-execute';
+import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
+import { toLegacyCVResult } from '@/lib/agents/cv-application-legacy-adapter';
 import {
   buildCVBatchSummary,
   renderCVBatchMarkdown,
@@ -49,10 +49,7 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { openConnection } from '@/lib/imap/client';
 import { uploadArtifact } from '@/lib/storage/blob';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
-import {
-  CVAnalysisResultSchema,
-  DEFAULT_CV_THRESHOLD,
-} from '@/types/cv-analysis';
+import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
 
 /**
  * MIME types acceptés par le poller. Alignés sur ce que
@@ -421,8 +418,12 @@ async function processEmailAttachment(args: {
   const { mailbox, campaign, fileName, mime, buffer, uid, subject, from } =
     args;
   const isTaskOwner = campaign.id.startsWith('TASK-');
+  // Comportement (a) — pas de scoring sans fiche de scoring validée.
+  const sheet = campaign.scoringSheet?.isValidated
+    ? campaign.scoringSheet
+    : null;
 
-  // Journal — received (analyse en cours)
+  // Journal — received (analyse en cours, ou en attente de fiche).
   await appendJournalEntry({
     action: 'imap_cv_received',
     actor: 'imap_poller',
@@ -434,8 +435,16 @@ async function processEmailAttachment(args: {
       subject,
       from,
       taskId: isTaskOwner ? campaign.id : undefined,
+      pendingScoringSheet: sheet === null,
     },
   });
+
+  if (!sheet) {
+    // Reçu mais NON analysé : la campagne n'a pas de fiche de scoring validée.
+    // Le CV est compté comme reçu, marqué « en attente de fiche » (re-scorable
+    // en C7). Pas d'extraction ni d'analyse.
+    return;
+  }
 
   // Convertit le Buffer en File pour extractCVText (qui attend File).
   const file = new File([new Uint8Array(buffer)], fileName, { type: mime });
@@ -447,46 +456,27 @@ async function processEmailAttachment(args: {
     throw new Error(`extract_failed: ${code} — ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Critères depuis la FDP de la campagne + scoring sheet éventuelle.
-  const criteria = fdpToCVCriteria(campaign.fdp);
-  if (campaign.scoringSheet?.isValidated) {
-    criteria.scoringSheet = campaign.scoringSheet;
-  }
-
-  const output = await executeCVAnalyzer({
-    taskId: `imap-${uid}`,
-    correlationId: `imap-${mailbox.id}-${uid}`,
-    agentId: 'agent.cv-analyzer',
-    payload: {
-      cvText: extracted.text,
-      fileName,
-      criteria,
-      threshold: DEFAULT_CV_THRESHOLD,
-    },
-    context: {
-      priority: 'normal',
-      requestedBy: 'imap_poller',
-      campaignId: campaign.id,
-    },
+  // Pipeline extraction → scoring (code) → narration. Le LLM ne note jamais.
+  const { application } = await analyzeCVApplication({
+    cvText: extracted.text,
+    fileName,
+    sheet,
+    source: 'email',
+    receivedAt: new Date().toISOString(),
+    acceptanceThreshold: DEFAULT_CV_THRESHOLD,
   });
-  const analysisRaw = CVAnalysisResultSchema.parse(
-    (output.data as { result: unknown }).result,
-  );
 
-  // Déterminisme du destinataire — l'email LLM peut viser l'expéditeur de
-  // l'enveloppe ou halluciner. On force une adresse littéralement présente
-  // dans le CV (ou null si aucune), pour ne JAMAIS envoyer au mauvais
-  // destinataire. cf. resolveCandidateEmail.
+  // Statut de résolution email pour le journal (l'email est déjà résolu
+  // déterministe dans analyzeCVApplication — cf. resolveCandidateEmail).
   const emailResolution = resolveCandidateEmail(
     extracted.text,
-    analysisRaw.email,
+    application.candidate.email,
   );
-  const analysis = { ...analysisRaw, email: emailResolution.email };
 
   // Rapport markdown single-CV — réutilise le renderer batch avec un
   // tableau d'un élément.
-  const summary = buildCVBatchSummary([analysis], DEFAULT_CV_THRESHOLD);
-  const reportName = `rapport-cv-imap-${slug(analysis.candidateName)}-${uid}.md`;
+  const summary = buildCVBatchSummary([application], DEFAULT_CV_THRESHOLD);
+  const reportName = `rapport-cv-imap-${slug(application.candidate.fullName)}-${uid}.md`;
   const reportContent = renderCVBatchMarkdown(summary, campaign.id);
 
   const artifactId = `art_imap_cv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -526,9 +516,9 @@ async function processEmailAttachment(args: {
       uid,
       from,
       subject,
-      candidate: analysis.candidateName,
-      score: analysis.score,
-      aboveThreshold: analysis.aboveThreshold,
+      candidate: application.candidate.fullName,
+      score: application.scoringResult.totalScore,
+      aboveThreshold: application.scoringResult.status === 'accepted',
     },
   });
 
@@ -540,11 +530,11 @@ async function processEmailAttachment(args: {
       mailboxId: mailbox.id,
       uid,
       fileName,
-      candidate: analysis.candidateName,
-      email: analysis.email,
+      candidate: application.candidate.fullName,
+      email: application.candidate.email,
       emailStatus: emailResolution.status,
-      score: analysis.score,
-      aboveThreshold: analysis.aboveThreshold,
+      score: application.scoringResult.totalScore,
+      aboveThreshold: application.scoringResult.status === 'accepted',
       artifactId,
       publicUrl,
       taskId: isTaskOwner ? campaign.id : undefined,
@@ -565,7 +555,9 @@ async function processEmailAttachment(args: {
       mailboxId: mailbox.id,
       campaignId: campaign.id,
       jobTitle,
-      candidate: analysis,
+      // Frontière vers le sous-système mail/scheduler non encore migré (6c-mail) :
+      // on projette vers l'ancienne forme via l'adapter transitoire.
+      candidate: toLegacyCVResult(application),
       uid,
     });
   } catch (err) {

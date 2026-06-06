@@ -31,6 +31,7 @@ import {
   renderCVBatchMarkdown,
   suggestCVReportFileName,
 } from '@/lib/agents/cv-report-render';
+import { toLegacyCVResult } from '@/lib/agents/cv-application-legacy-adapter';
 import { postCVAnalyzer, postJobWriter } from '@/lib/chat/api-client';
 import { pushArtifact } from '@/lib/db/sync/artifacts-sync';
 import { useAgentsStore } from '@/stores/agents-store';
@@ -47,7 +48,7 @@ import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
 import {
   DEFAULT_CV_THRESHOLD,
   type CVAnalysisCriteria,
-  type CVAnalysisResult,
+  type CVApplication,
   type CVBatchSummary,
 } from '@/types/cv-analysis';
 import type { FDPInProgress } from '@/types/field-collection';
@@ -356,7 +357,7 @@ export async function dispatchCVBatch(args: {
     block: { kind: 'cv-progress', processed: 0, total: files.length },
   });
 
-  const results: CVAnalysisResult[] = [];
+  const results: CVApplication[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -369,7 +370,7 @@ export async function dispatchCVBatch(args: {
         taskId: itemTaskId,
         campaignId: args.campaignId ?? undefined,
       });
-      results.push(res.result);
+      results.push(res.application);
     } catch (err) {
       // Un CV en erreur n'arrête pas le lot — on poste une note
       // discrète et on continue.
@@ -433,7 +434,7 @@ export async function dispatchCVBatch(args: {
     content:
       summary.total === 0
         ? "Aucun CV n'a pu être analysé. Réessayez quand vous êtes prêt."
-        : `Analyse terminée — ${summary.total} CV traités, ${summary.aboveThreshold} au-dessus du seuil (${threshold}%).`,
+        : `Analyse terminée — ${summary.total} CV traités, ${summary.aboveThreshold} retenus (seuil d'acceptation ${threshold}).`,
     block: { kind: 'cv-batch-summary', summary },
     attachment: {
       artifactId: reportArtifact.id,
@@ -503,7 +504,7 @@ async function dispatchPostAnalysisOutreach(args: {
   // client n'a pas besoin de le connaître ni de le transmettre.
 
   for (const cv of args.summary.perCV) {
-    const mode = cv.aboveThreshold ? 'invite' : 'reject';
+    const mode = cv.scoringResult.status === 'accepted' ? 'invite' : 'reject';
     const agentId = MAIL_COMPOSER_ID;
     const taskId = nowTaskId(`mail_${mode}`);
 
@@ -512,7 +513,7 @@ async function dispatchPostAnalysisOutreach(args: {
     agents.pushEvent({
       agentId,
       type: 'task_started',
-      payload: { taskId, candidate: cv.candidateName, mode },
+      payload: { taskId, candidate: cv.candidate.fullName, mode },
     });
 
     const artifactId = `art_mail_${mode}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -525,7 +526,8 @@ async function dispatchPostAnalysisOutreach(args: {
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
         mode,
-        candidate: cv,
+        // Frontière mail/scheduler (non migré, 6c-mail) : projection legacy.
+        candidate: toLegacyCVResult(cv),
       };
       const res = await fetch('/api/mail-composer', {
         method: 'POST',
@@ -570,10 +572,10 @@ async function dispatchPostAnalysisOutreach(args: {
       chat.appendMessage({
         role: 'manager',
         source: 'text',
-        content: `Le Mail Composer ${verb} pour ${cv.candidateName} ${tail}`,
+        content: `Le Mail Composer ${verb} pour ${cv.candidate.fullName} ${tail}`,
         attachment: {
           artifactId,
-          label: `${mode === 'reject' ? 'Refus' : 'Invitation'} — ${cv.candidateName}`,
+          label: `${mode === 'reject' ? 'Refus' : 'Invitation'} — ${cv.candidate.fullName}`,
           fileName: data.fileName,
           mime: 'text/markdown',
         },
@@ -582,7 +584,7 @@ async function dispatchPostAnalysisOutreach(args: {
       agents.pushEvent({
         agentId,
         type: 'task_completed',
-        payload: { taskId, candidate: cv.candidateName, status: data.status },
+        payload: { taskId, candidate: cv.candidate.fullName, status: data.status },
       });
     } catch (err) {
       console.error('[mail-composer] dispatch failed', err);
@@ -614,7 +616,7 @@ async function dispatchPostAnalysisOutreach(args: {
 async function dispatchSchedulerBrief(args: {
   campaignId: string;
   jobTitle: string | null;
-  candidate: CVAnalysisResult;
+  candidate: CVApplication;
 }): Promise<void> {
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
@@ -626,7 +628,7 @@ async function dispatchSchedulerBrief(args: {
   agents.pushEvent({
     agentId: SCHEDULER_ID,
     type: 'task_started',
-    payload: { taskId, candidate: args.candidate.candidateName },
+    payload: { taskId, candidate: args.candidate.candidate.fullName },
   });
 
   const artifactId = `art_brief_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -638,7 +640,7 @@ async function dispatchSchedulerBrief(args: {
         artifactId,
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
-        candidate: args.candidate,
+        candidate: toLegacyCVResult(args.candidate),
       }),
     });
     const data = (await res.json()) as {
@@ -675,10 +677,10 @@ async function dispatchSchedulerBrief(args: {
     chat.appendMessage({
       role: 'manager',
       source: 'text',
-      content: `Le Scheduler a préparé une trame d'entretien pour ${args.candidate.candidateName} ${tail}`,
+      content: `Le Scheduler a préparé une trame d'entretien pour ${args.candidate.candidate.fullName} ${tail}`,
       attachment: {
         artifactId,
-        label: `Brief entretien — ${args.candidate.candidateName}`,
+        label: `Brief entretien — ${args.candidate.candidate.fullName}`,
         fileName: data.fileName,
         mime: 'text/markdown',
       },
@@ -687,7 +689,7 @@ async function dispatchSchedulerBrief(args: {
     agents.pushEvent({
       agentId: SCHEDULER_ID,
       type: 'task_completed',
-      payload: { taskId, candidate: args.candidate.candidateName },
+      payload: { taskId, candidate: args.candidate.candidate.fullName },
     });
   } catch (err) {
     console.error('[scheduler] dispatch failed', err);
