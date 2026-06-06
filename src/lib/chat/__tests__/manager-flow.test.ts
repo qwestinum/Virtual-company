@@ -188,6 +188,23 @@ describe('manager-flow — dispatchCVBatch', () => {
     }
   });
 
+  it('résout le seuil depuis campaign.threshold sans threshold explicite (convergence 6c)', async () => {
+    useCampaignsStore.getState().addCampaign({
+      fdp: buildEmptyFDP('CAMP-2026-088'),
+      threshold: 88,
+    });
+    postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('a.pdf', 82, false));
+
+    await dispatchCVBatch({
+      files: [makeFile('a.pdf')],
+      criteria: {},
+      campaignId: 'CAMP-2026-088',
+      // pas de threshold explicite → résolu depuis la campagne.
+    });
+
+    expect(postCVAnalyzerMock.mock.calls[0][0].threshold).toBe(88);
+  });
+
   it('continues on per-file failure', async () => {
     postCVAnalyzerMock
       .mockResolvedValueOnce(fakeCVResult('a.pdf', 82, true))

@@ -49,7 +49,6 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { openConnection } from '@/lib/imap/client';
 import { uploadArtifact } from '@/lib/storage/blob';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
-import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
 
 /**
  * MIME types acceptés par le poller. Alignés sur ce que
@@ -463,7 +462,8 @@ async function processEmailAttachment(args: {
     sheet,
     source: 'email',
     receivedAt: new Date().toISOString(),
-    acceptanceThreshold: DEFAULT_CV_THRESHOLD,
+    // Convergence seuil (6c) : campaign.threshold est la source unique.
+    acceptanceThreshold: campaign.threshold,
   });
 
   // Statut de résolution email pour le journal (l'email est déjà résolu
@@ -475,7 +475,7 @@ async function processEmailAttachment(args: {
 
   // Rapport markdown single-CV — réutilise le renderer batch avec un
   // tableau d'un élément.
-  const summary = buildCVBatchSummary([application], DEFAULT_CV_THRESHOLD);
+  const summary = buildCVBatchSummary([application], campaign.threshold);
   const reportName = `rapport-cv-imap-${slug(application.candidate.fullName)}-${uid}.md`;
   const reportContent = renderCVBatchMarkdown(summary, campaign.id);
 

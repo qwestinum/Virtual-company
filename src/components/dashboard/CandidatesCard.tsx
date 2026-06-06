@@ -4,7 +4,7 @@
  * Carte « Candidats » avec filtres et lignes scrollables (Session 6).
  *
  * Filtres :
- *   - Statut : tous / shortlistés (score ≥ 75) / entretiens
+ *   - Statut : tous / shortlistés (recommandés GO) / entretiens
  *   - Campagne : un select listant les campagnes actives + « Toutes »
  *
  * Limite d'affichage par défaut : 12 lignes (la maquette en montre 9).
@@ -40,8 +40,6 @@ type CampaignFilter = 'all' | 'actives' | 'none' | string;
 // 'actives' = candidats dont la campagne est en statut 'active'
 // 'none'    = candidats sans campagne (uploads isolés, IMAP orphelins)
 // string    = id d'une campagne spécifique
-
-const SHORTLIST_THRESHOLD = 75;
 
 export function CandidatesCard({
   candidates,
@@ -83,15 +81,17 @@ export function CandidatesCard({
 
   const counts = {
     all: inCampaign.length,
-    shortlisted: inCampaign.filter((c) => c.score >= SHORTLIST_THRESHOLD)
-      .length,
+    // Décision D (6c) : shortlist par STATUT (aboveThreshold = accepted au
+    // scoring, seuil campaign.threshold), pas par score brut. Un knockouté à
+    // score élevé (statut rejected) n'est ainsi PAS shortlisté à tort.
+    shortlisted: inCampaign.filter((c) => c.recommendation === 'go').length,
     interview_done: inCampaign.filter((c) => c.status === 'interview_done')
       .length,
   };
 
   const filtered = inCampaign.filter((c) => {
     if (status === 'all') return true;
-    if (status === 'shortlisted') return c.score >= SHORTLIST_THRESHOLD;
+    if (status === 'shortlisted') return c.recommendation === 'go';
     return c.status === status;
   });
 

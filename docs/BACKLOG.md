@@ -258,3 +258,24 @@ frontières outreach (chat `manager-flow.ts` + poller `imap/poller.ts`) projette
 **Pré-requis** : 6b livré. À faire avant ou avec 6d (cleanup `executeCVAnalyzer`
 / `CVAnalysisResult`) — l'adapter et `CVAnalysisResult` ne peuvent disparaître
 qu'une fois ce ticket fait.
+
+---
+
+## Persistance du seuil campagne — fraîcheur côté IMAP (limites mineures)
+
+**Statut** : fonctionnel. `campaign.threshold` (source unique du seuil, lu par le
+scoring chat + IMAP depuis 6c) est édité au dashboard (`ThresholdEditBlock` →
+`setThreshold`) et **persisté** via la souscription `campaigns-sync.ts` →
+`PUT /api/campaigns` → `upsertCampaign` (colonne `threshold`).
+
+**Limites assumées (pas des bugs) :**
+1. **Débounce + best-effort.** La persistance arrive après `PUSH_DEBOUNCE_MS` et
+   le `fetch` échoue en silence si Supabase n'est pas configuré. Sans Supabase le
+   poller IMAP ne tourne pas non plus → pas d'incohérence (chat-only).
+2. **Micro-course IMAP.** Un CV analysé par IMAP entre l'édition du slider et la
+   fin du push débouncé utiliserait l'ancien seuil. Fenêtre négligeable.
+
+**Piste si besoin un jour** : push immédiat (non débouncé) sur `setThreshold`
+spécifiquement, ou relire `campaign.threshold` au plus tard dans le poller. Non
+prioritaire — la fenêtre est étroite et le re-scoring (C7) corrigera de toute
+façon les CV scorés à l'ancien seuil.

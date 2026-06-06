@@ -66,3 +66,49 @@ describe('resolveCandidateEmail', () => {
     expect(r.found).toEqual(['perso@gmail.com', 'pro@boite.fr']);
   });
 });
+
+describe('resolveCandidateEmail — CV mal formés (durcissement 6c)', () => {
+  it('email collé à de la ponctuation / entre parenthèses', () => {
+    const r = resolveCandidateEmail('Coordonnées (jean.dupont@example.com).', null);
+    expect(r.email).toBe('jean.dupont@example.com');
+  });
+
+  it('email avec tag +cv, sous-domaine et TLD multi-niveaux', () => {
+    const cv = 'Marie\nmarie+cv@mail.sub.example.co.uk\nParis';
+    const r = resolveCandidateEmail(cv, null);
+    expect(r.email).toBe('marie+cv@mail.sub.example.co.uk');
+  });
+
+  it('ignore les faux positifs (pas de local part, pas de TLD) et prend le vrai email', () => {
+    const cv = 'arobase @nope.com, hôte jean@localhost, vrai: r.real@boite.fr';
+    const r = resolveCandidateEmail(cv, null);
+    expect(r.found).toEqual(['r.real@boite.fr']);
+    expect(r.email).toBe('r.real@boite.fr');
+  });
+
+  it('email collé sans espace dans une ligne dense, ponctuation finale nettoyée', () => {
+    const cv = 'Email:jean@x.com;Tel:0600000000.';
+    const r = resolveCandidateEmail(cv, null);
+    expect(r.email).toBe('jean@x.com');
+  });
+
+  it('préserve la casse de la 1ʳᵉ occurrence (CV en MAJUSCULES)', () => {
+    const cv = 'CV\nJEAN.DUPONT@MAIL.COM';
+    const r = resolveCandidateEmail(cv, 'jean.dupont@mail.com');
+    // L'email LLM (minuscules) figure dans le CV (insensible casse) → verified,
+    // mais on retient la casse RÉELLE du CV.
+    expect(r.status).toBe('verified');
+    expect(r.email).toBe('JEAN.DUPONT@MAIL.COM');
+  });
+
+  it('LLM renvoie un email malformé (sans @) → corrected vers le CV', () => {
+    const r = resolveCandidateEmail('Contact : a.b@boite.fr', 'pasunemail');
+    expect(r.status).toBe('corrected');
+    expect(r.email).toBe('a.b@boite.fr');
+  });
+
+  it('CV vide ou non textuel → absent, jamais d’envoi', () => {
+    expect(resolveCandidateEmail('', 'x@y.fr').status).toBe('absent');
+    expect(resolveCandidateEmail('   \n\t  ', null).email).toBeNull();
+  });
+});

@@ -326,7 +326,14 @@ export async function dispatchCVBatch(args: {
       ? { ...args.criteria, scoringSheet }
       : args.criteria;
 
-  const threshold = args.threshold ?? DEFAULT_CV_THRESHOLD;
+  // Convergence seuil (6c) : `campaign.threshold` est la SOURCE UNIQUE du seuil
+  // d'acceptation. Override explicite `args.threshold` possible (tests) ; fallback
+  // DEFAULT hors campagne (ex. id TASK non présent dans campaigns-store).
+  const campaignForThreshold = args.campaignId
+    ? useCampaignsStore.getState().getById(args.campaignId)
+    : null;
+  const threshold =
+    args.threshold ?? campaignForThreshold?.threshold ?? DEFAULT_CV_THRESHOLD;
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
   const artifacts = useArtifactsStore.getState();
@@ -941,7 +948,7 @@ export async function chooseExistingCampaign(
   await dispatchCVBatch({
     files,
     criteria: fdpToCVCriteria(campaign.fdp),
-    threshold: DEFAULT_CV_THRESHOLD,
+    // Seuil résolu depuis campaign.threshold dans dispatchCVBatch (convergence 6c).
     campaignId: campaign.id,
   });
 }
@@ -1062,7 +1069,6 @@ export async function dispatchIsolatedCVBatch(args: {
   await dispatchCVBatch({
     files,
     criteria: args.criteria,
-    threshold: DEFAULT_CV_THRESHOLD,
     campaignId: taskId,
   });
 }
