@@ -159,6 +159,26 @@ describe('analyzeCVApplication', () => {
     expect(out.application.scoringResult.status).toBe('accepted');
   });
 
+  it('document non reconnu comme un CV (isCv:false) → candidat anonyme, email null, rejeté, court-circuit (1 seul appel LLM)', async () => {
+    chatCompleteJsonMock.mockResolvedValueOnce(
+      jsonResult({ ...CANDIDATE_OK, isCv: false, fullName: 'Candidat anonyme', email: null }),
+    );
+
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
+
+    // Verdicts + narration court-circuités → un seul appel LLM (extraction candidat).
+    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(1);
+    expect(out.application.candidate.fullName).toBe('Candidat anonyme');
+    // Email FORCÉ à null — on ne grappille aucune adresse (ex. celle du recruteur).
+    expect(out.application.candidate.email).toBeNull();
+    expect(out.application.scoringResult.status).toBe('rejected');
+    expect(out.application.narration.summary).toMatch(/non reconnu comme un CV/i);
+    expect(
+      out.application.scoringResult.breakdown.every((b) => b.llmDecision === 'non_verifiable'),
+    ).toBe(true);
+  });
+
   it('agrège les métriques des trois appels LLM', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK, 120, 0.002, 30))

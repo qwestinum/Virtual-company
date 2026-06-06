@@ -23,6 +23,7 @@ export function buildCandidateExtractionSystemPrompt(): string {
     '',
     'Sortie : JSON STRICT, exactement ce schéma (aucun champ supplémentaire) :',
     '{',
+    '  "isCv": <true/false — le document est-il une candidature (CV / résumé) ? false s\'il s\'agit manifestement d\'autre chose : facture, lettre administrative, page web, document vide ou illisible, etc.>,',
     '  "fullName": "<prénom + nom ; \\"Candidat non identifié\\" si introuvable>",',
     '  "email": "<adresse email telle quelle, ou null si rien d\'extractable>",',
     '  "phone": "<téléphone tel quel (format international si présent), ou null>",',
@@ -33,6 +34,7 @@ export function buildCandidateExtractionSystemPrompt(): string {
     '}',
     '',
     "Règles : n'invente jamais une adresse ou un téléphone ; extrais TEL QUEL ou mets null. Ne déduis `rightToWork` que si le CV l'indique explicitement. Aucune compétence, aucun score, aucun point fort/faible ici — uniquement le factuel annexe.",
+    "RÈGLE D'OR : si `isCv` est false (le document n'est PAS une candidature), mets `fullName` = \"Candidat anonyme\" et `email` = null. Ne récupère SURTOUT PAS une adresse au hasard dans un document qui n'est pas un CV (ce serait potentiellement celle du recruteur, pas d'un candidat).",
   ].join('\n');
 }
 

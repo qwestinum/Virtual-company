@@ -46,6 +46,8 @@ import { LlmDecisionSchema, type ScoringSheet } from '@/types/scoring';
 /** Sous-ensemble FACTUEL extrait par le LLM (le code complète les métadonnées système). */
 const ExtractedCandidateSchema = z
   .object({
+    /** Le document est-il une candidature (CV) ? false ⇒ doc non reconnu. */
+    isCv: z.boolean().catch(true),
     fullName: z.string().min(1),
     email: z.string().email().nullable().catch(null),
     phone: z.string().nullable(),
@@ -133,6 +135,49 @@ export async function analyzeCVApplication(
   } catch (err) {
     if (!(err instanceof AIValidationError)) throw err; // erreurs transport → remontent
     candidateFailed = true;
+  }
+
+  // Document non reconnu comme un CV (facture, lettre, doc vide…). On NE
+  // récupère AUCUN email (ne pas grappiller une adresse au hasard — ex. celle
+  // du recruteur) : candidat anonyme, écarté, narration explicite. Court-circuit
+  // (pas d'appel verdicts ni narration LLM).
+  if (extracted && extracted.isCv === false) {
+    const candidate = JobApplicationDataSchema.parse({
+      fullName: 'Candidat anonyme',
+      email: null,
+      phone: null,
+      detectedLanguage: extracted.detectedLanguage,
+      fileName: input.fileName,
+      source: input.source,
+      receivedAt: input.receivedAt,
+      rightToWork: null,
+      location: null,
+      photoPresent: false,
+    });
+    const verdicts: LlmCriterionVerdict[] = input.sheet.criteria.map((c) => ({
+      criterionId: c.id,
+      llmDecision: 'non_verifiable',
+      llmJustification: 'Document non reconnu comme un CV.',
+      llmCVQuote: '',
+    }));
+    const scoringResult = scoreCandidat(verdicts, input.sheet, {
+      acceptanceThreshold: input.acceptanceThreshold,
+      criteriaVersion: input.criteriaVersion,
+      computedAt: input.computedAt,
+    });
+    const narration: CVNarration = {
+      summary:
+        'Document non reconnu comme un CV : aucune information de candidature exploitable.',
+      strengths: [],
+      weaknesses: ['Le document ne semble pas être un CV / une candidature.'],
+      justification:
+        'Écarté — le document ne constitue pas une candidature analysable, aucun contact exploitable.',
+    };
+    return {
+      application: CVApplicationSchema.parse({ candidate, scoringResult, narration }),
+      metrics,
+      llmFailures: { candidate: candidateFailed, verdicts: false, narration: false },
+    };
   }
 
   // 2. Extraction des décisions par critère.
