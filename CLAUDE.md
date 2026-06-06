@@ -40,6 +40,7 @@ Le MVP couvre le département RH avec deux modalités de travail : **campagnes c
 - **Tous les appels AI passent par `src/lib/ai/provider.ts`**, jamais directement à OpenAI. Cela centralise les retries, le logging, et la mesure des coûts.
 - **Les clés API sont dans `.env.local`**, jamais hardcodées, jamais commitées.
 - **Tests vitest avant commit.** Le projet a déjà 42 tests verts en Session 1 — on ne régresse pas.
+- **`npm run typecheck` avant chaque commit important.** Le typecheck du projet a `incremental: true` : un `.tsbuildinfo` périmé peut produire des **faux négatifs** (erreurs de type masquées par le cache). `npm run typecheck` force `tsc --noEmit --incremental false` et donne l'état réel. Le typecheck incrémental (`tsc --noEmit`) reste pour le dev local en boucle rapide.
 - **Commits conventionnels** : `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
 
 ## Architecture agents

@@ -17,7 +17,7 @@ export const ChipSetSchema = z.object({
 export const ManagerResponseSchema = z.object({
   message: z.string().min(1),
   chips: ChipSetSchema.optional(),
-  fieldExtractions: z.record(FieldKeySchema, z.unknown()).optional(),
+  fieldExtractions: z.partialRecord(FieldKeySchema, z.unknown()).optional(),
   /**
    * Champ FDP que CE tour PROPOSE/demande (celui que vise un éventuel chip
    * « Ajuster »). Permet à l'UI de savoir quel UNIQUE champ éditer en place,
@@ -40,7 +40,7 @@ export const IsolatedManagerResponseSchema = z.object({
   message: z.string().min(1),
   chips: ChipSetSchema.optional(),
   fieldExtractions: z
-    .record(IsolatedCriteriaKeySchema, z.unknown())
+    .partialRecord(IsolatedCriteriaKeySchema, z.unknown())
     .optional(),
 });
 
