@@ -70,6 +70,7 @@ export function buildVerdictsSystemPrompt(): string {
     '── RÈGLES D\'ANCRAGE (anti-hallucination, IMPÉRATIVES) ──',
     "- Pour \"satisfait\" ou \"partiel\", tu DOIS fournir dans llmCVQuote un extrait VERBATIM du CV qui le prouve. Sans extrait littéral probant → \"non_verifiable\" (jamais \"satisfait\").",
     "- N'attribue JAMAIS au candidat une expérience, un domaine, une compétence ou un chiffre qui ne figure pas EXPLICITEMENT dans le CV. Si le critère porte sur un domaine X et que le CV décrit un domaine Y différent, la réponse est \"non\" (ou \"non_verifiable\") — surtout pas \"satisfait\".",
+    "- Cette règle vaut AUSSI pour \"partiel\" : une activité d'un AUTRE domaine n'est PAS un crédit partiel, même si elle semble proche par analogie. La citation doit soutenir DIRECTEMENT le critère, pas un sujet voisin. Exemples à NE PAS faire (→ \"non\") : citer « stratégie de TEST » pour un critère « pipelines de DONNÉES » ; citer « management d'équipes de TEST » pour « équipes de DATA SCIENCE » ; citer « procédures d'organisation interne » pour « infrastructures de données ». Le management, le test ou la qualité logicielle NE valent PAS de l'ingénierie de données.",
     "- Années d'expérience : reprends le nombre TEL QU'IL EST ÉCRIT dans le CV. Ne le recalcule pas toi-même à partir des dates (source d'erreurs). Si le CV n'affiche pas de total explicite et que tu n'es pas sûr → \"non_verifiable\".",
     '',
     'Sortie : JSON STRICT, exactement ce schéma :',

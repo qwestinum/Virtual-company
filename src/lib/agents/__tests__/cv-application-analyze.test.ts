@@ -298,6 +298,8 @@ describe('cv-extraction-prompts', () => {
     expect(sys).toMatch(/ancrage|VERBATIM/i);
     expect(sys).toMatch(/domaine X.*domaine Y|n'attribue jamais/i);
     expect(sys).toMatch(/recalcule pas/i);
+    // Le garde-fou couvre aussi « partiel » (pas d'analogie cross-domaine).
+    expect(sys).toMatch(/partiel.*analogie|crédit partiel|analogie/i);
 
     const user = buildVerdictsUserPrompt('CV brut ici', sheet());
     // Critères présentés numérotés 1..N (le LLM reporte le numéro, pas l'UUID).
