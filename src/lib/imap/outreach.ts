@@ -32,13 +32,13 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { getSynthesisEmail } from '@/lib/email/addresses';
 import { sendEmail } from '@/lib/email/client';
 import { uploadArtifact } from '@/lib/storage/blob';
-import type { CVAnalysisResult } from '@/types/cv-analysis';
+import type { MailCandidate } from '@/types/mail-candidate';
 
 export type OutreachInput = {
   mailboxId: string;
   campaignId: string;
   jobTitle: string | null;
-  candidate: CVAnalysisResult;
+  candidate: MailCandidate;
   /** UID IMAP du message d'origine, pour traçabilité dans le journal. */
   uid: string;
 };
@@ -386,7 +386,7 @@ async function composeAndSendInterviewBrief(args: {
 
 function renderMailTrace(args: {
   mode: 'reject' | 'invite';
-  candidate: CVAnalysisResult;
+  candidate: MailCandidate;
   jobTitle: string | null;
   campaignId: string;
   subject: string;
@@ -426,7 +426,7 @@ function renderMailTrace(args: {
 }
 
 function renderBriefMarkdown(args: {
-  candidate: CVAnalysisResult;
+  candidate: MailCandidate;
   jobTitle: string | null;
   campaignId: string;
   bookingUrl: string;
@@ -454,7 +454,6 @@ function renderBriefMarkdown(args: {
     c.email ? `- Email : ${c.email}` : '- Email : *manquant*',
     c.phone ? `- Téléphone : ${c.phone}` : '',
     `- Score : ${c.score}/100`,
-    `- Expérience : ${c.experienceYears} an(s)`,
     '',
     '## Synthèse',
     c.summary,
@@ -472,7 +471,7 @@ function renderBriefMarkdown(args: {
 }
 
 function renderDrhBriefHtml(args: {
-  candidate: CVAnalysisResult;
+  candidate: MailCandidate;
   jobTitle: string | null;
   campaignId: string;
   bookingUrl: string;
@@ -499,7 +498,6 @@ function renderDrhBriefHtml(args: {
     c.email ? `<li>Email : ${escape(c.email)}</li>` : '',
     c.phone ? `<li>Téléphone : ${escape(c.phone)}</li>` : '',
     `<li>Score CV : ${c.score}/100</li>`,
-    `<li>Expérience estimée : ${c.experienceYears} an(s)</li>`,
     '</ul>',
     '<h3>Synthèse</h3>',
     `<p>${escape(c.summary)}</p>`,

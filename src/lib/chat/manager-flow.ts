@@ -31,7 +31,7 @@ import {
   renderCVBatchMarkdown,
   suggestCVReportFileName,
 } from '@/lib/agents/cv-report-render';
-import { toLegacyCVResult } from '@/lib/agents/cv-application-legacy-adapter';
+import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import { postCVAnalyzer, postJobWriter } from '@/lib/chat/api-client';
 import { pushArtifact } from '@/lib/db/sync/artifacts-sync';
 import { useAgentsStore } from '@/stores/agents-store';
@@ -534,7 +534,7 @@ async function dispatchPostAnalysisOutreach(args: {
         jobTitle: args.jobTitle,
         mode,
         // Frontière mail/scheduler (non migré, 6c-mail) : projection legacy.
-        candidate: toLegacyCVResult(cv),
+        candidate: cvApplicationToMailCandidate(cv),
       };
       const res = await fetch('/api/mail-composer', {
         method: 'POST',
@@ -647,7 +647,7 @@ async function dispatchSchedulerBrief(args: {
         artifactId,
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
-        candidate: toLegacyCVResult(args.candidate),
+        candidate: cvApplicationToMailCandidate(args.candidate),
       }),
     });
     const data = (await res.json()) as {

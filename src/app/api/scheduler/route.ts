@@ -28,7 +28,7 @@ import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
 import { uploadArtifact } from '@/lib/storage/blob';
-import { CVAnalysisResultSchema } from '@/types/cv-analysis';
+import { MailCandidateSchema } from '@/types/mail-candidate';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -37,7 +37,7 @@ const RequestSchema = z.object({
   artifactId: z.string().min(1),
   campaignId: z.string().min(1),
   jobTitle: z.string().nullable(),
-  candidate: CVAnalysisResultSchema,
+  candidate: MailCandidateSchema,
   /**
    * Override optionnel — sinon lu depuis CAL_COM_EVENT_URL côté
    * serveur.
@@ -68,7 +68,6 @@ function buildDrhEmailHtml(args: {
     c.email ? `<li>Email : ${escapeHtml(c.email)}</li>` : '',
     c.phone ? `<li>Téléphone : ${escapeHtml(c.phone)}</li>` : '',
     `<li>Score CV : ${c.score}/100</li>`,
-    `<li>Expérience estimée : ${c.experienceYears} an(s)</li>`,
     `</ul>`,
     '<h3>Synthèse</h3>',
     `<p>${escapeHtml(c.summary)}</p>`,
@@ -104,7 +103,6 @@ function buildDrhMarkdownTrace(args: {
     c.email ? `- Email : ${c.email}` : '- Email : *manquant*',
     c.phone ? `- Téléphone : ${c.phone}` : '',
     `- Score : ${c.score}/100`,
-    `- Expérience : ${c.experienceYears} an(s)`,
     '',
     '## Synthèse',
     c.summary,

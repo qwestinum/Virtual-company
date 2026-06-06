@@ -29,7 +29,7 @@ import { simpleParser } from 'mailparser';
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
-import { toLegacyCVResult } from '@/lib/agents/cv-application-legacy-adapter';
+import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import {
   buildCVBatchSummary,
   renderCVBatchMarkdown,
@@ -557,7 +557,7 @@ async function processEmailAttachment(args: {
       jobTitle,
       // Frontière vers le sous-système mail/scheduler non encore migré (6c-mail) :
       // on projette vers l'ancienne forme via l'adapter transitoire.
-      candidate: toLegacyCVResult(application),
+      candidate: cvApplicationToMailCandidate(application),
       uid,
     });
   } catch (err) {

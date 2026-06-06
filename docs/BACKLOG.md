@@ -232,8 +232,13 @@ dédié, car `scoreCandidat` exige une `ScoringSheet`.
 
 ## Migration mail-composer + scheduler vers CVApplication (6c-mail)
 
-**Statut** : différé. Issu de C6/6b — le sous-système mail/scheduler est resté
-sur `CVAnalysisResult` (cascade trop profonde pour 6b).
+**Statut** : ✅ FAIT (commit 6c-mail). Sous-système migré sur l'interface étroite
+`MailCandidate` (`src/types/mail-candidate.ts`) ; frontières outreach projetant
+via `cvApplicationToMailCandidate` ; adapter `toLegacyCVResult` supprimé ;
+`experienceYears`/`skills` retirés des templates. Reste 6d.
+
+**Contexte initial (résolu)** : issu de C6/6b — le sous-système mail/scheduler
+était resté sur `CVAnalysisResult` (cascade trop profonde pour 6b).
 
 **Contexte.** `composeCandidateMail` / `composeInterviewGuide`
 (`mail-composer-execute.ts`), les routes `/api/mail-composer` et `/api/scheduler`

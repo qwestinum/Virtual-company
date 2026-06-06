@@ -16,13 +16,13 @@
  * Resend gère le minimum.
  */
 
-import type { CVAnalysisResult } from '@/types/cv-analysis';
+import type { MailCandidate } from '@/types/mail-candidate';
 
 export type MailComposerMode = 'reject' | 'invite';
 
 export type MailComposerContext = {
   mode: MailComposerMode;
-  candidate: CVAnalysisResult;
+  candidate: MailCandidate;
   jobTitle: string | null;
   campaignId: string;
   /** Pour mode='invite' uniquement, sinon ignoré. */
@@ -112,7 +112,7 @@ export function buildInterviewGuideSystemPrompt(): string {
 }
 
 export function buildInterviewGuideUserPrompt(args: {
-  candidate: CVAnalysisResult;
+  candidate: MailCandidate;
   jobTitle: string | null;
   campaignId: string;
 }): string {

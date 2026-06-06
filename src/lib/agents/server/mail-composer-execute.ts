@@ -19,7 +19,7 @@ import {
   buildMailComposerUserPrompt,
   type MailComposerContext,
 } from '@/lib/agents/mail-composer-prompts';
-import type { CVAnalysisResult } from '@/types/cv-analysis';
+import type { MailCandidate } from '@/types/mail-candidate';
 
 export class MailComposerError extends Error {
   constructor(
@@ -93,7 +93,7 @@ const InterviewGuideSchema = z.object({
 export type InterviewGuide = z.infer<typeof InterviewGuideSchema>;
 
 export async function composeInterviewGuide(args: {
-  candidate: CVAnalysisResult;
+  candidate: MailCandidate;
   jobTitle: string | null;
   campaignId: string;
 }): Promise<{ guide: InterviewGuide; metrics: { tokensUsed: number; costEstimate: number; durationMs: number } }> {

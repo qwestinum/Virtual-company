@@ -21,7 +21,7 @@ import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
 import { uploadArtifact } from '@/lib/storage/blob';
-import { CVAnalysisResultSchema } from '@/types/cv-analysis';
+import { MailCandidateSchema } from '@/types/mail-candidate';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -31,7 +31,7 @@ const RequestSchema = z.object({
   campaignId: z.string().min(1),
   jobTitle: z.string().nullable(),
   mode: z.enum(['reject', 'invite']),
-  candidate: CVAnalysisResultSchema,
+  candidate: MailCandidateSchema,
   /**
    * Override optionnel. Si absent en mode 'invite', on lit
    * CAL_COM_EVENT_URL côté serveur. Si rien n'est configuré, on
