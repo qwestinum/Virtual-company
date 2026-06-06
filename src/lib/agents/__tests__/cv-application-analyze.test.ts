@@ -8,6 +8,7 @@ vi.mock('@/lib/ai/provider', () => ({
 }));
 
 import { AIValidationError } from '@/lib/ai/errors';
+import { remapVerdictsToCriteria } from '@/lib/agents/server/cv-application-analyze';
 import { buildCriterion, type ScoringSheet } from '@/types/scoring';
 
 function sheet(): ScoringSheet {
@@ -48,12 +49,14 @@ const CANDIDATE_OK = {
   photoPresent: false,
 };
 
+// Le LLM renvoie le NUMÉRO du critère (1..N), remappé vers le vrai id par
+// remapVerdictsToCriteria. Ordre de sheet() : 1=ko, 2=cap, 3=s1, 4=s2.
 const VERDICTS_OK = {
   verdicts: [
-    { criterionId: 'ko', llmDecision: 'satisfait', llmJustification: 'Diplôme présent.', llmCVQuote: 'Master' },
-    { criterionId: 'cap', llmDecision: 'satisfait', llmJustification: '8 ans.', llmCVQuote: '8 ans' },
-    { criterionId: 's1', llmDecision: 'satisfait', llmJustification: 'IFRS.', llmCVQuote: 'IFRS' },
-    { criterionId: 's2', llmDecision: 'satisfait', llmJustification: 'Anglais.', llmCVQuote: 'Anglais courant' },
+    { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Diplôme présent.', llmCVQuote: 'Master' },
+    { criterionId: '2', llmDecision: 'satisfait', llmJustification: '8 ans.', llmCVQuote: '8 ans' },
+    { criterionId: '3', llmDecision: 'satisfait', llmJustification: 'IFRS.', llmCVQuote: 'IFRS' },
+    { criterionId: '4', llmDecision: 'satisfait', llmJustification: 'Anglais.', llmCVQuote: 'Anglais courant' },
   ],
 };
 
@@ -282,17 +285,48 @@ describe('cv-extraction-prompts', () => {
     expect(p).toMatch(/aucun score/i);
   });
 
-  it('le prompt verdicts liste chaque criterionId et interdit le calcul de note', async () => {
+  it('le prompt verdicts NUMÉROTE les critères (pas d’UUID à recopier) et interdit le calcul de note', async () => {
     const { buildVerdictsSystemPrompt, buildVerdictsUserPrompt } = await import(
       '@/lib/agents/cv-extraction-prompts'
     );
     const sys = buildVerdictsSystemPrompt();
     expect(sys).toMatch(/sans calculer aucune note|le score est calculé ensuite/i);
     expect(sys).toContain('non_verifiable');
+    expect(sys).toMatch(/NUMÉRO/);
 
     const user = buildVerdictsUserPrompt('CV brut ici', sheet());
-    for (const id of ['ko', 'cap', 's1', 's2']) {
-      expect(user).toContain(`id="${id}"`);
-    }
+    // Critères présentés numérotés 1..N (le LLM reporte le numéro, pas l'UUID).
+    expect(user).toContain('1. ');
+    expect(user).toContain('4. ');
+    expect(user).toContain('Diplôme requis');
+    expect(user).not.toContain('id="'); // plus de round-trip d'id fragile
+  });
+});
+
+describe('remapVerdictsToCriteria', () => {
+  const V = (criterionId: string, llmDecision = 'satisfait') => ({
+    criterionId,
+    llmDecision: llmDecision as 'satisfait',
+    llmJustification: 'x',
+    llmCVQuote: '',
+  });
+
+  it('remappe les NUMÉROS (1..N) vers les vrais ids de la fiche', () => {
+    const out = remapVerdictsToCriteria([V('1'), V('3', 'non')], sheet().criteria);
+    expect(out.map((v) => v.criterionId)).toEqual(['ko', 's1']);
+    expect(out[1].llmDecision).toBe('non');
+  });
+
+  it('accepte aussi le vrai id si le modèle l’a renvoyé', () => {
+    const out = remapVerdictsToCriteria([V('s1')], sheet().criteria);
+    expect(out[0].criterionId).toBe('s1');
+  });
+
+  it('ignore les ids non mappables (UUID mal recopié, numéro hors plage)', () => {
+    const out = remapVerdictsToCriteria(
+      [V('crit_bogus-uuid'), V('99'), V('0')],
+      sheet().criteria,
+    );
+    expect(out).toHaveLength(0);
   });
 });

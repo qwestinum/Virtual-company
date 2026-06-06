@@ -70,11 +70,11 @@ export function buildVerdictsSystemPrompt(): string {
     'Sortie : JSON STRICT, exactement ce schéma :',
     '{',
     '  "verdicts": [',
-    '    { "criterionId": "<id fourni>", "llmDecision": "satisfait|partiel|non|non_verifiable", "llmJustification": "<1 phrase>", "llmCVQuote": "<extrait littéral du CV ou \\"\\">" }',
+    '    { "criterionId": "<le NUMÉRO du critère tel que listé : \\"1\\", \\"2\\", …>", "llmDecision": "satisfait|partiel|non|non_verifiable", "llmJustification": "<1 phrase>", "llmCVQuote": "<extrait littéral du CV ou \\"\\">" }',
     '  ]',
     '}',
     '',
-    'Rends EXACTEMENT un verdict par critère fourni, en réutilisant les `criterionId` tels quels. Aucune note, aucun champ supplémentaire.',
+    'Rends EXACTEMENT un verdict par critère fourni. Dans `criterionId`, reporte le NUMÉRO du critère (1, 2, 3…) tel qu\'il est listé dans le message — pas son libellé. Aucune note, aucun champ supplémentaire.',
   ].join('\n');
 }
 
@@ -83,18 +83,18 @@ export function buildVerdictsUserPrompt(
   sheet: ScoringSheet,
 ): string {
   const lines: string[] = ['Critères de la fiche de scoring à évaluer :', ''];
-  for (const c of sheet.criteria) {
+  sheet.criteria.forEach((c, idx) => {
     lines.push(
-      `- id="${c.id}" | criticité=${SCORING_LEVEL_LABELS[c.level]} | « ${c.label} »`,
+      `${idx + 1}. criticité=${SCORING_LEVEL_LABELS[c.level]} | « ${c.label} »`,
     );
-  }
+  });
   lines.push(
     '',
     'CV à évaluer :',
     '',
     cvText.trim(),
     '',
-    'Renvoie STRICTEMENT le JSON `verdicts` décrit dans le prompt système, un verdict par critère ci-dessus.',
+    'Renvoie STRICTEMENT le JSON `verdicts` décrit dans le prompt système, un verdict par critère ci-dessus, en reportant son NUMÉRO dans `criterionId`.',
   );
   return lines.join('\n');
 }

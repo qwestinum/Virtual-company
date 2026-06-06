@@ -70,6 +70,38 @@ const VerdictsResponseSchema = z.object({
   ),
 });
 
+/**
+ * Remappe les `criterionId` renvoyés par le LLM vers les VRAIS ids de la fiche.
+ *
+ * Le prompt présente les critères NUMÉROTÉS (1..N) et demande au LLM de reporter
+ * ce numéro — bien plus fiable que lui faire recopier un `crit_<UUID>`, qu'il
+ * mal-recopiait : les verdicts ne matchaient alors plus la fiche, les critères
+ * retombaient en `non_verifiable` → scores bas ET variables d'un run à l'autre.
+ * On accepte aussi le vrai id (si le modèle l'a renvoyé). Verdict non mappable
+ * (numéro hors plage / id inconnu) → ignoré (le scoreur le traitera en
+ * `non_verifiable`).
+ */
+export function remapVerdictsToCriteria(
+  rawVerdicts: z.infer<typeof VerdictsResponseSchema>['verdicts'],
+  criteria: ScoringSheet['criteria'],
+): LlmCriterionVerdict[] {
+  const realIds = new Set(criteria.map((c) => c.id));
+  const out: LlmCriterionVerdict[] = [];
+  for (const v of rawVerdicts) {
+    let id: string | null = null;
+    if (realIds.has(v.criterionId)) {
+      id = v.criterionId;
+    } else {
+      const idx = Number(v.criterionId);
+      if (Number.isInteger(idx) && idx >= 1 && idx <= criteria.length) {
+        id = criteria[idx - 1].id;
+      }
+    }
+    if (id) out.push({ ...v, criterionId: id });
+  }
+  return out;
+}
+
 export type AnalyzeCVApplicationInput = {
   cvText: string;
   fileName: string;
@@ -191,7 +223,7 @@ export async function analyzeCVApplication(
       ],
       VerdictsResponseSchema,
     );
-    verdicts = r.data.verdicts;
+    verdicts = remapVerdictsToCriteria(r.data.verdicts, input.sheet.criteria);
     accumulate(r.raw);
   } catch (err) {
     if (!(err instanceof AIValidationError)) throw err;
