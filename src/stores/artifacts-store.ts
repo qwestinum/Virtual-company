@@ -162,7 +162,12 @@ export function downloadArtifact(artifact: Artifact): void {
     }
     return;
   }
-  const blob = new Blob([artifact.content], { type: artifact.mime });
+  // charset=utf-8 sur les types texte → pas de mojibake à l'ouverture du .md.
+  const blobType =
+    artifact.mime.startsWith('text/') && !/charset/i.test(artifact.mime)
+      ? `${artifact.mime};charset=utf-8`
+      : artifact.mime;
+  const blob = new Blob([artifact.content], { type: blobType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

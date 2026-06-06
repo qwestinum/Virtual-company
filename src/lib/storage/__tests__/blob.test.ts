@@ -61,7 +61,7 @@ describe('uploadArtifact', () => {
       'campagnes/CAMP-1/fdp.md',
       '# FDP\n',
       expect.objectContaining({
-        contentType: 'text/markdown',
+        contentType: 'text/markdown; charset=utf-8',
         upsert: true,
       }),
     );
@@ -83,7 +83,7 @@ describe('uploadArtifact', () => {
     expect(upload.mock.calls[0]![0]!).toBe('tasks/TASK-1/rapport.md');
   });
 
-  it('passes through a custom mimeType', async () => {
+  it('ajoute charset=utf-8 aux mimeType texte', async () => {
     const { upload } = mockSupabaseStorage({});
     await uploadArtifact({
       owner: { kind: 'campaign', id: 'CAMP-1' },
@@ -91,7 +91,18 @@ describe('uploadArtifact', () => {
       content: 'plain',
       mimeType: 'text/plain',
     });
-    expect(upload.mock.calls[0]![2]!.contentType).toBe('text/plain');
+    expect(upload.mock.calls[0]![2]!.contentType).toBe('text/plain; charset=utf-8');
+  });
+
+  it('laisse les mimeType non-texte inchangés (pas de charset)', async () => {
+    const { upload } = mockSupabaseStorage({});
+    await uploadArtifact({
+      owner: { kind: 'campaign', id: 'CAMP-1' },
+      name: 'doc.pdf',
+      content: 'binaire',
+      mimeType: 'application/pdf',
+    });
+    expect(upload.mock.calls[0]![2]!.contentType).toBe('application/pdf');
   });
 
   it('throws when Storage returns an error', async () => {

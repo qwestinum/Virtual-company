@@ -56,7 +56,14 @@ export async function uploadArtifact(
 ): Promise<UploadArtifactResult> {
   const supabase = requireServerSupabase();
   const path = buildPath(input.owner, input.name);
-  const mimeType = input.mimeType ?? 'text/markdown';
+  const baseMime = input.mimeType ?? 'text/markdown';
+  // Force `charset=utf-8` sur les types texte : sans lui, le navigateur ouvre le
+  // rapport en Latin-1/Windows-1252 → mojibake (« â€" » au lieu de « — », « Ã© »
+  // au lieu de « é »). Le contenu est bien de l'UTF-8.
+  const mimeType =
+    baseMime.startsWith('text/') && !/charset/i.test(baseMime)
+      ? `${baseMime}; charset=utf-8`
+      : baseMime;
 
   const { error: uploadError } = await supabase.storage
     .from(ARTIFACTS_BUCKET)
