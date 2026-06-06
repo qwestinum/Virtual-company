@@ -139,6 +139,10 @@ export function buildCVBatchSummary(
 
 export function suggestCVReportFileName(campaignId: string | null): string {
   const id = campaignId ?? 'tasks';
-  const stamp = new Date().toISOString().slice(0, 10);
-  return `rapport-cv-${id}-${stamp}.md`;
+  // Date + heure + court suffixe aléatoire : chaque analyse produit un nom
+  // UNIQUE. Sinon, plusieurs uploads le même jour collisionnent sur le même
+  // fichier de stockage → le rapport ouvert restait figé sur la 1ʳᵉ version.
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return `rapport-cv-${id}-${stamp}-${suffix}.md`;
 }
