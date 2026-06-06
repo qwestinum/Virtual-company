@@ -95,7 +95,7 @@ export const cvAnalyzerData: AgentContractData = AgentContractDataSchema.parse({
 
 /**
  * Stub côté contrat. La vraie exécution vit dans
- * `src/lib/agents/server/cv-analyzer-execute.ts` (server-only).
+ * `src/lib/agents/server/cv-application-analyze.ts` (server-only).
  */
 export const cvAnalyzerAgent: AgentContract = {
   ...cvAnalyzerData,

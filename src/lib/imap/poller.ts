@@ -13,7 +13,7 @@
  *        comme `imap_match_inactive_campaign` puis ignoré.
  *      - extraction des pièces jointes PDF
  *      - pour chaque PJ matchée : insert journal `imap_cv_received`,
- *        analyse via executeCVAnalyzer, upload artifact, journal
+ *        analyse via analyzeCVApplication, upload artifact, journal
  *        `imap_cv_analyzed` ou `imap_cv_failed`
  *   4. Mise à jour last_uid_seen + last_polled_at + last_error
  *

@@ -1,8 +1,8 @@
 /**
  * Résolution DÉTERMINISTE de l'email destinataire d'un candidat.
  *
- * Problème résolu : l'email du candidat était pris dans `CVAnalysisResult.email`,
- * extrait par le LLM — non déterministe. Selon les passes, il pouvait
+ * Problème résolu : l'email du candidat était pris de l'extraction LLM —
+ * non déterministe. Selon les passes, il pouvait
  * renvoyer l'adresse de l'expéditeur de l'enveloppe, une adresse citée,
  * ou halluciner, si bien que le mail destiné au candidat partait parfois
  * à la mauvaise personne.

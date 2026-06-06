@@ -26,35 +26,7 @@ export const CVAnalysisCriteriaSchema = z.object({
   scoringSheet: ScoringSheetSchema.optional(),
 });
 
-export const CVAnalysisResultSchema = z.object({
-  fileName: z.string().min(1),
-  candidateName: z.string().min(1),
-  /**
-   * Round 4 — coordonnées extraites du CV. `email` est indispensable
-   * pour que Mail Composer envoie un refus/invitation ; s'il est null,
-   * le candidat passe en arbitrage humain (le DRH doit retrouver le
-   * contact manuellement). `phone` est nice-to-have, affiché dans le
-   * brief d'entretien.
-   */
-  email: z.string().email().nullable(),
-  phone: z.string().nullable(),
-  skills: z.array(z.string().min(1)),
-  experienceYears: z.number().nonnegative(),
-  score: z.number().min(0).max(100),
-  summary: z.string().min(1),
-  strengths: z.array(z.string().min(1)),
-  weaknesses: z.array(z.string()),
-  /**
-   * Round 4 — justification du verdict (accept/refuse) en 1-2 phrases.
-   * Utilisée par Mail Composer pour formuler un motif factuel dans le
-   * mail de refus (sans copier-coller — le ton est retravaillé).
-   */
-  justification: z.string().min(1),
-  aboveThreshold: z.boolean(),
-});
-
 export type CVAnalysisCriteria = z.infer<typeof CVAnalysisCriteriaSchema>;
-export type CVAnalysisResult = z.infer<typeof CVAnalysisResultSchema>;
 
 /**
  * Seuil d'acceptation hardcodé pour la Session 4. La spec §6.3 prévoit
@@ -64,12 +36,12 @@ export type CVAnalysisResult = z.infer<typeof CVAnalysisResultSchema>;
 export const DEFAULT_CV_THRESHOLD = 75;
 
 // ───────────────────────────────────────────────────────────────────────────
-// Modèle cible C1 — séparation extraction / scoring / narration.
+// Modèle de la séparation extraction / scoring / narration (C1→C6).
 //
 // `JobApplicationData` = données candidat FACTUELLES ANNEXES uniquement.
-// `CVApplication`      = candidature complète (annexe + ScoreResult explicable).
-// Les LEGACY `CVAnalysisResultSchema` / `CVBatchSummarySchema` ci-dessus restent
-// en place tant que les consommateurs ne sont pas migrés (route, flow, UI — C6).
+// `CVApplication`      = candidature complète (annexe + ScoreResult + narration).
+// (`CVAnalysisResult` legacy supprimé en 6d ; `CVAnalysisCriteria` reste le
+//  transport de la fiche vers la route jusqu'à 6e.)
 // ───────────────────────────────────────────────────────────────────────────
 
 /**

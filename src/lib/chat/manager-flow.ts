@@ -314,9 +314,9 @@ export async function dispatchCVBatch(args: {
   if (files.length === 0) return;
 
   // Si la fiche de scoring courante est validée ET liée à la même
-  // campagne que l'analyse, on la joint aux critères. Le CV Analyzer
-  // détectera la présence de scoringSheet et basculera en mode grille
-  // pondérée (cf. buildCVAnalyzerSystemPrompt).
+  // campagne que l'analyse, on la joint aux critères — la route en extrait
+  // la `scoringSheet` (seul champ utilisé) et la passe à analyzeCVApplication.
+  // (Transport `criteria` à remplacer par `scoringSheet` direct en 6e.)
   const scoringSheet = useScoringStore.getState().sheet;
   const criteria: CVAnalysisCriteria =
     scoringSheet &&

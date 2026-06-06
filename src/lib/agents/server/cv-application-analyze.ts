@@ -11,9 +11,9 @@
  * proprement : décisions → toutes `non_verifiable` + `llmFailure` ; candidat →
  * fiche minimale (l'email reste résolu déterministe depuis le texte du CV).
  *
- * Cohabite avec l'ancien `cv-analyzer-execute.ts` (CVAnalysisResult) tant que la
- * route et le flow ne sont pas migrés (C6). `ScoringSheet` est OBLIGATOIRE —
- * le mode tâche isolée (analyse sans fiche) est hors périmètre produit v1.
+ * Seul chemin d'analyse CV depuis 6d (l'ancien `cv-analyzer-execute.ts` est
+ * supprimé). `ScoringSheet` est OBLIGATOIRE — le mode tâche isolée (analyse
+ * sans fiche) est hors périmètre produit v1.
  */
 
 import { z } from 'zod';

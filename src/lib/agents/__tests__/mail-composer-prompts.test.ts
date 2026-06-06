@@ -6,21 +6,18 @@ import {
   buildMailComposerSystemPrompt,
   buildMailComposerUserPrompt,
 } from '@/lib/agents/mail-composer-prompts';
-import type { CVAnalysisResult } from '@/types/cv-analysis';
+import type { MailCandidate } from '@/types/mail-candidate';
 
-const CANDIDATE: CVAnalysisResult = {
-  fileName: 'cv.pdf',
+const CANDIDATE: MailCandidate = {
   candidateName: 'Léa Martin',
   email: 'lea.martin@example.com',
   phone: '+33 6 11 22 33 44',
-  skills: ['React', 'TypeScript'],
-  experienceYears: 4,
   score: 82,
+  aboveThreshold: true,
   summary: 'Profil junior+ aligné avec les besoins. Stack JS solide.',
   strengths: ['React', 'Habitudes de tests'],
   weaknesses: ['Pas de senior management'],
   justification: 'Score élevé : stack alignée, expérience cohérente, motivation visible.',
-  aboveThreshold: true,
 };
 
 describe('buildMailComposerSystemPrompt', () => {
