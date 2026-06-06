@@ -20,6 +20,7 @@ import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
 } from '@/lib/db/supabase-server';
+import { withUtf8Bom } from '@/lib/storage/utf8';
 
 export const ARTIFACTS_BUCKET = 'artifacts';
 
@@ -56,18 +57,15 @@ export async function uploadArtifact(
 ): Promise<UploadArtifactResult> {
   const supabase = requireServerSupabase();
   const path = buildPath(input.owner, input.name);
-  const baseMime = input.mimeType ?? 'text/markdown';
-  // Force `charset=utf-8` sur les types texte : sans lui, le navigateur ouvre le
-  // rapport en Latin-1/Windows-1252 → mojibake (« â€" » au lieu de « — », « Ã© »
-  // au lieu de « é »). Le contenu est bien de l'UTF-8.
-  const mimeType =
-    baseMime.startsWith('text/') && !/charset/i.test(baseMime)
-      ? `${baseMime}; charset=utf-8`
-      : baseMime;
+  const mimeType = input.mimeType ?? 'text/markdown';
+  // Encodage : BOM UTF-8 sur les contenus texte (cf. lib/storage/utf8.ts) — on
+  // ne touche PAS au content-type (un `charset=utf-8` y faisait échouer l'upload
+  // Storage → plus de publicUrl → l'icône « ouvrir » disparaissait).
+  const body = withUtf8Bom(input.content, mimeType);
 
   const { error: uploadError } = await supabase.storage
     .from(ARTIFACTS_BUCKET)
-    .upload(path, input.content, {
+    .upload(path, body, {
       contentType: mimeType,
       // Idempotence : si on re-upload une FDP (DRH a re-validé après
       // ajustement), on écrase la précédente. La trace côté

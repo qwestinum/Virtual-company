@@ -57,14 +57,14 @@ describe('uploadArtifact', () => {
     });
 
     expect(from).toHaveBeenCalledWith(ARTIFACTS_BUCKET);
-    expect(upload).toHaveBeenCalledWith(
-      'campagnes/CAMP-1/fdp.md',
-      '# FDP\n',
-      expect.objectContaining({
-        contentType: 'text/markdown; charset=utf-8',
-        upsert: true,
-      }),
-    );
+    const [path, body, options] = upload.mock.calls[0]!;
+    expect(path).toBe('campagnes/CAMP-1/fdp.md');
+    // Content-type NON modifié (pas de charset → upload Storage intact) ;
+    // l'UTF-8 est forcé par un BOM en tête de contenu.
+    expect(options!.contentType).toBe('text/markdown');
+    expect(options!.upsert).toBe(true);
+    expect((body as string).charCodeAt(0)).toBe(0xfeff); // BOM UTF-8
+    expect((body as string).endsWith('# FDP\n')).toBe(true);
     expect(getPublicUrl).toHaveBeenCalledWith('campagnes/CAMP-1/fdp.md');
     expect(result).toEqual({
       bucket: ARTIFACTS_BUCKET,
@@ -83,7 +83,7 @@ describe('uploadArtifact', () => {
     expect(upload.mock.calls[0]![0]!).toBe('tasks/TASK-1/rapport.md');
   });
 
-  it('ajoute charset=utf-8 aux mimeType texte', async () => {
+  it('préfixe un BOM UTF-8 aux contenus texte, content-type inchangé', async () => {
     const { upload } = mockSupabaseStorage({});
     await uploadArtifact({
       owner: { kind: 'campaign', id: 'CAMP-1' },
@@ -91,10 +91,11 @@ describe('uploadArtifact', () => {
       content: 'plain',
       mimeType: 'text/plain',
     });
-    expect(upload.mock.calls[0]![2]!.contentType).toBe('text/plain; charset=utf-8');
+    expect(upload.mock.calls[0]![2]!.contentType).toBe('text/plain');
+    expect((upload.mock.calls[0]![1] as string).charCodeAt(0)).toBe(0xfeff);
   });
 
-  it('laisse les mimeType non-texte inchangés (pas de charset)', async () => {
+  it('laisse les mimeType non-texte inchangés (ni charset ni BOM)', async () => {
     const { upload } = mockSupabaseStorage({});
     await uploadArtifact({
       owner: { kind: 'campaign', id: 'CAMP-1' },
@@ -103,6 +104,7 @@ describe('uploadArtifact', () => {
       mimeType: 'application/pdf',
     });
     expect(upload.mock.calls[0]![2]!.contentType).toBe('application/pdf');
+    expect(upload.mock.calls[0]![1]).toBe('binaire'); // pas de BOM ajouté
   });
 
   it('throws when Storage returns an error', async () => {

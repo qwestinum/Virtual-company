@@ -18,6 +18,7 @@
 import { create } from 'zustand';
 
 import type { ArtifactKind } from '@/lib/db/types';
+import { withUtf8Bom } from '@/lib/storage/utf8';
 
 export type { ArtifactKind };
 
@@ -162,12 +163,10 @@ export function downloadArtifact(artifact: Artifact): void {
     }
     return;
   }
-  // charset=utf-8 sur les types texte → pas de mojibake à l'ouverture du .md.
-  const blobType =
-    artifact.mime.startsWith('text/') && !/charset/i.test(artifact.mime)
-      ? `${artifact.mime};charset=utf-8`
-      : artifact.mime;
-  const blob = new Blob([artifact.content], { type: blobType });
+  // BOM UTF-8 sur les contenus texte → pas de mojibake à l'ouverture du .md.
+  const blob = new Blob([withUtf8Bom(artifact.content, artifact.mime)], {
+    type: artifact.mime,
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
