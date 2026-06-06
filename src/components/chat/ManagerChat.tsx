@@ -63,7 +63,6 @@ import {
   chooseRouteNewCampaign,
   consumeNewCampaignName,
   dispatchCVRouting,
-  dispatchIsolatedCVBatch,
   dispatchJobWriter,
   dispatchPublisher,
   findPendingByResolvedId,
@@ -85,7 +84,6 @@ import {
 } from '@/stores/chat-store';
 import { useFdpStore } from '@/stores/fdp-store';
 import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
-import { type CVAnalysisCriteria } from '@/types/cv-analysis';
 import {
   buildEmptyFDP,
   FIELD_KEYS,
@@ -95,7 +93,6 @@ import {
 import {
   ISOLATED_CRITERIA_KEYS,
   type IsolatedCriteriaInProgress,
-  type IsolatedCriteriaKey,
 } from '@/types/isolated-criteria';
 import { nextFlowStep } from '@/lib/campaign/lifecycle';
 
@@ -506,31 +503,6 @@ function buildFDPFromIsolatedCriteria(
   return fdp;
 }
 
-function buildIsolatedCriteriaPayload(
-  criteria: IsolatedCriteriaInProgress,
-): CVAnalysisCriteria {
-  const out: CVAnalysisCriteria = {};
-  const get = (k: IsolatedCriteriaKey): unknown => criteria.fields[k]?.value;
-  const jobTitle = get('job_title');
-  const seniority = get('seniority');
-  const skills = get('key_skills');
-  const exp = get('experience_years');
-  if (typeof jobTitle === 'string' && jobTitle.trim().length > 0) {
-    out.jobTitle = jobTitle.trim();
-  }
-  if (typeof seniority === 'string' && seniority.trim().length > 0) {
-    out.seniority = seniority.trim();
-  }
-  if (Array.isArray(skills) && skills.length > 0) {
-    out.keySkills = skills
-      .map((s) => (typeof s === 'string' ? s : ''))
-      .filter((s) => s.length > 0);
-  }
-  if (typeof exp === 'number' && Number.isFinite(exp) && exp >= 0) {
-    out.experienceYears = exp;
-  }
-  return out;
-}
 
 /**
  * Champs FDP qui constituent matériellement le contenu d'une annonce.
@@ -1165,16 +1137,10 @@ export function ManagerChat() {
         source: 'text',
         content: `Je n'ai pas pu préparer la fiche de scoring (${
           err instanceof Error ? err.message : 'erreur inconnue'
-        }). Je lance quand même l'analyse avec les critères validés.`,
+        }).`,
       });
-      try {
-        await dispatchIsolatedCVBatch({
-          pendingId: pending.pendingId,
-          criteria: buildIsolatedCriteriaPayload(current),
-        });
-      } catch {
-        // Erreur déjà loggée côté dispatchIsolatedCVBatch (bulle Manager).
-      }
+      // Analyse CV en mode tâche isolée retirée (6e) — modalité désactivée en v1
+      // (le scoring exige une fiche validée ; câblage à reconstruire, cf. backlog).
     } finally {
       setAgentBusy(false);
     }
@@ -2068,22 +2034,13 @@ export function ManagerChat() {
     if (isIsolatedFlow) {
       const pending = findPendingByResolvedId(campaignId);
       if (pending) {
-        // Status 'active' AVANT le dispatch (le batch reset criteria).
         useTasksStore.getState().updateStatus(campaignId, 'active');
         appendMessage({
           role: 'manager',
           source: 'text',
-          content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}. Je lance maintenant l'analyse des CV avec cette grille pondérée.`,
+          content: `Fiche de scoring validée pour ${campaignId} — ${criteriaCount} critère${criteriaCount > 1 ? 's' : ''}.`,
         });
-        setAgentBusy(true);
-        try {
-          await dispatchIsolatedCVBatch({
-            pendingId: pending.pendingId,
-            criteria: buildIsolatedCriteriaPayload(isolatedNow),
-          });
-        } finally {
-          setAgentBusy(false);
-        }
+        // Analyse CV en mode tâche isolée retirée (6e) — modalité désactivée en v1.
         return;
       }
     }

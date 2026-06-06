@@ -8,10 +8,10 @@ import { AIProviderError } from '@/lib/ai/errors';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
-  CVAnalysisCriteriaSchema,
   type CVApplication,
   DEFAULT_CV_THRESHOLD,
 } from '@/types/cv-analysis';
+import { ScoringSheetSchema, type ScoringSheet } from '@/types/scoring';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -48,7 +48,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const file = form.get('cv');
-  const criteriaRaw = form.get('criteria');
+  const scoringSheetRaw = form.get('scoringSheet');
   const thresholdRaw = form.get('threshold');
   const taskIdRaw = form.get('taskId');
   const campaignIdRaw = form.get('campaignId');
@@ -85,18 +85,22 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  let criteria;
-  try {
-    const parsed = criteriaRaw ? JSON.parse(String(criteriaRaw)) : {};
-    criteria = CVAnalysisCriteriaSchema.parse(parsed);
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: 'invalid_request',
-        message: err instanceof Error ? err.message : 'Critères invalides.',
-      },
-      { status: 400 },
-    );
+  // Fiche de scoring : transport direct (6e). Absente → la garde plus bas
+  // refuse l'analyse (422). Présente mais invalide → 400.
+  let sheet: ScoringSheet | undefined;
+  if (scoringSheetRaw) {
+    try {
+      sheet = ScoringSheetSchema.parse(JSON.parse(String(scoringSheetRaw)));
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error: 'invalid_request',
+          message:
+            err instanceof Error ? err.message : 'Fiche de scoring invalide.',
+        },
+        { status: 400 },
+      );
+    }
   }
 
   const threshold = (() => {
@@ -116,9 +120,8 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // Garde « fiche de scoring obligatoire » (C6). Le nouveau pipeline score les
   // CV via une grille validée — pas d'analyse sans fiche. Le client
-  // (dispatchCVBatch) joint `scoringSheet` quand elle est validée pour la
+  // (dispatchCVBatch) envoie `scoringSheet` quand elle est validée pour la
   // campagne ; en son absence on refuse proprement (le DRH doit valider la fiche).
-  const sheet = criteria.scoringSheet;
   if (!sheet) {
     return NextResponse.json(
       {

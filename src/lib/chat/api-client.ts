@@ -1,14 +1,11 @@
 import type { JobDescription } from '@/lib/storage/job-descriptions';
-import type {
-  CVAnalysisCriteria,
-  CVApplication,
-} from '@/types/cv-analysis';
+import type { CVApplication } from '@/types/cv-analysis';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { IntentClassification } from '@/types/intent';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { JobAdResult } from '@/types/job-writer';
 import type { PublicationChannel } from '@/types/publication-channel';
-import type { ScoringCriterion } from '@/types/scoring';
+import type { ScoringCriterion, ScoringSheet } from '@/types/scoring';
 import type {
   IsolatedManagerResponse,
   ManagerResponse,
@@ -171,14 +168,16 @@ export async function postIsolatedManagerChat(params: {
 
 export async function postCVAnalyzer(params: {
   file: File;
-  criteria: CVAnalysisCriteria;
+  scoringSheet?: ScoringSheet;
   threshold: number;
   taskId?: string;
   campaignId?: string;
 }): Promise<CVAnalyzerResult> {
   const form = new FormData();
   form.append('cv', params.file);
-  form.append('criteria', JSON.stringify(params.criteria));
+  if (params.scoringSheet) {
+    form.append('scoringSheet', JSON.stringify(params.scoringSheet));
+  }
   form.append('threshold', String(params.threshold));
   if (params.taskId) form.append('taskId', params.taskId);
   if (params.campaignId) form.append('campaignId', params.campaignId);

@@ -21,9 +21,7 @@ import {
   consumeNewCampaignName,
   dispatchCVBatch,
   dispatchCVRouting,
-  dispatchIsolatedCVBatch,
   dispatchJobWriter,
-  findPendingByResolvedId,
   newCampaignSkipSetup,
 } from '@/lib/chat/manager-flow';
 import { useAgentsStore } from '@/stores/agents-store';
@@ -173,7 +171,6 @@ describe('manager-flow — dispatchCVBatch', () => {
 
     await dispatchCVBatch({
       files: [makeFile('a.pdf'), makeFile('b.pdf'), makeFile('c.pdf')],
-      criteria: { jobTitle: 'Comptable' },
       threshold: 75,
       campaignId: 'CAMP-2026-007',
     });
@@ -197,7 +194,6 @@ describe('manager-flow — dispatchCVBatch', () => {
 
     await dispatchCVBatch({
       files: [makeFile('a.pdf')],
-      criteria: {},
       campaignId: 'CAMP-2026-088',
       // pas de threshold explicite → résolu depuis la campagne.
     });
@@ -213,7 +209,6 @@ describe('manager-flow — dispatchCVBatch', () => {
 
     await dispatchCVBatch({
       files: [makeFile('a.pdf'), makeFile('b.pdf'), makeFile('c.pdf')],
-      criteria: {},
       threshold: 75,
       campaignId: 'CAMP-2026-007',
     });
@@ -349,34 +344,6 @@ describe('manager-flow — CV routing', () => {
   });
 });
 
-describe('manager-flow — dispatchIsolatedCVBatch', () => {
-  beforeEach(() => {
-    postCVAnalyzerMock.mockReset();
-    resetAll();
-  });
-
-  it('runs the batch using the resolved id from a pending routing', async () => {
-    postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('a.pdf'));
-    dispatchCVRouting([makeFile('a.pdf')]);
-    const routerMsg = useChatStore
-      .getState()
-      .messages.find((m) => m.block?.kind === 'cv-route-picker');
-    if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
-      throw new Error('no route-picker');
-    chooseRouteIsolated(routerMsg.block.pendingId);
-    const taskId = useIsolatedCriteriaStore.getState().criteria?.taskId;
-    expect(taskId).toBeDefined();
-    if (!taskId) return;
-
-    const pending = findPendingByResolvedId(taskId);
-    expect(pending).toBeDefined();
-    if (!pending) return;
-
-    await dispatchIsolatedCVBatch({
-      pendingId: pending.pendingId,
-      criteria: { jobTitle: 'Data Engineer', seniority: 'senior' },
-    });
-    expect(postCVAnalyzerMock).toHaveBeenCalledTimes(1);
-    expect(useIsolatedCriteriaStore.getState().criteria).toBeNull();
-  });
-});
+// Note : `dispatchIsolatedCVBatch` (analyse CV en mode tâche isolée) a été retiré
+// en 6e — la modalité isolée est désactivée en v1 et incompatible avec le scoring
+// par fiche obligatoire (câblage à reconstruire, cf. backlog).

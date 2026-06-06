@@ -223,10 +223,12 @@ future) : `manager-isolated.ts`, `/api/manager/isolated-criteria`,
 `ValidateIsolatedCriteriaButton` + branches isolées de `ManagerChat.tsx`.
 
 **Pour ré-activer** : retirer le verrou `out_of_campaign_task` dans
-`runManagerTurn`, repasser `ISOLATED_TASK_ENABLED = true`, et migrer le flux
-isolé vers le nouveau pipeline (extraction/scoring/narration) — l'analyse `freeText`
-sans fiche devra être repensée avec une fiche de scoring minimale ou un mode
-dédié, car `scoreCandidat` exige une `ScoringSheet`.
+`runManagerTurn`, repasser `ISOLATED_TASK_ENABLED = true`, et **reconstruire le
+câblage analyse CV isolée** — retiré en 6e car incompatible avec le scoring par
+fiche obligatoire : `dispatchIsolatedCVBatch` (manager-flow), `buildIsolatedCriteriaPayload`
+(ManagerChat) et les 2 appels dans `handleValidateIsolated` ont été supprimés.
+L'analyse `freeText` sans fiche devra être repensée avec une fiche de scoring
+minimale ou un mode dédié, car `scoreCandidat` exige une `ScoringSheet`.
 
 ---
 

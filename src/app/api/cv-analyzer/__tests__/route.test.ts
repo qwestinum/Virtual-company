@@ -59,7 +59,7 @@ const APPLICATION: CVApplication = {
   },
 };
 
-function request(criteria: unknown): Request {
+function request(scoringSheet?: ScoringSheet): Request {
   const form = new FormData();
   form.append(
     'cv',
@@ -67,7 +67,9 @@ function request(criteria: unknown): Request {
       type: 'text/plain',
     }),
   );
-  form.append('criteria', JSON.stringify(criteria));
+  if (scoringSheet) {
+    form.append('scoringSheet', JSON.stringify(scoringSheet));
+  }
   form.append('threshold', '75');
   form.append('campaignId', 'CAMP-9');
   return new Request('http://localhost/api/cv-analyzer', {
@@ -86,7 +88,7 @@ describe('POST /api/cv-analyzer', () => {
 
   it('refuse l’analyse sans fiche de scoring → 422 no_scoring_sheet', async () => {
     const { POST } = await import('@/app/api/cv-analyzer/route');
-    const res = await POST(request({}));
+    const res = await POST(request());
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.error).toBe('no_scoring_sheet');
@@ -95,7 +97,7 @@ describe('POST /api/cv-analyzer', () => {
     expect(analyzeCVApplicationMock).not.toHaveBeenCalled();
   });
 
-  it('chemin nominal : extrait → analyse (avec la fiche) → renvoie l’ancienne forme', async () => {
+  it('chemin nominal : extrait → analyse (avec la fiche) → renvoie le CVApplication', async () => {
     extractCVTextMock.mockResolvedValue({
       fileName: 'cv.txt',
       text: 'Jean Test — contenu de CV jean@mail.com',
@@ -108,7 +110,7 @@ describe('POST /api/cv-analyzer', () => {
     });
 
     const { POST } = await import('@/app/api/cv-analyzer/route');
-    const res = await POST(request({ scoringSheet: sheet() }));
+    const res = await POST(request(sheet()));
     expect(res.status).toBe(200);
 
     // La fiche + le seuil + la source sont bien passés au pipeline.

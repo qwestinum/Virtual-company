@@ -18,7 +18,6 @@
  * chat (mimétique humaine — pas de console rouge), avec un ton métier.
  */
 
-import { fdpToCVCriteria } from '@/lib/agents/fdp-to-criteria';
 import { useFdpStore } from '@/stores/fdp-store';
 import { useScoringStore } from '@/stores/scoring-store';
 import { useTasksStore } from '@/stores/tasks-store';
@@ -47,7 +46,6 @@ import {
 import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
 import {
   DEFAULT_CV_THRESHOLD,
-  type CVAnalysisCriteria,
   type CVApplication,
   type CVBatchSummary,
 } from '@/types/cv-analysis';
@@ -306,25 +304,23 @@ export async function dispatchPublisher(args: {
  */
 export async function dispatchCVBatch(args: {
   files: File[];
-  criteria: CVAnalysisCriteria;
   threshold?: number;
   campaignId: string | null;
 }): Promise<void> {
   const { files } = args;
   if (files.length === 0) return;
 
-  // Si la fiche de scoring courante est validée ET liée à la même
-  // campagne que l'analyse, on la joint aux critères — la route en extrait
-  // la `scoringSheet` (seul champ utilisé) et la passe à analyzeCVApplication.
-  // (Transport `criteria` à remplacer par `scoringSheet` direct en 6e.)
-  const scoringSheet = useScoringStore.getState().sheet;
-  const criteria: CVAnalysisCriteria =
-    scoringSheet &&
-    scoringSheet.isValidated &&
+  // Fiche de scoring obligatoire pour scorer (6e) : on envoie celle du store si
+  // elle est validée ET liée à la campagne courante ; sinon undefined → la route
+  // refuse l'analyse (422), le DRH doit d'abord valider la fiche.
+  const sheetState = useScoringStore.getState().sheet;
+  const scoringSheet =
+    sheetState &&
+    sheetState.isValidated &&
     args.campaignId !== null &&
-    scoringSheet.campaignId === args.campaignId
-      ? { ...args.criteria, scoringSheet }
-      : args.criteria;
+    sheetState.campaignId === args.campaignId
+      ? sheetState
+      : undefined;
 
   // Convergence seuil (6c) : `campaign.threshold` est la SOURCE UNIQUE du seuil
   // d'acceptation. Override explicite `args.threshold` possible (tests) ; fallback
@@ -372,7 +368,7 @@ export async function dispatchCVBatch(args: {
     try {
       const res = await postCVAnalyzer({
         file,
-        criteria,
+        scoringSheet,
         threshold,
         taskId: itemTaskId,
         campaignId: args.campaignId ?? undefined,
@@ -947,8 +943,8 @@ export async function chooseExistingCampaign(
   pendingRoutings.delete(pendingId);
   await dispatchCVBatch({
     files,
-    criteria: fdpToCVCriteria(campaign.fdp),
-    // Seuil résolu depuis campaign.threshold dans dispatchCVBatch (convergence 6c).
+    // Fiche + seuil résolus dans dispatchCVBatch (depuis useScoringStore /
+    // campaign.threshold) — plus de critères FDP transmis (6e).
     campaignId: campaign.id,
   });
 }
@@ -1049,28 +1045,6 @@ function markCampaignPickerSelected(
       return;
     }
   }
-}
-
-/**
- * Lance le batch CV pour une tâche isolée une fois la pré-collecte
- * validée par le DRH (clic sur le bouton vert IsolatedCriteria).
- */
-export async function dispatchIsolatedCVBatch(args: {
-  pendingId: string;
-  criteria: CVAnalysisCriteria;
-}): Promise<void> {
-  const pending = pendingRoutings.get(args.pendingId);
-  if (!pending || !pending.resolvedId) return;
-  const files = pending.files;
-  const taskId = pending.resolvedId;
-  pendingRoutings.delete(args.pendingId);
-  useIsolatedCriteriaStore.getState().reset();
-
-  await dispatchCVBatch({
-    files,
-    criteria: args.criteria,
-    campaignId: taskId,
-  });
 }
 
 /**

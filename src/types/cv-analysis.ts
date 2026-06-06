@@ -1,32 +1,7 @@
 import { z } from 'zod';
 
 import { CVSourceSchema } from './cv-source';
-import { ScoreResultSchema, ScoringSheetSchema } from './scoring';
-
-/**
- * Critères passés au CV Analyzer. Dérivés de la FDP en mode campagne ;
- * en tâche isolée hors campagne, seul `freeText` est renseigné — le
- * Manager y consigne l'instruction libre du DRH.
- *
- * Phase 4.4 — Si une fiche de scoring validée est disponible, elle
- * est jointe via `scoringSheet` : le LLM s'en sert comme grille
- * pondérée pour produire le score, et le knockout sur un critère
- * rédhibitoire absent ramène le score à 0.
- */
-export const CVAnalysisCriteriaSchema = z.object({
-  jobTitle: z.string().optional(),
-  seniority: z.string().optional(),
-  contractType: z.string().optional(),
-  location: z.string().optional(),
-  salaryRange: z.string().optional(),
-  mainMissions: z.array(z.string()).optional(),
-  keySkills: z.array(z.string()).optional(),
-  experienceYears: z.number().nonnegative().optional(),
-  freeText: z.string().optional(),
-  scoringSheet: ScoringSheetSchema.optional(),
-});
-
-export type CVAnalysisCriteria = z.infer<typeof CVAnalysisCriteriaSchema>;
+import { ScoreResultSchema } from './scoring';
 
 /**
  * Seuil d'acceptation hardcodé pour la Session 4. La spec §6.3 prévoit
@@ -40,8 +15,8 @@ export const DEFAULT_CV_THRESHOLD = 75;
 //
 // `JobApplicationData` = données candidat FACTUELLES ANNEXES uniquement.
 // `CVApplication`      = candidature complète (annexe + ScoreResult + narration).
-// (`CVAnalysisResult` legacy supprimé en 6d ; `CVAnalysisCriteria` reste le
-//  transport de la fiche vers la route jusqu'à 6e.)
+// (Legacy `CVAnalysisResult` / `CVAnalysisCriteria` supprimés — 6d/6e. La route
+//  reçoit désormais la `ScoringSheet` directement.)
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
