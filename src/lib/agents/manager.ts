@@ -449,6 +449,28 @@ export function buildOtherIntentResponse(): ManagerResponse {
 }
 
 /**
+ * Réponse DÉTERMINISTE pour l'intention `out_of_campaign_task`.
+ *
+ * Le mode « sollicitation hors campagne » (TASK-XXXX, livrables atomiques) est
+ * hors périmètre produit de la v1 : tout le flux isolé en aval (collecte de
+ * critères isolés, analyse CV sans fiche) est conservé dans le code mais rendu
+ * inatteignable. Quand le classifier détecte cette intention, on redirige
+ * poliment vers la création d'une campagne — une seule phrase, sans excuse ni
+ * promesse de roadmap. Pas de LLM → pas de dérive (registre « le LLM propose,
+ * le code verrouille »).
+ */
+export function buildOutOfCampaignUnavailableResponse(): ManagerResponse {
+  return {
+    message:
+      "Le traitement de demandes ponctuelles hors campagne n'est pas disponible pour le moment ; lançons une campagne de recrutement pour cadrer votre besoin.",
+    chips: {
+      placement: 'below_bubble',
+      options: ['Lancer un recrutement', 'Faire un point sur une campagne'],
+    },
+  };
+}
+
+/**
  * Filet anti-bulle-vide. Le schéma autorise un message d'espaces
  * (`min(1)`) ; un message blanc afficherait une bulle vide côté chat.
  * On le remplace par une relance neutre — universel, appliqué à TOUTE
@@ -508,6 +530,25 @@ export async function runManagerTurn(
 
   if (classification.confidence < CLARIFICATION_THRESHOLD) {
     classification = { ...classification, needsClarification: true };
+  }
+
+  // VERROU DÉTERMINISTE — `out_of_campaign_task` désactivé en v1. On court-circuite
+  // AVANT toute logique de switch / création de TASK / tour conversationnel :
+  // redirection polie vers la création de campagne. Tout le flux isolé en aval
+  // reste dans le code mais devient inatteignable (non-destructif).
+  if (classification.intent === 'out_of_campaign_task') {
+    return {
+      classification,
+      response: buildOutOfCampaignUnavailableResponse(),
+      preSearchHits: [],
+      campaignId: input.fdp?.campaignId ?? null,
+      pendingSwitch: null,
+      metrics: {
+        durationMs: intentCompletion.durationMs,
+        tokensUsed: intentCompletion.usage.totalTokens,
+        costEstimate: intentCompletion.costEstimate,
+      },
+    };
   }
 
   // Détection déterministe du switch de campagne. On court-circuite le

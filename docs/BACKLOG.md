@@ -201,3 +201,29 @@ fois C1→C6 stables.
 
 **Tolérance golden tests** : ±2 pts en première vague, à resserrer à ±1 pt une
 fois le système stabilisé (seuil progressif — même logique que C2).
+
+---
+
+## Ré-activation du mode « tâche isolée » (hors campagne, TASK-XXXX)
+
+**Statut** : désactivé en v1 (gating), code conservé non-destructif.
+
+**Contexte.** La modalité « sollicitation hors campagne » (livrables atomiques,
+TASK-XXXX) est hors périmètre produit v1. Le gating se fait en UN point :
+`runManagerTurn` court-circuite l'intention `out_of_campaign_task` vers une
+redirection polie (`buildOutOfCampaignUnavailableResponse`). Le picker UI était
+déjà coupé (`CVRoutePicker.ISOLATED_TASK_ENABLED = false`).
+
+**Code préservé mais désormais inatteignable** (à NE PAS supprimer — réactivation
+future) : `manager-isolated.ts`, `/api/manager/isolated-criteria`,
+`isolated-criteria-store`, `tasks-store`, `dispatchIsolatedCVBatch` /
+`chooseRouteIsolated` (manager-flow), branche `freeText` de l'ancien
+`cv-analyzer-execute.ts` + `buildCVAnalyzerUserPrompt`, branche `TASK` de
+`generateCampaignId`, composants `IsolatedCriteriaChecklist` /
+`ValidateIsolatedCriteriaButton` + branches isolées de `ManagerChat.tsx`.
+
+**Pour ré-activer** : retirer le verrou `out_of_campaign_task` dans
+`runManagerTurn`, repasser `ISOLATED_TASK_ENABLED = true`, et migrer le flux
+isolé vers le nouveau pipeline (extraction/scoring/narration) — l'analyse `freeText`
+sans fiche devra être repensée avec une fiche de scoring minimale ou un mode
+dédié, car `scoreCandidat` exige une `ScoringSheet`.

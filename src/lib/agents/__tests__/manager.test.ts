@@ -373,6 +373,66 @@ describe('runManagerTurn — orchestration', () => {
     expect(result.response.chips?.options).toContain('Lancer un recrutement');
   });
 
+  it('intention `out_of_campaign_task` → redirection déterministe, sans TASK ni LLM conversationnel', async () => {
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          intent: 'out_of_campaign_task',
+          confidence: 0.9,
+          reasoning: 'Demande atomique hors campagne.',
+          needsClarification: false,
+        }),
+      ),
+    );
+
+    const result = await runManagerTurn({
+      history: [
+        { role: 'user', content: 'prépare-moi juste une fiche de poste isolée' },
+      ],
+      fdp: null,
+    });
+
+    // Un seul appel LLM (la classification) — pas de tour conversationnel.
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(result.classification.intent).toBe('out_of_campaign_task');
+    // Aucune TASK-XXXX créée.
+    expect(result.campaignId).toBeNull();
+    // Redirection polie vers la création de campagne, avec chips.
+    expect(result.response.message).toMatch(/n'est pas disponible/i);
+    expect(result.response.chips?.options).toContain('Lancer un recrutement');
+    expect(result.preSearchHits).toEqual([]);
+    expect(result.pendingSwitch).toBeNull();
+  });
+
+  it('out_of_campaign_task gaté même avec une FDP en cours (pas de switch vers une TASK)', async () => {
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          intent: 'out_of_campaign_task',
+          confidence: 0.95,
+          reasoning: 'Bascule explicite vers une tâche isolée.',
+          needsClarification: false,
+          isDistinctNewCampaign: true,
+          candidateNewJobTitle: 'Développeur',
+        }),
+      ),
+    );
+
+    const fdp = buildEmptyFDP('CAMP-2026-077');
+    const result = await runManagerTurn({
+      history: [
+        { role: 'user', content: 'en fait prépare juste une fiche isolée pour un développeur' },
+      ],
+      fdp,
+    });
+
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(result.pendingSwitch).toBeNull();
+    expect(result.response.message).toMatch(/n'est pas disponible/i);
+    // On conserve l'id de campagne courant, pas de TASK générée.
+    expect(result.campaignId).toBe('CAMP-2026-077');
+  });
+
   it('promotes needsClarification when confidence < CLARIFICATION_THRESHOLD', async () => {
     chatCompleteMock
       .mockResolvedValueOnce(
