@@ -595,8 +595,7 @@ export async function runManagerTurn(
     fdpHasJobTitle(input.fdp) &&
     !classification.needsClarification &&
     classification.confidence >= SWITCH_DIALOG_THRESHOLD &&
-    (classification.intent === 'new_campaign' ||
-      classification.intent === 'out_of_campaign_task') &&
+    classification.intent === 'new_campaign' &&
     (hasExplicitKeyword ||
       (classification.isDistinctNewCampaign === true &&
         isCandidateMeaningful));
@@ -787,8 +786,7 @@ export async function runManagerTurn(
   const campaignId =
     !input.fdp &&
     !classification.needsClarification &&
-    (classification.intent === 'new_campaign' ||
-      classification.intent === 'out_of_campaign_task')
+    classification.intent === 'new_campaign'
       ? generateCampaignId(classification.intent)
       : (input.fdp?.campaignId ?? null);
 
