@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
-import {
-  CVAnalyzerError,
-  executeCVAnalyzer,
-} from '@/lib/agents/server/cv-analyzer-execute';
+import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
+import { toLegacyCVResult } from '@/lib/agents/cv-application-legacy-adapter';
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
+import { ScoringError } from '@/lib/scoring';
 import { AIProviderError } from '@/lib/ai/errors';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -117,35 +116,39 @@ export async function POST(request: Request): Promise<NextResponse> {
       ? campaignIdRaw
       : undefined;
 
+  // Garde « fiche de scoring obligatoire » (C6). Le nouveau pipeline score les
+  // CV via une grille validée — pas d'analyse sans fiche. Le client
+  // (dispatchCVBatch) joint `scoringSheet` quand elle est validée pour la
+  // campagne ; en son absence on refuse proprement (le DRH doit valider la fiche).
+  const sheet = criteria.scoringSheet;
+  if (!sheet) {
+    return NextResponse.json(
+      {
+        error: 'no_scoring_sheet',
+        message:
+          'Aucune fiche de scoring validée pour cette campagne — validez-la avant de lancer l’analyse des CV.',
+      },
+      { status: 422 },
+    );
+  }
+
   try {
     const extracted = await extractCVText(file);
-    const output = await executeCVAnalyzer({
-      taskId,
-      correlationId: taskId,
-      agentId: 'agent.cv-analyzer',
-      payload: {
-        cvText: extracted.text,
-        fileName: extracted.fileName,
-        criteria,
-        threshold,
-      },
-      context: {
-        campaignId,
-        priority: 'normal',
-        requestedBy: 'agent.manager-rh',
-      },
+    // Pipeline extraction → scoring (code) → narration. Le LLM ne note jamais.
+    const { application, metrics } = await analyzeCVApplication({
+      cvText: extracted.text,
+      fileName: extracted.fileName,
+      sheet,
+      source: 'manual',
+      receivedAt: new Date().toISOString(),
+      acceptanceThreshold: threshold,
     });
 
-    const resultRaw = CVAnalysisResultSchema.parse(output.data.result);
-
-    // Déterminisme du destinataire — on force une adresse présente dans
-    // le CV (cf. resolveCandidateEmail), au lieu de l'email potentiellement
-    // erroné du LLM, pour que tout envoi en aval vise le bon candidat.
-    const emailResolution = resolveCandidateEmail(
-      extracted.text,
-      resultRaw.email,
-    );
-    const result = { ...resultRaw, email: emailResolution.email };
+    // Adapter TRANSITOIRE → ancienne forme (UI/rapport migrés en 6b). L'email
+    // est déjà résolu déterministe dans analyzeCVApplication ; on recalcule le
+    // STATUT de résolution pour le journal (compat dashboard).
+    const result = CVAnalysisResultSchema.parse(toLegacyCVResult(application));
+    const emailResolution = resolveCandidateEmail(extracted.text, result.email);
 
     // Trace le candidat dans le journal d'audit pour qu'il soit
     // comptabilisé au dashboard, comme un CV reçu par email. Sans ça,
@@ -163,7 +166,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({
       result,
       threshold,
-      metrics: output.metrics,
+      metrics,
     });
   } catch (err) {
     if (err instanceof CVExtractError) {
@@ -175,11 +178,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status },
       );
     }
-    if (err instanceof CVAnalyzerError) {
-      const status = err.code === 'empty_cv' ? 422 : 502;
+    if (err instanceof ScoringError) {
+      // Fiche non scorable (aucun critère exploitable) → erreur métier client.
       return NextResponse.json(
         { error: err.code, message: err.message },
-        { status },
+        { status: 422 },
       );
     }
     if (err instanceof AIProviderError) {

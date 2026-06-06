@@ -76,6 +76,8 @@ export type AnalyzeCVApplicationInput = {
   source: CVSource;
   /** Date de réception ISO 8601 (métadonnée système). */
   receivedAt: string;
+  /** Seuil d'acceptation (sinon sheet.acceptanceThreshold, sinon défaut). */
+  acceptanceThreshold?: number;
   /** Étiquette de version de fiche (réelle en C7). */
   criteriaVersion?: string;
   /** Horodatage ISO 8601 du calcul (sinon laissé au défaut de scoreCandidat). */
@@ -183,6 +185,7 @@ export async function analyzeCVApplication(
 
   // 3. Score calculé par le CODE — le LLM ne note jamais.
   const scoringResult = scoreCandidat(verdicts, input.sheet, {
+    acceptanceThreshold: input.acceptanceThreshold,
     criteriaVersion: input.criteriaVersion,
     computedAt: input.computedAt,
   });
