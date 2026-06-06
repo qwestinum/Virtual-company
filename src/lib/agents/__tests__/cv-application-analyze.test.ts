@@ -293,6 +293,11 @@ describe('cv-extraction-prompts', () => {
     expect(sys).toMatch(/sans calculer aucune note|le score est calculé ensuite/i);
     expect(sys).toContain('non_verifiable');
     expect(sys).toMatch(/NUMÉRO/);
+    // Garde-fous anti-hallucination : ancrage verbatim, pas d'invention de
+    // domaine, pas de recalcul des années.
+    expect(sys).toMatch(/ancrage|VERBATIM/i);
+    expect(sys).toMatch(/domaine X.*domaine Y|n'attribue jamais/i);
+    expect(sys).toMatch(/recalcule pas/i);
 
     const user = buildVerdictsUserPrompt('CV brut ici', sheet());
     // Critères présentés numérotés 1..N (le LLM reporte le numéro, pas l'UUID).
