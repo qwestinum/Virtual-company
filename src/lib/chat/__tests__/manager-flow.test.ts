@@ -29,8 +29,10 @@ import { useArtifactsStore } from '@/stores/artifacts-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
+import { useScoringStore } from '@/stores/scoring-store';
 import type { CVApplication } from '@/types/cv-analysis';
 import { buildEmptyFDP, type FDPInProgress } from '@/types/field-collection';
+import { buildCriterion, type ScoringSheet } from '@/types/scoring';
 
 const postJobWriterMock = vi.mocked(postJobWriter);
 const postCVAnalyzerMock = vi.mocked(postCVAnalyzer);
@@ -115,6 +117,19 @@ function resetAll() {
   useArtifactsStore.getState().reset();
   useCampaignsStore.getState().reset();
   useIsolatedCriteriaStore.getState().reset();
+  useScoringStore.getState().reset();
+}
+
+function validatedSheet(campaignId: string): ScoringSheet {
+  return {
+    campaignId,
+    isValidated: true,
+    acceptanceThreshold: 75,
+    criteria: [
+      buildCriterion({ id: 'ko', label: 'Diplôme', level: 'redhibitoire' }),
+      buildCriterion({ id: 's1', label: 'IFRS', level: 'critique', weight: 8 }),
+    ],
+  };
 }
 
 describe('manager-flow — dispatchJobWriter', () => {
@@ -199,6 +214,42 @@ describe('manager-flow — dispatchCVBatch', () => {
     });
 
     expect(postCVAnalyzerMock.mock.calls[0][0].threshold).toBe(88);
+  });
+
+  it('utilise la fiche PERSISTÉE de la campagne quand aucune fiche active (post-actualisation)', async () => {
+    // Simule l'état après refresh : useScoringStore vide (pas hydraté), mais la
+    // campagne a sa fiche validée persistée. La garde doit envoyer cette fiche.
+    useCampaignsStore.getState().addCampaign({
+      fdp: buildEmptyFDP('CAMP-2026-099'),
+      scoringSheet: validatedSheet('CAMP-2026-099'),
+    });
+    useScoringStore.getState().reset(); // pas de fiche en édition (post-refresh)
+    postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('a.pdf'));
+
+    await dispatchCVBatch({
+      files: [makeFile('a.pdf')],
+      campaignId: 'CAMP-2026-099',
+    });
+
+    const sent = postCVAnalyzerMock.mock.calls[0][0].scoringSheet;
+    expect(sent?.isValidated).toBe(true);
+    expect(sent?.campaignId).toBe('CAMP-2026-099');
+  });
+
+  it('n’envoie pas de fiche si la campagne n’a pas de fiche validée', async () => {
+    useCampaignsStore.getState().addCampaign({
+      fdp: buildEmptyFDP('CAMP-2026-100'),
+      // pas de scoringSheet
+    });
+    useScoringStore.getState().reset();
+    postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('a.pdf'));
+
+    await dispatchCVBatch({
+      files: [makeFile('a.pdf')],
+      campaignId: 'CAMP-2026-100',
+    });
+
+    expect(postCVAnalyzerMock.mock.calls[0][0].scoringSheet).toBeUndefined();
   });
 
   it('continues on per-file failure', async () => {

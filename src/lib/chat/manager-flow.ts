@@ -310,17 +310,29 @@ export async function dispatchCVBatch(args: {
   const { files } = args;
   if (files.length === 0) return;
 
-  // Fiche de scoring obligatoire pour scorer (6e) : on envoie celle du store si
-  // elle est validée ET liée à la campagne courante ; sinon undefined → la route
-  // refuse l'analyse (422), le DRH doit d'abord valider la fiche.
-  const sheetState = useScoringStore.getState().sheet;
+  // Fiche de scoring obligatoire pour scorer. SOURCE DE VÉRITÉ = la fiche
+  // PERSISTÉE de la campagne (`campaign.scoringSheet`), qui survit à
+  // l'actualisation (hydratée depuis le store campagnes). On préfère la fiche
+  // EN COURS D'ÉDITION (`useScoringStore`) si elle est validée et liée à la
+  // campagne courante — elle porte les derniers ajustements non encore archivés.
+  // Sinon on retombe sur la fiche persistée. Absente/non validée → undefined →
+  // la route refuse l'analyse (422), le DRH doit d'abord valider la fiche.
+  //
+  // NB : `useScoringStore` n'est PAS hydraté au refresh ; s'appuyer uniquement
+  // dessus faisait croire « pas de fiche valide » après chaque actualisation.
+  const activeSheet = useScoringStore.getState().sheet;
+  const campaignForSheet = args.campaignId
+    ? useCampaignsStore.getState().getById(args.campaignId)
+    : null;
   const scoringSheet =
-    sheetState &&
-    sheetState.isValidated &&
+    activeSheet &&
+    activeSheet.isValidated &&
     args.campaignId !== null &&
-    sheetState.campaignId === args.campaignId
-      ? sheetState
-      : undefined;
+    activeSheet.campaignId === args.campaignId
+      ? activeSheet
+      : campaignForSheet?.scoringSheet?.isValidated
+        ? campaignForSheet.scoringSheet
+        : undefined;
 
   // Convergence seuil (6c) : `campaign.threshold` est la SOURCE UNIQUE du seuil
   // d'acceptation. Override explicite `args.threshold` possible (tests) ; fallback
