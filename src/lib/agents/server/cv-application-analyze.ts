@@ -25,13 +25,20 @@ import {
   buildVerdictsUserPrompt,
 } from '@/lib/agents/cv-extraction-prompts';
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
+import {
+  buildFallbackNarration,
+  buildNarrationSystemPrompt,
+  buildNarrationUserPrompt,
+} from '@/lib/agents/cv-narration';
 import { AIValidationError } from '@/lib/ai/errors';
 import { chatCompleteJson } from '@/lib/ai/provider';
 import { scoreCandidat, type LlmCriterionVerdict } from '@/lib/scoring';
 import {
   CVApplicationSchema,
+  CVNarrationSchema,
   JobApplicationDataSchema,
   type CVApplication,
+  type CVNarration,
 } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
 import { LlmDecisionSchema, type ScoringSheet } from '@/types/scoring';
@@ -78,8 +85,8 @@ export type AnalyzeCVApplicationInput = {
 export type AnalyzeCVApplicationOutput = {
   application: CVApplication;
   metrics: { durationMs: number; tokensUsed: number; costEstimate: number };
-  /** Observabilité : quelle(s) extraction(s) LLM a/ont échoué (fallback appliqué). */
-  llmFailures: { candidate: boolean; verdicts: boolean };
+  /** Observabilité : quelle(s) phase(s) LLM a/ont échoué (fallback appliqué). */
+  llmFailures: { candidate: boolean; verdicts: boolean; narration: boolean };
 };
 
 export async function analyzeCVApplication(
@@ -180,11 +187,43 @@ export async function analyzeCVApplication(
     computedAt: input.computedAt,
   });
 
-  const application = CVApplicationSchema.parse({ candidate, scoringResult });
+  // 4. Narration RH rédigée À PARTIR du ScoreResult — ne touche jamais au score.
+  let narration: CVNarration;
+  let narrationFailed = false;
+  try {
+    const r = await chatCompleteJson(
+      [
+        { role: 'system', content: buildNarrationSystemPrompt() },
+        {
+          role: 'user',
+          content: buildNarrationUserPrompt(scoringResult, candidate.fullName),
+        },
+      ],
+      CVNarrationSchema,
+      { temperature: 0.4 }, // prose : un peu de souplesse, score déjà figé
+    );
+    narration = r.data;
+    accumulate(r.raw);
+  } catch (err) {
+    if (!(err instanceof AIValidationError)) throw err;
+    narrationFailed = true;
+    // Fallback déterministe dérivé du même ScoreResult (narration depuis le score).
+    narration = buildFallbackNarration(scoringResult);
+  }
+
+  const application = CVApplicationSchema.parse({
+    candidate,
+    scoringResult,
+    narration,
+  });
 
   return {
     application,
     metrics,
-    llmFailures: { candidate: candidateFailed, verdicts: verdictsFailed },
+    llmFailures: {
+      candidate: candidateFailed,
+      verdicts: verdictsFailed,
+      narration: narrationFailed,
+    },
   };
 }

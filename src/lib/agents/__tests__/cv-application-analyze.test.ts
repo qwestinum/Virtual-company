@@ -57,6 +57,13 @@ const VERDICTS_OK = {
   ],
 };
 
+const NARRATION_OK = {
+  summary: 'Profil solide, globalement aligné sur les critères de la campagne.',
+  strengths: ['Maîtrise IFRS', 'Anglais courant'],
+  weaknesses: [],
+  justification: "Au-dessus du seuil d'acceptation sans échec rédhibitoire.",
+};
+
 const CV_TEXT =
   'Jean Test — Master CCA. 8 ans en comptabilité générale. IFRS, anglais courant. jean.test@mail.com';
 
@@ -79,13 +86,14 @@ describe('analyzeCVApplication', () => {
   it('chemin nominal : extraction candidat + décisions → scoreCandidat → CVApplication', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
-      .mockResolvedValueOnce(jsonResult(VERDICTS_OK));
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
 
-    // Le LLM est appelé deux fois (candidat puis décisions).
-    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(2);
+    // Le LLM est appelé trois fois (candidat, décisions, narration).
+    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(3);
     // Candidat : factuel annexe + métadonnées système ajoutées par le code.
     expect(out.application.candidate.fullName).toBe('Jean Test');
     expect(out.application.candidate.fileName).toBe('cv-jean.pdf');
@@ -95,13 +103,16 @@ describe('analyzeCVApplication', () => {
     expect(out.application.scoringResult.totalScore).toBe(100);
     expect(out.application.scoringResult.status).toBe('accepted');
     expect(out.application.scoringResult.hardFailures).toEqual([]);
-    expect(out.llmFailures).toEqual({ candidate: false, verdicts: false });
+    // Narration présente.
+    expect(out.application.narration.summary).toMatch(/profil solide/i);
+    expect(out.llmFailures).toEqual({ candidate: false, verdicts: false, narration: false });
   });
 
   it('email résolu de façon déterministe depuis le CV (corrige un email LLM erroné)', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult({ ...CANDIDATE_OK, email: 'faux@halluciné.com' }))
-      .mockResolvedValueOnce(jsonResult(VERDICTS_OK));
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
@@ -112,7 +123,8 @@ describe('analyzeCVApplication', () => {
   it('échec extraction décisions (AIValidationError) → fallback non_verifiable + llmFailure → rejected', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
-      .mockRejectedValueOnce(new AIValidationError('invalide', 3, null));
+      .mockRejectedValueOnce(new AIValidationError('invalide', 3, null))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
@@ -133,7 +145,8 @@ describe('analyzeCVApplication', () => {
   it('échec extraction candidat (AIValidationError) → candidat dégradé, email tout de même résolu du CV', async () => {
     chatCompleteJsonMock
       .mockRejectedValueOnce(new AIValidationError('invalide', 3, null))
-      .mockResolvedValueOnce(jsonResult(VERDICTS_OK));
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
@@ -146,28 +159,93 @@ describe('analyzeCVApplication', () => {
     expect(out.application.scoringResult.status).toBe('accepted');
   });
 
-  it('agrège les métriques des deux appels LLM', async () => {
+  it('agrège les métriques des trois appels LLM', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK, 120, 0.002, 30))
-      .mockResolvedValueOnce(jsonResult(VERDICTS_OK, 200, 0.003, 50));
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK, 200, 0.003, 50))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK, 80, 0.001, 20));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
-    expect(out.metrics.tokensUsed).toBe(320);
-    expect(out.metrics.costEstimate).toBeCloseTo(0.005, 6);
-    expect(out.metrics.durationMs).toBe(80);
+    expect(out.metrics.tokensUsed).toBe(400);
+    expect(out.metrics.costEstimate).toBeCloseTo(0.006, 6);
+    expect(out.metrics.durationMs).toBe(100);
   });
 
   it('passe les schémas Zod à chatCompleteJson (sortie validée avant scoring)', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
-      .mockResolvedValueOnce(jsonResult(VERDICTS_OK));
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
     // 2e argument de chaque appel = un schéma Zod (présence d'un safeParse).
     for (const call of chatCompleteJsonMock.mock.calls) {
       expect(typeof call[1]?.safeParse).toBe('function');
     }
+  });
+
+  it('la narration n’altère JAMAIS le score (invariant C5)', async () => {
+    // La narration "prétend" un autre score dans sa prose : sans effet.
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
+      .mockResolvedValueOnce(
+        jsonResult({
+          summary: 'Score de 12/100 selon ma propre estimation.',
+          strengths: [],
+          weaknesses: ['rien'],
+          justification: 'À mon avis ce candidat vaut 12.',
+        }),
+      );
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
+    // Le score reste celui calculé par scoreCandidat (tous satisfaits → 100).
+    expect(out.application.scoringResult.totalScore).toBe(100);
+    expect(out.application.scoringResult.status).toBe('accepted');
+    expect(out.llmFailures.narration).toBe(false);
+  });
+
+  it('échec narration (AIValidationError) → fallback déterministe dérivé du ScoreResult', async () => {
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
+      .mockRejectedValueOnce(new AIValidationError('invalide', 3, null));
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
+
+    expect(out.llmFailures.narration).toBe(true);
+    // Le score n'est pas affecté par l'échec de narration.
+    expect(out.application.scoringResult.totalScore).toBe(100);
+    // La narration de secours reflète le score (dérivée du ScoreResult).
+    expect(out.application.narration.summary).toMatch(/100\/100/);
+    expect(out.application.narration.summary).toMatch(/retenu/i);
+  });
+});
+
+describe('buildFallbackNarration — narration déterministe depuis le ScoreResult', () => {
+  it('forces = SOFT démontrés, attentions = échecs durs + SOFT manqués', async () => {
+    const { buildFallbackNarration } = await import('@/lib/agents/cv-narration');
+    const score = {
+      totalScore: 0,
+      status: 'rejected' as const,
+      criteriaVersion: 'v1',
+      computedAt: '2026-06-06T00:00:00.000Z',
+      hardFailures: [
+        { criterionId: 'ko', criterionLabel: 'Diplôme requis', criticityLevel: 'redhibitoire' as const, reason: 'unsatisfied' as const },
+      ],
+      breakdown: [
+        { criterionId: 'ko', criterionLabel: 'Diplôme requis', criticityLevel: 'redhibitoire' as const, weight: 0, behavior: 'HARD_KNOCKOUT' as const, llmDecision: 'non' as const, llmJustification: 'absent', llmCVQuote: '', contribution: 0 },
+        { criterionId: 's1', criterionLabel: 'IFRS', criticityLevel: 'critique' as const, weight: 8, behavior: 'SOFT_WEIGHTED' as const, llmDecision: 'satisfait' as const, llmJustification: 'ok', llmCVQuote: 'IFRS', contribution: 40 },
+        { criterionId: 's2', criterionLabel: 'SAP', criticityLevel: 'important' as const, weight: 4, behavior: 'SOFT_WEIGHTED' as const, llmDecision: 'non' as const, llmJustification: 'absent', llmCVQuote: '', contribution: 0 },
+      ],
+    };
+    const n = buildFallbackNarration(score);
+    expect(n.strengths).toContain('IFRS');
+    expect(n.weaknesses).toContain('Diplôme requis (non satisfait)');
+    expect(n.weaknesses).toContain('SAP');
+    expect(n.summary).toMatch(/écarté/i);
+    expect(n.justification).toMatch(/durs?/i);
   });
 });
 

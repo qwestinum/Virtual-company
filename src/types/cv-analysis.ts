@@ -118,12 +118,32 @@ export const JobApplicationDataSchema = z
 export type JobApplicationData = z.infer<typeof JobApplicationDataSchema>;
 
 /**
+ * Narration RH d'une candidature — rédigée par le LLM (C5) À PARTIR du
+ * `ScoreResult` déjà calculé, jamais l'inverse. Le LLM ne touche pas au score :
+ * il explique le verdict en langage RH. Champs alignés sur l'ancien
+ * `CVAnalysisResult` pour faciliter la migration UI (C6).
+ */
+export const CVNarrationSchema = z.object({
+  /** Synthèse exécutive, 3 phrases max. */
+  summary: z.string().min(1),
+  /** Points forts factuels. */
+  strengths: z.array(z.string().min(1)),
+  /** Points d'attention factuels (peut être vide). */
+  weaknesses: z.array(z.string().min(1)),
+  /** 1-2 phrases expliquant le verdict au regard des critères. */
+  justification: z.string().min(1),
+});
+export type CVNarration = z.infer<typeof CVNarrationSchema>;
+
+/**
  * Candidature complète : donnée factuelle annexe + résultat de scoring
- * explicable. Cible de remplacement de `CVAnalysisResult` (legacy), branchée
- * progressivement aux phases extraction (C4), narration (C5) et UI (C6).
+ * explicable + narration RH. Cible de remplacement de `CVAnalysisResult`
+ * (legacy), branchée progressivement aux phases extraction (C4), narration
+ * (C5) et UI (C6).
  */
 export const CVApplicationSchema = z.object({
   candidate: JobApplicationDataSchema,
   scoringResult: ScoreResultSchema,
+  narration: CVNarrationSchema,
 });
 export type CVApplication = z.infer<typeof CVApplicationSchema>;
