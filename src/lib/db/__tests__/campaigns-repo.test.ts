@@ -88,6 +88,9 @@ describe('campaigns repo', () => {
     expect(result[0]!.id).toBe('CAMP-0001');
     expect(result[0]!.publishedChannels).toEqual(['linkedin']);
     expect(result[0]!.scoringSheet).toBeNull();
+    // Ligne sans `sources` → [] (PAS de défaut 'manual' réinjecté à la
+    // réhydratation, sinon une campagne sans flux redeviendrait activable).
+    expect(result[0]!.sources).toEqual([]);
   });
 
   it('upserts a campaign with onConflict id', async () => {
