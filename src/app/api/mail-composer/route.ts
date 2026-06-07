@@ -38,20 +38,33 @@ const RequestSchema = z.object({
    * répond 503 (le mail d'invitation sans URL serait inutile).
    */
   bookingUrl: z.string().url().optional(),
+  /**
+   * HITL — mode BROUILLON : on rédige le mail et on persiste l'artefact,
+   * mais on N'ENVOIE PAS (l'envoi est différé jusqu'à validation humaine).
+   */
+  draft: z.boolean().optional(),
 });
 
 type RequestBody = z.infer<typeof RequestSchema>;
+
+type ComposeStatus =
+  | 'sent'
+  | 'draft'
+  | 'skipped_no_email'
+  | 'skipped_no_config'
+  | 'send_failed';
 
 function buildMarkdownTrace(
   body: RequestBody,
   subject: string,
   html: string,
   sentTo: string | null,
-  status: 'sent' | 'skipped_no_email' | 'skipped_no_config' | 'send_failed',
+  status: ComposeStatus,
   error?: string,
 ): string {
   const statusLabel = {
     sent: 'envoyé',
+    draft: 'brouillon — non envoyé (en attente de validation)',
     skipped_no_email: 'non envoyé — email candidat manquant',
     skipped_no_config: 'non envoyé — service email non configuré',
     send_failed: `non envoyé — erreur (${error ?? 'inconnue'})`,
@@ -142,11 +155,13 @@ export async function POST(request: Request): Promise<NextResponse> {
   // on n'envoie pas mais on persiste quand même l'artefact (le DRH
   // peut copier-coller le contenu manuellement).
   let sentTo: string | null = null;
-  let status: 'sent' | 'skipped_no_email' | 'skipped_no_config' | 'send_failed' =
-    'skipped_no_config';
+  let status: ComposeStatus = 'skipped_no_config';
   let sendError: string | undefined;
 
-  if (!parsed.candidate.email) {
+  if (parsed.draft) {
+    // HITL : on s'arrête à la rédaction. L'envoi sera fait à la validation.
+    status = 'draft';
+  } else if (!parsed.candidate.email) {
     status = 'skipped_no_email';
   } else {
     const sendResult = await sendEmail({

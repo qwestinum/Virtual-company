@@ -31,6 +31,12 @@ import {
   suggestCVReportFileName,
 } from '@/lib/agents/cv-report-render';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
+import {
+  DEFAULT_HITL_CONFIG,
+  hitlSectionForDecision,
+  type HitlConfig,
+  type HitlDecision,
+} from '@/types/hitl';
 import { postCVAnalyzer, postJobWriter } from '@/lib/chat/api-client';
 import { pushArtifact } from '@/lib/db/sync/artifacts-sync';
 import { useAgentsStore } from '@/stores/agents-store';
@@ -518,8 +524,28 @@ async function dispatchPostAnalysisOutreach(args: {
   // Le lien Cal.com est résolu côté serveur (CAL_COM_EVENT_URL). Le
   // client n'a pas besoin de le connaître ni de le transmettre.
 
+  // HITL — config des sections gardées. OFF si offline (la file ne pourrait
+  // pas persister → on reste sur l'envoi auto pour ne pas perdre les mails).
+  const hitl = await fetchHitlConfig();
+
   for (const cv of args.summary.perCV) {
     const mode = cv.scoringResult.status === 'accepted' ? 'invite' : 'reject';
+    const decision: HitlDecision =
+      cv.scoringResult.status === 'accepted' ? 'accept' : 'reject';
+
+    // Section sous validation humaine → on rédige un BROUILLON et on met en
+    // file (aucun envoi). Le Scheduler/brief est aussi différé (P5).
+    if (hitl[hitlSectionForDecision(decision)]) {
+      await enqueuePendingValidation({
+        cv,
+        decision,
+        mode,
+        campaignId: args.campaignId,
+        jobTitle: args.jobTitle,
+      });
+      continue;
+    }
+
     const agentId = MAIL_COMPOSER_ID;
     const taskId = nowTaskId(`mail_${mode}`);
 
@@ -626,6 +652,119 @@ async function dispatchPostAnalysisOutreach(args: {
       });
     }
   }
+}
+
+/** Lit la config HITL ; OFF partout si offline (la file ne persiste pas → on
+ * reste sur l'envoi auto pour ne pas perdre silencieusement les mails). */
+async function fetchHitlConfig(): Promise<HitlConfig> {
+  const OFF: HitlConfig = { rejectionMail: false, acceptanceMail: false };
+  try {
+    const res = await fetch('/api/settings', { cache: 'no-store' });
+    if (!res.ok) return OFF;
+    const json = (await res.json()) as {
+      offline?: boolean;
+      settings?: { hitlConfig?: HitlConfig };
+    };
+    if (json.offline) return OFF;
+    return json.settings?.hitlConfig ?? DEFAULT_HITL_CONFIG;
+  } catch {
+    return OFF;
+  }
+}
+
+/**
+ * HITL — rédige le mail en BROUILLON (sans envoyer) et crée une validation
+ * suspendue persistée. L'envoi (et le brief Scheduler pour un accept) est
+ * différé jusqu'à la validation humaine (P5).
+ */
+async function enqueuePendingValidation(args: {
+  cv: CVApplication;
+  decision: HitlDecision;
+  mode: 'invite' | 'reject';
+  campaignId: string;
+  jobTitle: string | null;
+}): Promise<void> {
+  const chat = useChatStore.getState();
+  const artifacts = useArtifactsStore.getState();
+  const candidate = cvApplicationToMailCandidate(args.cv);
+  const validationId = nowTaskId('val');
+  const artifactId = `art_draft_${args.decision}_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 6)}`;
+  const isReject = args.decision === 'reject';
+
+  // 1. Brouillon du mail (draft:true → composé, persisté, PAS envoyé).
+  let mailDraftArtifactId: string | null = null;
+  let fileName = `${isReject ? 'refus' : 'invitation'}-brouillon.md`;
+  try {
+    const res = await fetch('/api/mail-composer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        artifactId,
+        campaignId: args.campaignId,
+        jobTitle: args.jobTitle,
+        mode: args.mode,
+        candidate,
+        draft: true,
+      }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        fileName: string;
+        publicUrl: string | null;
+      };
+      fileName = data.fileName;
+      mailDraftArtifactId = artifactId;
+      artifacts.hydrateArtifact({
+        id: artifactId,
+        name: data.fileName,
+        mime: 'text/markdown',
+        createdAt: new Date().toISOString(),
+        campaignId: args.campaignId.startsWith('TASK-') ? null : args.campaignId,
+        taskId: args.campaignId.startsWith('TASK-') ? args.campaignId : null,
+        kind: 'other',
+        publicUrl: data.publicUrl,
+      });
+    }
+  } catch (err) {
+    console.error('[hitl] draft compose failed', err);
+  }
+
+  // 2. Crée la validation suspendue (persistée — survit au refresh).
+  try {
+    await fetch('/api/validations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: validationId,
+        campaignId: args.campaignId,
+        candidateName: args.cv.candidate.fullName,
+        candidateEmail: candidate.email ?? null,
+        score: args.cv.scoringResult.totalScore,
+        decision: args.decision,
+        mailDraftArtifactId,
+        payload: { candidate, jobTitle: args.jobTitle },
+      }),
+    });
+  } catch (err) {
+    console.error('[hitl] enqueue failed', err);
+  }
+
+  // 3. Bulle Manager : EN ATTENTE de validation (jamais « envoyé »).
+  chat.appendMessage({
+    role: 'manager',
+    source: 'text',
+    content: `${isReject ? 'Refus' : 'Acceptation'} préparé(e) pour ${args.cv.candidate.fullName} — en attente de votre validation avant envoi.`,
+    attachment: mailDraftArtifactId
+      ? {
+          artifactId: mailDraftArtifactId,
+          label: `${isReject ? 'Refus' : 'Invitation'} (brouillon) — ${args.cv.candidate.fullName}`,
+          fileName,
+          mime: 'text/markdown',
+        }
+      : undefined,
+  });
 }
 
 async function dispatchSchedulerBrief(args: {
