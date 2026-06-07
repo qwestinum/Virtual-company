@@ -782,7 +782,7 @@ export function ManagerChat() {
    * pertinent, retire les chips de la bulle et sort de l'édition.
    */
   function handleProposalEditSubmit(
-    _messageId: string,
+    messageId: string,
     edits: { fieldKey: FieldKey; raw: string }[],
   ) {
     // Applique l'ajustement à la SOURCE (FDP).
@@ -790,20 +790,8 @@ export function ManagerChat() {
       applyFieldToSource(fieldKey, raw);
     }
     setEditingMessageId(null);
-    // Visibilité + CONTINUITÉ du flux : on poste une bulle DRH récapitulant
-    // l'ajustement, puis on relance le Manager pour qu'il enchaîne (propose
-    // le champ suivant ou récapitule si la FDP est complète). C'est ce qui
-    // évite que le déroulement se bloque après « Valider ».
-    //
-    // ⚠️ Le LIBELLÉ compte : le prompt Manager (« INTERPRÉTATION DES SIGNAUX
-    // D'AJUSTEMENT ») lit TOUT message DRH commençant par un signal vague
-    // (« Ajuster », « Modifier »…) comme une demande d'édition libre du champ
-    // COURANT → il repose la même question SANS proposer de valeur. Un message
-    // « J'ajuste — … » déclenchait exactement ce faux positif (le DRH se
-    // retrouvait avec la même question + bandeau « Continuer / Ajuster » + un
-    // « Ajuster » ancré sur un champ vide). On énonce donc la VALEUR RETENUE :
-    // le prompt traite une valeur concrète comme une acceptation et enchaîne
-    // sur le champ suivant (cf. règle « dès que le DRH donne une valeur »).
+
+    // Bulle DRH récapitulant l'ajustement (trace + projection audio).
     const fdpNow = useFdpStore.getState().fdp;
     const summary = edits
       .map(({ fieldKey }) => {
@@ -812,6 +800,34 @@ export function ManagerChat() {
       })
       .join(' · ');
     appendMessage({ role: 'user', source: 'text', content: `Je retiens — ${summary}` });
+
+    // RÉCAP FINAL : si l'ajustement a été fait DEPUIS la bulle de récap (ses
+    // chips portent le libellé de validation de la fiche), cette retouche EST
+    // la dernière décision du DRH. On FINALISE la fiche directement — on NE
+    // re-émet PAS le récap pour une nouvelle validation/ajustement. Doctrine
+    // métier : ajuster sur le récap = valider et continuer (« fiche validée »),
+    // pas reboucler.
+    const editedMessage = useChatStore
+      .getState()
+      .messages.find((m) => m.id === messageId);
+    const isRecapEdit = Boolean(
+      editedMessage?.chips?.options.some(
+        (o) => o === FDP_VALIDATE_LABEL || o === REUSE_FDP_VALIDATE_LABEL,
+      ),
+    );
+    if (isRecapEdit && fdpNow?.isComplete && !fdpNow.isValidated) {
+      void handleValidateFDP();
+      return;
+    }
+
+    // Mi-collecte : on relance le Manager pour qu'il enchaîne sur le champ
+    // suivant. ⚠️ Le LIBELLÉ compte : le prompt Manager (« INTERPRÉTATION DES
+    // SIGNAUX D'AJUSTEMENT ») lit TOUT message DRH commençant par un signal
+    // vague (« Ajuster », « Modifier »…) comme une demande d'édition libre du
+    // champ COURANT → il repose la même question SANS proposer de valeur. Un
+    // message « J'ajuste — … » déclenchait ce faux positif. On énonce donc la
+    // VALEUR RETENUE : le prompt la traite comme une acceptation et enchaîne
+    // sur le champ suivant (cf. règle « dès que le DRH donne une valeur »).
     void sendToManager(useChatStore.getState().messages);
   }
 
