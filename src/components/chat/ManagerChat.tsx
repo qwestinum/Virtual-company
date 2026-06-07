@@ -794,6 +794,16 @@ export function ManagerChat() {
     // l'ajustement, puis on relance le Manager pour qu'il enchaîne (propose
     // le champ suivant ou récapitule si la FDP est complète). C'est ce qui
     // évite que le déroulement se bloque après « Valider ».
+    //
+    // ⚠️ Le LIBELLÉ compte : le prompt Manager (« INTERPRÉTATION DES SIGNAUX
+    // D'AJUSTEMENT ») lit TOUT message DRH commençant par un signal vague
+    // (« Ajuster », « Modifier »…) comme une demande d'édition libre du champ
+    // COURANT → il repose la même question SANS proposer de valeur. Un message
+    // « J'ajuste — … » déclenchait exactement ce faux positif (le DRH se
+    // retrouvait avec la même question + bandeau « Continuer / Ajuster » + un
+    // « Ajuster » ancré sur un champ vide). On énonce donc la VALEUR RETENUE :
+    // le prompt traite une valeur concrète comme une acceptation et enchaîne
+    // sur le champ suivant (cf. règle « dès que le DRH donne une valeur »).
     const fdpNow = useFdpStore.getState().fdp;
     const summary = edits
       .map(({ fieldKey }) => {
@@ -801,7 +811,7 @@ export function ManagerChat() {
         return `${f?.label ?? fieldKey} : ${formatFieldValueForEdit(f?.value)}`;
       })
       .join(' · ');
-    appendMessage({ role: 'user', source: 'text', content: `J'ajuste — ${summary}` });
+    appendMessage({ role: 'user', source: 'text', content: `Je retiens — ${summary}` });
     void sendToManager(useChatStore.getState().messages);
   }
 
