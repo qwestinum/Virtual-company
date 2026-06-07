@@ -18,16 +18,15 @@ import {
   chooseExistingCampaign,
   chooseRouteIsolated,
   chooseRouteNewCampaign,
-  consumeNewCampaignName,
   dispatchCVBatch,
   dispatchCVRouting,
   dispatchJobWriter,
-  newCampaignSkipSetup,
 } from '@/lib/chat/manager-flow';
 import { useAgentsStore } from '@/stores/agents-store';
 import { useArtifactsStore } from '@/stores/artifacts-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 import { useChatStore } from '@/stores/chat-store';
+import { useFdpStore } from '@/stores/fdp-store';
 import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
 import { useScoringStore } from '@/stores/scoring-store';
 import type { CVApplication } from '@/types/cv-analysis';
@@ -116,6 +115,7 @@ function resetAll() {
   useAgentsStore.getState().resetToRegistry();
   useArtifactsStore.getState().reset();
   useCampaignsStore.getState().reset();
+  useFdpStore.getState().reset();
   useIsolatedCriteriaStore.getState().reset();
   useScoringStore.getState().reset();
 }
@@ -350,48 +350,37 @@ describe('manager-flow — CV routing', () => {
     expect(callArg?.campaignId).toBe('CAMP-2026-001');
   });
 
-  it('new campaign route asks for a name then gives the setup choice', () => {
+  it('new campaign route creates the campaign + FDP directly (no name step)', () => {
     dispatchCVRouting([makeFile('a.pdf')]);
     const routerMsg = useChatStore
       .getState()
       .messages.find((m) => m.block?.kind === 'cv-route-picker');
     if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
       throw new Error('no route-picker');
-    chooseRouteNewCampaign(routerMsg.block.pendingId);
 
+    const campaignId = chooseRouteNewCampaign(routerMsg.block.pendingId);
+
+    // Pas de notion de nom de campagne → on NE demande PAS de nom.
     expect(
       useChatStore
         .getState()
         .messages.some((m) => m.content.includes('Quel nom')),
-    ).toBe(true);
+    ).toBe(false);
 
-    const consumed = consumeNewCampaignName('Recrutement Data 2026');
-    expect(consumed).toBe(true);
-    const messages = useChatStore.getState().messages;
+    // Une FDP vide est créée directement sous la CAMP-XXXX retournée, et la
+    // modalité isolée (« Cadrer / Juste l'analyse ») n'est jamais proposée.
+    expect(campaignId).toMatch(/^CAMP-\d{4}-\d{3}$/);
+    const fdp = useFdpStore.getState().fdp;
+    expect(fdp).not.toBeNull();
+    expect(fdp?.campaignId).toBe(campaignId);
     expect(
-      messages.some((m) => m.content.includes('campagne CAMP-')),
-    ).toBe(true);
-    expect(
-      messages.some((m) =>
-        (m.chips?.options ?? []).includes('Cadrer la fiche complète'),
-      ),
-    ).toBe(true);
-  });
-
-  it('skip setup branch starts isolated criteria under CAMP id', () => {
-    dispatchCVRouting([makeFile('a.pdf')]);
-    const routerMsg = useChatStore
-      .getState()
-      .messages.find((m) => m.block?.kind === 'cv-route-picker');
-    if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
-      throw new Error('no route-picker');
-    chooseRouteNewCampaign(routerMsg.block.pendingId);
-    consumeNewCampaignName('Recrutement Data 2026');
-    const skipped = newCampaignSkipSetup();
-    expect(skipped).toBe(true);
-    const iso = useIsolatedCriteriaStore.getState().criteria;
-    expect(iso).not.toBeNull();
-    expect(iso?.taskId).toMatch(/^CAMP-\d{4}-\d{3}$/);
+      useChatStore
+        .getState()
+        .messages.some((m) =>
+          (m.chips?.options ?? []).includes('Cadrer la fiche complète'),
+        ),
+    ).toBe(false);
+    expect(useIsolatedCriteriaStore.getState().criteria).toBeNull();
   });
 });
 

@@ -963,44 +963,35 @@ export async function chooseExistingCampaign(
 
 /**
  * Appelé quand le DRH clique « Nouvelle campagne » dans le route-picker.
- * Le flow attend ensuite un nom (saisi en texte libre) puis demande s'il
- * veut faire le setup complet ou skipper vers une pré-collecte courte.
+ *
+ * Il n'y a PAS de notion de « nom de campagne » dans le produit : on ne le
+ * demande donc plus. On crée directement la CAMP-XXXX + une FDP vide et on
+ * bascule sur le cadrage complet de la fiche. La modalité « analyse CV rapide »
+ * (tâche isolée) est également désactivée en v1.
+ *
+ * Aucun message Manager n'est codé en dur : c'est le tour LLM (déclenché par
+ * l'appelant via le `campaignId` retourné) qui ouvre la collecte sur job_title,
+ * pour ne pas le faire diverger.
+ *
+ * Retourne le `campaignId` créé (l'appelant doit lancer un tour Manager), ou
+ * `null` si le pending de routing est introuvable.
  */
-export type PendingNewCampaign = {
-  pendingId: string;
-  step: 'await_name' | 'await_setup_choice';
-  name?: string;
-  campaignId?: string;
-};
-
-const pendingNewCampaigns = new Map<string, PendingNewCampaign>();
-
-export function getPendingNewCampaign(
-  pendingId: string,
-): PendingNewCampaign | undefined {
-  return pendingNewCampaigns.get(pendingId);
-}
-
-export function chooseRouteNewCampaign(pendingId: string): void {
+export function chooseRouteNewCampaign(pendingId: string): string | null {
   const pending = pendingRoutings.get(pendingId);
-  if (!pending) return;
-  pending.selectedRoute = 'new';
-  pendingRoutings.set(pendingId, pending);
-
-  pendingNewCampaigns.set(pendingId, {
-    pendingId,
-    step: 'await_name',
-  });
-
-  // Wipe avant les bulles d'ouverture (cf. chooseRouteIsolated).
-  // pendingRoutings et pendingNewCampaigns sont module-locales et
-  // survivent au reset, donc consumeNewCampaignName retrouvera le
-  // pending au prochain message DRH.
+  if (!pending) return null;
   const fileCount = pending.files.length;
-  wipeForFreshStart();
+  // Plus de sous-flow « nom » : on consomme le pending de routing tout de suite.
+  pendingRoutings.delete(pendingId);
 
-  const chat = useChatStore.getState();
-  chat.appendMessage({
+  const campaignId = `CAMP-${new Date().getFullYear()}-${String(
+    Math.floor(Math.random() * 999) + 1,
+  ).padStart(3, '0')}`;
+
+  // Wipe avant les bulles d'ouverture (cf. chooseRouteIsolated), puis FDP vide.
+  wipeForFreshStart();
+  useFdpStore.getState().createFDP(campaignId);
+
+  useChatStore.getState().appendMessage({
     role: 'user',
     source: 'text',
     content:
@@ -1008,12 +999,7 @@ export function chooseRouteNewCampaign(pendingId: string): void {
         ? 'Nouvelle campagne — un CV à rattacher.'
         : `Nouvelle campagne — ${fileCount} CV à rattacher.`,
   });
-  chat.appendMessage({
-    role: 'manager',
-    source: 'text',
-    content:
-      "Très bien. Quel nom veux-tu donner à cette nouvelle campagne ? (ex. « Recrutement Data Engineer Q3 »)",
-  });
+  return campaignId;
 }
 
 /**
@@ -1059,96 +1045,3 @@ function markCampaignPickerSelected(
   }
 }
 
-/**
- * Phase « new campaign » — appelée par ManagerChat quand le DRH a
- * répondu en texte libre alors qu'on attend un nom. Crée la
- * CAMP-XXXX, l'enregistre comme « pré-active » (pas encore validée
- * formellement) et demande s'il veut le setup complet.
- */
-export function consumeNewCampaignName(name: string): boolean {
-  for (const [pendingId, pending] of pendingNewCampaigns) {
-    if (pending.step !== 'await_name') continue;
-    const trimmed = name.trim();
-    if (!trimmed) return false;
-    const campaignId = `CAMP-${new Date().getFullYear()}-${String(
-      Math.floor(Math.random() * 999) + 1,
-    ).padStart(3, '0')}`;
-    pending.name = trimmed;
-    pending.campaignId = campaignId;
-    pending.step = 'await_setup_choice';
-    pendingNewCampaigns.set(pendingId, pending);
-
-    const route = pendingRoutings.get(pendingId);
-    if (route) {
-      route.resolvedId = campaignId;
-      pendingRoutings.set(pendingId, route);
-    }
-
-    const chat = useChatStore.getState();
-    chat.appendMessage({
-      role: 'manager',
-      source: 'text',
-      content: `Parfait, campagne ${campaignId} — « ${trimmed} » créée. Veux-tu qu'on cadre tout de suite la fiche de poste complète (intitulé, séniorité, contrat, fourchette, missions, compétences…), ou on lance d'abord juste une analyse rapide des CV avec quelques critères courts ?`,
-      chips: {
-        placement: 'below_bubble',
-        options: ['Cadrer la fiche complète', "Juste l'analyse CV pour l'instant"],
-      },
-    });
-    return true;
-  }
-  return false;
-}
-
-/**
- * Branche du « new campaign » : le DRH choisit l'analyse rapide.
- * On démarre la pré-collecte critères isolés, mais sous l'identifiant
- * CAMP-XXXX (l'analyse va remplir la campagne au fil de l'eau ;
- * le setup complet pourra venir plus tard).
- */
-export function newCampaignSkipSetup(): boolean {
-  for (const [pendingId, pending] of pendingNewCampaigns) {
-    if (pending.step !== 'await_setup_choice') continue;
-    if (!pending.campaignId) continue;
-    const campaignId = pending.campaignId;
-    pendingNewCampaigns.delete(pendingId);
-
-    useIsolatedCriteriaStore.getState().startCollection(campaignId);
-
-    const chat = useChatStore.getState();
-    chat.appendMessage({
-      role: 'user',
-      source: 'text',
-      content: "Juste l'analyse CV pour l'instant.",
-    });
-    chat.appendMessage({
-      role: 'manager',
-      source: 'text',
-      content: `Compris, on garde ${campaignId} en mode léger. Donne-moi l'intitulé exact du poste pour que je calibre l'analyse.`,
-    });
-    return true;
-  }
-  return false;
-}
-
-/**
- * Branche du « new campaign » : le DRH choisit le setup complet.
- * Bascule vers la collecte FDP normale : on initialise une FDP vide
- * sous CAMP-XXXX dans fdp-store, et le tour Manager suivant prendra
- * la main via `runManagerTurn`.
- */
-export function newCampaignFullSetup(): {
-  campaignId: string;
-  pendingFiles: File[];
-} | null {
-  for (const [pendingId, pending] of pendingNewCampaigns) {
-    if (pending.step !== 'await_setup_choice') continue;
-    if (!pending.campaignId) continue;
-    const campaignId = pending.campaignId;
-    const route = pendingRoutings.get(pendingId);
-    const pendingFiles = route?.files ?? [];
-    pendingNewCampaigns.delete(pendingId);
-    pendingRoutings.delete(pendingId);
-    return { campaignId, pendingFiles };
-  }
-  return null;
-}

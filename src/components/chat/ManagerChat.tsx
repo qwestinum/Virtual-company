@@ -61,13 +61,10 @@ import {
   chooseRouteExisting,
   chooseRouteIsolated,
   chooseRouteNewCampaign,
-  consumeNewCampaignName,
   dispatchCVRouting,
   dispatchJobWriter,
   dispatchPublisher,
   findPendingByResolvedId,
-  newCampaignFullSetup,
-  newCampaignSkipSetup,
   wipeForFreshStart,
 } from '@/lib/chat/manager-flow';
 import { pushArtifact } from '@/lib/db/sync/artifacts-sync';
@@ -1192,7 +1189,13 @@ export function ManagerChat() {
     } else if (route === 'existing') {
       chooseRouteExisting(pendingId);
     } else {
-      chooseRouteNewCampaign(pendingId);
+      // Nouvelle campagne : pas de notion de nom → on crée directement la
+      // CAMP-XXXX + une FDP vide et on déclenche le tour Manager qui ouvre la
+      // collecte (job_title en premier).
+      const campaignId = chooseRouteNewCampaign(pendingId);
+      if (campaignId) {
+        void sendToManager(useChatStore.getState().messages);
+      }
     }
   }
 
@@ -1352,16 +1355,11 @@ export function ManagerChat() {
     source: 'text' | 'voice' = 'text',
   ) {
     // On commence TOUJOURS par afficher la bulle DRH avant de router
-    // vers les sous-flows : sinon, des handlers comme
-    // consumeNewCampaignName (qui posent une réponse Manager
-    // immédiate) inversent visuellement l'ordre des bulles et cassent
-    // la position des chips (qui ne s'affichent que sur la DERNIÈRE
-    // bulle Manager).
+    // vers les sous-flows : sinon, des handlers qui posent une réponse
+    // Manager immédiate inversent visuellement l'ordre des bulles et
+    // cassent la position des chips (qui ne s'affichent que sur la
+    // DERNIÈRE bulle Manager).
     appendMessage({ role: 'user', source, content: text });
-
-    // Cas A : on attend un nom de nouvelle campagne. Pas de tour LLM,
-    // c'est la fonction de consume qui poste la suite.
-    if (consumeNewCampaignName(text)) return;
 
     // Cas B : pré-collecte critères isolés via endpoint dédié.
     const isoActive = useIsolatedCriteriaStore.getState().criteria;
@@ -1572,34 +1570,6 @@ export function ManagerChat() {
         if (typeof jobTitle === 'string' && jobTitle.trim().length > 0) {
           applyExtractions({ job_title: jobTitle });
         }
-        void sendToManager(useChatStore.getState().messages);
-        return;
-      }
-    }
-    // Interception des chips de la nouvelle campagne après nom donné.
-    if (option === "Juste l'analyse CV pour l'instant") {
-      if (newCampaignSkipSetup()) return;
-    }
-    if (option === 'Cadrer la fiche complète') {
-      const choice = newCampaignFullSetup();
-      if (choice) {
-        // Bascule vers la collecte FDP normale : on instancie une FDP
-        // vide sous le campaignId déjà créé, puis on déclenche un tour
-        // LLM Manager qui se chargera de poser la première question
-        // (avec l'état FDP "tous champs vides" en contexte). Pas de
-        // message Manager codé en dur — c'est ce qui faisait diverger
-        // le LLM au tour suivant.
-        // Limite Session 4 : les CV uploadés ne sont pas re-attachés
-        // automatiquement après validation FDP — le DRH les ré-upload
-        // via le source-picker. À améliorer en Session 5.
-        if (!useFdpStore.getState().fdp) {
-          createFDP(choice.campaignId);
-        }
-        appendMessage({
-          role: 'user',
-          source: 'text',
-          content: `Cadrer la fiche complète pour ${choice.campaignId}.`,
-        });
         void sendToManager(useChatStore.getState().messages);
         return;
       }

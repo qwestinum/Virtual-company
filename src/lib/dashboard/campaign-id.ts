@@ -2,7 +2,7 @@
  * Génération d'identifiants de campagne (Session 6 v2).
  *
  * Format `CAMP-YYYY-NNN` aligné sur le générateur déjà utilisé dans
- * `manager-flow.consumeNewCampaignName`. Pour la création hors chat
+ * `manager-flow.chooseRouteNewCampaign`. Pour la création hors chat
  * via le dashboard, on garde le même format pour ne pas créer de
  * divergence d'identifiants entre les deux entrées.
  */
