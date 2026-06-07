@@ -340,6 +340,34 @@ describe('manager-prompts — content', () => {
     expect(prompt).not.toContain('VERBALISATION OBLIGATOIRE');
   });
 
+  it('mode réutilisation L1 : conserve l’intitulé DEMANDÉ, pas celui de l’archive', () => {
+    const archived = buildEmptyFDP('CAMP-2026-ARCH');
+    archived.fields.job_title = {
+      ...archived.fields.job_title!,
+      value: 'Comptable senior',
+      status: 'filled',
+    };
+    const prompt = buildConversationalPrompt({
+      intent: 'new_campaign',
+      confidence: 0.9,
+      needsClarification: false,
+      fdp: null, // premier tour de cadrage → MODE RÉUTILISATION L1
+      preSearchHits: [
+        {
+          id: 'a1',
+          title: 'Comptable senior',
+          archivedAt: '2026-01-01T00:00:00.000Z',
+          fdp: archived,
+        },
+      ],
+    });
+    expect(prompt).toContain('MODE RÉUTILISATION L1');
+    // RÈGLE 1bis : job_title = intitulé demandé, JAMAIS celui de l'archive.
+    expect(prompt).toMatch(/RÈGLE 1bis/);
+    expect(prompt).toMatch(/intitulé EXACT que le DRH vient de demander/i);
+    expect(prompt).toMatch(/PAS celui de la fiche archivée/i);
+  });
+
   it('conversational prompt formats FDP state when present', () => {
     const fdp = buildEmptyFDP('CAMP-2026-014');
     const prompt = buildConversationalPrompt({
