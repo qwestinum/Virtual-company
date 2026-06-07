@@ -338,3 +338,46 @@ update public.app_settings
 set synthesis_emails = array[synthesis_email]
 where synthesis_email is not null
   and (synthesis_emails is null or coalesce(array_length(synthesis_emails, 1), 0) = 0);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- HITL — Validation suspendue (refus / acceptation candidats)
+-- Spec : docs/specs/hitl-validation-suspendue.md
+-- ──────────────────────────────────────────────────────────────────────
+
+-- Config HITL par section (un toggle par décision gateable). Défaut ON
+-- (un DRH ne laisse pas l'IA mailer ses candidats sans contrôle au départ).
+-- Inerte tant que le gating (P3) ne lit pas cette colonne.
+alter table public.app_settings
+  add column if not exists hitl_config jsonb not null
+    default '{"rejectionMail": true, "acceptanceMail": true}'::jsonb;
+
+-- File des validations en attente. Persistée pour survivre au refresh /
+-- changement de session (on traite les validations en différé).
+create table if not exists public.pending_validations (
+  id                     text primary key,
+  campaign_id            text not null,
+  candidate_name         text not null,
+  candidate_email        text,
+  score                  int,
+  decision               text not null check (decision in ('accept', 'reject')),
+  cv_artifact_id         text,
+  report_artifact_id     text,
+  mail_draft_artifact_id text,
+  confirmed              boolean not null default false,
+  status                 text not null default 'pending'
+                           check (status in ('pending', 'sent')),
+  payload                jsonb not null default '{}'::jsonb,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  decided_at             timestamptz
+);
+
+create index if not exists pending_validations_status_idx
+  on public.pending_validations (status);
+create index if not exists pending_validations_campaign_idx
+  on public.pending_validations (campaign_id);
+
+drop trigger if exists pending_validations_touch_updated_at on public.pending_validations;
+create trigger pending_validations_touch_updated_at
+  before update on public.pending_validations
+  for each row execute function public.touch_updated_at();

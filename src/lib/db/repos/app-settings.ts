@@ -16,6 +16,7 @@ import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
 } from '@/lib/db/supabase-server';
+import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
 
 const TABLE = 'app_settings';
 
@@ -33,6 +34,8 @@ export type AppSettings = {
   intakeEmail: string | null;
   fluxConfig: Record<string, IntegrationConfig>;
   channelsConfig: Record<string, IntegrationConfig>;
+  /** Toggles HITL par section (validation humaine des mails). Défaut ON. */
+  hitlConfig: HitlConfig;
   updatedAt: string;
 };
 
@@ -53,6 +56,7 @@ type AppSettingsRow = {
   intake_email: string | null;
   flux_config: Record<string, IntegrationConfig>;
   channels_config: Record<string, IntegrationConfig>;
+  hitl_config: HitlConfig | null;
   updated_at: string;
 };
 
@@ -80,6 +84,7 @@ function rowToDomain(row: AppSettingsRow): AppSettings {
     intakeEmail: row.intake_email,
     fluxConfig: row.flux_config ?? {},
     channelsConfig: row.channels_config ?? {},
+    hitlConfig: row.hitl_config ?? DEFAULT_HITL_CONFIG,
     updatedAt: row.updated_at,
   };
 }
@@ -142,6 +147,7 @@ export type AppSettingsPatch = {
   intakeEmail?: string | null;
   fluxConfig?: Record<string, IntegrationConfig>;
   channelsConfig?: Record<string, IntegrationConfig>;
+  hitlConfig?: HitlConfig;
 };
 
 export async function patchAppSettings(
@@ -160,6 +166,7 @@ export async function patchAppSettings(
   if (patch.fluxConfig !== undefined) row.flux_config = patch.fluxConfig;
   if (patch.channelsConfig !== undefined)
     row.channels_config = patch.channelsConfig;
+  if (patch.hitlConfig !== undefined) row.hitl_config = patch.hitlConfig;
   const { data, error } = await supabase
     .from(TABLE)
     .update(row)
