@@ -340,6 +340,13 @@ describe('cv-extraction-prompts', () => {
     expect(sys).toMatch(/JAMAIS .?non/i);
     // A — ancrage sur le relevé de faits canonique partagé.
     expect(sys).toMatch(/RELEVÉ DE FAITS|source canonique/i);
+    // #4 — ancrage sur l'objet/interlocuteur exact (clients ≠ équipes de dev).
+    expect(sys).toMatch(/OBJET EXACT|interlocuteur/i);
+    expect(sys).toMatch(/CLIENTS/);
+    // #2 — couverture des critères multi-éléments + interdiction du substitut.
+    expect(sys).toMatch(/COUVERTURE/i);
+    expect(sys).toMatch(/substitut/i);
+    expect(sys).toMatch(/Xray.*TestRail|TestRail.*Xray/i);
 
     const user = buildVerdictsUserPrompt('CV brut ici', sheet(), LEDGER_OK);
     // Critères présentés numérotés 1..N (le LLM reporte le numéro, pas l'UUID).
