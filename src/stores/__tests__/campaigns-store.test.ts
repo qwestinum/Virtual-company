@@ -169,7 +169,7 @@ describe('campaigns-store', () => {
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
     store.markPublishedChannel('CAMP-2026-REC3', 'linkedin');
-    store.markSourcesConfirmed('CAMP-2026-REC3');
+    store.setSources('CAMP-2026-REC3', ['manual']); // ≥1 source → intake done
     // 2c-3 — annonce/publication sont pilotées par transitions (le flux
     // les complète explicitement), plus par markPublishedChannel.
     store.completePhase('CAMP-2026-REC3', 'announcement');
@@ -215,7 +215,7 @@ describe('campaigns-store', () => {
     };
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
-    store.markSourcesConfirmed('CAMP-2026-ACT2');
+    store.setSources('CAMP-2026-ACT2', ['manual']); // ≥1 source → intake done
     // Annonce + publication laissées PENDING (le DRH ne les a pas touchées).
     // La campagne est donc 'in_progress', pas encore 'active'.
     expect(store.getById('CAMP-2026-ACT2')?.status).toBe('in_progress');
@@ -243,6 +243,45 @@ describe('campaigns-store', () => {
     store.resumeCampaign('CAMP-2026-RES1');
     // Pas de faux 'active' : la campagne n'était pas prête.
     expect(store.getById('CAMP-2026-RES1')?.status).toBe('in_progress');
+  });
+
+  it('intake : aucune source par défaut → non activable tant qu\'aucun flux n\'est actif', () => {
+    const store = useCampaignsStore.getState();
+    const fdp = makeFDP('CAMP-2026-INT1', true);
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-2026-INT1',
+      isValidated: true,
+      criteria: [buildCriterion({ id: 'c1', label: 'X', level: 'obligatoire' })],
+    };
+    // Défaut : sources=[] → aucun flux de réception.
+    store.addCampaign({ fdp, scoringSheet: sheet });
+    expect(store.getById('CAMP-2026-INT1')?.sources).toEqual([]);
+    // FDP + scoring validés MAIS aucun flux → activation refusée.
+    expect(store.activateCampaign('CAMP-2026-INT1')).toBe(false);
+    // Activer une source → intake done → activable.
+    store.setSources('CAMP-2026-INT1', ['manual']);
+    expect(store.activateCampaign('CAMP-2026-INT1')).toBe(true);
+    expect(store.getById('CAMP-2026-INT1')?.status).toBe('active');
+  });
+
+  it('intake : vider les sources rouvre la phase (pas d\'« actif sans flux »)', () => {
+    const store = useCampaignsStore.getState();
+    const fdp = makeFDP('CAMP-2026-INT2', true);
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-2026-INT2',
+      isValidated: true,
+      criteria: [buildCriterion({ id: 'c1', label: 'X', level: 'obligatoire' })],
+    };
+    store.addCampaign({ fdp, scoringSheet: sheet });
+    store.setSources('CAMP-2026-INT2', ['manual']);
+    store.activateCampaign('CAMP-2026-INT2');
+    expect(store.getById('CAMP-2026-INT2')?.status).toBe('active');
+    // On retire TOUTES les sources → intake rouvert → plus 'active'.
+    store.setSources('CAMP-2026-INT2', []);
+    expect(store.getById('CAMP-2026-INT2')?.status).not.toBe('active');
+    expect(
+      store.getById('CAMP-2026-INT2')?.lifecycle.phases.intake.status,
+    ).toBe('pending');
   });
 
   it('addCampaign sets scoringSheet to null explicitly when null is passed', () => {
@@ -283,7 +322,7 @@ describe('campaigns-store', () => {
     };
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
-    store.markSourcesConfirmed('CAMP-2026-LC2');
+    store.setSources('CAMP-2026-LC2', ['manual']);
     store.completePhase('CAMP-2026-LC2', 'announcement');
     store.completePhase('CAMP-2026-LC2', 'publication');
     store.recomputeStatus('CAMP-2026-LC2');
@@ -304,7 +343,7 @@ describe('campaigns-store', () => {
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
     store.markPublishedChannel(id, 'linkedin');
-    store.markSourcesConfirmed(id);
+    store.setSources(id, ['manual']);
     // 2c-3 — annonce/publication via transitions (le vrai flux les complète).
     store.completePhase(id, 'announcement');
     store.completePhase(id, 'publication');
@@ -341,7 +380,7 @@ describe('campaigns-store', () => {
     };
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
-    store.markSourcesConfirmed(id);
+    store.setSources(id, ['manual']);
     store.recomputeStatus(id);
     expect(useCampaignsStore.getState().getById(id)?.status).toBe('in_progress');
     store.postponePhase(id, 'announcement');

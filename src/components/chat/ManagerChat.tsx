@@ -1773,7 +1773,11 @@ export function ManagerChat() {
     updateMessage(messageId, {
       block: { ...target.block, confirmed: true },
     });
-    // Phase 7.1 — marque les flux confirmés, recompute status.
+    // Pose RÉELLEMENT les sources choisies (≥1, garanti ci-dessus) : c'est
+    // `campaign.sources` qui détermine l'intake. markSourcesConfirmed reste pour
+    // le flag legacy (lu par computeProgressSnapshot), mais ne pilote plus la
+    // porte d'activation. setSources re-synchronise lifecycle + statut.
+    useCampaignsStore.getState().setSources(campaignId, active);
     useCampaignsStore.getState().markSourcesConfirmed(campaignId);
     useCampaignsStore.getState().recomputeStatus(campaignId);
     const activeLabels = active.map((s) => CV_SOURCE_LABELS[s]).join(', ');

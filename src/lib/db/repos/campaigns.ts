@@ -26,7 +26,10 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     scoringSheet,
     publishedChannels,
     sourcesConfirmed,
-    sources: row.sources ?? ['manual'],
+    // Pas de défaut « manuel » : une ligne sans sources = aucun flux (intake non
+    // fait). Réintroduire ['manual'] ici rendrait une campagne sans flux
+    // « activable » après rechargement.
+    sources: row.sources ?? [],
     threshold: row.threshold ?? 75,
     status: row.status,
     // Inc. 2a — lifecycle non persisté : re-dérivé des artefacts au

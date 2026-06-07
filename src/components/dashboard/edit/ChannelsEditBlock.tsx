@@ -8,9 +8,10 @@
  * le retire (le Publisher arrête la diffusion). Spec §6.3 — chaque
  * changement déclenche une prise d'acte du Manager.
  *
- * Side-effect : `sourcesConfirmed` passe à true dès qu'au moins un
- * canal est actif (la confirmation des sources). C'est cohérent avec
- * le flow existant côté chat.
+ * NB : ce bloc ne touche QUE la diffusion (`publishedChannels`). Il ne
+ * confirme PLUS les sources de réception (`sourcesConfirmed`) — diffusion et
+ * réception sont deux concepts distincts ; confondre les deux permettait
+ * d'« activer » une campagne sans aucun flux de réception configuré.
  */
 
 import { useState } from 'react';
@@ -34,7 +35,6 @@ export type ChannelsEditBlockProps = {
 
 export function ChannelsEditBlock({ campaign }: ChannelsEditBlockProps) {
   const markPublished = useCampaignsStore((s) => s.markPublishedChannel);
-  const markSources = useCampaignsStore((s) => s.markSourcesConfirmed);
   const updateState = useCampaignsStore.setState;
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -44,7 +44,6 @@ export function ChannelsEditBlock({ campaign }: ChannelsEditBlockProps) {
   ) => {
     if (enabled) {
       markPublished(campaign.id, channel);
-      markSources(campaign.id);
     } else {
       // Retrait : pas de mutator dédié dans le store — patch direct.
       updateState((state) => {

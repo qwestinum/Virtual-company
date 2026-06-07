@@ -40,7 +40,6 @@ export type FluxEditBlockProps = {
 
 export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
   const setSources = useCampaignsStore((s) => s.setSources);
-  const markSourcesConfirmed = useCampaignsStore((s) => s.markSourcesConfirmed);
   const [flash, setFlash] = useState<string | null>(null);
 
   // Mailboxes associées à la campagne (chargées au mount).
@@ -72,22 +71,6 @@ export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
       cancelled = true;
     };
   }, [campaign.id]);
-
-  // L'intake (phase « réception ») est satisfait dès qu'AU MOINS UNE source est
-  // active — y compris une source déjà présente à l'ouverture du bloc (ex.
-  // « manuel » par défaut), SANS qu'on ait à la re-toggler. Sans ça, le bouton
-  // « Activer » restait grisé alors que le flux était déjà configuré. Idempotent
-  // (markSourcesConfirmed no-op si déjà confirmé) → pas de boucle.
-  useEffect(() => {
-    if (campaign.sources.length > 0 && !campaign.sourcesConfirmed) {
-      markSourcesConfirmed(campaign.id);
-    }
-  }, [
-    campaign.id,
-    campaign.sources.length,
-    campaign.sourcesConfirmed,
-    markSourcesConfirmed,
-  ]);
 
   const isActive = (source: CVSource) => campaign.sources.includes(source);
 
@@ -265,6 +248,20 @@ export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
           );
         })}
       </div>
+      {campaign.sources.length === 0 ? (
+        <p
+          className="font-body"
+          style={{
+            marginTop: 12,
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--dash-yellow)',
+          }}
+        >
+          Aucun flux de réception actif — activez au moins une source pour pouvoir
+          lancer la campagne.
+        </p>
+      ) : null}
     </div>
   );
 }

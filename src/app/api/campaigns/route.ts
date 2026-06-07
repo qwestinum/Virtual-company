@@ -78,7 +78,9 @@ export async function PUT(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const sources = parsed.sources ?? ['manual'];
+    // Pas de défaut « manuel » : sans sources explicites = aucun flux (intake
+    // non fait). Cohérent avec le store et la réhydratation repo.
+    const sources = parsed.sources ?? [];
     const saved = await upsertCampaign({
       ...parsed,
       threshold: parsed.threshold ?? 75,

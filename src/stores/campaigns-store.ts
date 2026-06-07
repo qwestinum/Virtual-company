@@ -185,13 +185,19 @@ function artifactBooleans(input: {
   fdp: FDPInProgress;
   scoringSheet: ScoringSheet | null;
   sourcesConfirmed: boolean;
+  sources: CVSource[];
   publishedChannels: PublicationChannel[];
 }) {
   return {
     fdpValidated: input.fdp.isValidated,
     scoringValidated: input.scoringSheet?.isValidated === true,
     scoringStarted: input.scoringSheet != null,
-    sourcesConfirmed: input.sourcesConfirmed,
+    // L'intake (réception) est `done` ⟺ AU MOINS UNE source de réception est
+    // active. `campaign.sources` est l'UNIQUE vérité — pas de flag séparé, pas
+    // de défaut « manuel » : une campagne neuve a 0 source → intake non fait →
+    // non activable tant que le DRH n'a pas configuré son flux. Vider les
+    // sources rouvre l'intake gratuitement.
+    sourcesConfirmed: input.sources.length > 0,
     hasPublishedChannel: input.publishedChannels.length > 0,
   };
 }
@@ -205,6 +211,7 @@ function syncLifecycle(input: {
   fdp: FDPInProgress;
   scoringSheet: ScoringSheet | null;
   sourcesConfirmed: boolean;
+  sources: CVSource[];
   publishedChannels: PublicationChannel[];
   lifecycle?: CampaignLifecycle;
 }): CampaignLifecycle {
@@ -279,14 +286,17 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       input.publishedChannels ?? existing?.publishedChannels ?? [];
     const sourcesConfirmed =
       input.sourcesConfirmed ?? existing?.sourcesConfirmed ?? false;
+    // Défaut VIDE (plus de « manuel » implicite) : une campagne neuve n'a aucun
+    // flux de réception tant que le DRH n'en active pas un → intake non fait.
     const sources =
-      input.sources ?? existing?.sources ?? ['manual'];
+      input.sources ?? existing?.sources ?? [];
     const threshold =
       input.threshold ?? existing?.threshold ?? 75;
     const lifecycle = syncLifecycle({
       fdp: input.fdp,
       scoringSheet,
       sourcesConfirmed,
+      sources,
       publishedChannels,
       lifecycle: existing?.lifecycle,
     });
@@ -421,17 +431,17 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
           deduped.push(s);
         }
       }
-      return {
-        ...state,
-        byId: {
-          ...state.byId,
-          [id]: {
-            ...current,
-            sources: deduped,
-            updatedAt: new Date().toISOString(),
-          },
-        },
+      // Re-synchronise le lifecycle : vider les sources rouvre l'intake même si
+      // `sourcesConfirmed` reste vrai (cf. artifactBooleans). Le statut suit.
+      const lifecycle = syncLifecycle({ ...current, sources: deduped });
+      const next = {
+        ...current,
+        sources: deduped,
+        lifecycle,
+        status: statusForLifecycle(current.status, lifecycle),
+        updatedAt: new Date().toISOString(),
       };
+      return { ...state, byId: { ...state.byId, [id]: next } };
     }),
 
   markPublishedChannel: (id, channel) =>

@@ -83,7 +83,9 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
     ),
   );
   const [channels, setChannels] = useState<PublicationChannel[]>([]);
-  const [sources, setSources] = useState<CVSource[]>(['manual']);
+  // Aucun flux par défaut : le DRH active explicitement ses sources de réception
+  // (cohérent avec le reste — pas de « manuel » implicite).
+  const [sources, setSources] = useState<CVSource[]>([]);
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
   const [threshold, setThreshold] = useState(75);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -244,7 +246,9 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       name: inferredName,
       scoringSheet,
       publishedChannels: channels,
-      sourcesConfirmed: channels.length > 0,
+      // L'intake est confirmé d'après les SOURCES de réception choisies (submit
+      // délibéré du formulaire), jamais d'après les canaux de DIFFUSION.
+      sourcesConfirmed: sources.length > 0,
       sources,
       threshold,
       status: isComplete ? 'in_progress' : 'draft',
