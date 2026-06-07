@@ -43,6 +43,12 @@ const RequestSchema = z.object({
    * mais on N'ENVOIE PAS (l'envoi est différé jusqu'à validation humaine).
    */
   draft: z.boolean().optional(),
+  /**
+   * HITL — OVERRIDE : envoyer ce contenu (éventuellement édité par le DRH dans
+   * « Vérifier le mail ») au lieu de re-composer. Ignore le LLM et le contrôle
+   * Cal.com (le lien est déjà dans le html). Incompatible avec `draft`.
+   */
+  mail: z.object({ subject: z.string().min(1), html: z.string().min(1) }).optional(),
 });
 
 type RequestBody = z.infer<typeof RequestSchema>;
@@ -106,6 +112,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   // peut le fournir explicitement (override), sinon on lit la conf
   // serveur. Sans aucun des deux, refus net : un mail d'invitation
   // sans URL de booking est inutile.
+  // Override (HITL) : on envoie le contenu fourni, sans LLM ni contrôle
+  // Cal.com (le lien est déjà dans le html édité). Sinon, composition normale.
+  let composed: { subject: string; html: string };
+  if (parsed.mail) {
+    composed = parsed.mail;
+    return await finalizeSend(parsed, composed);
+  }
+
   let bookingUrl: string | undefined = parsed.bookingUrl;
   if (parsed.mode === 'invite' && !bookingUrl) {
     bookingUrl = process.env.CAL_COM_EVENT_URL || undefined;
@@ -122,7 +136,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   // 1. Composition LLM.
-  let composed: { subject: string; html: string };
   try {
     const out = await composeCandidateMail({
       mode: parsed.mode,
@@ -151,9 +164,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // 2. Envoi via Resend. Si pas de config ou pas d'email candidat,
-  // on n'envoie pas mais on persiste quand même l'artefact (le DRH
-  // peut copier-coller le contenu manuellement).
+  return await finalizeSend(parsed, composed);
+}
+
+/**
+ * Envoi (sauf mode draft) + trace Storage + metadata, puis réponse. Partagé par
+ * la composition LLM et l'override HITL (mail édité).
+ */
+async function finalizeSend(
+  parsed: RequestBody,
+  composed: { subject: string; html: string },
+): Promise<NextResponse> {
   let sentTo: string | null = null;
   let status: ComposeStatus = 'skipped_no_config';
   let sendError: string | undefined;
@@ -181,7 +202,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
   }
 
-  // 3. Trace markdown dans Storage + metadata Supabase.
   const fileName = `${parsed.mode === 'reject' ? 'refus' : 'invitation'}-${slug(parsed.candidate.candidateName)}.md`;
   const markdown = buildMarkdownTrace(
     parsed,
@@ -242,6 +262,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     status,
     sentTo,
     subject: composed.subject,
+    html: composed.html,
     fileName,
     publicUrl,
     error: sendError ?? null,

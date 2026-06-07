@@ -697,6 +697,7 @@ async function enqueuePendingValidation(args: {
   let mailDraftArtifactId: string | null = null;
   let mailDraftUrl: string | null = null;
   let mailSubject: string | null = null;
+  let mailBody: string | null = null;
   let fileName = `${isReject ? 'refus' : 'invitation'}-brouillon.md`;
   try {
     const res = await fetch('/api/mail-composer', {
@@ -716,10 +717,12 @@ async function enqueuePendingValidation(args: {
         fileName: string;
         publicUrl: string | null;
         subject: string;
+        html: string;
       };
       fileName = data.fileName;
       mailDraftUrl = data.publicUrl;
       mailSubject = data.subject;
+      mailBody = data.html;
       mailDraftArtifactId = artifactId;
       artifacts.hydrateArtifact({
         id: artifactId,
@@ -754,6 +757,7 @@ async function enqueuePendingValidation(args: {
           jobTitle: args.jobTitle,
           mailDraftUrl,
           mailSubject,
+          mailBody,
         },
       }),
     });

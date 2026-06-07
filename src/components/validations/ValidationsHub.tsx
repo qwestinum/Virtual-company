@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { sendValidation } from '@/lib/hitl/send-validation';
 import type { PendingValidation } from '@/types/hitl';
 
 type LoadState =
@@ -79,6 +80,15 @@ export function ValidationsHub() {
       items: items.map((v) => (v.id === next.id ? next : v)),
     });
 
+  const removeItem = (id: string) =>
+    setState({ kind: 'ready', items: items.filter((v) => v.id !== id) });
+
+  const onSent = (v: PendingValidation, message: string) => {
+    removeItem(v.id);
+    setFlash(message);
+    window.setTimeout(() => setFlash(null), 3500);
+  };
+
   const onConfirm = async (v: PendingValidation) => {
     // Optimiste.
     updateItem({ ...v, confirmed: true });
@@ -121,12 +131,14 @@ export function ValidationsHub() {
           accent="rose"
           items={rejected}
           onConfirm={onConfirm}
+          onSent={onSent}
         />
         <ValidationColumn
           title="Acceptés par le système"
           accent="emerald"
           items={accepted}
           onConfirm={onConfirm}
+          onSent={onSent}
         />
       </div>
     </div>
@@ -138,11 +150,13 @@ function ValidationColumn({
   accent,
   items,
   onConfirm,
+  onSent,
 }: {
   title: string;
   accent: 'rose' | 'emerald';
   items: PendingValidation[];
   onConfirm: (v: PendingValidation) => void;
+  onSent: (v: PendingValidation, message: string) => void;
 }) {
   const dot = accent === 'rose' ? 'bg-rose-500' : 'bg-emerald-500';
   return (
@@ -162,7 +176,7 @@ function ValidationColumn({
         </p>
       ) : (
         items.map((v) => (
-          <ValidationCard key={v.id} v={v} onConfirm={onConfirm} />
+          <ValidationCard key={v.id} v={v} onConfirm={onConfirm} onSent={onSent} />
         ))
       )}
     </section>
@@ -172,13 +186,30 @@ function ValidationColumn({
 function ValidationCard({
   v,
   onConfirm,
+  onSent,
 }: {
   v: PendingValidation;
   onConfirm: (v: PendingValidation) => void;
+  onSent: (v: PendingValidation, message: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const mailUrl = payloadString(v, 'mailDraftUrl');
-  const mailSubject = payloadString(v, 'mailSubject');
+  const [subject, setSubject] = useState(payloadString(v, 'mailSubject') ?? '');
+  const [body, setBody] = useState(payloadString(v, 'mailBody') ?? '');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const canSend = subject.trim().length > 0 && body.trim().length > 0;
+
+  const onSend = async () => {
+    setSending(true);
+    setSendError(null);
+    const result = await sendValidation(v, { subject, html: body });
+    setSending(false);
+    if (result.ok) {
+      onSent(v, result.message);
+    } else {
+      setSendError(result.message);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-sm">
@@ -238,29 +269,52 @@ function ValidationCard({
 
       {open && v.confirmed ? (
         <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3">
-          {mailSubject ? (
-            <p className="font-body text-[13px] text-stone-700">
-              <span className="font-semibold">Objet :</span> {mailSubject}
-            </p>
-          ) : null}
-          {mailUrl ? (
-            <a
-              href={mailUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-block font-body text-[12px] font-semibold text-blue-600 hover:underline"
-            >
-              Ouvrir le brouillon du mail ↗
-            </a>
+          {body ? (
+            <>
+              <label className="block font-body text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                Objet
+              </label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.currentTarget.value)}
+                className="mt-1 w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-body text-[13px] text-stone-800 outline-none focus:border-blue-400"
+              />
+              <label className="mt-3 block font-body text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                Corps du mail
+              </label>
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.currentTarget.value)}
+                rows={8}
+                className="mt-1 w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-mono text-[12px] text-stone-800 outline-none focus:border-blue-400"
+              />
+              {sendError ? (
+                <p className="mt-2 font-body text-[12px] text-rose-600">
+                  {sendError}
+                </p>
+              ) : null}
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onSend}
+                  disabled={!canSend || sending}
+                  className={`rounded-lg px-4 py-1.5 text-[12px] font-body font-semibold ${
+                    canSend && !sending
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                  }`}
+                >
+                  {sending ? 'Envoi…' : 'Envoyer'}
+                </button>
+              </div>
+            </>
           ) : (
             <p className="font-body text-[12px] text-stone-400 italic">
               Brouillon indisponible (service email non configuré au moment de
-              la rédaction).
+              la rédaction). Réactivez le service puis relancez l&apos;analyse.
             </p>
           )}
-          <p className="mt-2 font-body text-[11px] text-stone-400">
-            Édition et envoi du mail : à venir (P5).
-          </p>
         </div>
       ) : null}
     </div>
