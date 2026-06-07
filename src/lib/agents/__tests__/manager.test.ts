@@ -25,7 +25,7 @@ import {
   buildIntentClassificationPrompt,
 } from '@/lib/agents/manager-prompts';
 import { searchExistingJobDescriptions } from '@/lib/storage/job-descriptions';
-import { buildEmptyFDP } from '@/types/field-collection';
+import { buildEmptyFDP, FIELD_KEYS } from '@/types/field-collection';
 
 const chatCompleteMock = vi.mocked(chatComplete);
 const searchMock = vi.mocked(searchExistingJobDescriptions);
@@ -98,6 +98,14 @@ describe('ensureProposalAnchor — « Ajuster » a toujours un champ cible', () 
     return fdp;
   }
 
+  // FDP complète (les 8 champs remplis) → récap final.
+  function fdpComplete() {
+    const fdp = buildEmptyFDP('CAMP-2026-077');
+    for (const key of FIELD_KEYS) fdp.fields[key]!.status = 'filled';
+    fdp.isComplete = true;
+    return fdp;
+  }
+
   it('ancre proposalField sur l’unique champ extrait (fallback above_input)', () => {
     const out = ensureProposalAnchor(
       {
@@ -133,12 +141,57 @@ describe('ensureProposalAnchor — « Ajuster » a toujours un champ cible', () 
     expect(out.proposalField).toBe('key_skills');
   });
 
-  it('ne touche pas un récap pré-recherche en bloc (≥ 2 extractions)', () => {
+  it('proposition double-écriture (≥2 extractions, FDP incomplète) → ancre sur le DERNIER champ extrait (a′)', () => {
+    // Le DRH répond « Paris » ; le LLM extrait location (réponse) + salary_range
+    // (prochain défaut proposé) et OUBLIE proposalField. La cible « Ajuster » est
+    // le champ PROPOSÉ = le dernier dans l'ordre canonique (salary_range), pas
+    // location (que le DRH vient de remplir).
     const out = ensureProposalAnchor(
       {
-        message: 'Voici la fiche archivée.',
-        chips: { placement: 'below_bubble', options: ['Valider telle quelle'] },
-        fieldExtractions: { job_title: 'Comptable', seniority: 'senior' },
+        message: 'Paris, noté. Pour la rémunération, je propose 45-55K.',
+        chips: { placement: 'above_input', options: ['Continuer', 'Ajuster'] },
+        fieldExtractions: { location: 'Paris', salary_range: '45-55K' },
+      },
+      buildEmptyFDP('CAMP-2026-077'),
+    );
+    expect(out.proposalField).toBe('salary_range');
+  });
+
+  it('ne touche pas un RÉCAP FINAL (FDP isComplete) → multi-édition conservée', () => {
+    const out = ensureProposalAnchor(
+      {
+        message: 'Récap de la fiche, à valider ou ajuster.',
+        chips: { placement: 'below_bubble', options: ['Valider la fiche', 'Ajuster'] },
+        fieldExtractions: {
+          job_title: 'Comptable',
+          seniority: 'senior',
+          contract_type: 'CDI',
+          location: 'Paris',
+          salary_range: '45-55K',
+          start_date: 'septembre 2026',
+          main_missions: ['Clôture'],
+          key_skills: ['IFRS'],
+        },
+      },
+      fdpComplete(),
+    );
+    expect(out.proposalField).toBeUndefined();
+  });
+
+  it('ne touche pas un DUMP RÉUTILISATION L1 (≥7 extractions, FDP incomplète) → multi-édition', () => {
+    const out = ensureProposalAnchor(
+      {
+        message: "J'ai retrouvé une fiche archivée, je la reprends.",
+        chips: { placement: 'below_bubble', options: ['Valider telle quelle', 'Examiner'] },
+        fieldExtractions: {
+          job_title: 'Comptable',
+          seniority: 'senior',
+          contract_type: 'CDI',
+          location: 'Paris',
+          salary_range: '45-55K',
+          start_date: 'septembre 2026',
+          main_missions: ['Clôture'],
+        },
       },
       buildEmptyFDP('CAMP-2026-077'),
     );

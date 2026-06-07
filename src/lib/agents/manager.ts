@@ -331,6 +331,28 @@ function firstIncompleteField(fdp: FDPInProgress): FieldKey | null {
 }
 
 /**
+ * Le DERNIER champ extrait dans l'ordre canonique. En double-écriture (le LLM
+ * extrait la réponse du DRH ET propose le prochain champ par défaut), le champ
+ * PROPOSÉ — celui que vise « Ajuster » — est ajouté en dernier dans l'ordre de
+ * collecte. C'est donc lui, pas le premier champ incomplet (qui est celui que
+ * le DRH vient de remplir → décalage d'un cran).
+ */
+function lastCanonicalField(keys: FieldKey[]): FieldKey | null {
+  let last: FieldKey | null = null;
+  for (const key of FIELD_KEYS) {
+    if (keys.includes(key)) last = key;
+  }
+  return last;
+}
+
+/**
+ * Seuil au-delà duquel un tour est un RÉCAP (dump complet : RÉUTILISATION L1 ou
+ * le DRH a tout donné d'un coup) et non une proposition incrémentale. Une
+ * collecte champ par champ émet ≤ ~4 extractions ; un récap en émet 7-8.
+ */
+const RECAP_EXTRACTION_THRESHOLD = 7;
+
+/**
  * Garde-fou DÉTERMINISTE : « Ajuster » a besoin d'un champ cible
  * (`proposalField`) pour ouvrir l'éditeur en place. Le LLM est censé le
  * renseigner en MODE PROPOSITION (cf. prompt), mais il l'oublie — typiquement
@@ -340,15 +362,18 @@ function firstIncompleteField(fdp: FDPInProgress): FieldKey | null {
  * sait pas quoi éditer et déplie la checklist au lieu d'ouvrir l'éditeur — d'où
  * l'impression qu'« Ajuster ne fait rien ».
  *
- * On ANCRE donc `proposalField` quand il manque, sur une PROPOSITION DE CHAMP :
- *   - exactement UNE extraction ce tour → c'est CE champ qui est proposé ;
- *   - sinon, le premier champ encore à remplir (= le champ que le Manager
- *     collecte, l'ordre canonique étant l'ordre de collecte).
+ * On ANCRE donc `proposalField` quand il manque, sur une PROPOSITION DE CHAMP,
+ * en visant le champ PROPOSÉ = le DERNIER champ extrait dans l'ordre canonique
+ * (la double-écriture ajoute le prochain défaut en dernier). Repli sur le
+ * premier champ à collecter si aucune extraction. NB : on NE prend PAS le
+ * premier champ incomplet — ce serait celui que le DRH vient de remplir, soit un
+ * décalage d'un cran par rapport au champ que la bulle propose.
  * On NE touche PAS :
  *   - une réponse déjà ancrée (`proposalField` présent) ;
- *   - un récap pré-recherche en bloc (≥ 2 extractions, ancrage multiple voulu) ;
+ *   - un RÉCAP (multi-édition voulue) : FDP complète (récap final) ou dump
+ *     complet (≥ 7 extractions : RÉUTILISATION L1 / DRH a tout donné) ;
  *   - une réponse sans chips (prose libre / demande d'éclaircissement) ;
- *   - une réponse hors collecte FDP (pas de FDP) ou FDP déjà complète.
+ *   - une réponse hors collecte FDP (pas de FDP).
  *
  * Doctrine « le LLM propose, le code verrouille » : « Ajuster » ne dépend plus
  * de la mémoire du LLM.
@@ -360,9 +385,17 @@ export function ensureProposalAnchor(
   if (response.proposalField) return response;
   if (!fdp || !response.chips) return response;
   const extracted = Object.keys(response.fieldExtractions ?? {}) as FieldKey[];
-  if (extracted.length > 1) return response; // récap en bloc : pas d'ancrage unique
-  const target =
-    extracted.length === 1 ? extracted[0]! : firstIncompleteField(fdp);
+  // RÉCAP (multi-édition voulue → PAS d'ancrage) : RÉCAP FINAL (FDP complète) ou
+  // dump complet (RÉUTILISATION L1 / DRH a tout donné). Le compte d'extractions
+  // NE suffit PAS à lui seul à distinguer un récap d'une proposition, car la
+  // double-écriture émet aussi ≥ 2 extractions — d'où le seuil élevé.
+  if (fdp.isComplete || extracted.length >= RECAP_EXTRACTION_THRESHOLD) {
+    return response;
+  }
+  // Proposition : on ancre sur le champ PROPOSÉ = le dernier champ extrait dans
+  // l'ordre canonique (a′). Repli sur le premier champ à collecter si aucune
+  // extraction (le LLM a posé une question sans proposer de valeur).
+  const target = lastCanonicalField(extracted) ?? firstIncompleteField(fdp);
   if (!target) return response; // FDP complète → rien à proposer
   return { ...response, proposalField: target };
 }
