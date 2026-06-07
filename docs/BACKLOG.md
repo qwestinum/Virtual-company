@@ -322,3 +322,54 @@ un refresh** de la page entre l'upload et la validation de la fiche. Acceptable 
 prototype (parcours continu) ; à documenter si on veut la robustesse.
 
 **Risque** : faible/moyen. Isolé au flux d'upload → nouvelle campagne.
+
+---
+
+## « Ajuster » ancré sur le mauvais champ à la collecte FDP (INTERMITTENT, à reproduire)
+
+**Statut** : bug **non systématique** observé en collecte FDP (création par chat).
+Pas de repro fiable au moment de la saisie — **à reconsigner avec les étapes
+exactes** quand il se reproduit.
+**Code concerné** : `src/lib/agents/manager.ts` (`ensureProposalAnchor`,
+`lastCanonicalField`), `src/components/chat/edit-target.ts`
+(`resolveEditableFieldKeys`). Introduit par le commit `521ecf4`
+(« Ajuster s'ancre sur le champ proposé a′ »), **antérieur** à la session
+dashboard/scoring (aucun commit de cette session ne touche la collecte FDP — vérifié).
+
+**Symptôme observé.** À la création d'une campagne par chat, le Manager **propose
+la localisation** (champ #4) alors que le chip « Ajuster » est **ancré sur
+l'intitulé** (champ #1) : cliquer « Ajuster » édite l'intitulé, pas la localisation.
+Au tour suivant, la localisation est re-proposée correctement (bons chips /
+suggestions). Non systématique.
+
+**Cause racine probable.** `ensureProposalAnchor` DEVINE le champ proposé via
+`lastCanonicalField(extracted)` = « le dernier champ extrait dans l'ordre
+canonique » (hypothèse : la double-écriture ajoute le prochain champ par défaut
+en dernier dans `fieldExtractions`). Quand le LLM **propose un champ dans le
+message SANS l'inclure dans `fieldExtractions`** (et oublie `proposalField`),
+l'ancre retombe sur le dernier champ réellement extrait (souvent `job_title`) →
+décalage entre la QUESTION (location) et le champ ANCRÉ (job_title). L'intermittence
+vient de la variabilité d'extraction du LLM au tour 1.
+
+NB : `521ecf4` a justement abandonné `firstIncompleteField` au profit de
+`lastCanonicalField(extracted)` pour corriger un décalage d'un cran (l'ancre tombait
+sur le champ que le DRH venait de remplir). Les deux heuristiques ont chacune un
+angle mort → le vrai correctif doit réconcilier les deux.
+
+**Pistes de résolution.**
+1. Durcir le prompt : `proposalField` **obligatoire** ET la valeur proposée
+   **toujours** dans `fieldExtractions` (règle déjà énoncée, à renforcer / valider).
+2. Ancre déterministe robuste : croiser `lastCanonicalField(extracted)` avec
+   `firstIncompleteField(fdp)` — si le champ proposé (texte du message) diffère du
+   dernier extrait, préférer le premier champ VIDE (celui que le prompt impose de
+   proposer). Idéalement détecter le champ visé par le message.
+3. À défaut, garde-fou : si `proposalField` absent ET le dernier extrait est déjà
+   `filled` depuis un tour précédent, basculer sur `firstIncompleteField`.
+
+**À consigner au prochain repro** : chemin de création, 1er message exact tapé,
+état de la checklist au tour 1, et (si visible) `proposalField` + `proposedExtractions`
+de la bulle fautive.
+
+**Risque** : moyen — touche la logique d'ancrage partagée par toute la collecte FDP ;
+régression possible sur le décalage d'un cran que `521ecf4` corrigeait. À traiter
+avec un repro stable et des tests ciblés.
