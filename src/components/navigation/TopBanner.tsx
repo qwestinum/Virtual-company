@@ -13,7 +13,6 @@
  */
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 
 import { LogoutButton } from '@/components/auth/LogoutButton';
 
@@ -40,7 +39,6 @@ export function TopBanner({
   breadcrumb,
   showLogout = true,
 }: TopBannerProps) {
-  const pendingCount = usePendingValidationsCount();
   return (
     <header
       className="sticky top-0 z-50 flex items-center gap-6 px-6 py-2 shadow-[0_1px_0_rgba(255,176,0,0.35)]"
@@ -60,17 +58,6 @@ export function TopBanner({
       ) : null}
       <nav className="ml-auto flex items-center gap-4">
         <Link
-          href="/validations"
-          className="relative flex items-center gap-1.5 font-body text-[13px] font-semibold text-stone-900/85 transition-opacity hover:opacity-70"
-        >
-          Validation suspendue
-          {pendingCount > 0 ? (
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 font-data text-[11px] font-bold text-white">
-              {pendingCount}
-            </span>
-          ) : null}
-        </Link>
-        <Link
           href="/settings"
           className="font-body text-[13px] font-semibold text-stone-900/85 transition-opacity hover:opacity-70"
         >
@@ -80,26 +67,4 @@ export function TopBanner({
       </nav>
     </header>
   );
-}
-
-/** Compteur de validations en attente (badge nav). Best-effort, silencieux. */
-function usePendingValidationsCount(): number {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/validations', { cache: 'no-store' });
-        if (!res.ok) return;
-        const json = (await res.json()) as { validations?: unknown[] };
-        if (!cancelled) setCount(json.validations?.length ?? 0);
-      } catch {
-        // silencieux — le badge n'est pas critique.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return count;
 }

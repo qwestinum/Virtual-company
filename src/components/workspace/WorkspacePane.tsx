@@ -1,32 +1,67 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { AgentDetailsPanel } from '@/components/agents/AgentDetailsPanel';
 import { HRDepartmentView } from '@/components/agents/HRDepartmentView';
 import { DashboardView } from '@/components/dashboard/DashboardView';
+import { ValidationsHub } from '@/components/validations/ValidationsHub';
 import { cn } from '@/lib/utils';
 
-type Tab = 'rh' | 'dashboard';
+type Tab = 'rh' | 'dashboard' | 'validations';
 
 const TABS: { id: Tab; label: string; available: boolean }[] = [
   { id: 'rh', label: 'Bureau', available: true },
   { id: 'dashboard', label: 'Dashboard', available: true },
+  { id: 'validations', label: 'Validation suspendue', available: true },
 ];
+
+/** Compteur de validations en attente (badge d'onglet). Best-effort. */
+function usePendingValidationsCount(): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/validations', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = (await res.json()) as { validations?: unknown[] };
+        if (!cancelled) setCount(json.validations?.length ?? 0);
+      } catch {
+        // silencieux
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return count;
+}
 
 export function WorkspacePane() {
   const [tab, setTab] = useState<Tab>('rh');
+  const pendingCount = usePendingValidationsCount();
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden">
-      <WorkspaceTabs current={tab} onChange={setTab} />
+      <WorkspaceTabs
+        current={tab}
+        onChange={setTab}
+        pendingCount={pendingCount}
+      />
       <div className="relative flex-1 overflow-hidden">
         {tab === 'rh' ? (
           <>
             <HRDepartmentView />
             <AgentDetailsPanel />
           </>
-        ) : (
+        ) : tab === 'dashboard' ? (
           <DashboardView />
+        ) : (
+          <div className="h-full overflow-auto px-6 py-6">
+            <div className="mx-auto w-full max-w-6xl">
+              <ValidationsHub />
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -36,9 +71,11 @@ export function WorkspacePane() {
 function WorkspaceTabs({
   current,
   onChange,
+  pendingCount,
 }: {
   current: Tab;
   onChange: (tab: Tab) => void;
+  pendingCount: number;
 }) {
   return (
     <nav
@@ -68,6 +105,11 @@ function WorkspaceTabs({
             )}
           >
             <span>{tab.label}</span>
+            {tab.id === 'validations' && pendingCount > 0 ? (
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 align-middle font-data text-[10px] font-bold text-white">
+                {pendingCount}
+              </span>
+            ) : null}
             {!tab.available ? (
               <span className="ml-2 align-middle text-[9px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
                 Bientôt
