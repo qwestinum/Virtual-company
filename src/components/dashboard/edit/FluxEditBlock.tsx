@@ -73,6 +73,22 @@ export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
     };
   }, [campaign.id]);
 
+  // L'intake (phase « réception ») est satisfait dès qu'AU MOINS UNE source est
+  // active — y compris une source déjà présente à l'ouverture du bloc (ex.
+  // « manuel » par défaut), SANS qu'on ait à la re-toggler. Sans ça, le bouton
+  // « Activer » restait grisé alors que le flux était déjà configuré. Idempotent
+  // (markSourcesConfirmed no-op si déjà confirmé) → pas de boucle.
+  useEffect(() => {
+    if (campaign.sources.length > 0 && !campaign.sourcesConfirmed) {
+      markSourcesConfirmed(campaign.id);
+    }
+  }, [
+    campaign.id,
+    campaign.sources.length,
+    campaign.sourcesConfirmed,
+    markSourcesConfirmed,
+  ]);
+
   const isActive = (source: CVSource) => campaign.sources.includes(source);
 
   const toggle = (source: CVSource) => {
@@ -81,13 +97,6 @@ export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
       ? [...campaign.sources, source]
       : campaign.sources.filter((s) => s !== source);
     setSources(campaign.id, next);
-    // Dès qu'au moins une source de réception est active, la phase `intake` est
-    // confirmée (sinon elle restait `pending` → la campagne n'était JAMAIS
-    // activable depuis le dashboard, faute d'appel à markSourcesConfirmed).
-    // Idempotent côté store.
-    if (next.length > 0) {
-      markSourcesConfirmed(campaign.id);
-    }
     pushManagerAcknowledgment({
       kind: 'channel_toggled',
       campaignId: campaign.id,
