@@ -373,3 +373,40 @@ de la bulle fautive.
 **Risque** : moyen — touche la logique d'ancrage partagée par toute la collecte FDP ;
 régression possible sur le décalage d'un cran que `521ecf4` corrigeait. À traiter
 avec un repro stable et des tests ciblés.
+
+---
+
+## E2E navigateur (Playwright) — non installé
+
+**Statut** : pas d'infra E2E navigateur dans le projet (ni Playwright, ni Cypress ;
+vitest tourne en `node`). Couverture E2E actuelle = **déterministe via le store**
+uniquement.
+
+**Déjà couvert** (commit `deeeced`) : `src/stores/__tests__/campaign-journey.e2e.test.ts`
+— 8 scénarios chaînés du moteur de cycle de vie (porte d'activation, sources =
+unique vérité, diffusion ≠ réception, cascade de réouverture, pause/reprise,
+clôture, édition FDP) + round-trip persistance repo. Rapide, sans LLM ni navigateur.
+
+**Non couvert (nécessite un harnais navigateur)** :
+- Parcours UI réels du **dashboard** : clics activer/suspendre/clôturer, toggles
+  Flux/Canaux, édition FDP/scoring inline, bandeaux et états désactivés du bouton
+  « Activer » (tooltip motifs manquants). C'est de l'intégration React+store dans un
+  vrai DOM, hors de portée de vitest `node`.
+- Flux **chat** (collecte FDP, pré-recherche L1, picker sources, récap/validation)
+  et **CV Analyzer** end-to-end : pilotés par le LLM → non déterministes et payants.
+  À tester en E2E, il faudrait **stubber** les appels `chatCompleteJson` (rejouer des
+  réponses enregistrées) pour rester reproductible.
+
+**Piste de résolution.**
+1. Ajouter Playwright (`@playwright/test`) + script `test:e2e`, lancer `next dev`
+   (ou `next build && start`) en amont des specs.
+2. Spécifier d'abord les parcours **dashboard déterministes** (pas de LLM) : ce sont
+   les plus régression-prones et les plus simples à automatiser.
+3. Pour le chat/CV : intercepter le réseau (route mocking Playwright) ou un mode
+   `AI_FIXTURE` côté provider qui rejoue des réponses figées → E2E reproductible
+   sans coût LLM.
+4. Faire tourner en CI sur un navigateur headless (chromium).
+
+**Coût/risque** : ajout d'infra (download navigateurs, setup CI). Non bloquant —
+le moteur critique est déjà couvert en déterministe. À prioriser avant la mise en
+prod VPS (Session 8) pour sécuriser les parcours UI.
