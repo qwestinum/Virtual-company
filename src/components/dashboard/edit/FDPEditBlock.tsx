@@ -50,6 +50,7 @@ function FDPEditInner({ campaign }: FDPEditBlockProps) {
   }));
   const [flash, setFlash] = useState<string | null>(null);
   const addCampaign = useCampaignsStore((s) => s.addCampaign);
+  const recomputeStatus = useCampaignsStore((s) => s.recomputeStatus);
 
   const dirty = !sameFDP(draft, campaign.fdp);
 
@@ -88,6 +89,10 @@ function FDPEditInner({ campaign }: FDPEditBlockProps) {
       sourcesConfirmed: campaign.sourcesConfirmed,
       threshold: campaign.threshold,
     });
+    // Cohérence statut/machine : addCampaign préserve le statut passé, donc une
+    // FDP redevenue incomplète laisserait une campagne « active » incohérente.
+    // recomputeStatus re-dérive depuis la machine (et préserve paused/closed).
+    recomputeStatus(campaign.id);
     const impact =
       isComplete && !wasValidated
         ? 'La fiche est complète et revalidée — la diffusion peut redémarrer.'

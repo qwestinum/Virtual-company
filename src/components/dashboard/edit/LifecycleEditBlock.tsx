@@ -9,6 +9,8 @@
  * pas laisser le DRH éditer une campagne fermée.
  */
 
+import { canActivate } from '@/lib/campaign/lifecycle';
+import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
@@ -23,6 +25,9 @@ export function LifecycleEditBlock({
   onClose,
 }: LifecycleEditBlockProps) {
   const updateStatus = useCampaignsStore((s) => s.updateStatus);
+  const activateCampaign = useCampaignsStore((s) => s.activateCampaign);
+  const resumeCampaign = useCampaignsStore((s) => s.resumeCampaign);
+  const activation = canActivate(campaign.lifecycle);
 
   const ack = (
     kind:
@@ -42,11 +47,11 @@ export function LifecycleEditBlock({
     ack('campaign_paused');
   };
   const onResume = () => {
-    updateStatus(campaign.id, 'active');
+    resumeCampaign(campaign.id);
     ack('campaign_resumed');
   };
   const onActivate = () => {
-    updateStatus(campaign.id, 'active');
+    if (!activateCampaign(campaign.id)) return;
     ack('campaign_activated');
   };
   const onCloseCampaign = () => {
@@ -80,9 +85,14 @@ export function LifecycleEditBlock({
       {campaign.status === 'draft' || campaign.status === 'in_progress' ? (
         <ActionRow
           label="Activer la campagne"
-          hint="La diffusion démarre et le CV Analyzer écoute la boîte mail."
+          hint={
+            activation.ok
+              ? 'La diffusion démarre et le CV Analyzer écoute la boîte mail.'
+              : `Il reste à valider ${formatMissingPhases(activation.missing)} avant de pouvoir activer.`
+          }
           onClick={onActivate}
           variant="success"
+          disabled={!activation.ok}
         />
       ) : null}
       {campaign.status === 'active' || campaign.status === 'paused' ? (
@@ -102,11 +112,13 @@ function ActionRow({
   hint,
   onClick,
   variant,
+  disabled = false,
 }: {
   label: string;
   hint: string;
   onClick: () => void;
   variant: 'success' | 'warning' | 'danger';
+  disabled?: boolean;
 }) {
   const palette: Record<typeof variant, { bg: string; color: string }> = {
     success: {
@@ -127,6 +139,7 @@ function ActionRow({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -136,8 +149,9 @@ function ActionRow({
         border: 'none',
         background: p.bg,
         color: p.color,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
         textAlign: 'left',
+        opacity: disabled ? 0.55 : 1,
       }}
     >
       <span

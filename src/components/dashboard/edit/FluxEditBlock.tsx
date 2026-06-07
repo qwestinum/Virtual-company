@@ -40,6 +40,7 @@ export type FluxEditBlockProps = {
 
 export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
   const setSources = useCampaignsStore((s) => s.setSources);
+  const markSourcesConfirmed = useCampaignsStore((s) => s.markSourcesConfirmed);
   const [flash, setFlash] = useState<string | null>(null);
 
   // Mailboxes associées à la campagne (chargées au mount).
@@ -80,6 +81,13 @@ export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
       ? [...campaign.sources, source]
       : campaign.sources.filter((s) => s !== source);
     setSources(campaign.id, next);
+    // Dès qu'au moins une source de réception est active, la phase `intake` est
+    // confirmée (sinon elle restait `pending` → la campagne n'était JAMAIS
+    // activable depuis le dashboard, faute d'appel à markSourcesConfirmed).
+    // Idempotent côté store.
+    if (next.length > 0) {
+      markSourcesConfirmed(campaign.id);
+    }
     pushManagerAcknowledgment({
       kind: 'channel_toggled',
       campaignId: campaign.id,

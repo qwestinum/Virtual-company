@@ -4,6 +4,7 @@ import {
   applyTransition,
   availableActions,
   buildLifecycle,
+  canActivate,
   currentPhase,
   dependenciesMet,
   deriveActiveStatus,
@@ -460,5 +461,46 @@ describe('reconcileLifecycle', () => {
     });
     expect(next.phases.announcement.status).toBe('done');
     expect(next.phases.publication.status).toBe('pending');
+  });
+});
+
+describe('canActivate', () => {
+  it('refuse une campagne fraîche et ne liste QUE les obligatoires manquantes', () => {
+    // buildLifecycle : fdp done, scoring/intake/annonce/publication pending.
+    const r = canActivate(buildLifecycle());
+    expect(r.ok).toBe(false);
+    // Les optionnelles (annonce/publication) NE bloquent PAS.
+    expect(r.missing).toEqual(['scoring', 'intake']);
+  });
+
+  it('autorise dès que les obligatoires sont done, même optionnelles pending', () => {
+    const lc = buildLifecycle({
+      scoring: 'done',
+      intake: 'done',
+      announcement: 'pending',
+      publication: 'pending',
+    });
+    const r = canActivate(lc);
+    expect(r.ok).toBe(true);
+    expect(r.missing).toEqual([]);
+  });
+
+  it('autorise aussi quand les optionnelles sont postponed', () => {
+    const lc = buildLifecycle({
+      scoring: 'done',
+      intake: 'done',
+      announcement: 'postponed',
+      publication: 'postponed',
+    });
+    expect(canActivate(lc).ok).toBe(true);
+    // Ici la machine dérive déjà 'active'.
+    expect(deriveActiveStatus(lc)).toBe('active');
+  });
+
+  it('refuse si la FDP n\'est pas done (campagne draft)', () => {
+    const lc = buildLifecycle({ fdp: 'in_progress' });
+    const r = canActivate(lc);
+    expect(r.ok).toBe(false);
+    expect(r.missing).toContain('fdp');
   });
 });

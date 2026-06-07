@@ -199,6 +199,52 @@ describe('campaigns-store', () => {
     ).toBe('closed');
   });
 
+  it('activateCampaign refuse une campagne pas prête et ne touche pas le statut', () => {
+    const store = useCampaignsStore.getState();
+    store.addCampaign({ fdp: makeFDP('CAMP-2026-ACT1') }); // FDP non validée → draft
+    expect(store.activateCampaign('CAMP-2026-ACT1')).toBe(false);
+    expect(store.getById('CAMP-2026-ACT1')?.status).toBe('draft');
+  });
+
+  it('activateCampaign active dès les obligatoires faites et REPORTE les optionnelles pending', () => {
+    const fdp = makeFDP('CAMP-2026-ACT2', true);
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-2026-ACT2',
+      isValidated: true,
+      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+    };
+    const store = useCampaignsStore.getState();
+    store.addCampaign({ fdp, scoringSheet: sheet });
+    store.markSourcesConfirmed('CAMP-2026-ACT2');
+    // Annonce + publication laissées PENDING (le DRH ne les a pas touchées).
+    // La campagne est donc 'in_progress', pas encore 'active'.
+    expect(store.getById('CAMP-2026-ACT2')?.status).toBe('in_progress');
+    expect(store.activateCampaign('CAMP-2026-ACT2')).toBe(true);
+    const after = store.getById('CAMP-2026-ACT2');
+    expect(after?.status).toBe('active');
+    // Les optionnelles ont été reportées (cohérence machine ↔ statut).
+    expect(after?.lifecycle.phases.announcement.status).toBe('postponed');
+    expect(after?.lifecycle.phases.publication.status).toBe('postponed');
+  });
+
+  it('activateCampaign no-op si la campagne est paused/closed (pas draft/in_progress)', () => {
+    const store = useCampaignsStore.getState();
+    store.addCampaign({ fdp: makeFDP('CAMP-2026-ACT3', true) });
+    store.updateStatus('CAMP-2026-ACT3', 'paused');
+    expect(store.activateCampaign('CAMP-2026-ACT3')).toBe(false);
+    expect(store.getById('CAMP-2026-ACT3')?.status).toBe('paused');
+  });
+
+  it('resumeCampaign re-dérive le statut au lieu de forcer active', () => {
+    const store = useCampaignsStore.getState();
+    // FDP validée seule → in_progress (scoring/intake/optionnelles non réglés).
+    store.addCampaign({ fdp: makeFDP('CAMP-2026-RES1', true) });
+    store.updateStatus('CAMP-2026-RES1', 'paused');
+    store.resumeCampaign('CAMP-2026-RES1');
+    // Pas de faux 'active' : la campagne n'était pas prête.
+    expect(store.getById('CAMP-2026-RES1')?.status).toBe('in_progress');
+  });
+
   it('addCampaign sets scoringSheet to null explicitly when null is passed', () => {
     const fdp = makeFDP('CAMP-2026-008', true);
     const sheet: ScoringSheet = {

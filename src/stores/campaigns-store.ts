@@ -14,10 +14,12 @@ import { create } from 'zustand';
 
 import {
   applyTransition,
+  canActivate,
   deriveActiveStatus,
   reconcileLifecycle,
 } from '@/lib/campaign/lifecycle';
 import {
+  OPTIONAL_PHASE_IDS,
   PHASE_IDS,
   type CampaignLifecycle,
   type PhaseId,
@@ -110,9 +112,23 @@ export type CampaignsState = {
   /**
    * Écrase explicitement le statut d'une campagne (paused / closed
    * principalement). Pour les transitions dérivées (draft → in_progress
-   * → active), utiliser recomputeStatus.
+   * → active), utiliser recomputeStatus. Pour l'activation manuelle depuis
+   * le dashboard, utiliser activateCampaign (verrouillée).
    */
   updateStatus: (id: string, status: CampaignStatus) => void;
+  /**
+   * Active une campagne depuis draft/in_progress — UNIQUEMENT si la machine la
+   * juge prête (cf. canActivate : obligatoires `done`, optionnelles réglées).
+   * No-op + retourne `false` sinon. « Le code verrouille » : on n'autorise
+   * jamais une activation prématurée (FDP non validée, scoring manquant…).
+   */
+  activateCampaign: (id: string) => boolean;
+  /**
+   * Reprend une campagne en pause. Le statut n'est PAS forcé à 'active' mais
+   * RE-DÉRIVÉ de la machine : si la FDP a été cassée pendant la pause, la
+   * campagne repasse en cadrage (in_progress/draft) au lieu d'un faux 'active'.
+   */
+  resumeCampaign: (id: string) => void;
   /**
    * Phase 7.1 — marque qu'une annonce a été produite pour ce channel.
    * Idempotent (pas de doublon). Recalcule le statut après.
@@ -314,6 +330,59 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
           [id]: {
             ...current,
             status,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  activateCampaign: (id) => {
+    const current = get().byId[id];
+    if (!current) return false;
+    // On n'active que depuis un état non lancé, et seulement si les phases
+    // OBLIGATOIRES sont faites. Toute autre situation = no-op (verrou).
+    if (current.status !== 'draft' && current.status !== 'in_progress') {
+      return false;
+    }
+    if (!canActivate(current.lifecycle).ok) return false;
+    // Les optionnelles non réglées (annonce/publication encore `pending`) sont
+    // REPORTÉES : activer = « je lance maintenant, l'annonce attendra ». Après
+    // ça, deriveActiveStatus rend 'active' (cohérence machine ↔ statut).
+    let lifecycle = current.lifecycle;
+    for (const pid of OPTIONAL_PHASE_IDS) {
+      if (lifecycle.phases[pid].status === 'done') continue;
+      const res = applyTransition(lifecycle, { kind: 'postpone', phaseId: pid });
+      if (res.ok) lifecycle = res.lifecycle;
+    }
+    set((state) => ({
+      ...state,
+      byId: {
+        ...state.byId,
+        [id]: {
+          ...current,
+          lifecycle,
+          status: deriveActiveStatus(lifecycle),
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    }));
+    return true;
+  },
+
+  resumeCampaign: (id) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current || current.status !== 'paused') return state;
+      // Re-dérive depuis la machine : pas de faux 'active' si un artefact a
+      // été invalidé pendant la pause.
+      const nextStatus = deriveActiveStatus(current.lifecycle);
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            status: nextStatus,
             updatedAt: new Date().toISOString(),
           },
         },

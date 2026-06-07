@@ -55,6 +55,12 @@ function ScoringEditInner({ campaign }: ScoringEditBlockProps) {
   const isInitial = campaign.scoringSheet == null && criteria.length === 0;
   const dirty =
     !isInitial && !sameCriteria(criteria, initialCriteria);
+  // On peut enregistrer si la grille a changé OU si elle n'est pas encore
+  // VALIDÉE (l'enregistrement la valide → débloque l'activation). Sans ça, une
+  // grille déjà peuplée mais non validée restait non enregistrable, forçant le
+  // DRH à ajouter un critère factice pour activer le bouton.
+  const canSave =
+    criteria.length > 0 && (dirty || campaign.scoringSheet?.isValidated !== true);
 
   const updateCriterion = (
     id: string,
@@ -161,20 +167,20 @@ function ScoringEditInner({ campaign }: ScoringEditBlockProps) {
         <button
           type="button"
           onClick={onSave}
-          disabled={!dirty}
+          disabled={!canSave}
           className="font-display"
           style={{
             padding: '8px 16px',
             borderRadius: 8,
             border: 'none',
-            background: dirty
+            background: canSave
               ? 'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))'
               : 'var(--dash-hover)',
-            color: dirty ? '#fff' : 'var(--dash-text-tertiary)',
-            cursor: dirty ? 'pointer' : 'not-allowed',
+            color: canSave ? '#fff' : 'var(--dash-text-tertiary)',
+            cursor: canSave ? 'pointer' : 'not-allowed',
             fontSize: 12,
             fontWeight: 700,
-            boxShadow: dirty
+            boxShadow: canSave
               ? '0 2px 10px rgba(47,110,235,0.3)'
               : undefined,
           }}

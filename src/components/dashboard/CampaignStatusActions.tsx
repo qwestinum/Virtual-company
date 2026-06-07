@@ -15,6 +15,8 @@
  * confirm()) car elle est irréversible.
  */
 
+import { canActivate } from '@/lib/campaign/lifecycle';
+import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import {
   pushManagerAcknowledgment,
   type AcknowledgmentAction,
@@ -40,10 +42,13 @@ export function CampaignStatusActions({
   onEdit,
 }: CampaignStatusActionsProps) {
   const updateStatus = useCampaignsStore((s) => s.updateStatus);
-  const getById = useCampaignsStore((s) => s.getById);
+  const activateCampaign = useCampaignsStore((s) => s.activateCampaign);
+  const resumeCampaign = useCampaignsStore((s) => s.resumeCampaign);
+  // Lecture RÉACTIVE de la campagne : la disponibilité d'« Activer » suit l'état
+  // de la machine (canActivate) sans dépendre d'un re-render parent.
+  const camp = useCampaignsStore((s) => s.byId[campaignId]);
 
   const ack = (kind: AcknowledgmentAction['kind']) => {
-    const camp = getById(campaignId);
     if (!camp) return;
     if (
       kind === 'campaign_paused' ||
@@ -59,16 +64,19 @@ export function CampaignStatusActions({
     }
   };
 
+  const activation = camp ? canActivate(camp.lifecycle) : { ok: false, missing: [] };
+
   const onPause = () => {
     updateStatus(campaignId, 'paused');
     ack('campaign_paused');
   };
   const onResume = () => {
-    updateStatus(campaignId, 'active');
+    resumeCampaign(campaignId);
     ack('campaign_resumed');
   };
   const onActivate = () => {
-    updateStatus(campaignId, 'active');
+    // Verrou déterministe : le store refuse si la campagne n'est pas prête.
+    if (!activateCampaign(campaignId)) return;
     ack('campaign_activated');
   };
   const onClose = () => {
@@ -104,6 +112,12 @@ export function CampaignStatusActions({
           icon="🚀"
           label="Activer"
           onClick={onActivate}
+          disabled={!activation.ok}
+          title={
+            activation.ok
+              ? undefined
+              : `Validez d'abord ${formatMissingPhases(activation.missing)} avant d'activer.`
+          }
         />
       ) : null}
       <ActionButton
@@ -131,11 +145,15 @@ function ActionButton({
   icon,
   label,
   onClick,
+  disabled = false,
+  title,
 }: {
   variant: Variant;
   icon: string;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
+  title?: string;
 }) {
   const styles: Record<Variant, { bg: string; color: string }> = {
     success: {
@@ -160,6 +178,8 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       className="font-body"
       style={{
         display: 'inline-flex',
@@ -168,12 +188,13 @@ function ActionButton({
         padding: '6px 14px',
         borderRadius: 8,
         border: variant === 'neutral' ? '1px solid var(--dash-border)' : 'none',
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
         fontSize: 12,
         fontWeight: 600,
         transition: 'filter 0.15s',
         background: s.bg,
         color: s.color,
+        opacity: disabled ? 0.45 : 1,
       }}
     >
       <span aria-hidden>{icon}</span>

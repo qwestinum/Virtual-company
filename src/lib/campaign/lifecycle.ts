@@ -173,6 +173,32 @@ export function deriveActiveStatus(
 }
 
 /**
+ * Une campagne est-elle ACTIVABLE ? Vrai ⟺ toutes les phases OBLIGATOIRES
+ * (fdp, scoring, intake) sont `done`. `missing` énumère les obligatoires non
+ * faites — pour expliquer le refus côté UI.
+ *
+ * Les phases OPTIONNELLES (annonce, publication) NE bloquent PAS l'activation :
+ * elles sont sautables (« à remettre à plus tard »). Activer une campagne dont
+ * une optionnelle est encore `pending` revient à la reporter — c'est à
+ * l'appelant (store `activateCampaign`) de la marquer `postponed` pour rester
+ * cohérent avec `deriveActiveStatus`.
+ *
+ * Doctrine « le LLM propose, le code verrouille » : c'est CE prédicat qui
+ * autorise ou refuse l'activation manuelle (bouton dashboard), jamais l'UI
+ * seule. Sans lui, on peut forcer `active` une campagne dont la FDP n'est même
+ * pas validée — état incohérent avec la machine (et le scoring CV échoue en 422).
+ */
+export function canActivate(lifecycle: CampaignLifecycle): {
+  ok: boolean;
+  missing: PhaseId[];
+} {
+  const missing = REQUIRED_PHASE_IDS.filter(
+    (id) => lifecycle.phases[id].status !== 'done',
+  );
+  return { ok: missing.length === 0, missing };
+}
+
+/**
  * Étape de flux à présenter au DRH, dérivée DÉTERMINISTIQUEMENT de la
  * machine. C'est le seul juge de « quoi montrer / faire ensuite » — il
  * remplacera le chaînage impératif dispersé (Inc. 2c-2). `actions` reprend
