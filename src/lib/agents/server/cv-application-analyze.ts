@@ -21,6 +21,8 @@ import { z } from 'zod';
 import {
   buildCandidateExtractionSystemPrompt,
   buildCandidateExtractionUserPrompt,
+  buildLedgerSystemPrompt,
+  buildLedgerUserPrompt,
   buildVerdictsSystemPrompt,
   buildVerdictsUserPrompt,
 } from '@/lib/agents/cv-extraction-prompts';
@@ -35,9 +37,12 @@ import { chatCompleteJson } from '@/lib/ai/provider';
 import { scoreCandidat, type LlmCriterionVerdict } from '@/lib/scoring';
 import {
   CVApplicationSchema,
+  CVFactLedgerSchema,
   CVNarrationSchema,
+  EMPTY_CV_FACT_LEDGER,
   JobApplicationDataSchema,
   type CVApplication,
+  type CVFactLedger,
   type CVNarration,
 } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
@@ -122,7 +127,12 @@ export type AnalyzeCVApplicationOutput = {
   application: CVApplication;
   metrics: { durationMs: number; tokensUsed: number; costEstimate: number };
   /** Observabilité : quelle(s) phase(s) LLM a/ont échoué (fallback appliqué). */
-  llmFailures: { candidate: boolean; verdicts: boolean; narration: boolean };
+  llmFailures: {
+    candidate: boolean;
+    ledger: boolean;
+    verdicts: boolean;
+    narration: boolean;
+  };
 };
 
 export async function analyzeCVApplication(
@@ -208,18 +218,47 @@ export async function analyzeCVApplication(
     return {
       application: CVApplicationSchema.parse({ candidate, scoringResult, narration }),
       metrics,
-      llmFailures: { candidate: candidateFailed, verdicts: false, narration: false },
+      llmFailures: {
+        candidate: candidateFailed,
+        ledger: false,
+        verdicts: false,
+        narration: false,
+      },
     };
   }
 
-  // 2. Extraction des décisions par critère.
+  // 1bis. Relevé de faits (ledger) — SOURCE CANONIQUE partagée par tous les
+  // critères. Extrait UNE fois ; les verdicts s'y ancrent pour qu'un même fait
+  // (« Xray ») ne soit pas jugé présent ici et absent là. Dégrade proprement :
+  // un échec → relevé vide, les verdicts se rabattent sur le seul texte du CV.
+  let ledger: CVFactLedger = EMPTY_CV_FACT_LEDGER;
+  let ledgerFailed = false;
+  try {
+    const r = await chatCompleteJson(
+      [
+        { role: 'system', content: buildLedgerSystemPrompt() },
+        { role: 'user', content: buildLedgerUserPrompt(input.cvText, input.fileName) },
+      ],
+      CVFactLedgerSchema,
+    );
+    ledger = r.data;
+    accumulate(r.raw);
+  } catch (err) {
+    if (!(err instanceof AIValidationError)) throw err;
+    ledgerFailed = true;
+  }
+
+  // 2. Extraction des décisions par critère, ANCRÉES sur le relevé de faits.
   let verdicts: LlmCriterionVerdict[];
   let verdictsFailed = false;
   try {
     const r = await chatCompleteJson(
       [
         { role: 'system', content: buildVerdictsSystemPrompt() },
-        { role: 'user', content: buildVerdictsUserPrompt(input.cvText, input.sheet) },
+        {
+          role: 'user',
+          content: buildVerdictsUserPrompt(input.cvText, input.sheet, ledger),
+        },
       ],
       VerdictsResponseSchema,
     );
@@ -302,6 +341,7 @@ export async function analyzeCVApplication(
     metrics,
     llmFailures: {
       candidate: candidateFailed,
+      ledger: ledgerFailed,
       verdicts: verdictsFailed,
       narration: narrationFailed,
     },

@@ -49,6 +49,14 @@ const CANDIDATE_OK = {
   photoPresent: false,
 };
 
+const LEDGER_OK = {
+  yearsExperience: 8,
+  tools: ['Excel'],
+  methodologies: ['IFRS'],
+  skills: ['comptabilité générale'],
+  domains: ['finance'],
+};
+
 // Le LLM renvoie le NUMÉRO du critère (1..N), remappé vers le vrai id par
 // remapVerdictsToCriteria. Ordre de sheet() : 1=ko, 2=cap, 3=s1, 4=s2.
 const VERDICTS_OK = {
@@ -86,17 +94,18 @@ describe('analyzeCVApplication', () => {
     vi.restoreAllMocks();
   });
 
-  it('chemin nominal : extraction candidat + décisions → scoreCandidat → CVApplication', async () => {
+  it('chemin nominal : extraction candidat + relevé + décisions → scoreCandidat → CVApplication', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
       .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
       .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
 
-    // Le LLM est appelé trois fois (candidat, décisions, narration).
-    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(3);
+    // Le LLM est appelé quatre fois (candidat, relevé, décisions, narration).
+    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(4);
     // Candidat : factuel annexe + métadonnées système ajoutées par le code.
     expect(out.application.candidate.fullName).toBe('Jean Test');
     expect(out.application.candidate.fileName).toBe('cv-jean.pdf');
@@ -108,12 +117,18 @@ describe('analyzeCVApplication', () => {
     expect(out.application.scoringResult.hardFailures).toEqual([]);
     // Narration présente.
     expect(out.application.narration.summary).toMatch(/profil solide/i);
-    expect(out.llmFailures).toEqual({ candidate: false, verdicts: false, narration: false });
+    expect(out.llmFailures).toEqual({
+      candidate: false,
+      ledger: false,
+      verdicts: false,
+      narration: false,
+    });
   });
 
   it('email résolu de façon déterministe depuis le CV (corrige un email LLM erroné)', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult({ ...CANDIDATE_OK, email: 'faux@halluciné.com' }))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
       .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
       .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
@@ -126,6 +141,7 @@ describe('analyzeCVApplication', () => {
   it('échec extraction décisions (AIValidationError) → fallback non_verifiable + llmFailure → rejected', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
       .mockRejectedValueOnce(new AIValidationError('invalide', 3, null))
       .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
@@ -148,6 +164,7 @@ describe('analyzeCVApplication', () => {
   it('échec extraction candidat (AIValidationError) → candidat dégradé, email tout de même résolu du CV', async () => {
     chatCompleteJsonMock
       .mockRejectedValueOnce(new AIValidationError('invalide', 3, null))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
       .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
       .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
@@ -159,6 +176,20 @@ describe('analyzeCVApplication', () => {
     expect(out.application.candidate.email).toBe('jean.test@mail.com');
     expect(out.application.candidate.fileName).toBe('cv-jean.pdf');
     // Les décisions ont, elles, réussi → score nominal.
+    expect(out.application.scoringResult.status).toBe('accepted');
+  });
+
+  it('échec extraction relevé (ledger) → fallback relevé vide, verdicts et score inchangés', async () => {
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockRejectedValueOnce(new AIValidationError('invalide', 3, null))
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
+    // Le relevé a échoué mais les verdicts tournent quand même (texte du CV seul).
+    expect(out.llmFailures.ledger).toBe(true);
+    expect(out.llmFailures.verdicts).toBe(false);
     expect(out.application.scoringResult.status).toBe('accepted');
   });
 
@@ -182,22 +213,24 @@ describe('analyzeCVApplication', () => {
     ).toBe(true);
   });
 
-  it('agrège les métriques des trois appels LLM', async () => {
+  it('agrège les métriques des quatre appels LLM', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK, 120, 0.002, 30))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK, 100, 0.001, 25))
       .mockResolvedValueOnce(jsonResult(VERDICTS_OK, 200, 0.003, 50))
       .mockResolvedValueOnce(jsonResult(NARRATION_OK, 80, 0.001, 20));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
-    expect(out.metrics.tokensUsed).toBe(400);
-    expect(out.metrics.costEstimate).toBeCloseTo(0.006, 6);
-    expect(out.metrics.durationMs).toBe(100);
+    expect(out.metrics.tokensUsed).toBe(500);
+    expect(out.metrics.costEstimate).toBeCloseTo(0.007, 6);
+    expect(out.metrics.durationMs).toBe(125);
   });
 
   it('passe les schémas Zod à chatCompleteJson (sortie validée avant scoring)', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
       .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
       .mockResolvedValueOnce(jsonResult(NARRATION_OK));
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
@@ -212,6 +245,7 @@ describe('analyzeCVApplication', () => {
     // La narration "prétend" un autre score dans sa prose : sans effet.
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
       .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
       .mockResolvedValueOnce(
         jsonResult({
@@ -232,6 +266,7 @@ describe('analyzeCVApplication', () => {
   it('échec narration (AIValidationError) → fallback déterministe dérivé du ScoreResult', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
       .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
       .mockRejectedValueOnce(new AIValidationError('invalide', 3, null));
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
@@ -300,13 +335,37 @@ describe('cv-extraction-prompts', () => {
     expect(sys).toMatch(/recalcule pas/i);
     // Le garde-fou couvre aussi « partiel » (pas d'analogie cross-domaine).
     expect(sys).toMatch(/partiel.*analogie|crédit partiel|analogie/i);
+    // B — « non » réservé à une preuve d'absence ; manque de preuve = non_verifiable.
+    expect(sys).toMatch(/affirme POSITIVEMENT|preuve d'ABSENCE/i);
+    expect(sys).toMatch(/JAMAIS .?non/i);
+    // A — ancrage sur le relevé de faits canonique partagé.
+    expect(sys).toMatch(/RELEVÉ DE FAITS|source canonique/i);
 
-    const user = buildVerdictsUserPrompt('CV brut ici', sheet());
+    const user = buildVerdictsUserPrompt('CV brut ici', sheet(), LEDGER_OK);
     // Critères présentés numérotés 1..N (le LLM reporte le numéro, pas l'UUID).
     expect(user).toContain('1. ');
     expect(user).toContain('4. ');
     expect(user).toContain('Diplôme requis');
     expect(user).not.toContain('id="'); // plus de round-trip d'id fragile
+    // Le relevé de faits est injecté dans le prompt verdicts.
+    expect(user).toMatch(/RELEVÉ DE FAITS/);
+    expect(user).toContain('Excel'); // un outil du relevé
+  });
+
+  it('le prompt « ledger » liste des faits sans juger ni noter', async () => {
+    const { buildLedgerSystemPrompt, buildLedgerUserPrompt } = await import(
+      '@/lib/agents/cv-extraction-prompts'
+    );
+    const sys = buildLedgerSystemPrompt();
+    expect(sys).toMatch(/ne juges pas|aucun jugement|aucune note/i);
+    expect(sys).toContain('tools');
+    expect(sys).toContain('yearsExperience');
+    expect(sys).toMatch(/n'?INVENTE/i);
+    // Pas de recalcul des années (cohérent avec le prompt verdicts).
+    expect(sys).toMatch(/RECALCULE/i);
+    const user = buildLedgerUserPrompt('CV brut ici', 'cv.pdf');
+    expect(user).toContain('cv.pdf');
+    expect(user).toContain('CV brut ici');
   });
 });
 

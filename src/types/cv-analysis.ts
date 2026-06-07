@@ -57,6 +57,43 @@ export const JobApplicationDataSchema = z
 export type JobApplicationData = z.infer<typeof JobApplicationDataSchema>;
 
 /**
+ * RELEVÉ DE FAITS du CV (phase « ledger ») — extrait UNE seule fois, en amont
+ * des verdicts, pour servir de SOURCE CANONIQUE partagée par TOUS les critères.
+ *
+ * Raison d'être : sans relevé commun, chaque critère relisait le CV brut et
+ * pouvait résoudre le même fait de deux façons opposées (« Xray » jugé présent
+ * pour un critère, absent pour un autre, dans le même appel). Avec ce relevé,
+ * un fait listé ici est présent pour TOUS les critères qui le visent — la
+ * contradiction « présent ET absent » devient structurellement impossible.
+ *
+ * Purement FACTUEL : on liste ce que le CV contient, sans aucun jugement ni
+ * note. Champs tolérants (défauts si le LLM les omet) car le relevé est un
+ * ancrage best-effort, pas une donnée critique.
+ */
+export const CVFactLedgerSchema = z.object({
+  /** Années d'expérience TOTALES telles qu'ÉCRITES dans le CV (jamais recalculées). */
+  yearsExperience: z.number().nullable().catch(null),
+  /** Outils / technologies / frameworks nommés (JIRA, Xray, Selenium…). */
+  tools: z.array(z.string()).catch([]),
+  /** Méthodologies (Agile, Scrum, Kanban…). */
+  methodologies: z.array(z.string()).catch([]),
+  /** Compétences / savoir-faire démontrés (automatisation, communication…). */
+  skills: z.array(z.string()).catch([]),
+  /** Domaines / secteurs d'activité (test logiciel, finance…). */
+  domains: z.array(z.string()).catch([]),
+});
+export type CVFactLedger = z.infer<typeof CVFactLedgerSchema>;
+
+/** Relevé vide — fallback quand l'extraction ledger échoue (verdicts dégradés mais non bloqués). */
+export const EMPTY_CV_FACT_LEDGER: CVFactLedger = {
+  yearsExperience: null,
+  tools: [],
+  methodologies: [],
+  skills: [],
+  domains: [],
+};
+
+/**
  * Narration RH d'une candidature — rédigée par le LLM (C5) À PARTIR du
  * `ScoreResult` déjà calculé, jamais l'inverse. Le LLM ne touche pas au score :
  * il explique le verdict en langage RH. Champs alignés sur l'ancien
