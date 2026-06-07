@@ -16,6 +16,7 @@ import {
 } from '@/lib/db/repos/app-settings';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { invalidateEmailAddressesCache } from '@/lib/email/addresses';
+import { DEFAULT_HITL_CONFIG, HitlConfigSchema } from '@/types/hitl';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +34,7 @@ const PatchSchema = z.object({
   intakeEmail: z.string().email().nullable().optional(),
   fluxConfig: z.record(z.string(), IntegrationSchema).optional(),
   channelsConfig: z.record(z.string(), IntegrationSchema).optional(),
+  hitlConfig: HitlConfigSchema.optional(),
 });
 
 /**
@@ -61,6 +63,7 @@ function emptyPayload() {
       intakeEmail: null,
       fluxConfig: {} as Record<string, IntegrationConfig>,
       channelsConfig: {} as Record<string, IntegrationConfig>,
+      hitlConfig: DEFAULT_HITL_CONFIG,
       updatedAt: new Date(0).toISOString(),
     },
   };

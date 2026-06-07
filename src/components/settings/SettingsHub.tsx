@@ -29,6 +29,7 @@ import {
   PUBLICATION_CHANNEL_ORDER,
   type PublicationChannel,
 } from '@/types/publication-channel';
+import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
 
 import { EmailListField } from './EmailListField';
 import { IntegrationCard } from './IntegrationCard';
@@ -49,6 +50,7 @@ type Settings = {
   intakeEmail: string | null;
   fluxConfig: Record<string, IntegrationConfig>;
   channelsConfig: Record<string, IntegrationConfig>;
+  hitlConfig: HitlConfig;
   updatedAt: string;
 };
 
@@ -99,6 +101,46 @@ function FallbackHint({
   );
 }
 
+/** Ligne label + interrupteur, pour les toggles de validation humaine. */
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-stone-200 bg-white px-4 py-3">
+      <div className="min-w-0">
+        <p className="font-body text-[14px] font-semibold text-stone-800">
+          {label}
+        </p>
+        <p className="font-body text-[12px] text-stone-500">{hint}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${
+          checked ? 'bg-emerald-500' : 'bg-stone-300'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+            checked ? 'left-[22px]' : 'left-0.5'
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 export function SettingsHub() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [flash, setFlash] = useState<string | null>(null);
@@ -117,7 +159,10 @@ export function SettingsHub() {
         if (!cancelled)
           setState({
             kind: 'ready',
-            settings: json.settings,
+            settings: {
+              ...json.settings,
+              hitlConfig: json.settings.hitlConfig ?? DEFAULT_HITL_CONFIG,
+            },
             offline: json.offline,
             fallbacks: json.fallbacks ?? {
               synthesisEmail: null,
@@ -198,6 +243,45 @@ export function SettingsHub() {
           {flash}
         </div>
       ) : null}
+
+      <SettingsSection
+        icon="🛡️"
+        title="Validation humaine (Human in the loop)"
+        description="Quand une section est activée, les mails correspondants ne partent PAS automatiquement : ils sont mis en file dans « Validation suspendue » pour que vous validiez chaque envoi. Désactivée, la section envoie automatiquement comme aujourd'hui."
+      >
+        <div className="flex flex-col gap-2">
+          <ToggleRow
+            label="Mails de refus"
+            hint="Soumettre chaque refus candidat à validation avant envoi."
+            checked={settings.hitlConfig.rejectionMail}
+            onChange={(v) =>
+              patchAndSave(
+                {
+                  hitlConfig: { ...settings.hitlConfig, rejectionMail: v },
+                },
+                v
+                  ? 'Validation humaine activée pour les refus.'
+                  : 'Refus envoyés automatiquement (validation désactivée).',
+              )
+            }
+          />
+          <ToggleRow
+            label="Mails d'acceptation"
+            hint="Soumettre chaque acceptation (invitation + brief) à validation avant envoi."
+            checked={settings.hitlConfig.acceptanceMail}
+            onChange={(v) =>
+              patchAndSave(
+                {
+                  hitlConfig: { ...settings.hitlConfig, acceptanceMail: v },
+                },
+                v
+                  ? "Validation humaine activée pour les acceptations."
+                  : 'Acceptations envoyées automatiquement (validation désactivée).',
+              )
+            }
+          />
+        </div>
+      </SettingsSection>
 
       <SettingsSection
         icon="📥"
