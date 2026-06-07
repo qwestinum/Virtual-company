@@ -1,0 +1,268 @@
+'use client';
+
+/**
+ * Hub « Validation suspendue » (HITL — P4).
+ *
+ * Deux listes : candidats refusés / acceptés par le système. Par carte, la
+ * machine à 3 boutons :
+ *   - Valider la décision  → confirme (PATCH confirmed) et déverrouille la revue
+ *   - Vérifier le mail      → aperçu du brouillon (grisé tant que non validé)
+ *   - Switcher              → flip vers l'autre liste (P6, à venir)
+ *
+ * L'envoi réel se fait depuis l'aperçu (« Envoyer ») — branché en P5.
+ */
+
+import { useEffect, useState } from 'react';
+
+import type { PendingValidation } from '@/types/hitl';
+
+type LoadState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; items: PendingValidation[] }
+  | { kind: 'error'; message: string };
+
+function payloadString(
+  v: PendingValidation,
+  key: string,
+): string | null {
+  const raw = v.payload?.[key];
+  return typeof raw === 'string' ? raw : null;
+}
+
+export function ValidationsHub() {
+  const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  const [flash, setFlash] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/validations', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as { validations: PendingValidation[] };
+        if (!cancelled) setState({ kind: 'ready', items: json.validations });
+      } catch (err) {
+        if (!cancelled)
+          setState({
+            kind: 'error',
+            message: err instanceof Error ? err.message : 'load_failed',
+          });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (state.kind === 'loading') {
+    return (
+      <p className="font-body text-stone-500 text-sm">
+        Chargement des validations…
+      </p>
+    );
+  }
+  if (state.kind === 'error') {
+    return (
+      <p className="font-body text-rose-600 text-sm">
+        Impossible de charger les validations ({state.message}).
+      </p>
+    );
+  }
+
+  const { items } = state;
+  const rejected = items.filter((v) => v.decision === 'reject');
+  const accepted = items.filter((v) => v.decision === 'accept');
+
+  const updateItem = (next: PendingValidation) =>
+    setState({
+      kind: 'ready',
+      items: items.map((v) => (v.id === next.id ? next : v)),
+    });
+
+  const onConfirm = async (v: PendingValidation) => {
+    // Optimiste.
+    updateItem({ ...v, confirmed: true });
+    try {
+      const res = await fetch(`/api/validations/${encodeURIComponent(v.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmed: true }),
+      });
+      if (!res.ok) {
+        updateItem({ ...v, confirmed: false });
+        setFlash(`Échec de la validation (HTTP ${res.status}).`);
+      } else {
+        setFlash('Décision validée — vérifiez le mail avant envoi.');
+      }
+    } catch {
+      updateItem({ ...v, confirmed: false });
+      setFlash('Erreur réseau — validation non enregistrée.');
+    }
+    window.setTimeout(() => setFlash(null), 3500);
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <p className="font-body text-[13px] text-stone-600">
+          <strong className="font-semibold">{items.length}</strong> action
+          {items.length > 1 ? 's' : ''} en attente.
+        </p>
+      </div>
+      {flash ? (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800 font-body">
+          {flash}
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <ValidationColumn
+          title="Refusés par le système"
+          accent="rose"
+          items={rejected}
+          onConfirm={onConfirm}
+        />
+        <ValidationColumn
+          title="Acceptés par le système"
+          accent="emerald"
+          items={accepted}
+          onConfirm={onConfirm}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ValidationColumn({
+  title,
+  accent,
+  items,
+  onConfirm,
+}: {
+  title: string;
+  accent: 'rose' | 'emerald';
+  items: PendingValidation[];
+  onConfirm: (v: PendingValidation) => void;
+}) {
+  const dot = accent === 'rose' ? 'bg-rose-500' : 'bg-emerald-500';
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
+        <h2 className="font-display text-[15px] font-bold text-stone-900">
+          {title}
+        </h2>
+        <span className="font-body text-[12px] text-stone-500">
+          ({items.length})
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="font-body text-[13px] text-stone-400 italic rounded-lg border border-dashed border-stone-200 px-4 py-6 text-center">
+          Aucune validation en attente.
+        </p>
+      ) : (
+        items.map((v) => (
+          <ValidationCard key={v.id} v={v} onConfirm={onConfirm} />
+        ))
+      )}
+    </section>
+  );
+}
+
+function ValidationCard({
+  v,
+  onConfirm,
+}: {
+  v: PendingValidation;
+  onConfirm: (v: PendingValidation) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const mailUrl = payloadString(v, 'mailDraftUrl');
+  const mailSubject = payloadString(v, 'mailSubject');
+
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-display text-[15px] font-bold text-stone-900 truncate">
+            {v.candidateName}
+          </p>
+          <p className="font-body text-[12px] text-stone-500">
+            {v.campaignId}
+            {v.candidateEmail ? ` · ${v.candidateEmail}` : ''}
+          </p>
+        </div>
+        {v.score != null ? (
+          <span className="flex-shrink-0 rounded-full bg-stone-100 px-2.5 py-1 font-data text-[12px] font-bold text-stone-700">
+            {v.score}/100
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onConfirm(v)}
+          disabled={v.confirmed}
+          className={`rounded-lg px-3 py-1.5 text-[12px] font-body font-semibold ${
+            v.confirmed
+              ? 'bg-emerald-100 text-emerald-700 cursor-default'
+              : 'bg-stone-800 text-white hover:bg-stone-700'
+          }`}
+        >
+          {v.confirmed ? '✓ Décision validée' : 'Valider la décision'}
+        </button>
+
+        <button
+          type="button"
+          disabled
+          title="Disponible prochainement (P6)"
+          className="rounded-lg border border-stone-200 px-3 py-1.5 text-[12px] font-body font-semibold text-stone-400 cursor-not-allowed"
+        >
+          Switcher
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          disabled={!v.confirmed}
+          className={`rounded-lg px-3 py-1.5 text-[12px] font-body font-semibold ${
+            v.confirmed
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-stone-100 text-stone-400 cursor-not-allowed'
+          }`}
+        >
+          Vérifier le mail
+        </button>
+      </div>
+
+      {open && v.confirmed ? (
+        <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3">
+          {mailSubject ? (
+            <p className="font-body text-[13px] text-stone-700">
+              <span className="font-semibold">Objet :</span> {mailSubject}
+            </p>
+          ) : null}
+          {mailUrl ? (
+            <a
+              href={mailUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block font-body text-[12px] font-semibold text-blue-600 hover:underline"
+            >
+              Ouvrir le brouillon du mail ↗
+            </a>
+          ) : (
+            <p className="font-body text-[12px] text-stone-400 italic">
+              Brouillon indisponible (service email non configuré au moment de
+              la rédaction).
+            </p>
+          )}
+          <p className="mt-2 font-body text-[11px] text-stone-400">
+            Édition et envoi du mail : à venir (P5).
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}

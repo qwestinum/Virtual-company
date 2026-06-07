@@ -19,7 +19,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 import { getUserFromMiddleware } from '@/lib/auth/middleware-helper';
 
-const PROTECTED_PREFIXES = ['/app', '/rh', '/settings'];
+const PROTECTED_PREFIXES = ['/app', '/rh', '/settings', '/validations'];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
