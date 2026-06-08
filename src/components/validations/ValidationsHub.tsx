@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { sendValidation } from '@/lib/hitl/send-validation';
+import { sendValidation, switchValidation } from '@/lib/hitl/send-validation';
 import type { PendingValidation } from '@/types/hitl';
 
 type LoadState =
@@ -89,6 +89,17 @@ export function ValidationsHub() {
     window.setTimeout(() => setFlash(null), 3500);
   };
 
+  const onSwitch = async (v: PendingValidation) => {
+    const result = await switchValidation(v);
+    if (result.ok && result.validation) {
+      updateItem(result.validation); // décision flippée → change de liste
+      setFlash(result.message);
+    } else {
+      setFlash(result.message);
+    }
+    window.setTimeout(() => setFlash(null), 3500);
+  };
+
   const onConfirm = async (v: PendingValidation) => {
     // Optimiste.
     updateItem({ ...v, confirmed: true });
@@ -132,6 +143,7 @@ export function ValidationsHub() {
           items={rejected}
           onConfirm={onConfirm}
           onSent={onSent}
+          onSwitch={onSwitch}
         />
         <ValidationColumn
           title="Acceptés par le système"
@@ -139,6 +151,7 @@ export function ValidationsHub() {
           items={accepted}
           onConfirm={onConfirm}
           onSent={onSent}
+          onSwitch={onSwitch}
         />
       </div>
     </div>
@@ -151,12 +164,14 @@ function ValidationColumn({
   items,
   onConfirm,
   onSent,
+  onSwitch,
 }: {
   title: string;
   accent: 'rose' | 'emerald';
   items: PendingValidation[];
   onConfirm: (v: PendingValidation) => void;
   onSent: (v: PendingValidation, message: string) => void;
+  onSwitch: (v: PendingValidation) => void;
 }) {
   const dot = accent === 'rose' ? 'bg-rose-500' : 'bg-emerald-500';
   return (
@@ -176,7 +191,13 @@ function ValidationColumn({
         </p>
       ) : (
         items.map((v) => (
-          <ValidationCard key={v.id} v={v} onConfirm={onConfirm} onSent={onSent} />
+          <ValidationCard
+            key={`${v.id}-${v.decision}`}
+            v={v}
+            onConfirm={onConfirm}
+            onSent={onSent}
+            onSwitch={onSwitch}
+          />
         ))
       )}
     </section>
@@ -187,12 +208,15 @@ function ValidationCard({
   v,
   onConfirm,
   onSent,
+  onSwitch,
 }: {
   v: PendingValidation;
   onConfirm: (v: PendingValidation) => void;
   onSent: (v: PendingValidation, message: string) => void;
+  onSwitch: (v: PendingValidation) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [subject, setSubject] = useState(payloadString(v, 'mailSubject') ?? '');
   const [body, setBody] = useState(payloadString(v, 'mailBody') ?? '');
   const [sending, setSending] = useState(false);
@@ -246,11 +270,24 @@ function ValidationCard({
 
         <button
           type="button"
-          disabled
-          title="Disponible prochainement (P6)"
-          className="rounded-lg border border-stone-200 px-3 py-1.5 text-[12px] font-body font-semibold text-stone-400 cursor-not-allowed"
+          onClick={async () => {
+            setSwitching(true);
+            await onSwitch(v);
+            setSwitching(false);
+          }}
+          disabled={switching}
+          title={
+            v.decision === 'reject'
+              ? 'Basculer en acceptation'
+              : 'Basculer en refus'
+          }
+          className="rounded-lg border border-stone-300 px-3 py-1.5 text-[12px] font-body font-semibold text-stone-700 hover:bg-stone-100 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Switcher
+          {switching
+            ? 'Bascule…'
+            : v.decision === 'reject'
+              ? 'Switcher → accepter'
+              : 'Switcher → refuser'}
         </button>
 
         <button

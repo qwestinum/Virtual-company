@@ -10,11 +10,16 @@ import { z } from 'zod';
 
 import { patchPendingValidation } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { HitlDecisionSchema } from '@/types/hitl';
 
 export const runtime = 'nodejs';
 
 const PatchSchema = z.object({
   confirmed: z.boolean().optional(),
+  // P6 — Switcher : flip de la décision + régénération du brouillon.
+  decision: HitlDecisionSchema.optional(),
+  mailDraftArtifactId: z.string().nullable().optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function PATCH(
