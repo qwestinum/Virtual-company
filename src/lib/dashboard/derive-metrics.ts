@@ -320,9 +320,13 @@ export function hitlCandidateKey(
   campaignId: string | null,
   email: string | null | undefined,
 ): string {
+  // SCOPÉ PAR CAMPAGNE : un même candidat (même email) sur deux campagnes =
+  // deux entrées distinctes (stats indépendantes). Même candidat sur la MÊME
+  // campagne (re-candidature) = une seule entrée (dédup, la + récente gagne).
+  const c = campaignId ?? '';
   const e = (email ?? '').trim().toLowerCase();
-  if (e) return `e:${e}`;
-  return `n:${name.trim().toLowerCase()}::${campaignId ?? ''}`;
+  if (e) return `e:${e}::${c}`;
+  return `n:${name.trim().toLowerCase()}::${c}`;
 }
 
 export function journalToCandidatesList(

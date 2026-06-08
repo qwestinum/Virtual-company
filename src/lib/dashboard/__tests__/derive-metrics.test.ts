@@ -465,7 +465,7 @@ describe('HITL — candidats & shortlisté (validation suspendue)', () => {
 
   it('un candidat en attente de validation est exclu (liste + shortlisté)', () => {
     const rows = [analyzed('u1', 'Imad', 'imad@x.fr', true, 1)];
-    const pending = new Set(['e:imad@x.fr']);
+    const pending = new Set(['e:imad@x.fr::C1']);
     expect(journalToCandidatesList(rows, pending)).toHaveLength(0);
     expect(journalToGlobalKPIs(rows, pending).shortlisted).toBe(0);
     // Sans pending (toggle OFF / déjà envoyé), il compte normalement.
@@ -525,6 +525,29 @@ describe('dédup candidats (ré-analyses du même CV)', () => {
     expect(list[0]!.score).toBe(85);
     expect(list[0]!.recommendation).toBe('go');
     expect(journalToGlobalKPIs(rows).shortlisted).toBe(1);
+  });
+
+  it('même candidat sur DEUX campagnes → deux entrées indépendantes', () => {
+    const rows = [
+      entry({
+        id: 1,
+        action: 'imap_cv_analyzed',
+        campaignId: 'C1',
+        createdAt: '2026-06-08T10:00:00.000Z',
+        payload: { uid: 'u1', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
+      }),
+      entry({
+        id: 2,
+        action: 'imap_cv_analyzed',
+        campaignId: 'C2',
+        createdAt: '2026-06-08T11:00:00.000Z',
+        payload: { uid: 'u2', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
+      }),
+    ];
+    const list = journalToCandidatesList(rows);
+    expect(list).toHaveLength(2); // une par campagne, pas écrasées
+    expect(new Set(list.map((c) => c.campaignId))).toEqual(new Set(['C1', 'C2']));
+    expect(journalToGlobalKPIs(rows).shortlisted).toBe(2);
   });
 
   it('un marquage DRH sur un ANCIEN uid s’applique à l’entrée fusionnée', () => {
