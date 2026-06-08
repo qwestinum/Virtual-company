@@ -347,6 +347,14 @@ describe('cv-extraction-prompts', () => {
     expect(sys).toMatch(/COUVERTURE/i);
     expect(sys).toMatch(/substitut/i);
     expect(sys).toMatch(/Xray.*TestRail|TestRail.*Xray/i);
+    // Anti-faux-positifs : présence d'un fait ≠ critère satisfait.
+    expect(sys).toMatch(/PRÉSENCE ≠ SATISFACTION|n'impose JAMAIS/i);
+    // Critères composites : chaque exigence doit être prouvée.
+    expect(sys).toMatch(/COMPOSITES?/i);
+    // Soft-skills : jamais déduits d'une réalisation technique.
+    expect(sys).toMatch(/SAVOIR-ÊTRE|SOFT-SKILLS/i);
+    // Test de preuve : la citation seule doit prouver chaque terme du critère.
+    expect(sys).toMatch(/TEST DE PREUVE/i);
 
     const user = buildVerdictsUserPrompt('CV brut ici', sheet(), LEDGER_OK);
     // Critères présentés numérotés 1..N (le LLM reporte le numéro, pas l'UUID).
@@ -370,6 +378,9 @@ describe('cv-extraction-prompts', () => {
     expect(sys).toMatch(/n'?INVENTE/i);
     // Pas de recalcul des années (cohérent avec le prompt verdicts).
     expect(sys).toMatch(/RECALCULE/i);
+    // Anti-contamination : pas de soft-skill inféré, pas de domaine du poste.
+    expect(sys).toMatch(/SAVOIR-ÊTRE|SOFT-SKILLS/i);
+    expect(sys).toMatch(/DÉDUIS JAMAIS|ne les? DÉDUIS/i);
     const user = buildLedgerUserPrompt('CV brut ici', 'cv.pdf');
     expect(user).toContain('cv.pdf');
     expect(user).toContain('CV brut ici');
