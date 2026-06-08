@@ -970,6 +970,11 @@ function snapshotActiveCampaigns(): CampaignPickerEntry[] {
   // ou « Tâche isolée » dans ces cas.
   return selectActiveCampaigns(useCampaignsStore.getState())
     .filter((c) => c.status === 'active')
+    // On ne propose au rattachement d'un upload manuel que les campagnes
+    // dont le flux `manual` est activé. Une campagne configurée en
+    // réception automatique seule (ex. boîte mail générique) ne doit pas
+    // apparaître : y déposer un CV à la main contredirait le flux choisi.
+    .filter((c) => c.sources.includes('manual'))
     .map((c) => {
       const jobTitle = c.fdp.fields.job_title?.value;
       return {
@@ -1122,6 +1127,11 @@ export async function chooseExistingCampaign(
   if (!pending) return;
   const campaign = useCampaignsStore.getState().getById(campaignId);
   if (!campaign) return;
+  // Garde-fou : le campaign-picker ne liste déjà que les campagnes au flux
+  // `manual` actif (cf. snapshotActiveCampaigns), mais on re-vérifie côté
+  // flow par sécurité — un upload manuel ne se rattache pas à une campagne
+  // en réception automatique seule.
+  if (!campaign.sources.includes('manual')) return;
 
   pending.selectedCampaignId = campaignId;
   pending.resolvedId = campaignId;

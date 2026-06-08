@@ -311,14 +311,17 @@ describe('manager-flow — CV routing', () => {
   it('existing route surfaces a campaign-picker with active campaigns', async () => {
     // Round 4 — snapshotActiveCampaigns ne propose QUE les campagnes
     // au statut `active` (en écoute de flux CV). On force ce statut
-    // pour les deux fixtures.
+    // pour les deux fixtures. Le flux `manual` doit être actif pour
+    // qu'une campagne accepte le rattachement d'un upload manuel.
     useCampaignsStore.getState().addCampaign({
       fdp: makeFDP('CAMP-2026-001'),
       status: 'active',
+      sources: ['manual'],
     });
     useCampaignsStore.getState().addCampaign({
       fdp: makeFDP('CAMP-2026-002'),
       status: 'active',
+      sources: ['manual'],
     });
 
     dispatchCVRouting([makeFile('a.pdf')]);
@@ -348,6 +351,45 @@ describe('manager-flow — CV routing', () => {
     expect(postCVAnalyzerMock).toHaveBeenCalledTimes(1);
     const callArg = postCVAnalyzerMock.mock.calls[0]?.[0];
     expect(callArg?.campaignId).toBe('CAMP-2026-001');
+  });
+
+  it('excludes campaigns without a manual flow from the upload pickers', async () => {
+    // Campagne en réception automatique seule (boîte mail générique) :
+    // y déposer un CV à la main contredirait le flux choisi → elle ne
+    // doit apparaître ni dans le route-picker ni dans le campaign-picker.
+    useCampaignsStore.getState().addCampaign({
+      fdp: makeFDP('CAMP-2026-010'),
+      status: 'active',
+      sources: ['email'],
+    });
+    useCampaignsStore.getState().addCampaign({
+      fdp: makeFDP('CAMP-2026-011'),
+      status: 'active',
+      sources: ['manual', 'email'],
+    });
+
+    dispatchCVRouting([makeFile('a.pdf')]);
+    const routerMsg = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'cv-route-picker');
+    if (!routerMsg || routerMsg.block?.kind !== 'cv-route-picker')
+      throw new Error('no route-picker');
+    expect(routerMsg.block.activeCampaigns).toHaveLength(1);
+    expect(routerMsg.block.activeCampaigns[0]?.id).toBe('CAMP-2026-011');
+
+    const { chooseRouteExisting } = await import('@/lib/chat/manager-flow');
+    chooseRouteExisting(routerMsg.block.pendingId);
+    const pickerMsg = useChatStore
+      .getState()
+      .messages.find((m) => m.block?.kind === 'campaign-picker');
+    if (!pickerMsg || pickerMsg.block?.kind !== 'campaign-picker')
+      throw new Error('no campaign-picker');
+    expect(pickerMsg.block.campaigns).toHaveLength(1);
+    expect(pickerMsg.block.campaigns[0]?.id).toBe('CAMP-2026-011');
+
+    // Garde-fou flow : même forcé sur la campagne email-only, aucun batch.
+    await chooseExistingCampaign(routerMsg.block.pendingId, 'CAMP-2026-010');
+    expect(postCVAnalyzerMock).not.toHaveBeenCalled();
   });
 
   it('new campaign route creates the campaign + FDP directly (no name step)', () => {
