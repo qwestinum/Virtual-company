@@ -434,3 +434,70 @@ describe('journalToActivityFeed', () => {
     expect(journalToActivityFeed(rows, 5)).toHaveLength(5);
   });
 });
+
+describe('HITL — candidats & shortlisté (validation suspendue)', () => {
+  const analyzed = (
+    uid: string,
+    name: string,
+    email: string | null,
+    aboveThreshold: boolean,
+    id: number,
+  ) =>
+    entry({
+      id,
+      action: 'imap_cv_analyzed',
+      campaignId: 'C1',
+      payload: { uid, candidate: name, email, score: 80, aboveThreshold },
+    });
+
+  const sent = (
+    name: string,
+    email: string | null,
+    decision: 'accept' | 'reject',
+    id: number,
+  ) =>
+    entry({
+      id,
+      action: 'hitl_validation_sent',
+      campaignId: 'C1',
+      payload: { decision, candidateName: name, candidateEmail: email },
+    });
+
+  it('un candidat en attente de validation est exclu (liste + shortlisté)', () => {
+    const rows = [analyzed('u1', 'Imad', 'imad@x.fr', true, 1)];
+    const pending = new Set(['e:imad@x.fr']);
+    expect(journalToCandidatesList(rows, pending)).toHaveLength(0);
+    expect(journalToGlobalKPIs(rows, pending).shortlisted).toBe(0);
+    // Sans pending (toggle OFF / déjà envoyé), il compte normalement.
+    expect(journalToGlobalKPIs(rows).shortlisted).toBe(1);
+  });
+
+  it('envoi ACCEPTÉ (même switché depuis un refus système) → invité + shortlisté', () => {
+    const rows = [
+      analyzed('u1', 'Imad', 'imad@x.fr', false, 1), // le système refusait
+      sent('Imad', 'imad@x.fr', 'accept', 2), // le DRH a switché + envoyé
+    ];
+    const list = journalToCandidatesList(rows);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.status).toBe('invited');
+    expect(list[0]!.recommendation).toBe('go');
+    expect(journalToGlobalKPIs(rows).shortlisted).toBe(1);
+  });
+
+  it('envoi REFUSÉ (même switché depuis une accept système) → rejeté, pas shortlisté', () => {
+    const rows = [
+      analyzed('u1', 'Imad', 'imad@x.fr', true, 1), // le système acceptait
+      sent('Imad', 'imad@x.fr', 'reject', 2), // le DRH a switché + envoyé
+    ];
+    const list = journalToCandidatesList(rows);
+    expect(list[0]!.status).toBe('rejected');
+    expect(list[0]!.recommendation).toBeNull();
+    expect(journalToGlobalKPIs(rows).shortlisted).toBe(0);
+  });
+
+  it('rapproche par nom+campagne quand le candidat n\'a pas d\'email', () => {
+    const rows = [analyzed('u1', 'Sans Email', null, true, 1)];
+    const pending = new Set(['n:sans email::C1']);
+    expect(journalToCandidatesList(rows, pending)).toHaveLength(0);
+  });
+});

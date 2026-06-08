@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server';
 
 import {
+  hitlCandidateKey,
   journalToActivityFeed,
   journalToAgentMetrics,
   journalToCandidatesList,
@@ -55,18 +56,28 @@ export async function GET(): Promise<NextResponse> {
     }
   }
 
-  const candidates = journalToCandidatesList(result.rows).map((c) => ({
-    ...c,
-    role: c.campaignId ? (campaignNameById.get(c.campaignId) ?? null) : null,
-  }));
+  // HITL — file des validations en attente. Sert à (a) compter « À valider »,
+  // (b) EXCLURE ces candidats du dashboard tant que l'envoi n'a pas eu lieu.
+  const pending = await listPendingValidations();
+  const pendingKeys = new Set(
+    pending.map((v) =>
+      hitlCandidateKey(v.candidateName, v.campaignId, v.candidateEmail),
+    ),
+  );
 
-  // HITL — profondeur de la file de validation (état « à valider »). Dégrade
-  // à 0 si la table n'existe pas (migration HITL pas passée).
-  const awaitingValidation = (await listPendingValidations()).length;
+  const candidates = journalToCandidatesList(result.rows, pendingKeys).map(
+    (c) => ({
+      ...c,
+      role: c.campaignId ? (campaignNameById.get(c.campaignId) ?? null) : null,
+    }),
+  );
 
   return NextResponse.json({
     offline: false,
-    kpis: { ...journalToGlobalKPIs(result.rows), awaitingValidation },
+    kpis: {
+      ...journalToGlobalKPIs(result.rows, pendingKeys),
+      awaitingValidation: pending.length,
+    },
     agents: journalToAgentMetrics(result.rows, agentIds),
     candidates,
     activity: journalToActivityFeed(result.rows, 20),

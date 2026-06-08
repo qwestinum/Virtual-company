@@ -156,7 +156,10 @@ export type ActivityColorKey =
  *   - conversion  : go / cvReceived en % entier (0 si pas de CV).
  *   - costEstimate: somme des coûts par action (cf. table COST_PER_ACTION).
  */
-export function journalToGlobalKPIs(rows: JournalEntry[]): GlobalKPIs {
+export function journalToGlobalKPIs(
+  rows: JournalEntry[],
+  pendingKeys: ReadonlySet<string> = new Set(),
+): GlobalKPIs {
   let cvReceived = 0;
   let cost = 0;
 
@@ -166,9 +169,9 @@ export function journalToGlobalKPIs(rows: JournalEntry[]): GlobalKPIs {
     if (row.action === 'imap_cv_received') cvReceived += 1;
   }
 
-  // Dérive l'état candidat depuis le journal (pass complet pour
-  // capturer les boutons « réalisé/validé »).
-  const candidates = journalToCandidatesList(rows);
+  // Dérive l'état candidat depuis le journal (HITL-aware : les candidats en
+  // attente de validation sont exclus → pas comptés en shortlisté).
+  const candidates = journalToCandidatesList(rows, pendingKeys);
   let shortlisted = 0;
   let interviews = 0;
   let go = 0;
@@ -307,12 +310,29 @@ export function journalToCampaignMetric(
  * dans le journal, donc on n'expose pas `scheduled` dynamiquement (on
  * réserve la valeur dans le type pour quand le signal arrivera).
  */
+/**
+ * Clé d'identité d'un candidat pour rapprocher l'analyse (journal) des
+ * enregistrements HITL (file + envois) : email si présent, sinon nom + campagne.
+ * Exportée pour que la route construise les mêmes clés depuis pending_validations.
+ */
+export function hitlCandidateKey(
+  name: string,
+  campaignId: string | null,
+  email: string | null | undefined,
+): string {
+  const e = (email ?? '').trim().toLowerCase();
+  if (e) return `e:${e}`;
+  return `n:${name.trim().toLowerCase()}::${campaignId ?? ''}`;
+}
+
 export function journalToCandidatesList(
   rows: JournalEntry[],
+  pendingKeys: ReadonlySet<string> = new Set(),
 ): CandidateRow[] {
   type Acc = {
     uid: string;
     name: string;
+    email: string | null;
     score: number;
     aboveThreshold: boolean;
     campaignId: string | null;
@@ -321,6 +341,8 @@ export function journalToCandidatesList(
     inviteSent: boolean;
     briefSent: boolean;
     rejectSent: boolean;
+    /** Décision HITL ENVOYÉE (override l'issue de l'analyse). null si non gardé/non envoyé. */
+    hitlDecision: 'accept' | 'reject' | null;
     interviewMarked: 'realized' | 'missed' | null;
     interviewMarkedAt: string | null;
     validationMarked: 'validated' | 'rejected' | null;
@@ -328,6 +350,7 @@ export function journalToCandidatesList(
   };
 
   const byUid = new Map<string, Acc>();
+  const keyToUid = new Map<string, string>();
 
   // Pass 1 — créer une entrée par analyse.
   for (const row of rows) {
@@ -335,11 +358,14 @@ export function journalToCandidatesList(
     const uid = String(row.payload?.uid ?? '');
     if (!uid) continue;
     const name = String(row.payload?.candidate ?? 'Candidat');
+    const email =
+      typeof row.payload?.email === 'string' ? row.payload.email : null;
     const score = Number(row.payload?.score ?? 0);
     const aboveThreshold = row.payload?.aboveThreshold === true;
     byUid.set(uid, {
       uid,
       name,
+      email,
       score,
       aboveThreshold,
       campaignId: row.campaignId,
@@ -348,14 +374,42 @@ export function journalToCandidatesList(
       inviteSent: false,
       briefSent: false,
       rejectSent: false,
+      hitlDecision: null,
       interviewMarked: null,
       interviewMarkedAt: null,
       validationMarked: null,
       validationMarkedAt: null,
     });
+    keyToUid.set(hitlCandidateKey(name, row.campaignId, email), uid);
   }
 
-  // Pass 2 — enrichir avec les évènements d'outreach et les marquages DRH.
+  // Pass 2a — issue HITL ENVOYÉE (pas de uid → rapproché par identité candidat).
+  // Override l'analyse : un refus switché en acceptation puis envoyé compte
+  // bien comme une invitation, et inversement.
+  for (const row of rows) {
+    if (row.action !== 'hitl_validation_sent') continue;
+    const key = hitlCandidateKey(
+      String(row.payload?.candidateName ?? ''),
+      row.campaignId,
+      typeof row.payload?.candidateEmail === 'string'
+        ? row.payload.candidateEmail
+        : null,
+    );
+    const uid = keyToUid.get(key);
+    if (!uid) continue;
+    const entry = byUid.get(uid);
+    if (!entry) continue;
+    const decision = row.payload?.decision === 'accept' ? 'accept' : 'reject';
+    entry.hitlDecision = decision;
+    if (decision === 'accept') {
+      entry.invited = true;
+      entry.inviteSent = true;
+    } else {
+      entry.rejectSent = true;
+    }
+  }
+
+  // Pass 2b — enrichir avec les évènements d'outreach et les marquages DRH.
   for (const row of rows) {
     const uid = String(row.payload?.uid ?? '');
     if (!uid) continue;
@@ -396,6 +450,15 @@ export function journalToCandidatesList(
   }
 
   return Array.from(byUid.values())
+    .filter((entry) => {
+      // HITL — candidat EN ATTENTE de validation (en file, pas encore envoyé) :
+      // exclu du dashboard candidats (et donc du compteur shortlisté) jusqu'à
+      // l'envoi. Il ne vit que dans l'onglet « Validation suspendue » + le KPI
+      // « À valider ». Une fois envoyé (hitlDecision ≠ null), il réapparaît.
+      if (entry.hitlDecision !== null) return true;
+      const key = hitlCandidateKey(entry.name, entry.campaignId, entry.email);
+      return !pendingKeys.has(key);
+    })
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
     .map<CandidateRow>((entry) => {
       // Statut affiché — pris dans l'ordre, EXCLUSIVEMENT piloté par
@@ -428,13 +491,23 @@ export function journalToCandidatesList(
       } else {
         status = 'analyzed';
       }
+      // Recommandation : si une décision HITL a été ENVOYÉE, elle prime sur
+      // l'analyse (un switch refus→accept envoyé = 'go'). Sinon, l'analyse.
+      const recommendation: CandidateRow['recommendation'] =
+        entry.hitlDecision === 'accept'
+          ? 'go'
+          : entry.hitlDecision === 'reject'
+            ? null
+            : entry.aboveThreshold
+              ? 'go'
+              : null;
       return {
         id: entry.uid,
         name: entry.name,
         initials: initialsOf(entry.name),
         score: entry.score,
         status,
-        recommendation: entry.aboveThreshold ? 'go' : null,
+        recommendation,
         role: null, // remplie côté API en croisant avec campaigns
         campaignId: entry.campaignId,
         receivedAt: entry.receivedAt,
