@@ -44,9 +44,10 @@ export async function switchValidation(
   const newMode = newDecision === 'accept' ? 'invite' : 'reject';
   const artifactId = newArtifactId('art_draft');
 
-  // 1. Régénère le brouillon de la décision inverse (best-effort : un accept
-  //    sans Cal.com configuré renverra 503 → pas de brouillon, mais le flip a
-  //    quand même lieu).
+  // 1. Régénère le brouillon de la décision inverse (best-effort). En mode
+  //    brouillon, mail-composer compose même sans Cal.com (lien « à
+  //    configurer » que le DRH complète avant envoi) ; le flip a lieu de
+  //    toute façon, brouillon présent ou non.
   let mailDraftArtifactId: string | null = null;
   let mailDraftUrl: string | null = null;
   let mailSubject: string | null = null;

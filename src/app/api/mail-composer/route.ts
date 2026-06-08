@@ -131,7 +131,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (parsed.mode === 'invite' && !bookingUrl) {
     bookingUrl = process.env.CAL_COM_EVENT_URL || undefined;
   }
-  if (parsed.mode === 'invite' && !bookingUrl) {
+  // Le contrôle Cal.com ne concerne QUE l'envoi réel d'une invitation : un
+  // mail d'invitation envoyé sans lien de booking serait inutile. En mode
+  // BROUILLON (HITL), on compose quand même — le prompt insère « (à
+  // configurer) » comme placeholder de lien, que le DRH complète avant
+  // l'envoi via « Vérifier le mail ». Sans cette exception, toute
+  // acceptation restait bloquée sur « brouillon indisponible » dès que
+  // Cal.com n'était pas configuré (idem au switch refus → acceptation).
+  if (parsed.mode === 'invite' && !bookingUrl && !parsed.draft) {
     return NextResponse.json(
       {
         error: 'cal_com_not_configured',
