@@ -32,8 +32,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — on ignore les fichiers de secrets (*.local), mais on TRACE
+# .env.example (template public documentant les variables d'environnement).
+.env*.local
+.env
 
 # vercel
 .vercel

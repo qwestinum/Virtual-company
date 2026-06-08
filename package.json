@@ -9,9 +9,11 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench:cv": "tsx scripts/bench-cv-analyzer.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
     "@base-ui/react": "^1.4.1",
     "@napi-rs/canvas": "^1.0.0",
     "@supabase/ssr": "^0.10.3",
@@ -44,6 +46,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5",
     "vitest": "^4.1.5"
   }

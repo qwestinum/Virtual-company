@@ -376,6 +376,68 @@ avec un repro stable et des tests ciblés.
 
 ---
 
+## Adaptateur multi-fournisseur LLM (tester Claude/Sonnet sur l'analyse CV)
+
+**Statut** : non implémenté. Demandé pour comparer la qualité d'analyse CV.
+**Code concerné** : `src/lib/ai/provider.ts` (point d'entrée unique), tous les
+agents qui passent par `chatComplete` / `chatCompleteJson`.
+
+**Contexte.** Le provider est 100 % SDK OpenAI (`api.openai.com`). Le modèle
+chat par défaut est désormais pilotable par `OPENAI_CHAT_MODEL` (fallback
+`gpt-4o-mini`) — OK pour tout modèle **OpenAI** (ex. `gpt-4o`), mais **pas**
+pour un modèle d'un autre fournisseur. Mettre `OPENAI_CHAT_MODEL=claude-sonnet-4-6`
+échoue (modèle inconnu côté OpenAI). Tester **Sonnet** (`claude-sonnet-4-6`)
+exige un adaptateur Anthropic.
+
+**Périmètre.**
+- Ajouter `@anthropic-ai/sdk` + `ANTHROPIC_API_KEY` (`.env.local` / `.env.example`).
+- Router par préfixe dans `chatComplete` / `chatCompleteJson` : `claude-*` →
+  client Anthropic, sinon OpenAI. Garder un seul défaut configurable.
+- Adapter la requête : extraire le message `system` (top-level chez Anthropic,
+  pas dans `messages[]`), `max_tokens` obligatoire, remapper `usage` pour les
+  métriques de coût (+ entrée pricing `claude-sonnet-4-6` ≈ 3 $/15 $ par M).
+
+**Pièges identifiés.**
+1. **JSON mode + seed** : `chatCompleteJson` repose sur `response_format:
+   {type:'json_object'}` **et** `seed:42` (déterminisme C4). Anthropic n'a ni
+   l'un ni l'autre à l'identique. Sonnet 4.6 supporte les *structured outputs*
+   (`output_config.format` + JSON schema dérivé du Zod) — équivalent propre mais
+   à câbler. **Pas de `seed`** → le déterminisme du pipeline d'extraction/scoring
+   ne tiendra plus pareil (cf. [[feedback_pure_function_test_purity]]).
+2. **Whisper reste sur OpenAI** : Anthropic ne fait pas de transcription audio →
+   `transcribe()` conserve le client OpenAI. Provider **hybride** (OpenAI gardé
+   pour Whisper + agents câblés en dur `gpt-4o`, Anthropic ajouté pour le chat).
+3. `temperature` OK sur Sonnet 4.6 (contrairement à Opus 4.8/4.7 qui l'ont retiré)
+   → les `temperature: 0/0.3/0.4` actuels passent tels quels.
+
+**Risque** : moyen — un seul fichier (`provider.ts`) + helper Zod→JSON-schema,
+mais touche le chemin critique de tous les agents. Tester d'abord `gpt-4o`
+(déjà actif) avant d'investir dans l'adaptateur.
+
+---
+
+## Aligner les clés `pricing.ts` avec les model strings datés d'OpenAI
+
+**Statut** : non fait. Petit fix (~10 min) pour rendre le bench utile sur le coût.
+**Code concerné** : `src/lib/ai/pricing.ts`, `src/lib/ai/provider.ts` (`estimateCost`).
+
+**Contexte.** `estimateCost(model, …)` indexe `PRICING` par le `model` **renvoyé**
+par l'API. OpenAI renvoie un identifiant **daté** (`gpt-4o-2024-08-06`), absent de
+la table (clé `gpt-4o`) → coût estimé à **0**. Visible dans le bench
+(`scripts/bench-cv-analyzer.ts`) : `costEstimate: 0` pour tout run OpenAI, alors
+que les tokens sont corrects. Côté Anthropic le `model` renvoyé matche
+`claude-sonnet-4-6` → coût OK ; l'asymétrie fausse la comparaison de coût.
+
+**Piste.** Normaliser le model string avant lookup (strip du suffixe daté
+`-AAAA-MM-JJ`), OU ajouter des clés datées/regex dans `PRICING`. Le strip est le
+plus simple : `pricingKey(model)` qui retombe sur la famille (`gpt-4o-2024-… →
+gpt-4o`). Rend le bench exploitable sur l'axe coût.
+
+**Risque** : faible (fonction pure + table). Hors périmètre de la session
+adaptateur/bench (isolée volontairement).
+
+---
+
 ## E2E navigateur (Playwright) — non installé
 
 **Statut** : pas d'infra E2E navigateur dans le projet (ni Playwright, ni Cypress ;

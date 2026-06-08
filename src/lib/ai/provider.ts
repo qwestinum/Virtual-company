@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import OpenAI, {
   APIError,
   APIConnectionTimeoutError,
@@ -13,6 +14,7 @@ import type { z } from 'zod';
 
 import { AIProviderError, AIValidationError } from './errors';
 import { estimateCost } from './pricing';
+import { zodToAnthropicToolSchema } from './zod-to-anthropic-schema';
 
 if (typeof window !== 'undefined') {
   throw new AIProviderError(
@@ -29,7 +31,19 @@ const DEFAULT_CHAT_MODEL = process.env.OPENAI_CHAT_MODEL?.trim() || 'gpt-4o-mini
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+// Modèle Anthropic par défaut pour le chemin JSON (analyse CV). Surchargeable
+// via ANTHROPIC_CHAT_MODEL. Cf. `chatCompleteJson` (routage CV_ANALYZER_PROVIDER).
+const DEFAULT_ANTHROPIC_MODEL =
+  process.env.ANTHROPIC_CHAT_MODEL?.trim() || 'claude-sonnet-4-6';
+// `max_tokens` est OBLIGATOIRE côté Anthropic (contrairement à OpenAI). Valeur
+// confortable pour les verdicts d'une grande grille ; surchargeable par appel.
+const DEFAULT_ANTHROPIC_MAX_TOKENS = 8192;
+// Nom de l'outil unique forcé pour contraindre la sortie JSON (équivalent du
+// « JSON mode » OpenAI). Le modèle DOIT appeler cet outil ; on lit son `input`.
+const ANTHROPIC_JSON_TOOL_NAME = 'emit_result';
+
 let cachedClient: OpenAI | null = null;
+let cachedAnthropic: Anthropic | null = null;
 
 function getClient(): OpenAI {
   if (cachedClient) return cachedClient;
@@ -44,8 +58,22 @@ function getClient(): OpenAI {
   return cachedClient;
 }
 
+function getAnthropicClient(): Anthropic {
+  if (cachedAnthropic) return cachedAnthropic;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey.trim() === '') {
+    throw new AIProviderError(
+      'config_missing',
+      'ANTHROPIC_API_KEY is not set in the environment.',
+    );
+  }
+  cachedAnthropic = new Anthropic({ apiKey, timeout: DEFAULT_TIMEOUT_MS });
+  return cachedAnthropic;
+}
+
 export function __resetClientForTests(): void {
   cachedClient = null;
+  cachedAnthropic = null;
 }
 
 export type ChatCompleteParams = {
@@ -156,12 +184,26 @@ export type ChatCompleteJsonResult<T> = {
  * (la réponse fautive + un rappel du format), pour que le modèle corrige plutôt
  * que de répéter à l'identique malgré la graine fixe. Les erreurs de transport
  * (`AIProviderError`) ne sont PAS retentées ici : elles se propagent immédiatement.
+ *
+ * ROUTAGE FOURNISSEUR (`CV_ANALYZER_PROVIDER`) : `openai` (défaut) ou `anthropic`.
+ * En mode `anthropic`, l'appel part vers Sonnet 4.6 (`messages.create` + outil
+ * forcé) ; mêmes garanties (validation Zod + retry × N). LIMITE : Anthropic
+ * n'expose PAS de graine (`seed`) → le déterminisme « bit-à-bit » du pipeline
+ * d'extraction/scoring (assuré côté OpenAI par seed 42 + temperature 0) n'est
+ * PAS reproductible côté Anthropic ; seule `temperature` (défaut 0) est appliquée.
  */
 export async function chatCompleteJson<T>(
   messages: ChatCompletionMessageParam[],
   schema: z.ZodType<T>,
   options: ChatCompleteJsonOptions = {},
 ): Promise<ChatCompleteJsonResult<T>> {
+  const provider = (process.env.CV_ANALYZER_PROVIDER ?? 'openai')
+    .trim()
+    .toLowerCase();
+  if (provider === 'anthropic') {
+    return anthropicCompleteJson(messages, schema, options);
+  }
+
   const temperature = options.temperature ?? 0;
   const seed = options.seed ?? DETERMINISTIC_SEED;
   const maxAttempts = Math.max(
@@ -224,6 +266,157 @@ function pushCorrection(
         `attendu. Erreur : ${detail.slice(0, 300)}. Renvoie UNIQUEMENT un objet ` +
         'JSON strictement conforme, sans aucun texte autour.',
     },
+  );
+}
+
+// ── Chemin Anthropic (Sonnet 4.6) ───────────────────────────────────────────
+
+type AnthropicMessage = { role: 'user' | 'assistant'; content: string };
+
+/**
+ * Sépare le message `system` (top-level chez Anthropic, pas dans `messages[]`)
+ * des tours user/assistant. Plusieurs blocs `system` sont concaténés. Exporté
+ * pour test unitaire (mapping pur, sans réseau).
+ */
+export function splitMessagesForAnthropic(
+  messages: ChatCompletionMessageParam[],
+): { system: string; messages: AnthropicMessage[] } {
+  const systemParts: string[] = [];
+  const out: AnthropicMessage[] = [];
+  for (const m of messages) {
+    const content =
+      typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+    if (m.role === 'system') {
+      systemParts.push(content);
+      continue;
+    }
+    out.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content });
+  }
+  return { system: systemParts.join('\n\n'), messages: out };
+}
+
+/**
+ * Variante Anthropic de `chatCompleteJson`. Force un outil unique dont
+ * `input_schema` provient du schéma Zod (cf. `zodToAnthropicToolSchema`) —
+ * équivalent du JSON mode OpenAI. Valide la sortie avec le MÊME schéma Zod et
+ * applique le MÊME retry × N. Pas de `seed` (non supporté par Anthropic) :
+ * `temperature` (défaut 0) est le seul levier de stabilité.
+ */
+async function anthropicCompleteJson<T>(
+  messages: ChatCompletionMessageParam[],
+  schema: z.ZodType<T>,
+  options: ChatCompleteJsonOptions,
+): Promise<ChatCompleteJsonResult<T>> {
+  const temperature = options.temperature ?? 0;
+  const maxAttempts = Math.max(
+    1,
+    options.maxAttempts ?? DEFAULT_MAX_VALIDATION_ATTEMPTS,
+  );
+  const model = options.model ?? DEFAULT_ANTHROPIC_MODEL;
+  const maxTokens = options.maxTokens ?? DEFAULT_ANTHROPIC_MAX_TOKENS;
+  const inputSchema = zodToAnthropicToolSchema(schema);
+  const { system, messages: baseMessages } = splitMessagesForAnthropic(messages);
+  const client = getAnthropicClient();
+
+  const convo: AnthropicMessage[] = [...baseMessages];
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const startedAt = Date.now();
+    let response: Anthropic.Message;
+    try {
+      response = await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        ...(system ? { system } : {}),
+        messages: convo.map((m) => ({ role: m.role, content: m.content })),
+        tools: [
+          {
+            name: ANTHROPIC_JSON_TOOL_NAME,
+            description:
+              'Renvoie le résultat structuré demandé, strictement conforme au schéma.',
+            input_schema: inputSchema,
+          },
+        ],
+        tool_choice: { type: 'tool', name: ANTHROPIC_JSON_TOOL_NAME },
+      });
+    } catch (err) {
+      throw mapAnthropicError(err);
+    }
+
+    const durationMs = Date.now() - startedAt;
+    const promptTokens = response.usage.input_tokens;
+    const completionTokens = response.usage.output_tokens;
+    const totalTokens = promptTokens + completionTokens;
+    const toolBlock = response.content.find((b) => b.type === 'tool_use');
+    const raw: ChatCompleteResult = {
+      content:
+        toolBlock && toolBlock.type === 'tool_use'
+          ? JSON.stringify(toolBlock.input)
+          : '',
+      model: response.model,
+      usage: { promptTokens, completionTokens, totalTokens },
+      costEstimate: estimateCost(response.model, promptTokens, completionTokens),
+      durationMs,
+    };
+
+    if (!toolBlock || toolBlock.type !== 'tool_use') {
+      lastError = new Error("Aucun bloc 'tool_use' renvoyé par Anthropic.");
+      pushAnthropicCorrection(convo, '', lastError);
+      continue;
+    }
+
+    const validated = schema.safeParse(toolBlock.input);
+    if (validated.success) {
+      return { data: validated.data, raw, attempts: attempt };
+    }
+    lastError = validated.error;
+    pushAnthropicCorrection(convo, JSON.stringify(toolBlock.input), validated.error);
+  }
+
+  throw new AIValidationError(
+    `Réponse LLM invalide après ${maxAttempts} tentative(s).`,
+    maxAttempts,
+    lastError,
+  );
+}
+
+/**
+ * Reprise Anthropic : on n'ajoute PAS le tour `assistant` (un `tool_use` non
+ * suivi d'un `tool_result` est invalide côté API) — on empile un message `user`
+ * de correction. Anthropic fusionne les messages `user` consécutifs.
+ */
+function pushAnthropicCorrection(
+  convo: AnthropicMessage[],
+  previousContent: string,
+  error: unknown,
+): void {
+  const detail = error instanceof Error ? error.message : String(error);
+  convo.push({
+    role: 'user',
+    content:
+      `⚠️ Ta réponse précédente (${previousContent.slice(0, 200)}) n'était pas ` +
+      `conforme au schéma attendu. Erreur : ${detail.slice(0, 300)}. Rappelle ` +
+      `le format et renvoie le résultat via l'outil ${ANTHROPIC_JSON_TOOL_NAME}.`,
+  });
+}
+
+function mapAnthropicError(err: unknown): AIProviderError {
+  if (err instanceof AIProviderError) return err;
+  if (err instanceof Anthropic.RateLimitError) {
+    return new AIProviderError('rate_limit', err.message, err);
+  }
+  if (err instanceof Anthropic.APIConnectionTimeoutError) {
+    return new AIProviderError('timeout', err.message, err);
+  }
+  if (err instanceof Anthropic.APIError) {
+    return new AIProviderError('api_error', err.message, err);
+  }
+  return new AIProviderError(
+    'api_error',
+    err instanceof Error ? err.message : 'Unknown Anthropic error',
+    err,
   );
 }
 
