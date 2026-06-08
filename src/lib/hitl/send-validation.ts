@@ -88,7 +88,8 @@ export async function switchValidation(
         decision: newDecision,
         confirmed: false,
         mailDraftArtifactId,
-        payload: { candidate, jobTitle, mailDraftUrl, mailSubject, mailBody },
+        // Préserve le payload existant (dont `uid`) + écrase le brouillon.
+        payload: { ...v.payload, candidate, jobTitle, mailDraftUrl, mailSubject, mailBody },
       }),
     });
     if (!res.ok) {

@@ -379,6 +379,10 @@ export async function dispatchCVBatch(args: {
   });
 
   const results: CVApplication[] = [];
+  // UID par analyse (= taskId envoyé au CV Analyzer, journalisé en `uid`).
+  // Aligné index-par-index avec `results`/`summary.perCV` → sert au
+  // rapprochement HITL PAR ANALYSE (chaque analyse = un traitement distinct).
+  const uids: string[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -392,6 +396,7 @@ export async function dispatchCVBatch(args: {
         campaignId: args.campaignId ?? undefined,
       });
       results.push(res.application);
+      uids.push(itemTaskId);
     } catch (err) {
       // Un CV en erreur n'arrête pas le lot — on poste une note
       // discrète et on continue.
@@ -495,6 +500,7 @@ export async function dispatchCVBatch(args: {
       campaignId: args.campaignId,
       jobTitle,
       summary,
+      uids,
     });
   }
 }
@@ -517,6 +523,8 @@ async function dispatchPostAnalysisOutreach(args: {
   campaignId: string;
   jobTitle: string | null;
   summary: CVBatchSummary;
+  /** UID par analyse, aligné sur `summary.perCV` (rapprochement HITL par analyse). */
+  uids: string[];
 }): Promise<void> {
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
@@ -532,7 +540,9 @@ async function dispatchPostAnalysisOutreach(args: {
   // passer par « Validation suspendue »).
   console.info('[HITL] config lue à l’analyse:', hitl);
 
-  for (const cv of args.summary.perCV) {
+  for (let index = 0; index < args.summary.perCV.length; index++) {
+    const cv = args.summary.perCV[index];
+    const uid = args.uids[index] ?? `${args.campaignId}_${index}`;
     const mode = cv.scoringResult.status === 'accepted' ? 'invite' : 'reject';
     const decision: HitlDecision =
       cv.scoringResult.status === 'accepted' ? 'accept' : 'reject';
@@ -546,6 +556,7 @@ async function dispatchPostAnalysisOutreach(args: {
     if (gated) {
       await enqueuePendingValidation({
         cv,
+        uid,
         decision,
         mode,
         campaignId: args.campaignId,
@@ -687,6 +698,8 @@ async function fetchHitlConfig(): Promise<HitlConfig> {
  */
 async function enqueuePendingValidation(args: {
   cv: CVApplication;
+  /** UID de l'analyse — rattache la validation à CE traitement précis. */
+  uid: string;
   decision: HitlDecision;
   mode: 'invite' | 'reject';
   campaignId: string;
@@ -761,6 +774,7 @@ async function enqueuePendingValidation(args: {
         decision: args.decision,
         mailDraftArtifactId,
         payload: {
+          uid: args.uid,
           candidate,
           jobTitle: args.jobTitle,
           mailDraftUrl,

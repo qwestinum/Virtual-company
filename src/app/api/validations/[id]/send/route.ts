@@ -37,6 +37,12 @@ export async function POST(
       campaignId: validation.campaignId,
       actor: 'user',
       payload: {
+        // UID de l'analyse → rattache au candidat EXACT (chaque analyse est un
+        // traitement distinct, pas de fusion par email).
+        uid:
+          typeof validation.payload?.uid === 'string'
+            ? validation.payload.uid
+            : null,
         decision: validation.decision,
         candidateName: validation.candidateName,
         candidateEmail: validation.candidateEmail,

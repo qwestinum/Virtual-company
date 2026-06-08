@@ -450,22 +450,23 @@ describe('HITL — candidats & shortlisté (validation suspendue)', () => {
       payload: { uid, candidate: name, email, score: 80, aboveThreshold },
     });
 
-  const sent = (
-    name: string,
-    email: string | null,
-    decision: 'accept' | 'reject',
-    id: number,
-  ) =>
+  // Le rapprochement HITL se fait PAR UID (l'analyse précise).
+  const sent = (uid: string, decision: 'accept' | 'reject', id: number) =>
     entry({
       id,
       action: 'hitl_validation_sent',
       campaignId: 'C1',
-      payload: { decision, candidateName: name, candidateEmail: email },
+      payload: {
+        uid,
+        decision,
+        candidateName: 'Imad',
+        candidateEmail: 'imad@x.fr',
+      },
     });
 
-  it('un candidat en attente de validation est exclu (liste + shortlisté)', () => {
+  it('une analyse en attente de validation est exclue (liste + shortlisté)', () => {
     const rows = [analyzed('u1', 'Imad', 'imad@x.fr', true, 1)];
-    const pending = new Set(['e:imad@x.fr::C1']);
+    const pending = new Set(['u1']); // uid en file
     expect(journalToCandidatesList(rows, pending)).toHaveLength(0);
     expect(journalToGlobalKPIs(rows, pending).shortlisted).toBe(0);
     // Sans pending (toggle OFF / déjà envoyé), il compte normalement.
@@ -475,7 +476,7 @@ describe('HITL — candidats & shortlisté (validation suspendue)', () => {
   it('envoi ACCEPTÉ (même switché depuis un refus système) → invité + shortlisté', () => {
     const rows = [
       analyzed('u1', 'Imad', 'imad@x.fr', false, 1), // le système refusait
-      sent('Imad', 'imad@x.fr', 'accept', 2), // le DRH a switché + envoyé
+      sent('u1', 'accept', 2), // le DRH a switché + envoyé
     ];
     const list = journalToCandidatesList(rows);
     expect(list).toHaveLength(1);
@@ -487,95 +488,55 @@ describe('HITL — candidats & shortlisté (validation suspendue)', () => {
   it('envoi REFUSÉ (même switché depuis une accept système) → rejeté, pas shortlisté', () => {
     const rows = [
       analyzed('u1', 'Imad', 'imad@x.fr', true, 1), // le système acceptait
-      sent('Imad', 'imad@x.fr', 'reject', 2), // le DRH a switché + envoyé
+      sent('u1', 'reject', 2), // le DRH a switché + envoyé
     ];
     const list = journalToCandidatesList(rows);
     expect(list[0]!.status).toBe('rejected');
     expect(list[0]!.recommendation).toBeNull();
     expect(journalToGlobalKPIs(rows).shortlisted).toBe(0);
   });
-
-  it('rapproche par nom+campagne quand le candidat n\'a pas d\'email', () => {
-    const rows = [analyzed('u1', 'Sans Email', null, true, 1)];
-    const pending = new Set(['n:sans email::C1']);
-    expect(journalToCandidatesList(rows, pending)).toHaveLength(0);
-  });
 });
 
-describe('dédup candidats (ré-analyses du même CV)', () => {
-  it('ré-analyser le même candidat → UNE entrée (la plus récente gagne)', () => {
-    const rows = [
-      entry({
-        id: 1,
-        action: 'imap_cv_analyzed',
-        campaignId: 'C1',
-        createdAt: '2026-06-08T10:00:00.000Z',
-        payload: { uid: 'u1', candidate: 'Imad', email: 'imad@x.fr', score: 40, aboveThreshold: false },
-      }),
-      entry({
-        id: 2,
-        action: 'imap_cv_analyzed',
-        campaignId: 'C1',
-        createdAt: '2026-06-08T11:00:00.000Z',
-        payload: { uid: 'u2', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
-      }),
-    ];
+describe('candidats : chaque analyse = un traitement DISTINCT (pas de fusion)', () => {
+  const an = (uid: string, campaignId: string, aboveThreshold: boolean, id: number) =>
+    entry({
+      id,
+      action: 'imap_cv_analyzed',
+      campaignId,
+      createdAt: `2026-06-08T1${id}:00:00.000Z`,
+      payload: { uid, candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold },
+    });
+
+  it('même CV ré-analysé sur la MÊME campagne → N entrées (aucune mise à jour)', () => {
+    const rows = [an('u1', 'C1', false, 1), an('u2', 'C1', true, 2)];
     const list = journalToCandidatesList(rows);
-    expect(list).toHaveLength(1);
-    expect(list[0]!.score).toBe(85);
-    expect(list[0]!.recommendation).toBe('go');
-    expect(journalToGlobalKPIs(rows).shortlisted).toBe(1);
+    expect(list).toHaveLength(2);
+    expect(journalToGlobalKPIs(rows).shortlisted).toBe(1); // u2 above, u1 not
   });
 
   it('même candidat sur DEUX campagnes → deux entrées indépendantes', () => {
-    const rows = [
-      entry({
-        id: 1,
-        action: 'imap_cv_analyzed',
-        campaignId: 'C1',
-        createdAt: '2026-06-08T10:00:00.000Z',
-        payload: { uid: 'u1', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
-      }),
-      entry({
-        id: 2,
-        action: 'imap_cv_analyzed',
-        campaignId: 'C2',
-        createdAt: '2026-06-08T11:00:00.000Z',
-        payload: { uid: 'u2', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
-      }),
-    ];
+    const rows = [an('u1', 'C1', true, 1), an('u2', 'C2', true, 2)];
     const list = journalToCandidatesList(rows);
-    expect(list).toHaveLength(2); // une par campagne, pas écrasées
+    expect(list).toHaveLength(2);
     expect(new Set(list.map((c) => c.campaignId))).toEqual(new Set(['C1', 'C2']));
     expect(journalToGlobalKPIs(rows).shortlisted).toBe(2);
   });
 
-  it('un marquage DRH sur un ANCIEN uid s’applique à l’entrée fusionnée', () => {
+  it('un envoi HITL n’affecte QUE l’analyse ciblée par le uid', () => {
     const rows = [
-      entry({
-        id: 1,
-        action: 'imap_cv_analyzed',
-        campaignId: 'C1',
-        createdAt: '2026-06-08T10:00:00.000Z',
-        payload: { uid: 'u1', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
-      }),
-      entry({
-        id: 2,
-        action: 'candidate_interview_marked',
-        createdAt: '2026-06-08T10:30:00.000Z',
-        payload: { uid: 'u1', status: 'realized' },
-      }),
+      an('u1', 'C1', false, 1),
+      an('u2', 'C1', false, 2),
       entry({
         id: 3,
-        action: 'imap_cv_analyzed',
+        action: 'hitl_validation_sent',
         campaignId: 'C1',
-        createdAt: '2026-06-08T11:00:00.000Z',
-        payload: { uid: 'u2', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
+        createdAt: '2026-06-08T13:00:00.000Z',
+        payload: { uid: 'u2', decision: 'accept', candidateName: 'Imad' },
       }),
     ];
     const list = journalToCandidatesList(rows);
-    expect(list).toHaveLength(1);
-    expect(list[0]!.interviewMarked).toBe('realized');
-    expect(list[0]!.status).toBe('interview_done');
+    expect(list).toHaveLength(2);
+    expect(list.find((c) => c.id === 'u2')!.status).toBe('invited');
+    expect(list.find((c) => c.id === 'u1')!.status).toBe('analyzed');
   });
 });

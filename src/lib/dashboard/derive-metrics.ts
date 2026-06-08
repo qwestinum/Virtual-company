@@ -158,7 +158,7 @@ export type ActivityColorKey =
  */
 export function journalToGlobalKPIs(
   rows: JournalEntry[],
-  pendingKeys: ReadonlySet<string> = new Set(),
+  pendingUids: ReadonlySet<string> = new Set(),
 ): GlobalKPIs {
   let cvReceived = 0;
   let cost = 0;
@@ -169,9 +169,9 @@ export function journalToGlobalKPIs(
     if (row.action === 'imap_cv_received') cvReceived += 1;
   }
 
-  // Dérive l'état candidat depuis le journal (HITL-aware : les candidats en
-  // attente de validation sont exclus → pas comptés en shortlisté).
-  const candidates = journalToCandidatesList(rows, pendingKeys);
+  // Dérive l'état candidat depuis le journal (HITL-aware : les analyses en
+  // attente de validation sont exclues → pas comptées en shortlisté).
+  const candidates = journalToCandidatesList(rows, pendingUids);
   let shortlisted = 0;
   let interviews = 0;
   let go = 0;
@@ -310,34 +310,13 @@ export function journalToCampaignMetric(
  * dans le journal, donc on n'expose pas `scheduled` dynamiquement (on
  * réserve la valeur dans le type pour quand le signal arrivera).
  */
-/**
- * Clé d'identité d'un candidat pour rapprocher l'analyse (journal) des
- * enregistrements HITL (file + envois) : email si présent, sinon nom + campagne.
- * Exportée pour que la route construise les mêmes clés depuis pending_validations.
- */
-export function hitlCandidateKey(
-  name: string,
-  campaignId: string | null,
-  email: string | null | undefined,
-): string {
-  // SCOPÉ PAR CAMPAGNE : un même candidat (même email) sur deux campagnes =
-  // deux entrées distinctes (stats indépendantes). Même candidat sur la MÊME
-  // campagne (re-candidature) = une seule entrée (dédup, la + récente gagne).
-  const c = campaignId ?? '';
-  const e = (email ?? '').trim().toLowerCase();
-  if (e) return `e:${e}::${c}`;
-  return `n:${name.trim().toLowerCase()}::${c}`;
-}
-
 export function journalToCandidatesList(
   rows: JournalEntry[],
-  pendingKeys: ReadonlySet<string> = new Set(),
+  pendingUids: ReadonlySet<string> = new Set(),
 ): CandidateRow[] {
   type Acc = {
-    key: string;
     uid: string;
     name: string;
-    email: string | null;
     score: number;
     aboveThreshold: boolean;
     campaignId: string | null;
@@ -354,32 +333,20 @@ export function journalToCandidatesList(
     validationMarkedAt: string | null;
   };
 
-  const byKey = new Map<string, Acc>();
-  const uidToKey = new Map<string, string>();
+  const byUid = new Map<string, Acc>();
 
-  // Pass 1 — UNE entrée par IDENTITÉ candidat (dédup des ré-analyses : la plus
-  // RÉCENTE gagne pour score/seuil/uid). Sans ça, ré-analyser le même CV N fois
-  // créait N candidats au dashboard.
+  // Pass 1 — UNE entrée par ANALYSE (uid). Chaque analyse est un traitement
+  // DISTINCT : le même CV analysé N fois (même campagne) = N candidats, aucune
+  // fusion. Le rapprochement HITL se fait par uid (exact, par traitement).
   for (const row of rows) {
     if (row.action !== 'imap_cv_analyzed') continue;
     const uid = String(row.payload?.uid ?? '');
     if (!uid) continue;
-    const name = String(row.payload?.candidate ?? 'Candidat');
-    const email =
-      typeof row.payload?.email === 'string' ? row.payload.email : null;
-    const score = Number(row.payload?.score ?? 0);
-    const aboveThreshold = row.payload?.aboveThreshold === true;
-    const key = hitlCandidateKey(name, row.campaignId, email);
-    uidToKey.set(uid, key);
-    const existing = byKey.get(key);
-    if (existing && existing.receivedAt >= row.createdAt) continue; // garde la + récente
-    byKey.set(key, {
-      key,
+    byUid.set(uid, {
       uid,
-      name,
-      email,
-      score,
-      aboveThreshold,
+      name: String(row.payload?.candidate ?? 'Candidat'),
+      score: Number(row.payload?.score ?? 0),
+      aboveThreshold: row.payload?.aboveThreshold === true,
       campaignId: row.campaignId,
       receivedAt: row.createdAt,
       invited: false,
@@ -394,18 +361,15 @@ export function journalToCandidatesList(
     });
   }
 
-  // Pass 2a — issue HITL ENVOYÉE (rapprochée par identité candidat). Override
-  // l'analyse : un refus switché en acceptation puis envoyé compte comme invité.
+  // Pass 2a — issue HITL ENVOYÉE, rattachée au candidat par UID (l'analyse
+  // précise). Override l'analyse : un refus switché en acceptation puis envoyé
+  // compte comme invité, et inversement.
   for (const row of rows) {
     if (row.action !== 'hitl_validation_sent') continue;
-    const key = hitlCandidateKey(
-      String(row.payload?.candidateName ?? ''),
-      row.campaignId,
-      typeof row.payload?.candidateEmail === 'string'
-        ? row.payload.candidateEmail
-        : null,
-    );
-    const entry = byKey.get(key);
+    const uid =
+      typeof row.payload?.uid === 'string' ? row.payload.uid : '';
+    if (!uid) continue;
+    const entry = byUid.get(uid);
     if (!entry) continue;
     const decision = row.payload?.decision === 'accept' ? 'accept' : 'reject';
     entry.hitlDecision = decision;
@@ -417,14 +381,11 @@ export function journalToCandidatesList(
     }
   }
 
-  // Pass 2b — outreach + marquages DRH, rapprochés par uid → identité (agrégés
-  // même si le candidat a été ré-analysé sous plusieurs uid).
+  // Pass 2b — outreach + marquages DRH, rapprochés par uid.
   for (const row of rows) {
     const uid = String(row.payload?.uid ?? '');
     if (!uid) continue;
-    const key = uidToKey.get(uid);
-    if (!key) continue;
-    const entry = byKey.get(key);
+    const entry = byUid.get(uid);
     if (!entry) continue;
     if (row.action === 'imap_outreach_mail') {
       const mode = row.payload?.mode;
@@ -460,14 +421,14 @@ export function journalToCandidatesList(
     }
   }
 
-  return Array.from(byKey.values())
+  return Array.from(byUid.values())
     .filter((entry) => {
-      // HITL — candidat EN ATTENTE de validation (en file, pas encore envoyé) :
-      // exclu du dashboard candidats (et donc du compteur shortlisté) jusqu'à
-      // l'envoi. Il ne vit que dans l'onglet « Validation suspendue » + le KPI
-      // « À valider ». Une fois envoyé (hitlDecision ≠ null), il réapparaît.
+      // HITL — analyse EN ATTENTE de validation (en file, pas encore envoyée) :
+      // exclue du dashboard candidats (et du compteur shortlisté) jusqu'à
+      // l'envoi. Elle ne vit que dans « Validation suspendue » + le KPI
+      // « À valider ». Une fois envoyée (hitlDecision ≠ null), elle réapparaît.
       if (entry.hitlDecision !== null) return true;
-      return !pendingKeys.has(entry.key);
+      return !pendingUids.has(entry.uid);
     })
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
     .map<CandidateRow>((entry) => {

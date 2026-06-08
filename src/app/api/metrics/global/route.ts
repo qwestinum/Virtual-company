@@ -16,7 +16,6 @@
 import { NextResponse } from 'next/server';
 
 import {
-  hitlCandidateKey,
   journalToActivityFeed,
   journalToAgentMetrics,
   journalToCandidatesList,
@@ -56,60 +55,31 @@ export async function GET(): Promise<NextResponse> {
     }
   }
 
-  // HITL — file des validations en attente. Sert à (a) compter « À valider »,
-  // (b) EXCLURE ces candidats du dashboard tant que l'envoi n'a pas eu lieu.
+  // HITL — file des validations en attente, rattachées à l'analyse PAR UID.
+  // Sert à (a) compter « À valider », (b) EXCLURE ces analyses du dashboard
+  // tant que l'envoi n'a pas eu lieu.
   const pending = await listPendingValidations();
-  const pendingKeys = new Set(
-    pending.map((v) =>
-      hitlCandidateKey(v.candidateName, v.campaignId, v.candidateEmail),
-    ),
+  const pendingUids = new Set(
+    pending
+      .map((v) => (typeof v.payload?.uid === 'string' ? v.payload.uid : null))
+      .filter((u): u is string => u !== null),
   );
 
-  const candidates = journalToCandidatesList(result.rows, pendingKeys).map(
+  const candidates = journalToCandidatesList(result.rows, pendingUids).map(
     (c) => ({
       ...c,
       role: c.campaignId ? (campaignNameById.get(c.campaignId) ?? null) : null,
     }),
   );
 
-  // DIAGNOSTIC TEMPORAIRE (HITL) — expose les clés de rapprochement pour
-  // comprendre pourquoi un candidat validé ne réapparaît pas. À retirer.
-  const hitlDebug = {
-    pendingKeys: [...pendingKeys],
-    analyzed: result.rows
-      .filter((r) => r.action === 'imap_cv_analyzed')
-      .map((r) => ({
-        key: hitlCandidateKey(
-          String(r.payload?.candidate ?? ''),
-          r.campaignId,
-          typeof r.payload?.email === 'string' ? r.payload.email : null,
-        ),
-        name: r.payload?.candidate,
-        aboveThreshold: r.payload?.aboveThreshold,
-      })),
-    sent: result.rows
-      .filter((r) => r.action === 'hitl_validation_sent')
-      .map((r) => ({
-        key: hitlCandidateKey(
-          String(r.payload?.candidateName ?? ''),
-          r.campaignId,
-          typeof r.payload?.candidateEmail === 'string'
-            ? r.payload.candidateEmail
-            : null,
-        ),
-        decision: r.payload?.decision,
-      })),
-  };
-
   return NextResponse.json({
     offline: false,
     kpis: {
-      ...journalToGlobalKPIs(result.rows, pendingKeys),
+      ...journalToGlobalKPIs(result.rows, pendingUids),
       awaitingValidation: pending.length,
     },
     agents: journalToAgentMetrics(result.rows, agentIds),
     candidates,
     activity: journalToActivityFeed(result.rows, 20),
-    _hitlDebug: hitlDebug,
   });
 }
