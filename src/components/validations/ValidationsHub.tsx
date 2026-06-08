@@ -19,8 +19,22 @@ import { sendValidation, switchValidation } from '@/lib/hitl/send-validation';
 import {
   downloadArtifact,
   useArtifactsStore,
+  type Artifact,
 } from '@/stores/artifacts-store';
 import type { PendingValidation } from '@/types/hitl';
+
+/**
+ * Ouvre l'artefact DIRECTEMENT dans le navigateur via son URL publique (rapport,
+ * FDP — consultation, pas téléchargement). Repli sur le download si pas d'URL
+ * (artefact non encore poussé en Storage).
+ */
+function openArtifact(artifact: Artifact): void {
+  if (typeof window !== 'undefined' && artifact.publicUrl) {
+    window.open(artifact.publicUrl, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  downloadArtifact(artifact);
+}
 
 type LoadState =
   | { kind: 'loading' }
@@ -304,7 +318,7 @@ function ValidationCard({
           {reportArtifact ? (
             <button
               type="button"
-              onClick={() => downloadArtifact(reportArtifact)}
+              onClick={() => openArtifact(reportArtifact)}
               className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-2 py-1 font-body text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
             >
               📄 Rapport d’analyse
@@ -313,7 +327,7 @@ function ValidationCard({
           {fdpArtifact ? (
             <button
               type="button"
-              onClick={() => downloadArtifact(fdpArtifact)}
+              onClick={() => openArtifact(fdpArtifact)}
               className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-2 py-1 font-body text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
             >
               📋 Fiche de poste
