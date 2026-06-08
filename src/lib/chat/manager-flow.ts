@@ -501,6 +501,7 @@ export async function dispatchCVBatch(args: {
       jobTitle,
       summary,
       uids,
+      reportArtifactId: reportArtifact.id,
     });
   }
 }
@@ -525,6 +526,8 @@ async function dispatchPostAnalysisOutreach(args: {
   summary: CVBatchSummary;
   /** UID par analyse, aligné sur `summary.perCV` (rapprochement HITL par analyse). */
   uids: string[];
+  /** Rapport d'analyse du lot — rattaché aux validations pour accès depuis la carte. */
+  reportArtifactId: string;
 }): Promise<void> {
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
@@ -561,6 +564,7 @@ async function dispatchPostAnalysisOutreach(args: {
         mode,
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
+        reportArtifactId: args.reportArtifactId,
       });
       continue;
     }
@@ -704,6 +708,8 @@ async function enqueuePendingValidation(args: {
   mode: 'invite' | 'reject';
   campaignId: string;
   jobTitle: string | null;
+  /** Rapport d'analyse du lot (accès depuis la carte de validation). */
+  reportArtifactId: string;
 }): Promise<void> {
   const chat = useChatStore.getState();
   const artifacts = useArtifactsStore.getState();
@@ -773,10 +779,13 @@ async function enqueuePendingValidation(args: {
         score: args.cv.scoringResult.totalScore,
         decision: args.decision,
         mailDraftArtifactId,
+        reportArtifactId: args.reportArtifactId,
         payload: {
           uid: args.uid,
           candidate,
           jobTitle: args.jobTitle,
+          // Synthèse exposée directement pour la carte (évite de fouiller candidate).
+          summary: candidate.summary,
           mailDraftUrl,
           mailSubject,
           mailBody,

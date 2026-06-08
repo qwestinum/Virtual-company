@@ -14,7 +14,12 @@
 
 import { useEffect, useState } from 'react';
 
+import { hydrateArtifactsForCampaign } from '@/lib/db/sync/artifacts-sync';
 import { sendValidation, switchValidation } from '@/lib/hitl/send-validation';
+import {
+  downloadArtifact,
+  useArtifactsStore,
+} from '@/stores/artifacts-store';
 import type { PendingValidation } from '@/types/hitl';
 
 type LoadState =
@@ -30,6 +35,16 @@ function payloadString(
   return typeof raw === 'string' ? raw : null;
 }
 
+/** Synthèse de secours pour les validations créées avant l'exposition directe. */
+function candidateSummary(v: PendingValidation): string | null {
+  const c = v.payload?.candidate;
+  if (c && typeof c === 'object' && 'summary' in c) {
+    const s = (c as { summary?: unknown }).summary;
+    return typeof s === 'string' ? s : null;
+  }
+  return null;
+}
+
 export function ValidationsHub() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [flash, setFlash] = useState<string | null>(null);
@@ -42,6 +57,12 @@ export function ValidationsHub() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as { validations: PendingValidation[] };
         if (!cancelled) setState({ kind: 'ready', items: json.validations });
+        // Hydrate les artefacts (rapport + FDP) des campagnes concernées, pour
+        // que les cartes puissent proposer « Rapport » et « FDP » après reload.
+        const campaigns = [
+          ...new Set(json.validations.map((v) => v.campaignId)),
+        ];
+        await Promise.all(campaigns.map((c) => hydrateArtifactsForCampaign(c)));
       } catch (err) {
         if (!cancelled)
           setState({
@@ -223,6 +244,19 @@ function ValidationCard({
   const [sendError, setSendError] = useState<string | null>(null);
   const canSend = subject.trim().length > 0 && body.trim().length > 0;
 
+  // Contexte de la candidature.
+  const jobTitle = payloadString(v, 'jobTitle');
+  const summary = payloadString(v, 'summary') ?? candidateSummary(v);
+  // Liens artefacts (résolus depuis le store, hydraté par campagne).
+  const reportArtifact = useArtifactsStore((s) =>
+    v.reportArtifactId ? s.byId[v.reportArtifactId] : undefined,
+  );
+  const fdpArtifact = useArtifactsStore((s) =>
+    Object.values(s.byId).find(
+      (a) => a.campaignId === v.campaignId && a.kind === 'fdp',
+    ),
+  );
+
   const onSend = async () => {
     setSending(true);
     setSendError(null);
@@ -253,6 +287,40 @@ function ValidationCard({
           </span>
         ) : null}
       </div>
+
+      {/* Contexte de la candidature : poste, synthèse, accès rapport + FDP. */}
+      {jobTitle ? (
+        <p className="mt-2 font-body text-[12px] text-stone-600">
+          <span className="font-semibold text-stone-500">Poste :</span> {jobTitle}
+        </p>
+      ) : null}
+      {summary ? (
+        <p className="mt-1 font-body text-[12px] leading-relaxed text-stone-600 line-clamp-3">
+          {summary}
+        </p>
+      ) : null}
+      {reportArtifact || fdpArtifact ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {reportArtifact ? (
+            <button
+              type="button"
+              onClick={() => downloadArtifact(reportArtifact)}
+              className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-2 py-1 font-body text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
+            >
+              📄 Rapport d’analyse
+            </button>
+          ) : null}
+          {fdpArtifact ? (
+            <button
+              type="button"
+              onClick={() => downloadArtifact(fdpArtifact)}
+              className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-2 py-1 font-body text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
+            >
+              📋 Fiche de poste
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
