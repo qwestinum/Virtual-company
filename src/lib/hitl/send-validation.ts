@@ -123,9 +123,6 @@ export async function sendValidation(
     return { ok: false, message: 'Données candidat manquantes pour l’envoi.' };
   }
   const mode = v.decision === 'accept' ? 'invite' : 'reject';
-  console.info(
-    `[HITL] ENVOI MANUEL ${v.candidateName} → décision=${v.decision}, mode=${mode}`,
-  );
 
   // 1. Tentative d'envoi du mail candidat (best-effort). « Envoyer » EST la
   //    validation humaine de la décision → on FINALISE toujours (étape 3), même

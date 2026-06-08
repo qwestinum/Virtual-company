@@ -538,10 +538,6 @@ async function dispatchPostAnalysisOutreach(args: {
   // HITL — config des sections gardées. OFF si offline (la file ne pourrait
   // pas persister → on reste sur l'envoi auto pour ne pas perdre les mails).
   const hitl = await fetchHitlConfig();
-  // Trace de diagnostic : montre la config lue AU MOMENT de l'analyse. Si une
-  // section est `false` ici, le mail correspondant part AUTOMATIQUEMENT (sans
-  // passer par « Validation suspendue »).
-  console.info('[HITL] config lue à l’analyse:', hitl);
 
   for (let index = 0; index < args.summary.perCV.length; index++) {
     const cv = args.summary.perCV[index];
@@ -550,9 +546,6 @@ async function dispatchPostAnalysisOutreach(args: {
     const decision: HitlDecision =
       cv.scoringResult.status === 'accepted' ? 'accept' : 'reject';
     const gated = hitl[hitlSectionForDecision(decision)];
-    console.info(
-      `[HITL] ${cv.candidate.fullName} → décision système=${decision}, gardé=${gated} (${gated ? 'mise en file' : 'ENVOI AUTOMATIQUE'})`,
-    );
 
     // Section sous validation humaine → on rédige un BROUILLON et on met en
     // file (aucun envoi). Le Scheduler/brief est aussi différé (P5).
