@@ -72,6 +72,24 @@ describe('buildInterviewGuideUserPrompt', () => {
     expect(p).toContain('Frontend Engineer');
     expect(p).toContain(CANDIDATE.justification);
   });
+
+  it('candidat REPÊCHÉ (sous le seuil) : reformule, n’expose pas le verdict de rejet', () => {
+    const repeche: MailCandidate = {
+      ...CANDIDATE,
+      aboveThreshold: false,
+      justification: 'Écarté — critère obligatoire XRAY non rempli.',
+    };
+    const p = buildInterviewGuideUserPrompt({
+      candidate: repeche,
+      jobTitle: 'Frontend Engineer',
+      campaignId: 'CAMP-1',
+    });
+    expect(p).toMatch(/REPÊCHAGE|DÉCISION HUMAINE/);
+    // Le verdict d'écartage n'est PAS diffusé.
+    expect(p).not.toContain(repeche.justification);
+    // Les faiblesses deviennent des points à explorer, pas un motif de rejet.
+    expect(p).toContain('Points à explorer en entretien');
+  });
 });
 
 describe('buildInterviewGuideSystemPrompt', () => {

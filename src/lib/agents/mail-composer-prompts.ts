@@ -117,20 +117,34 @@ export function buildInterviewGuideUserPrompt(args: {
   campaignId: string;
 }): string {
   const c = args.candidate;
-  return [
+  // Un brief n'est généré QUE pour un candidat convoqué en entretien. S'il était
+  // sous le seuil (`aboveThreshold` false), c'est qu'il a été REPÊCHÉ par une
+  // décision humaine (basculement refus → acceptation). Il n'est donc PLUS
+  // écarté : on reformule en conséquence et on ne diffuse pas la narration de
+  // rejet (synthèse/verdict d'écartage).
+  const repechage = !c.aboveThreshold;
+  const lines: string[] = [
     `Poste : ${args.jobTitle ?? 'non précisé'} (campagne ${args.campaignId}).`,
     `Candidat : ${c.candidateName}.`,
-    `Score : ${c.score}/100.`,
+    `Score d'analyse : ${c.score}/100.`,
     '',
-    'Synthèse :',
+  ];
+  if (repechage) {
+    lines.push(
+      "CONTEXTE — DÉCISION HUMAINE (REPÊCHAGE) : le recruteur a DÉCIDÉ de recevoir ce candidat en entretien, alors que le pré-tri automatique l'avait initialement placé sous le seuil. Le candidat N'EST PLUS écarté/rejeté. NE le présente JAMAIS comme écarté, refusé, « sous le seuil » ou « non retenu ». Tout libellé de rejet dans la synthèse ci-dessous appartient au pré-tri AUTOMATIQUE qui a été OUTREPASSÉ — ignore-le. Le brief prépare un entretien normal : valide les points forts et explore (formulation neutre, bienveillante) les points que le pré-tri avait signalés.",
+      '',
+    );
+  }
+  lines.push(
+    'Synthèse du profil :',
     c.summary,
     '',
     `Points forts : ${c.strengths.join(' ; ')}`,
-    `Points d'attention : ${c.weaknesses.length > 0 ? c.weaknesses.join(' ; ') : 'aucun majeur'}`,
-    '',
-    'Verdict :',
-    c.justification,
-    '',
-    "Génère la trame d'entretien.",
-  ].join('\n');
+    `Points à explorer en entretien : ${c.weaknesses.length > 0 ? c.weaknesses.join(' ; ') : 'aucun majeur'}`,
+  );
+  if (!repechage) {
+    lines.push('', 'Verdict :', c.justification);
+  }
+  lines.push('', "Génère la trame d'entretien.");
+  return lines.join('\n');
 }
