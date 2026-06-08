@@ -540,3 +540,23 @@ describe('candidats : chaque analyse = un traitement DISTINCT (pas de fusion)', 
     expect(list.find((c) => c.id === 'u1')!.status).toBe('analyzed');
   });
 });
+
+describe('L1 — envoi auto (hors HITL) fait avancer le candidat', () => {
+  it('imap_outreach_mail (invite, sent) rapproché par uid → statut « invited »', () => {
+    const rows = [
+      entry({
+        id: 1,
+        action: 'imap_cv_analyzed',
+        campaignId: 'C1',
+        payload: { uid: 'u1', candidate: 'Ana', email: 'ana@x.fr', score: 80, aboveThreshold: true },
+      }),
+      entry({
+        id: 2,
+        action: 'imap_outreach_mail',
+        campaignId: 'C1',
+        payload: { uid: 'u1', mode: 'invite', status: 'sent' },
+      }),
+    ];
+    expect(journalToCandidatesList(rows)[0]!.status).toBe('invited');
+  });
+});

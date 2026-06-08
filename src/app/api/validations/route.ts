@@ -39,7 +39,9 @@ const CreateSchema = z.object({
   cvArtifactId: z.string().nullable().optional(),
   reportArtifactId: z.string().nullable().optional(),
   mailDraftArtifactId: z.string().nullable().optional(),
-  payload: z.record(z.string(), z.unknown()).optional(),
+  // L2 : `uid` (de l'analyse) OBLIGATOIRE dans le payload — c'est la clé de
+  // rapprochement métrique (exclusion + override d'issue). Le reste passe libre.
+  payload: z.object({ uid: z.string().min(1) }).passthrough(),
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -69,7 +71,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     mailDraftArtifactId: parsed.mailDraftArtifactId ?? null,
     confirmed: false,
     status: 'pending',
-    payload: parsed.payload ?? {},
+    payload: parsed.payload,
     createdAt: now,
     updatedAt: now,
     decidedAt: null,

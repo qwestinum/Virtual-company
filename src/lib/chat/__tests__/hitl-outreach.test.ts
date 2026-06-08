@@ -170,6 +170,8 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach', () => {
     expect(mailSends()).toHaveLength(2); // envois réels
     expect(mailDrafts()).toHaveLength(0);
     expect(at('/api/scheduler')).toHaveLength(1); // brief du seul accept
+    // L1 : le uid est transmis → la route journalisera l'outreach (avance dashboard).
+    expect(mailSends().every((c) => typeof c.body?.uid === 'string')).toBe(true);
   });
 
   it('toggle MIXTE (refus ON / accept OFF) : refus en file, accept auto', async () => {

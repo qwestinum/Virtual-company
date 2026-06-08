@@ -541,7 +541,17 @@ export async function dispatchPostAnalysisOutreach(args: {
 
   for (let index = 0; index < args.summary.perCV.length; index++) {
     const cv = args.summary.perCV[index];
-    const uid = args.uids[index] ?? `${args.campaignId}_${index}`;
+    // L2 : pas de faux uid fabriqué. Aligné sur summary.perCV ; absent =
+    // anomalie → on saute (ni file avec un uid bidon, ni envoi auto qui
+    // contournerait HITL).
+    const uid = args.uids[index];
+    if (!uid) {
+      console.error(
+        '[hitl] uid d’analyse manquant, candidat ignoré:',
+        cv.candidate.fullName,
+      );
+      continue;
+    }
     const mode = cv.scoringResult.status === 'accepted' ? 'invite' : 'reject';
     const decision: HitlDecision =
       cv.scoringResult.status === 'accepted' ? 'accept' : 'reject';
@@ -583,6 +593,7 @@ export async function dispatchPostAnalysisOutreach(args: {
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
         mode,
+        uid, // L1 : journalise l'outreach auto → le candidat avance au dashboard.
         // Frontière mail/scheduler (non migré, 6c-mail) : projection legacy.
         candidate: cvApplicationToMailCandidate(cv),
       };

@@ -18,6 +18,7 @@ import {
 } from '@/lib/agents/server/mail-composer-execute';
 import { AIProviderError } from '@/lib/ai/errors';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
+import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
 import { uploadArtifact } from '@/lib/storage/blob';
@@ -32,6 +33,12 @@ const RequestSchema = z.object({
   jobTitle: z.string().nullable(),
   mode: z.enum(['reject', 'invite']),
   candidate: MailCandidateSchema,
+  /**
+   * UID de l'analyse (rapprochement dashboard). Permet de journaliser
+   * `imap_outreach_mail` pour l'envoi AUTO (hors HITL) → le candidat avance à
+   * « invité »/« rejeté » comme via le poller IMAP.
+   */
+  uid: z.string().optional(),
   /**
    * Override optionnel. Si absent en mode 'invite', on lit
    * CAL_COM_EVENT_URL côté serveur. Si rien n'est configuré, on
@@ -255,6 +262,27 @@ async function finalizeSend(
   } catch (err) {
     if (!(err instanceof SupabaseNotConfiguredError)) {
       console.error('[mail-composer] insertArtifactMeta failed', err);
+    }
+  }
+
+  // Journalise l'outreach UNIQUEMENT pour l'envoi AUTO (hors HITL) : ni brouillon
+  // (`draft`), ni override HITL (`mail`, déjà comptabilisé par `hitl_validation_sent`).
+  // Permet au dashboard de faire avancer le candidat (clé par `uid`) à
+  // « invité »/« rejeté », comme le poller IMAP. Best-effort.
+  if (!parsed.draft && !parsed.mail && parsed.uid) {
+    try {
+      await appendJournalEntry({
+        action: 'imap_outreach_mail',
+        actor: 'manager-chat',
+        campaignId: parsed.campaignId.startsWith('TASK-')
+          ? null
+          : parsed.campaignId,
+        payload: { uid: parsed.uid, mode: parsed.mode, status },
+      });
+    } catch (err) {
+      if (!(err instanceof SupabaseNotConfiguredError)) {
+        console.error('[mail-composer] journal outreach failed', err);
+      }
     }
   }
 
