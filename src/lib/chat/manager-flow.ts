@@ -520,7 +520,7 @@ export async function dispatchCVBatch(args: {
  * Le lien Cal.com vient de CAL_COM_EVENT_URL côté env. Si absent,
  * placeholder visible dans les mails et la bulle.
  */
-async function dispatchPostAnalysisOutreach(args: {
+export async function dispatchPostAnalysisOutreach(args: {
   campaignId: string;
   jobTitle: string | null;
   summary: CVBatchSummary;
