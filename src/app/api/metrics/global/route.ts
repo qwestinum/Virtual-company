@@ -72,6 +72,35 @@ export async function GET(): Promise<NextResponse> {
     }),
   );
 
+  // DIAGNOSTIC TEMPORAIRE (HITL) — expose les clés de rapprochement pour
+  // comprendre pourquoi un candidat validé ne réapparaît pas. À retirer.
+  const hitlDebug = {
+    pendingKeys: [...pendingKeys],
+    analyzed: result.rows
+      .filter((r) => r.action === 'imap_cv_analyzed')
+      .map((r) => ({
+        key: hitlCandidateKey(
+          String(r.payload?.candidate ?? ''),
+          r.campaignId,
+          typeof r.payload?.email === 'string' ? r.payload.email : null,
+        ),
+        name: r.payload?.candidate,
+        aboveThreshold: r.payload?.aboveThreshold,
+      })),
+    sent: result.rows
+      .filter((r) => r.action === 'hitl_validation_sent')
+      .map((r) => ({
+        key: hitlCandidateKey(
+          String(r.payload?.candidateName ?? ''),
+          r.campaignId,
+          typeof r.payload?.candidateEmail === 'string'
+            ? r.payload.candidateEmail
+            : null,
+        ),
+        decision: r.payload?.decision,
+      })),
+  };
+
   return NextResponse.json({
     offline: false,
     kpis: {
@@ -81,5 +110,6 @@ export async function GET(): Promise<NextResponse> {
     agents: journalToAgentMetrics(result.rows, agentIds),
     candidates,
     activity: journalToActivityFeed(result.rows, 20),
+    _hitlDebug: hitlDebug,
   });
 }
