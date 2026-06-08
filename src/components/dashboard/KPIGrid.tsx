@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Grille des 6 KPIs principaux (Session 6).
+ * Grille des KPIs principaux (Session 6 ; + « À valider » HITL).
  *
  * Chaque carte montre une icône colorée, une valeur animée et un
  * label. La grille passe de 6 → 3 → 2 colonnes selon la largeur
@@ -45,6 +45,12 @@ export function KPIGrid({ kpis }: KPIGridProps) {
       color: 'teal',
     },
     { label: 'GO', value: kpis.go, icon: '✅', color: 'green' },
+    {
+      label: 'À valider',
+      value: kpis.awaitingValidation,
+      icon: '⏳',
+      color: 'yellow',
+    },
     {
       label: 'Conversion',
       value: kpis.conversion,

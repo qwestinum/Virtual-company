@@ -23,6 +23,7 @@ import {
 } from '@/lib/dashboard/derive-metrics';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { fetchMetricsRows } from '@/lib/db/repos/metrics';
+import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { getAgentOrder } from '@/lib/agents/registry';
 
@@ -59,9 +60,13 @@ export async function GET(): Promise<NextResponse> {
     role: c.campaignId ? (campaignNameById.get(c.campaignId) ?? null) : null,
   }));
 
+  // HITL — profondeur de la file de validation (état « à valider »). Dégrade
+  // à 0 si la table n'existe pas (migration HITL pas passée).
+  const awaitingValidation = (await listPendingValidations()).length;
+
   return NextResponse.json({
     offline: false,
-    kpis: journalToGlobalKPIs(result.rows),
+    kpis: { ...journalToGlobalKPIs(result.rows), awaitingValidation },
     agents: journalToAgentMetrics(result.rows, agentIds),
     candidates,
     activity: journalToActivityFeed(result.rows, 20),

@@ -46,6 +46,7 @@ export function DashboardView() {
     go: 0,
     conversion: 0,
     costEstimate: 0,
+    awaitingValidation: 0,
   };
   const candidates = data?.candidates ?? [];
   const agents = data?.agents ?? [];

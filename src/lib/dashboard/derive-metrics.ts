@@ -33,6 +33,7 @@ const COST_PER_ACTION: Record<string, number> = {
   imap_outreach_mail: 0.025, // composition email candidat
   imap_outreach_brief: 0.045, // composition brief DRH
   job_writer_rendered: 0.06, // rédaction d'une annonce
+  hitl_validation_sent: 0.025, // envoi d'un mail validé (HITL)
 };
 
 // ─── Mapping action → agent ────────────────────────────────────────────
@@ -42,6 +43,7 @@ const ACTION_TO_AGENT: Record<string, string> = {
   imap_outreach_mail: 'agent.mail-composer',
   imap_outreach_brief: 'agent.mail-composer',
   job_writer_rendered: 'agent.job-writer',
+  hitl_validation_sent: 'agent.mail-composer',
   // Actions UI directes (paused, threshold_changed, …) ne sont pas
   // attribuées à un agent — elles peuplent le feed sans alimenter
   // les compteurs de tâches.
@@ -56,6 +58,12 @@ export type GlobalKPIs = {
   go: number;
   conversion: number; // % entier
   costEstimate: number; // €
+  /**
+   * HITL — validations en attente (mails non encore envoyés). N'est PAS dérivé
+   * du journal (c'est l'état de la file `pending_validations`) : défaut 0 ici,
+   * renseigné par la route /api/metrics/global.
+   */
+  awaitingValidation: number;
 };
 
 export type AgentMetric = {
@@ -183,6 +191,7 @@ export function journalToGlobalKPIs(rows: JournalEntry[]): GlobalKPIs {
     go,
     conversion,
     costEstimate: roundCurrency(cost),
+    awaitingValidation: 0, // renseigné par la route depuis la file pending_validations
   };
 }
 

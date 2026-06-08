@@ -30,7 +30,17 @@ describe('journalToGlobalKPIs', () => {
       go: 0,
       conversion: 0,
       costEstimate: 0,
+      awaitingValidation: 0,
     });
+  });
+
+  it('HITL — un envoi validé (hitl_validation_sent) est costé', () => {
+    const kpis = journalToGlobalKPIs([
+      entry({ id: 1, action: 'hitl_validation_sent' }),
+    ]);
+    expect(kpis.costEstimate).toBeGreaterThan(0);
+    // awaitingValidation reste 0 ici (renseigné par la route, pas le journal).
+    expect(kpis.awaitingValidation).toBe(0);
   });
 
   it('compte CV reçus, shortlist via candidats au-dessus du seuil', () => {
