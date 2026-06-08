@@ -21,7 +21,11 @@ if (typeof window !== 'undefined') {
   );
 }
 
-const DEFAULT_CHAT_MODEL = 'gpt-4o-mini';
+// Modèle chat par défaut (pour tout appel qui ne passe pas `model`
+// explicitement). Surchargeable via `OPENAI_CHAT_MODEL` dans .env.local
+// pour tester un autre modèle (ex. gpt-4o) sans toucher au code — l'env
+// étant figé au démarrage, un redémarrage du serveur dev est requis.
+const DEFAULT_CHAT_MODEL = process.env.OPENAI_CHAT_MODEL?.trim() || 'gpt-4o-mini';
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
