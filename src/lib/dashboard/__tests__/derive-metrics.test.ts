@@ -501,3 +501,58 @@ describe('HITL — candidats & shortlisté (validation suspendue)', () => {
     expect(journalToCandidatesList(rows, pending)).toHaveLength(0);
   });
 });
+
+describe('dédup candidats (ré-analyses du même CV)', () => {
+  it('ré-analyser le même candidat → UNE entrée (la plus récente gagne)', () => {
+    const rows = [
+      entry({
+        id: 1,
+        action: 'imap_cv_analyzed',
+        campaignId: 'C1',
+        createdAt: '2026-06-08T10:00:00.000Z',
+        payload: { uid: 'u1', candidate: 'Imad', email: 'imad@x.fr', score: 40, aboveThreshold: false },
+      }),
+      entry({
+        id: 2,
+        action: 'imap_cv_analyzed',
+        campaignId: 'C1',
+        createdAt: '2026-06-08T11:00:00.000Z',
+        payload: { uid: 'u2', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
+      }),
+    ];
+    const list = journalToCandidatesList(rows);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.score).toBe(85);
+    expect(list[0]!.recommendation).toBe('go');
+    expect(journalToGlobalKPIs(rows).shortlisted).toBe(1);
+  });
+
+  it('un marquage DRH sur un ANCIEN uid s’applique à l’entrée fusionnée', () => {
+    const rows = [
+      entry({
+        id: 1,
+        action: 'imap_cv_analyzed',
+        campaignId: 'C1',
+        createdAt: '2026-06-08T10:00:00.000Z',
+        payload: { uid: 'u1', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
+      }),
+      entry({
+        id: 2,
+        action: 'candidate_interview_marked',
+        createdAt: '2026-06-08T10:30:00.000Z',
+        payload: { uid: 'u1', status: 'realized' },
+      }),
+      entry({
+        id: 3,
+        action: 'imap_cv_analyzed',
+        campaignId: 'C1',
+        createdAt: '2026-06-08T11:00:00.000Z',
+        payload: { uid: 'u2', candidate: 'Imad', email: 'imad@x.fr', score: 85, aboveThreshold: true },
+      }),
+    ];
+    const list = journalToCandidatesList(rows);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.interviewMarked).toBe('realized');
+    expect(list[0]!.status).toBe('interview_done');
+  });
+});
