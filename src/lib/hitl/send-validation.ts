@@ -123,7 +123,12 @@ export async function sendValidation(
   }
   const mode = v.decision === 'accept' ? 'invite' : 'reject';
 
-  // 1. Envoi du mail candidat (contenu édité, override → pas de re-composition).
+  // 1. Tentative d'envoi du mail candidat (best-effort). « Envoyer » EST la
+  //    validation humaine de la décision → on FINALISE toujours (étape 3), même
+  //    si l'email ne part pas (Resend non configuré, pas d'email candidat…). On
+  //    informe juste de l'issue d'envoi. Sinon le HITL serait indémoable sans
+  //    Resend et le candidat resterait éternellement « à valider ».
+  let mailStatus = 'unknown';
   try {
     const res = await fetch('/api/mail-composer', {
       method: 'POST',
@@ -137,23 +142,10 @@ export async function sendValidation(
         mail: edited,
       }),
     });
-    const data = (await res.json()) as { status?: string; error?: string | null };
-    if (!res.ok || data.status !== 'sent') {
-      return {
-        ok: false,
-        message:
-          data.status === 'skipped_no_email'
-            ? 'Pas d’email candidat — envoi impossible.'
-            : data.status === 'skipped_no_config'
-              ? 'Service email non configuré — envoi impossible.'
-              : `Échec de l’envoi (${data.error ?? data.status ?? 'erreur'}).`,
-      };
-    }
-  } catch (err) {
-    return {
-      ok: false,
-      message: `Erreur réseau à l’envoi (${err instanceof Error ? err.message : 'inconnue'}).`,
-    };
+    const data = (await res.json()) as { status?: string };
+    mailStatus = res.ok ? (data.status ?? 'unknown') : `http_${res.status}`;
+  } catch {
+    mailStatus = 'network_error';
   }
 
   // 2. Brief DRH pour un accept (best-effort, ne bloque pas).
@@ -174,20 +166,40 @@ export async function sendValidation(
     }
   }
 
-  // 3. Marque la validation envoyée + journalise.
+  // 3. FINALISE : marque la validation envoyée + journalise (le candidat
+  //    réapparaît au dashboard avec la bonne issue, compteurs à jour).
   try {
-    await fetch(`/api/validations/${encodeURIComponent(v.id)}/send`, {
-      method: 'POST',
-    });
+    const res = await fetch(
+      `/api/validations/${encodeURIComponent(v.id)}/send`,
+      { method: 'POST' },
+    );
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `Décision non enregistrée (HTTP ${res.status}). Réessaie.`,
+      };
+    }
   } catch {
-    // Le mail est parti ; l'échec de marquage est non bloquant côté DRH.
+    return {
+      ok: false,
+      message: 'Erreur réseau — décision non enregistrée. Réessaie.',
+    };
   }
 
-  return {
-    ok: true,
-    message:
+  // 4. Message selon l'issue d'ENVOI (la décision, elle, est validée).
+  const verb = v.decision === 'accept' ? 'Acceptation validée' : 'Refus validé';
+  let tail: string;
+  if (mailStatus === 'sent') {
+    tail =
       v.decision === 'accept'
-        ? 'Invitation envoyée au candidat (brief DRH inclus).'
-        : 'Refus envoyé au candidat.',
-  };
+        ? '— invitation envoyée (brief DRH inclus).'
+        : '— refus envoyé au candidat.';
+  } else if (mailStatus === 'skipped_no_email') {
+    tail = '— pas d’email candidat, mail à transmettre manuellement.';
+  } else if (mailStatus === 'skipped_no_config') {
+    tail = '— service email non configuré, mail non envoyé.';
+  } else {
+    tail = '— l’email n’a pas pu partir, mais la décision est enregistrée.';
+  }
+  return { ok: true, message: `${verb} ${tail}` };
 }
