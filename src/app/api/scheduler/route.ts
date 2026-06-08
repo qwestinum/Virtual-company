@@ -54,6 +54,10 @@ function buildDrhEmailHtml(args: {
   questions: Array<{ theme: string; question: string }>;
 }): string {
   const c = args.candidate;
+  // Repêchage : le candidat reçoit un brief alors qu'il était sous le seuil →
+  // décision humaine. On NE présente PAS le verdict d'écartage (il ne s'applique
+  // plus) ; on note le repêchage à la place.
+  const repechage = !c.aboveThreshold;
   const questionsHtml = args.questions
     .map(
       (q) =>
@@ -71,8 +75,9 @@ function buildDrhEmailHtml(args: {
     `</ul>`,
     '<h3>Synthèse</h3>',
     `<p>${escapeHtml(c.summary)}</p>`,
-    '<h3>Verdict CV Analyzer</h3>',
-    `<p>${escapeHtml(c.justification)}</p>`,
+    repechage
+      ? '<h3>Décision</h3><p>Candidat <strong>repêché par le recruteur</strong> : reçu en entretien bien que le pré-tri automatique l’ait placé sous le seuil. Le verdict d’écartage du pré-tri ne s’applique plus.</p>'
+      : `<h3>Verdict CV Analyzer</h3><p>${escapeHtml(c.justification)}</p>`,
     '<h3>Trame d\'entretien proposée</h3>',
     `<ul>${questionsHtml}</ul>`,
     `<p>Le candidat a reçu un lien pour réserver un créneau : <a href="${escapeAttr(args.bookingUrl)}">${escapeHtml(args.bookingUrl)}</a>. Tu seras notifié·e par Cal.com dès la réservation.</p>`,
@@ -91,6 +96,7 @@ function buildDrhMarkdownTrace(args: {
   error?: string;
 }): string {
   const c = args.candidate;
+  const repechage = !c.aboveThreshold;
   const lines = [
     `# Brief entretien — ${c.candidateName}`,
     '',
@@ -107,8 +113,13 @@ function buildDrhMarkdownTrace(args: {
     '## Synthèse',
     c.summary,
     '',
-    '## Verdict CV Analyzer',
-    c.justification,
+    // Repêché : pas de verdict d'écartage (il ne s'applique plus).
+    ...(repechage
+      ? [
+          '## Décision',
+          'Candidat **repêché par le recruteur** : reçu en entretien malgré un pré-tri sous le seuil. Le verdict d’écartage ne s’applique plus.',
+        ]
+      : ['## Verdict CV Analyzer', c.justification]),
     '',
     "## Trame d'entretien proposée",
   ];

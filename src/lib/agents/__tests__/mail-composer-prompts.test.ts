@@ -99,4 +99,11 @@ describe('buildInterviewGuideSystemPrompt', () => {
     expect(p).toContain('"theme"');
     expect(p).toContain('"question"');
   });
+
+  it('interdit l’extrapolation/hallucination de domaine ou d’expérience', () => {
+    const p = buildInterviewGuideSystemPrompt();
+    expect(p).toMatch(/anti-hallucination|ANCRAGE STRICT/i);
+    expect(p).toMatch(/extrapolation/i);
+    expect(p).toMatch(/VÉRIFIER/);
+  });
 });
