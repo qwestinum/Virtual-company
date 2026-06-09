@@ -55,13 +55,25 @@ export function requireEmailClient(): EmailClient {
   return c;
 }
 
+/**
+ * Pièce jointe email. `content` = contenu encodé en base64 (Resend accepte
+ * un base64 ou un Buffer ; on standardise sur base64 pour la sérialisation).
+ */
+export type EmailAttachment = {
+  filename: string;
+  content: string;
+};
+
 export type SendEmailInput = {
-  to: string;
+  /** Destinataire(s). Resend accepte une adresse ou un tableau d'adresses. */
+  to: string | string[];
   subject: string;
   /** Contenu HTML. Le texte brut est dérivé automatiquement. */
   html: string;
   /** Adresse de réponse (optionnel) — typiquement EMAIL_DRH. */
   replyTo?: string;
+  /** Pièces jointes (optionnel) — ex. PDF de rapport / audit. */
+  attachments?: EmailAttachment[];
 };
 
 export type SendEmailResult = {
@@ -91,6 +103,9 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       subject: input.subject,
       html: input.html,
       ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+      ...(input.attachments && input.attachments.length > 0
+        ? { attachments: input.attachments }
+        : {}),
     });
     if (error) {
       return { ok: false, messageId: null, error: error.message };

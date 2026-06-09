@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
    * pour polyfiller DOMMatrix/ImageData/Path2D nous-mêmes — l'auto-polyfill
    * de pdfjs ne survit pas à l'encapsulation « external module » en prod.
    */
-  serverExternalPackages: ['pdf-parse', '@napi-rs/canvas'],
+  serverExternalPackages: ['pdf-parse', '@napi-rs/canvas', '@react-pdf/renderer'],
   /**
    * Autorise les querystrings sur les images locales — utilisé pour
    * busting de cache après remplacement d'un asset (ex. `logo-orqa.png`).

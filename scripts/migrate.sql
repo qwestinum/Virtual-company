@@ -442,3 +442,49 @@ alter table public.campaigns
 insert into public.sites (id, name, type)
   values ('SITE-DEFAULT', 'Site par défaut', 'Par défaut')
   on conflict (id) do nothing;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Reporting — Audit candidat : persistance des analyses CV
+-- ──────────────────────────────────────────────────────────────────────
+-- Source de vérité durable des candidatures analysées (cf.
+-- docs/specs/reporting.md §5.3). Avant cette table, seul un RÉSUMÉ vivait
+-- dans le journal (nom, email, score) ; le détail critère-par-critère du
+-- ScoreResult disparaissait. L'audit candidat — qui matérialise la
+-- « traçabilité native d'ORQA » — a besoin de la candidature COMPLÈTE.
+--
+-- Une ligne = UNE analyse (un traitement distinct). Pas de déduplication
+-- par email : chaque analyse est un traitement à part entière (clé = id).
+-- `application` (jsonb) porte le CVApplication intégral (candidate +
+-- scoringResult.breakdown + narration) pour la vue détaillée ; les colonnes
+-- scalaires dénormalisées servent le filtrage (recherche, campagne, statut,
+-- période). `campaign_id` est un simple text (pas de FK, comme journal) :
+-- lenient si la campagne n'est pas persistée (store partiellement volatile).
+
+create table if not exists public.candidate_analyses (
+  id              text primary key,
+  campaign_id     text,
+  candidate_name  text not null,
+  candidate_email text,
+  file_name       text not null,
+  source          text not null,
+  received_at     timestamptz not null,
+  total_score     int not null,
+  status          text not null check (status in ('accepted','rejected')),
+  criteria_version text not null,
+  computed_at     timestamptz not null,
+  application     jsonb not null,
+  created_at      timestamptz not null default now()
+);
+
+create index if not exists candidate_analyses_created_at_idx
+  on public.candidate_analyses (created_at desc);
+
+create index if not exists candidate_analyses_campaign_idx
+  on public.candidate_analyses (campaign_id, created_at desc);
+
+create index if not exists candidate_analyses_status_idx
+  on public.candidate_analyses (status, created_at desc);
+
+-- Recherche fuzzy sur le nom du candidat (sélection audit).
+create index if not exists candidate_analyses_name_trgm_idx
+  on public.candidate_analyses using gin (candidate_name gin_trgm_ops);

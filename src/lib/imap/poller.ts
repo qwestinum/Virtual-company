@@ -38,6 +38,7 @@ import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
 import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
+import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
   listCampaignsForMailbox,
@@ -539,6 +540,15 @@ async function processEmailAttachment(args: {
       publicUrl,
       taskId: isTaskOwner ? campaign.id : undefined,
     },
+  });
+
+  // Persiste l'analyse COMPLÈTE pour l'audit candidat (cf.
+  // docs/specs/reporting.md §5.3). Id unique par CV reçu = mailbox + uid.
+  // Best-effort : avale Supabase non configuré, ne casse pas le poll.
+  await persistCandidateAnalysis({
+    id: `can_imap_${mailbox.id}_${uid}`,
+    campaignId: isTaskOwner ? null : campaign.id,
+    application,
   });
 
   // Round 5 fix — déclenche le mail au candidat (refus ou invitation)

@@ -5,6 +5,7 @@ import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { ScoringError } from '@/lib/scoring';
 import { AIProviderError } from '@/lib/ai/errors';
+import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
@@ -162,6 +163,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       campaignId,
       emailStatus: emailResolution.status,
       fileName: extracted.fileName,
+      application,
+    });
+
+    // Persiste l'analyse COMPLÈTE pour l'audit candidat (traçabilité
+    // native — cf. docs/specs/reporting.md §5.3). Best-effort : un échec
+    // (Supabase non configuré en démo locale) ne casse pas l'analyse.
+    await persistCandidateAnalysis({
+      id: taskId,
+      campaignId: campaignId ?? null,
       application,
     });
 

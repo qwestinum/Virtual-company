@@ -8,11 +8,12 @@
  */
 
 import type { CampaignStatus } from '@/types/campaign-status';
+import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { PublicationChannel } from '@/types/publication-channel';
-import type { ScoringSheet } from '@/types/scoring';
+import type { CandidateStatus, ScoringSheet } from '@/types/scoring';
 
 export type CampaignRow = {
   id: string;
@@ -64,6 +65,28 @@ export type DonneurOrdreRow = {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/**
+ * Reporting — une analyse CV persistée (cf. docs/specs/reporting.md §5.3,
+ * table `candidate_analyses`). `application` porte le CVApplication intégral
+ * (sérialisé en jsonb) ; les colonnes scalaires dénormalisées servent le
+ * filtrage de la sélection audit.
+ */
+export type CandidateAnalysisRow = {
+  id: string;
+  campaign_id: string | null;
+  candidate_name: string;
+  candidate_email: string | null;
+  file_name: string;
+  source: CVSource;
+  received_at: string;
+  total_score: number;
+  status: CandidateStatus;
+  criteria_version: string;
+  computed_at: string;
+  application: CVApplication;
+  created_at: string;
 };
 
 export type FdpArchivedRow = {
