@@ -414,3 +414,90 @@ describe('remapVerdictsToCriteria', () => {
     expect(out).toHaveLength(0);
   });
 });
+
+describe('durcissement anti-extrapolation de domaine (verdicts)', () => {
+  beforeEach(() => {
+    chatCompleteJsonMock.mockReset();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // 1. Les 3 axes du durcissement sont présents dans le prompt système verdicts.
+  it('le prompt verdicts porte les 3 axes : discipline de domaine, biais conservateur, citation ancrée', async () => {
+    const { buildVerdictsSystemPrompt } = await import(
+      '@/lib/agents/cv-extraction-prompts'
+    );
+    const sys = buildVerdictsSystemPrompt();
+
+    // Axe 1 — discipline du domaine : identifier le mot-clé de domaine du critère.
+    expect(sys).toMatch(/DISCIPLINE DU DOMAINE/);
+    expect(sys).toMatch(/mot\(s\)-clé\(s\) de DOMAINE|qualificatif de domaine/i);
+    // Axe 2 — biais conservateur : non_verifiable par défaut, sur les 4 verdicts.
+    expect(sys).toMatch(/BIAIS CONSERVATEUR/);
+    expect(sys).toMatch(/quatre verdicts SANS EXCEPTION/i);
+    expect(sys).toMatch(/recruteur humain/i);
+    // Axe 3 — citation contenant explicitement le domaine du critère.
+    expect(sys).toMatch(/CITATION ANCRÉE SUR LE DOMAINE/);
+    expect(sys).toMatch(/contenant EXPLICITEMENT ce domaine/i);
+  });
+
+  // 2. Les 3 exemples négatifs couvrent le triangle de l'extrapolation :
+  //    domaine étranger / durée trop courte / compétence transversale.
+  it('le prompt verdicts contient les 3 exemples négatifs d’extrapolation (recrutement)', async () => {
+    const { buildVerdictsSystemPrompt } = await import(
+      '@/lib/agents/cv-extraction-prompts'
+    );
+    const sys = buildVerdictsSystemPrompt();
+
+    expect(sys).toMatch(/EXEMPLES — extrapolation de domaine à PROSCRIRE/);
+    // (1) domaine totalement étranger.
+    expect(sys).toContain('qualité logicielle');
+    // (2) durée trop courte sur le bon domaine.
+    expect(sys).toMatch(/Stage de 6 mois en RH/);
+    // (3) compétence transversale (management) dont on infère le recrutement.
+    expect(sys).toMatch(/management d'équipe technique/);
+    // Format MAUVAIS/BON présent.
+    expect(sys).toContain('❌ MAUVAIS');
+    expect(sys).toContain('✓ BON');
+  });
+
+  // 3. Le prompt durci est réellement ACHEMINÉ au LLM dans le pipeline.
+  //    On ne valide PAS le verdict produit (mocké, donc non significatif) : la
+  //    validation comportementale (non_verifiable au lieu de satisfait) se fait
+  //    au bench manuel sur CV réels (règle de pureté : aucun appel LLM en test).
+  it('achemine la consigne de discipline de domaine au LLM lors de la phase verdicts', async () => {
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(jsonResult(VERDICTS_OK))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+
+    const { analyzeCVApplication } = await import(
+      '@/lib/agents/server/cv-application-analyze'
+    );
+    // CV-piège : domaine étranger (qualité logicielle) pour le critère recrutement.
+    await analyzeCVApplication({
+      ...BASE_INPUT,
+      cvText: '15 ans d’expérience en qualité logicielle. jean.test@mail.com',
+      sheet: sheet(),
+    });
+
+    // Séquence des appels chatCompleteJson : 0=candidat, 1=relevé (ledger),
+    // 2=VERDICTS, 3=narration. L'index 2 est donc l'appel des verdicts — ne pas
+    // réordonner ces phases dans analyzeCVApplication sans mettre à jour cet index.
+    expect(chatCompleteJsonMock.mock.calls.length).toBeGreaterThanOrEqual(3);
+    const verdictsCall = chatCompleteJsonMock.mock.calls[2] as [
+      Array<{ role: string; content: string }>,
+      unknown,
+      unknown,
+    ];
+    const verdictsSystemPrompt = verdictsCall[0][0].content;
+
+    // Garde-fou : on est bien sur le prompt verdicts (pas candidat/ledger/narration).
+    expect(verdictsSystemPrompt).toMatch(/évaluateur par critère/i);
+    // Le durcissement anti-extrapolation est bien dans le prompt envoyé.
+    expect(verdictsSystemPrompt).toMatch(/DISCIPLINE DU DOMAINE/);
+    expect(verdictsSystemPrompt).toMatch(/BIAIS CONSERVATEUR/);
+  });
+});
