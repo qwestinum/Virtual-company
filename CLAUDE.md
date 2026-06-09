@@ -72,7 +72,16 @@ Trois niveaux progressifs (L1 récupération, L2 suggestion, L3 inspiration) —
 - **Fonctions/variables** : camelCase
 - **Types/Interfaces** : PascalCase préfixé (`AgentContract`, `TaskInput`, `CampaignBrief`)
 - **Fichiers utilitaires** : kebab-case (`ai-provider.ts`, `job-descriptions.ts`)
-- **Identifiants métier** : `CAMP-XXXX` pour les campagnes, `TASK-XXXX` pour les sollicitations hors campagne (voir spec §3.2)
+- **Identifiants métier** : `CAMP-XXXX` pour les campagnes, `TASK-XXXX` pour les sollicitations hors campagne (voir spec §3.2), `SITE-XXXX` pour les sites (`SITE-DEFAULT` = site par défaut), `DO-XXXX` pour les donneurs d'ordre
+
+## Modèle de données — donneur d'ordre & site (préparation reporting)
+
+Deux dimensions métier rattachées à une campagne, introduites comme pré-requis du module Reporting (source de vérité : `docs/specs/reporting.md` §2). Toute session future doit en tenir compte.
+
+- **Donneur d'ordre** : la personne (interne à l'organisation **cliente**) qui a **initié** une campagne. **À ne pas confondre avec l'utilisateur ORQA** qui manipule l'interface. Une campagne a **au plus un** donneur d'ordre. Champs : nom (obligatoire), prénom, email pro, rôle/fonction (texte libre).
+- **Site** : l'implantation géographique/organisationnelle de rattachement d'une campagne (orgs multi-sites). Une campagne a **au plus un** site. Un site **par défaut** (`SITE-DEFAULT`, seedé par `scripts/migrate.sql`) sert les organisations mono-site. Champs : nom (obligatoire), type/catégorie, ville, code postal.
+
+Implémentation : types `src/types/organisation.ts` ; rows + colonnes `campaigns.site_id` / `campaigns.donneur_ordre_id` (**nullable**, `on delete set null`) dans `src/lib/db/types.ts` + `scripts/migrate.sql` ; repos `src/lib/db/repos/{sites,donneurs-ordre}.ts` ; API `src/app/api/{sites,donneurs-ordre}` ; admin légère (CRUD + archivage soft) dans `/settings` (`SitesManager`, `DonneursOrdreManager`). Les deux liens campagne sont **nullable** (migration douce : vides pour les campagnes historiques, à remplir via l'admin ou — phase ultérieure — la capture conversationnelle au brief Temps 1).
 
 ## Ce que Claude Code doit savoir
 

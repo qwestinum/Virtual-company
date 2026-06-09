@@ -78,6 +78,14 @@ export type ActiveCampaign = {
    * (non persistée pour l'instant — re-dérivée des artefacts au chargement).
    */
   lifecycle: CampaignLifecycle;
+  /**
+   * Reporting (préparation) — dimensions optionnelles rattachées à la
+   * campagne (donneur d'ordre / site). Nullable : capture au brief
+   * (Temps 1) ou via l'admin /settings ; vides pour les campagnes
+   * historiques. Cf. docs/specs/reporting.md §2.
+   */
+  siteId: string | null;
+  donneurOrdreId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -95,6 +103,8 @@ export type CampaignsState = {
     sourcesConfirmed?: boolean;
     sources?: CVSource[];
     threshold?: number;
+    siteId?: string | null;
+    donneurOrdreId?: string | null;
   }) => ActiveCampaign;
   /**
    * Session 6 — ajuste le seuil d'acceptation d'une campagne. Le
@@ -292,6 +302,9 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       input.sources ?? existing?.sources ?? [];
     const threshold =
       input.threshold ?? existing?.threshold ?? 75;
+    const siteId = input.siteId ?? existing?.siteId ?? null;
+    const donneurOrdreId =
+      input.donneurOrdreId ?? existing?.donneurOrdreId ?? null;
     const lifecycle = syncLifecycle({
       fdp: input.fdp,
       scoringSheet,
@@ -312,6 +325,8 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       sourcesConfirmed,
       sources,
       threshold,
+      siteId,
+      donneurOrdreId,
       status,
       lifecycle,
       createdAt: existing?.createdAt ?? now,

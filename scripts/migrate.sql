@@ -381,3 +381,64 @@ drop trigger if exists pending_validations_touch_updated_at on public.pending_va
 create trigger pending_validations_touch_updated_at
   before update on public.pending_validations
   for each row execute function public.touch_updated_at();
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Reporting (préparation) — donneur d'ordre & site
+-- ──────────────────────────────────────────────────────────────────────
+-- Deux dimensions consommées par le module Reporting (cf.
+-- docs/specs/reporting.md §2). Liens NULLABLE sur campaigns : capture au
+-- brief (Temps 1) ou via /settings ; vides pour les campagnes historiques.
+-- Tables créées AVANT l'alter des FK (ordre top-to-bottom du fichier).
+-- Soft-archive via archived_at. RLS non posée (cohérent avec les autres
+-- tables — accès serveur via service role, MVP mono-utilisateur).
+
+create table if not exists public.sites (
+  id           text primary key,
+  name         text not null,
+  type         text,
+  city         text,
+  postal_code  text,
+  archived_at  timestamptz,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+create index if not exists sites_archived_at_idx
+  on public.sites (archived_at);
+
+drop trigger if exists sites_touch_updated_at on public.sites;
+create trigger sites_touch_updated_at
+  before update on public.sites
+  for each row execute function public.touch_updated_at();
+
+create table if not exists public.donneurs_ordre (
+  id           text primary key,
+  first_name   text,
+  last_name    text not null,
+  email        text,
+  role         text,
+  archived_at  timestamptz,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+create index if not exists donneurs_ordre_archived_at_idx
+  on public.donneurs_ordre (archived_at);
+
+drop trigger if exists donneurs_ordre_touch_updated_at on public.donneurs_ordre;
+create trigger donneurs_ordre_touch_updated_at
+  before update on public.donneurs_ordre
+  for each row execute function public.touch_updated_at();
+
+-- Liens nullable sur campaigns. ON DELETE SET NULL : supprimer un site /
+-- donneur d'ordre détache la campagne (jamais de cascade sur les campagnes).
+alter table public.campaigns
+  add column if not exists site_id text references public.sites(id) on delete set null;
+alter table public.campaigns
+  add column if not exists donneur_ordre_id text references public.donneurs_ordre(id) on delete set null;
+
+-- Site « par défaut » pour les organisations mono-site (rattachement sans
+-- friction). Idempotent.
+insert into public.sites (id, name, type)
+  values ('SITE-DEFAULT', 'Site par défaut', 'Par défaut')
+  on conflict (id) do nothing;

@@ -39,6 +39,9 @@ const CampaignSchema = z.object({
   // de déploiement qui n'enverrait pas le champ. Défauts côté repo.
   threshold: z.number().int().min(0).max(100).optional(),
   sources: z.array(CVSourceSchema).optional(),
+  // Reporting (préparation) — liens nullable site / donneur d'ordre.
+  siteId: z.string().nullable().optional(),
+  donneurOrdreId: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -85,6 +88,8 @@ export async function PUT(request: Request): Promise<NextResponse> {
       ...parsed,
       threshold: parsed.threshold ?? 75,
       sources,
+      siteId: parsed.siteId ?? null,
+      donneurOrdreId: parsed.donneurOrdreId ?? null,
       // lifecycle non persisté (campaignToRow le drop) — fourni pour
       // satisfaire le type ActiveCampaign ; re-dérivé au chargement.
       lifecycle: reconcileLifecycle(null, {

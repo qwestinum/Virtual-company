@@ -37,6 +37,8 @@ function buildCampaign(overrides: Partial<ActiveCampaign> = {}): ActiveCampaign 
     sourcesConfirmed: false,
     sources: ['manual'],
     threshold: 75,
+    siteId: null,
+    donneurOrdreId: null,
     status: 'in_progress',
     lifecycle: buildLifecycle(),
     createdAt: '2026-05-01T00:00:00Z',
@@ -91,6 +93,9 @@ describe('campaigns repo', () => {
     // Ligne sans `sources` → [] (PAS de défaut 'manual' réinjecté à la
     // réhydratation, sinon une campagne sans flux redeviendrait activable).
     expect(result[0]!.sources).toEqual([]);
+    // Reporting (préparation) — ligne sans liens → null (campagne historique).
+    expect(result[0]!.siteId).toBeNull();
+    expect(result[0]!.donneurOrdreId).toBeNull();
   });
 
   it('upserts a campaign with onConflict id', async () => {
@@ -118,10 +123,19 @@ describe('campaigns repo', () => {
     const from = vi.fn().mockReturnValue({ upsert });
     requireServerSupabaseMock.mockReturnValue({ from } as never);
 
-    const result = await upsertCampaign(buildCampaign());
+    const result = await upsertCampaign(
+      buildCampaign({ siteId: 'SITE-1', donneurOrdreId: 'DO-1' }),
+    );
     expect(upsert).toHaveBeenCalledTimes(1);
     const args = upsert.mock.calls[0]!;
     expect(args[1]).toEqual({ onConflict: 'id' });
+    // Reporting (préparation) — les liens campagne→site/donneur sont persistés.
+    const sentRow = args[0] as {
+      site_id: string | null;
+      donneur_ordre_id: string | null;
+    };
+    expect(sentRow.site_id).toBe('SITE-1');
+    expect(sentRow.donneur_ordre_id).toBe('DO-1');
     expect(result.id).toBe('CAMP-0001');
   });
 

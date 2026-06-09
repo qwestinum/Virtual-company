@@ -33,6 +33,35 @@ export type CampaignRow = {
    * Default 75 — aligné sur `DEFAULT_CV_THRESHOLD`.
    */
   threshold: number;
+  /**
+   * Reporting (préparation) — liens NULLABLE vers les dimensions
+   * donneur d'ordre et site (cf. docs/specs/reporting.md §2). Vides pour
+   * les campagnes historiques.
+   */
+  site_id: string | null;
+  donneur_ordre_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SiteRow = {
+  id: string;
+  name: string;
+  type: string | null;
+  city: string | null;
+  postal_code: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DonneurOrdreRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string;
+  email: string | null;
+  role: string | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 };

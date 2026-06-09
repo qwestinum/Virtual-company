@@ -31,10 +31,12 @@ import {
 } from '@/types/publication-channel';
 import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
 
+import { DonneursOrdreManager } from './DonneursOrdreManager';
 import { EmailListField } from './EmailListField';
 import { IntegrationCard } from './IntegrationCard';
 import { MailboxesManager } from './MailboxesManager';
 import { SettingsSection } from './SettingsSection';
+import { SitesManager } from './SitesManager';
 
 export type IntegrationConfig = {
   status: 'configured' | 'unconfigured';
@@ -289,6 +291,22 @@ export function SettingsHub() {
         description="Les boîtes mail IMAP surveillées par le poller. Quand un email arrive avec l'ID de campagne dans l'objet et un CV en pièce jointe, l'agent CV Analyzer s'exécute automatiquement."
       >
         <MailboxesManager />
+      </SettingsSection>
+
+      <SettingsSection
+        icon="🏢"
+        title="Donneurs d'ordre"
+        description="Les personnes (côté client) qui initient les campagnes — distinctes de l'utilisateur ORQA. Une campagne a un seul donneur d'ordre. Dimension consommée par le module Reporting."
+      >
+        <DonneursOrdreManager />
+      </SettingsSection>
+
+      <SettingsSection
+        icon="📍"
+        title="Sites"
+        description="Les implantations géographiques ou organisationnelles de rattachement des campagnes (multi-sites). Une campagne a un seul site. Un site « par défaut » existe pour les organisations mono-site."
+      >
+        <SitesManager />
       </SettingsSection>
 
       <SettingsSection

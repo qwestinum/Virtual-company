@@ -31,6 +31,8 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     // « activable » après rechargement.
     sources: row.sources ?? [],
     threshold: row.threshold ?? 75,
+    siteId: row.site_id ?? null,
+    donneurOrdreId: row.donneur_ordre_id ?? null,
     status: row.status,
     // Inc. 2a — lifecycle non persisté : re-dérivé des artefacts au
     // chargement (les `postponed` ne survivent pas encore au reload ;
@@ -58,6 +60,8 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     sources_confirmed: campaign.sourcesConfirmed,
     sources: campaign.sources,
     threshold: campaign.threshold,
+    site_id: campaign.siteId,
+    donneur_ordre_id: campaign.donneurOrdreId,
     created_at: campaign.createdAt,
     updated_at: campaign.updatedAt,
   };
@@ -91,6 +95,10 @@ export type CampaignPatch = {
   publishedChannels?: PublicationChannel[];
   sourcesConfirmed?: boolean;
   threshold?: number;
+  /** Reporting (préparation) — rattachement campagne → site / donneur d'ordre
+   *  (nullable). `null` détache explicitement. */
+  siteId?: string | null;
+  donneurOrdreId?: string | null;
 };
 
 export async function patchCampaign(
@@ -105,6 +113,9 @@ export async function patchCampaign(
   if (patch.sourcesConfirmed !== undefined)
     row.sources_confirmed = patch.sourcesConfirmed;
   if (patch.threshold !== undefined) row.threshold = patch.threshold;
+  if (patch.siteId !== undefined) row.site_id = patch.siteId;
+  if (patch.donneurOrdreId !== undefined)
+    row.donneur_ordre_id = patch.donneurOrdreId;
   if (Object.keys(row).length === 0) return null;
   const { data, error } = await supabase
     .from(TABLE)
