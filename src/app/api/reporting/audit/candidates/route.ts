@@ -8,11 +8,14 @@ import { NextResponse } from 'next/server';
 
 import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
-  CANDIDATE_STAGES,
-  deriveJourneyFor,
-  type CandidateStage,
+  JOURNEY_FILTER_STATES,
+  journeyFilterKey,
+  type JourneyFilterState,
 } from '@/lib/reporting/candidate-journey';
-import { loadCandidateMarkers } from '@/lib/reporting/journey-lookup';
+import {
+  journeyFromSignals,
+  loadJourneySignals,
+} from '@/lib/reporting/journey-lookup';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import type { CandidateAnalysisFilters } from '@/types/reporting';
 import { CandidateStatusSchema } from '@/types/scoring';
@@ -41,25 +44,25 @@ export async function GET(request: Request): Promise<NextResponse> {
   const to = params.get('to');
   if (to) filters.to = to;
 
-  // Filtre d'étape de parcours (dérivé, donc appliqué post-enrichissement).
+  // Filtre d'état de parcours (dérivé, donc appliqué post-enrichissement).
   const stageRaw = params.get('stage');
-  const stageFilter = (CANDIDATE_STAGES as readonly string[]).includes(
+  const stageFilter = (JOURNEY_FILTER_STATES as readonly string[]).includes(
     stageRaw ?? '',
   )
-    ? (stageRaw as CandidateStage)
+    ? (stageRaw as JourneyFilterState)
     : null;
 
   try {
     const candidates = await listCandidateAnalyses(filters);
-    // Enrichit chaque candidat avec son parcours dérivé du journal. Un seul
-    // scan journal (toutes campagnes) → map uid→marqueurs partagée.
-    const markers = await loadCandidateMarkers();
+    // Enrichit chaque candidat avec son parcours dérivé du journal + file HITL.
+    // Un seul scan (toutes campagnes) → signaux partagés.
+    const signals = await loadJourneySignals();
     const enriched = candidates.map((c) => ({
       ...c,
-      journey: deriveJourneyFor(c.status, markers.get(c.uid)),
+      journey: journeyFromSignals(signals, c.uid, c.status),
     }));
     const filtered = stageFilter
-      ? enriched.filter((c) => c.journey.stage === stageFilter)
+      ? enriched.filter((c) => journeyFilterKey(c.journey) === stageFilter)
       : enriched;
     return NextResponse.json({ candidates: filtered });
   } catch (err) {

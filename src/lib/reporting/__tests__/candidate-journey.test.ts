@@ -3,12 +3,17 @@ import { describe, expect, it } from 'vitest';
 import {
   deriveCandidateJourney,
   deriveJourneyFor,
+  journeyColumns,
+  journeyCurrentState,
+  journeyFilterKey,
   type CandidateJourneyInput,
 } from '@/lib/reporting/candidate-journey';
 
 function input(p: Partial<CandidateJourneyInput>): CandidateJourneyInput {
   return {
     screeningStatus: 'accepted',
+    isPendingValidation: false,
+    dashboardStatus: 'analyzed',
     interviewMarked: null,
     validationMarked: null,
     recommendation: 'go',
@@ -16,53 +21,87 @@ function input(p: Partial<CandidateJourneyInput>): CandidateJourneyInput {
   };
 }
 
-describe('deriveCandidateJourney — étapes', () => {
-  it('écarté au screening, aucun marqueur', () => {
+describe('deriveCandidateJourney — 4 phases', () => {
+  it('écarté au screening : seule la présélection est atteinte', () => {
     const j = deriveCandidateJourney(
       input({ screeningStatus: 'rejected', recommendation: null }),
     );
-    expect(j.stage).toBe('ecarte_screening');
-    expect(j.humanIntervention).toBe(false);
+    expect(j).toMatchObject({
+      screening: 'ecarte',
+      validation: 'na',
+      interview: 'na',
+      final: 'na',
+    });
   });
 
-  it('retenu au screening, aucun marqueur', () => {
-    expect(deriveCandidateJourney(input({})).stage).toBe('retenu_screening');
+  it('retenu + en attente HITL → validation « en attente »', () => {
+    const j = deriveCandidateJourney(input({ isPendingValidation: true }));
+    expect(j.screening).toBe('retenu');
+    expect(j.validation).toBe('en_attente');
+    expect(j.interview).toBe('na');
   });
 
-  it('entretien réalisé', () => {
-    expect(
-      deriveCandidateJourney(input({ interviewMarked: 'realized' })).stage,
-    ).toBe('entretien_realise');
+  it('retenu + invité → retenu pour entretien, entretien en attente', () => {
+    const j = deriveCandidateJourney(input({ dashboardStatus: 'invited' }));
+    expect(j.validation).toBe('retenu_entretien');
+    expect(j.interview).toBe('en_attente');
+    expect(j.final).toBe('en_attente');
   });
 
-  it('entretien non réalisé → refusé après entretien', () => {
-    expect(
-      deriveCandidateJourney(input({ interviewMarked: 'missed' })).stage,
-    ).toBe('refuse_apres_entretien');
+  it('refus envoyé après screening → validation écarté', () => {
+    const j = deriveCandidateJourney(input({ dashboardStatus: 'rejected' }));
+    expect(j.validation).toBe('ecarte');
+    expect(j.interview).toBe('na');
+    expect(j.final).toBe('na');
   });
 
-  it('validation définitive → accepté (précédence sur entretien)', () => {
-    expect(
-      deriveCandidateJourney(
-        input({ interviewMarked: 'realized', validationMarked: 'validated' }),
-      ).stage,
-    ).toBe('accepte');
+  it('entretien réalisé sans décision finale → final en attente', () => {
+    const j = deriveCandidateJourney(
+      input({ dashboardStatus: 'interview_done', interviewMarked: 'realized' }),
+    );
+    expect(j.validation).toBe('retenu_entretien');
+    expect(j.interview).toBe('realise');
+    expect(j.final).toBe('en_attente');
   });
 
-  it('validation refusée → refusé après entretien', () => {
-    expect(
-      deriveCandidateJourney(input({ validationMarked: 'rejected' })).stage,
-    ).toBe('refuse_apres_entretien');
+  it('entretien non réalisé → interview non_realise', () => {
+    const j = deriveCandidateJourney(
+      input({ dashboardStatus: 'rejected', interviewMarked: 'missed' }),
+    );
+    expect(j.validation).toBe('retenu_entretien');
+    expect(j.interview).toBe('non_realise');
+  });
+
+  it('validation définitive → final retenu (et NON dès la validation HITL)', () => {
+    const j = deriveCandidateJourney(
+      input({
+        dashboardStatus: 'interview_done',
+        interviewMarked: 'realized',
+        validationMarked: 'validated',
+      }),
+    );
+    expect(j.final).toBe('retenu');
+  });
+
+  it('un candidat juste invité n’est PAS « retenu définitivement »', () => {
+    const j = deriveCandidateJourney(input({ dashboardStatus: 'invited' }));
+    expect(j.final).not.toBe('retenu');
+    expect(j.final).toBe('en_attente');
+  });
+
+  it('décision finale refusée → final écarté', () => {
+    const j = deriveCandidateJourney(
+      input({ dashboardStatus: 'interview_done', validationMarked: 'rejected' }),
+    );
+    expect(j.final).toBe('ecarte');
   });
 });
 
-describe('deriveCandidateJourney — intervention humaine', () => {
+describe('intervention humaine', () => {
   it('aucune quand la décision suit le verdict IA', () => {
-    expect(deriveCandidateJourney(input({})).humanIntervention).toBe(false);
     expect(
-      deriveCandidateJourney(
-        input({ validationMarked: 'validated' }),
-      ).humanIntervention,
+      deriveCandidateJourney(input({ dashboardStatus: 'invited' }))
+        .humanIntervention,
     ).toBe(false);
   });
 
@@ -70,44 +109,78 @@ describe('deriveCandidateJourney — intervention humaine', () => {
     const j = deriveCandidateJourney(
       input({
         screeningStatus: 'rejected',
-        validationMarked: 'validated',
         recommendation: 'go',
+        dashboardStatus: 'interview_done',
+        validationMarked: 'validated',
       }),
     );
-    expect(j.stage).toBe('accepte');
     expect(j.humanIntervention).toBe(true);
   });
 
   it('humain refuse un candidat recommandé', () => {
     const j = deriveCandidateJourney(
-      input({ validationMarked: 'rejected', recommendation: 'go' }),
+      input({ dashboardStatus: 'interview_done', validationMarked: 'rejected' }),
     );
-    expect(j.humanIntervention).toBe(true);
-  });
-
-  it('switch HITL : retenu au screening invité alors qu’écarté', () => {
-    const j = deriveCandidateJourney(
-      input({ screeningStatus: 'rejected', recommendation: 'go' }),
-    );
-    expect(j.stage).toBe('retenu_screening');
     expect(j.humanIntervention).toBe(true);
   });
 });
 
-describe('deriveJourneyFor — fallback sans marqueurs', () => {
-  it('retenu si screening accepté, écarté sinon', () => {
-    expect(deriveJourneyFor('accepted').stage).toBe('retenu_screening');
-    expect(deriveJourneyFor('rejected').stage).toBe('ecarte_screening');
-    expect(deriveJourneyFor('accepted').humanIntervention).toBe(false);
-    expect(deriveJourneyFor('rejected').humanIntervention).toBe(false);
+describe('journeyCurrentState / journeyFilterKey', () => {
+  it('état courant = le plus avancé atteint', () => {
+    const enAttente = journeyCurrentState(
+      deriveCandidateJourney(input({ isPendingValidation: true })),
+    );
+    expect(enAttente.label).toBe('En attente de validation');
+
+    const retenuDef = journeyCurrentState(
+      deriveCandidateJourney(
+        input({ dashboardStatus: 'interview_done', validationMarked: 'validated' }),
+      ),
+    );
+    expect(retenuDef.label).toBe('Retenu définitivement');
   });
 
-  it('applique les marqueurs fournis', () => {
-    const j = deriveJourneyFor('accepted', {
-      interviewMarked: 'realized',
-      validationMarked: 'validated',
-      recommendation: 'go',
-    });
-    expect(j.stage).toBe('accepte');
+  it('clé de filtre regroupe les états', () => {
+    expect(
+      journeyFilterKey(deriveCandidateJourney(input({ isPendingValidation: true }))),
+    ).toBe('en_attente_validation');
+    expect(
+      journeyFilterKey(
+        deriveCandidateJourney(input({ screeningStatus: 'rejected', recommendation: null })),
+      ),
+    ).toBe('ecarte');
+  });
+});
+
+describe('journeyColumns', () => {
+  it('produit 4 colonnes, grisées au-delà de l’étape atteinte', () => {
+    const cols = journeyColumns(
+      deriveCandidateJourney(input({ isPendingValidation: true })),
+    );
+    expect(cols.map((c) => c.key)).toEqual([
+      'screening',
+      'validation',
+      'interview',
+      'final',
+    ]);
+    expect(cols[0]!.reached).toBe(true);
+    expect(cols[1]!.reached).toBe(true);
+    expect(cols[2]!.reached).toBe(false);
+    expect(cols[3]!.reached).toBe(false);
+  });
+});
+
+describe('deriveJourneyFor — fallback', () => {
+  it('sans marqueurs : retenu → en attente de validation', () => {
+    const j = deriveJourneyFor('accepted');
+    expect(j.validation).toBe('en_attente');
+  });
+  it('sans marqueurs : écarté → présélection écarté', () => {
+    expect(deriveJourneyFor('rejected').screening).toBe('ecarte');
+  });
+  it('drapeau pending propagé', () => {
+    expect(
+      deriveJourneyFor('accepted', undefined, true).validation,
+    ).toBe('en_attente');
   });
 });

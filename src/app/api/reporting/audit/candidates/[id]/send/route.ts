@@ -14,8 +14,10 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
 import { auditCandidatFileName } from '@/lib/reporting/audit-display';
 import { renderCandidateAuditPdf } from '@/lib/reporting/candidate-audit-pdf';
-import { deriveJourneyFor } from '@/lib/reporting/candidate-journey';
-import { loadCandidateMarkers } from '@/lib/reporting/journey-lookup';
+import {
+  journeyFromSignals,
+  loadJourneySignals,
+} from '@/lib/reporting/journey-lookup';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -59,10 +61,10 @@ export async function POST(
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
 
-    const markers = await loadCandidateMarkers({
+    const signals = await loadJourneySignals({
       campaignId: detail.campaignId ?? undefined,
     });
-    const journey = deriveJourneyFor(detail.status, markers.get(detail.uid));
+    const journey = journeyFromSignals(signals, detail.uid, detail.status);
     const generatedAtIso = new Date().toISOString();
     const pdf = await renderCandidateAuditPdf({
       detail: { ...detail, journey },

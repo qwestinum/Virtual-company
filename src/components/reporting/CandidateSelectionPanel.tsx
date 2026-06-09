@@ -11,14 +11,15 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { formatFrDate } from '@/lib/reporting/audit-display';
 import {
-  CANDIDATE_STAGES,
-  CANDIDATE_STAGE_LABELS,
-  type CandidateStage,
+  JOURNEY_FILTER_LABELS,
+  JOURNEY_FILTER_STATES,
+  type JourneyFilterState,
 } from '@/lib/reporting/candidate-journey';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
-import { CandidateStagePill } from './CandidateStagePill';
+import { CandidateStatePill } from './CandidateStatePill';
 import { PeriodFilter } from './PeriodFilter';
+import { ScoreBadge } from './ScoreBadge';
 
 export function CandidateSelectionPanel({
   onSelect,
@@ -26,7 +27,7 @@ export function CandidateSelectionPanel({
   onSelect: (id: string) => void;
 }) {
   const [search, setSearch] = useState('');
-  const [stage, setStage] = useState<CandidateStage | ''>('');
+  const [stage, setStage] = useState<JourneyFilterState | ''>('');
   const [campaignId, setCampaignId] = useState('');
   const [period, setPeriod] = useState({ from: '', to: '' });
   const [items, setItems] = useState<CandidateAnalysisSummary[]>([]);
@@ -110,13 +111,15 @@ export function CandidateSelectionPanel({
             </span>
             <select
               value={stage}
-              onChange={(e) => setStage(e.currentTarget.value as CandidateStage | '')}
+              onChange={(e) =>
+                setStage(e.currentTarget.value as JourneyFilterState | '')
+              }
               className="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-body text-[13px] text-stone-800 outline-none focus:border-amber-400"
             >
-              <option value="">Toutes</option>
-              {CANDIDATE_STAGES.map((s) => (
+              <option value="">Tous</option>
+              {JOURNEY_FILTER_STATES.map((s) => (
                 <option key={s} value={s}>
-                  {CANDIDATE_STAGE_LABELS[s]}
+                  {JOURNEY_FILTER_LABELS[s]}
                 </option>
               ))}
             </select>
@@ -181,11 +184,9 @@ export function CandidateSelectionPanel({
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <span className="font-display text-[15px] font-bold text-stone-700">
-                    {it.totalScore}
-                  </span>
+                  <ScoreBadge score={it.totalScore} size="sm" />
                   {it.journey ? (
-                    <CandidateStagePill journey={it.journey} />
+                    <CandidateStatePill journey={it.journey} />
                   ) : null}
                 </div>
               </button>

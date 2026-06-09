@@ -19,14 +19,14 @@ import {
   formatFrDateTime,
   sortByCriticality,
 } from '@/lib/reporting/audit-display';
-import { CANDIDATE_STAGE_LABELS } from '@/lib/reporting/candidate-journey';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
   CANDIDATE_STATUS_LABELS,
   SCORING_LEVEL_LABELS,
 } from '@/types/scoring';
 
-import { CandidateStagePill } from './CandidateStagePill';
+import { CandidateJourneyColumns } from './CandidateJourneyColumns';
+import { ScoreBadge } from './ScoreBadge';
 import { SendReportModal } from './SendReportModal';
 
 export function CandidateAuditDetail({
@@ -91,10 +91,7 @@ export function CandidateAuditDetail({
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="font-display text-3xl font-bold text-stone-900">
-              {scoringResult.totalScore}
-              <span className="text-base text-stone-400">/100</span>
-            </span>
+            <ScoreBadge score={scoringResult.totalScore} size="lg" />
             <span
               className={`rounded-full px-3 py-1 font-body text-[12px] font-semibold text-white ${
                 accepted ? 'bg-emerald-600' : 'bg-rose-600'
@@ -109,18 +106,13 @@ export function CandidateAuditDetail({
         </p>
       </div>
 
-      {/* Parcours (dérivé du journal, lecture seule) */}
+      {/* Parcours en colonnes (dérivé du journal, lecture seule) */}
       {detail.journey ? (
         <Section title="Parcours candidat">
-          <div className="flex flex-wrap items-center gap-3">
-            <CandidateStagePill journey={detail.journey} size="md" />
-          </div>
-          <p className="mt-2 font-body text-[12px] text-stone-500">
-            Étape actuelle : <strong>{CANDIDATE_STAGE_LABELS[detail.journey.stage]}</strong>.{' '}
-            {detail.journey.humanIntervention
-              ? 'La décision finale a été modifiée par un humain (override du verdict de screening).'
-              : "Aucune intervention humaine n'a modifié le verdict de screening."}{' '}
-            Le suivi (entretien, validation) se pilote depuis le Dashboard.
+          <CandidateJourneyColumns journey={detail.journey} />
+          <p className="mt-3 font-body text-[11px] text-stone-400">
+            Le pilotage (validation, entretien, décision finale) se fait depuis
+            le Dashboard ; l&apos;audit le reflète en lecture seule.
           </p>
         </Section>
       ) : null}

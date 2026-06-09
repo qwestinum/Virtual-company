@@ -28,8 +28,8 @@ import {
   sortByCriticality,
 } from '@/lib/reporting/audit-display';
 import {
-  CANDIDATE_STAGE_COLORS,
-  CANDIDATE_STAGE_LABELS,
+  JOURNEY_TONE_COLORS,
+  journeyColumns,
 } from '@/lib/reporting/candidate-journey';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
@@ -190,23 +190,41 @@ function AuditDocument({ detail, generatedAtIso, campaignLabel }: AuditPdfProps)
         {detail.journey ? (
           <>
             <Text style={styles.sectionTitle}>Parcours candidat</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text
-                style={[
-                  styles.statusPill,
-                  { backgroundColor: CANDIDATE_STAGE_COLORS[detail.journey.stage] },
-                ]}
-              >
-                {CANDIDATE_STAGE_LABELS[detail.journey.stage]}
-              </Text>
-              <Text style={{ fontSize: 8.5, color: MUTED }}>
-                Intervention humaine : {detail.journey.humanIntervention ? 'Oui' : 'Non'}
-              </Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {journeyColumns(detail.journey).map((col) => (
+                <View
+                  key={col.key}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor: HAIRLINE,
+                    borderRadius: 4,
+                    paddingVertical: 5,
+                    paddingHorizontal: 6,
+                    backgroundColor: col.reached ? '#fff' : '#fafaf9',
+                  }}
+                >
+                  <Text style={{ fontSize: 6.5, color: MUTED, textTransform: 'uppercase' }}>
+                    {col.title}
+                  </Text>
+                  <Text
+                    style={{
+                      marginTop: 2,
+                      fontSize: 8,
+                      fontFamily: 'Helvetica-Bold',
+                      color: col.reached ? JOURNEY_TONE_COLORS[col.tone] : '#a8a29e',
+                    }}
+                  >
+                    {col.label}
+                  </Text>
+                </View>
+              ))}
             </View>
             <Text style={[styles.paragraph, { marginTop: 4, color: MUTED }]}>
+              Intervention humaine : {detail.journey.humanIntervention ? 'Oui' : 'Non'}
               {detail.journey.humanIntervention
-                ? 'La décision finale a été modifiée par un humain (override du verdict de screening).'
-                : "Aucune intervention humaine n'a modifié le verdict de screening."}
+                ? ' — la décision a été modifiée par rapport au verdict IA du screening.'
+                : '.'}
             </Text>
           </>
         ) : null}

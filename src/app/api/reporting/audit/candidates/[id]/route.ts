@@ -6,8 +6,10 @@
 import { NextResponse } from 'next/server';
 
 import { getCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
-import { deriveJourneyFor } from '@/lib/reporting/candidate-journey';
-import { loadCandidateMarkers } from '@/lib/reporting/journey-lookup';
+import {
+  journeyFromSignals,
+  loadJourneySignals,
+} from '@/lib/reporting/journey-lookup';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 
 export const runtime = 'nodejs';
@@ -22,13 +24,14 @@ export async function GET(
     if (!candidate) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
-    // Enrichit avec le parcours dérivé du journal (lecture seule).
-    const markers = await loadCandidateMarkers({
+    // Enrichit avec le parcours dérivé du journal + file HITL (lecture seule).
+    const signals = await loadJourneySignals({
       campaignId: candidate.campaignId ?? undefined,
     });
-    const journey = deriveJourneyFor(
+    const journey = journeyFromSignals(
+      signals,
+      candidate.uid,
       candidate.status,
-      markers.get(candidate.uid),
     );
     return NextResponse.json({ candidate: { ...candidate, journey } });
   } catch (err) {
