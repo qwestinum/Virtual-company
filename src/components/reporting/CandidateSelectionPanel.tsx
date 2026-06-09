@@ -10,9 +10,14 @@ import { Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { formatFrDate } from '@/lib/reporting/audit-display';
+import {
+  CANDIDATE_STAGES,
+  CANDIDATE_STAGE_LABELS,
+  type CandidateStage,
+} from '@/lib/reporting/candidate-journey';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
-import { CANDIDATE_STATUS_LABELS, type CandidateStatus } from '@/types/scoring';
 
+import { CandidateStagePill } from './CandidateStagePill';
 import { PeriodFilter } from './PeriodFilter';
 
 export function CandidateSelectionPanel({
@@ -21,7 +26,7 @@ export function CandidateSelectionPanel({
   onSelect: (id: string) => void;
 }) {
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<CandidateStatus | ''>('');
+  const [stage, setStage] = useState<CandidateStage | ''>('');
   const [campaignId, setCampaignId] = useState('');
   const [period, setPeriod] = useState({ from: '', to: '' });
   const [items, setItems] = useState<CandidateAnalysisSummary[]>([]);
@@ -33,7 +38,7 @@ export function CandidateSelectionPanel({
     const controller = new AbortController();
     const params = new URLSearchParams();
     if (search.trim()) params.set('search', search.trim());
-    if (status) params.set('status', status);
+    if (stage) params.set('stage', stage);
     if (period.from) params.set('from', period.from);
     if (period.to) params.set('to', period.to);
     const t = setTimeout(() => {
@@ -62,7 +67,7 @@ export function CandidateSelectionPanel({
       controller.abort();
       clearTimeout(t);
     };
-  }, [search, status, period.from, period.to]);
+  }, [search, stage, period.from, period.to]);
 
   // Campagnes présentes dans le jeu courant (filtre client complémentaire).
   const campaigns = useMemo(() => {
@@ -101,16 +106,19 @@ export function CandidateSelectionPanel({
         <div className="flex flex-wrap gap-4">
           <label className="flex flex-col gap-1">
             <span className="font-body text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-              Statut
+              Étape de parcours
             </span>
             <select
-              value={status}
-              onChange={(e) => setStatus(e.currentTarget.value as CandidateStatus | '')}
+              value={stage}
+              onChange={(e) => setStage(e.currentTarget.value as CandidateStage | '')}
               className="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-body text-[13px] text-stone-800 outline-none focus:border-amber-400"
             >
-              <option value="">Tous</option>
-              <option value="accepted">{CANDIDATE_STATUS_LABELS.accepted}</option>
-              <option value="rejected">{CANDIDATE_STATUS_LABELS.rejected}</option>
+              <option value="">Toutes</option>
+              {CANDIDATE_STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {CANDIDATE_STAGE_LABELS[s]}
+                </option>
+              ))}
             </select>
           </label>
           <label className="flex flex-col gap-1">
@@ -176,13 +184,9 @@ export function CandidateSelectionPanel({
                   <span className="font-display text-[15px] font-bold text-stone-700">
                     {it.totalScore}
                   </span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 font-body text-[11px] font-semibold text-white ${
-                      it.status === 'accepted' ? 'bg-emerald-600' : 'bg-rose-600'
-                    }`}
-                  >
-                    {CANDIDATE_STATUS_LABELS[it.status]}
-                  </span>
+                  {it.journey ? (
+                    <CandidateStagePill journey={it.journey} />
+                  ) : null}
                 </div>
               </button>
             </li>

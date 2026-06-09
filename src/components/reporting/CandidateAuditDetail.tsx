@@ -19,12 +19,14 @@ import {
   formatFrDateTime,
   sortByCriticality,
 } from '@/lib/reporting/audit-display';
+import { CANDIDATE_STAGE_LABELS } from '@/lib/reporting/candidate-journey';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
   CANDIDATE_STATUS_LABELS,
   SCORING_LEVEL_LABELS,
 } from '@/types/scoring';
 
+import { CandidateStagePill } from './CandidateStagePill';
 import { SendReportModal } from './SendReportModal';
 
 export function CandidateAuditDetail({
@@ -106,6 +108,22 @@ export function CandidateAuditDetail({
           {narration.justification}
         </p>
       </div>
+
+      {/* Parcours (dérivé du journal, lecture seule) */}
+      {detail.journey ? (
+        <Section title="Parcours candidat">
+          <div className="flex flex-wrap items-center gap-3">
+            <CandidateStagePill journey={detail.journey} size="md" />
+          </div>
+          <p className="mt-2 font-body text-[12px] text-stone-500">
+            Étape actuelle : <strong>{CANDIDATE_STAGE_LABELS[detail.journey.stage]}</strong>.{' '}
+            {detail.journey.humanIntervention
+              ? 'La décision finale a été modifiée par un humain (override du verdict de screening).'
+              : "Aucune intervention humaine n'a modifié le verdict de screening."}{' '}
+            Le suivi (entretien, validation) se pilote depuis le Dashboard.
+          </p>
+        </Section>
+      ) : null}
 
       {/* Profil */}
       <Section title="Profil du candidat">

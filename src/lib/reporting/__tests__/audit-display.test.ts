@@ -12,6 +12,7 @@ import type { CriterionDecision } from '@/types/scoring';
 
 const DETAIL: CandidateAnalysisDetail = {
   id: 'can_42',
+  uid: 'can_42',
   campaignId: 'CAMP-9',
   candidateName: 'Jean Müller',
   candidateEmail: 'jean@mail.com',

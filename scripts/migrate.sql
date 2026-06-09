@@ -462,6 +462,11 @@ insert into public.sites (id, name, type)
 
 create table if not exists public.candidate_analyses (
   id              text primary key,
+  -- Clé de corrélation avec les marqueurs de parcours du journal
+  -- (candidate_interview_marked / candidate_validation_marked, keyés par
+  -- payload.uid). Chat : uid = taskId (= id). IMAP : uid = uid brut du mail
+  -- (≠ id préfixé). Permet à l'audit de dériver le parcours sans le piloter.
+  uid             text,
   campaign_id     text,
   candidate_name  text not null,
   candidate_email text,
@@ -485,6 +490,13 @@ create index if not exists candidate_analyses_campaign_idx
 create index if not exists candidate_analyses_status_idx
   on public.candidate_analyses (status, created_at desc);
 
+-- Idempotence : si la table préexistait sans la colonne uid (1ʳᵉ version).
+alter table public.candidate_analyses
+  add column if not exists uid text;
+
 -- Recherche fuzzy sur le nom du candidat (sélection audit).
 create index if not exists candidate_analyses_name_trgm_idx
   on public.candidate_analyses using gin (candidate_name gin_trgm_ops);
+
+create index if not exists candidate_analyses_uid_idx
+  on public.candidate_analyses (uid);

@@ -27,6 +27,10 @@ import {
   formatFrDateTime,
   sortByCriticality,
 } from '@/lib/reporting/audit-display';
+import {
+  CANDIDATE_STAGE_COLORS,
+  CANDIDATE_STAGE_LABELS,
+} from '@/lib/reporting/candidate-journey';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
   CANDIDATE_STATUS_LABELS,
@@ -182,6 +186,30 @@ function AuditDocument({ detail, generatedAtIso, campaignLabel }: AuditPdfProps)
             {narration.justification}
           </Text>
         </View>
+
+        {detail.journey ? (
+          <>
+            <Text style={styles.sectionTitle}>Parcours candidat</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text
+                style={[
+                  styles.statusPill,
+                  { backgroundColor: CANDIDATE_STAGE_COLORS[detail.journey.stage] },
+                ]}
+              >
+                {CANDIDATE_STAGE_LABELS[detail.journey.stage]}
+              </Text>
+              <Text style={{ fontSize: 8.5, color: MUTED }}>
+                Intervention humaine : {detail.journey.humanIntervention ? 'Oui' : 'Non'}
+              </Text>
+            </View>
+            <Text style={[styles.paragraph, { marginTop: 4, color: MUTED }]}>
+              {detail.journey.humanIntervention
+                ? 'La décision finale a été modifiée par un humain (override du verdict de screening).'
+                : "Aucune intervention humaine n'a modifié le verdict de screening."}
+            </Text>
+          </>
+        ) : null}
 
         <Text style={styles.sectionTitle}>Profil du candidat</Text>
         <View style={styles.metaGrid}>

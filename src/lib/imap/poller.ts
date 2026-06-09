@@ -547,6 +547,9 @@ async function processEmailAttachment(args: {
   // Best-effort : avale Supabase non configuré, ne casse pas le poll.
   await persistCandidateAnalysis({
     id: `can_imap_${mailbox.id}_${uid}`,
+    // uid brut = clé des marqueurs de parcours du journal (cohérent avec
+    // le payload.uid de imap_cv_analyzed → dashboard).
+    uid: String(uid),
     campaignId: isTaskOwner ? null : campaign.id,
     application,
   });

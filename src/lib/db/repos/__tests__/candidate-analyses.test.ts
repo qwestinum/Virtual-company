@@ -5,6 +5,7 @@ import type { CandidateAnalysisRow } from '@/lib/db/types';
 
 const ROW: CandidateAnalysisRow = {
   id: 'can_42',
+  uid: 'can_42',
   campaign_id: 'CAMP-9',
   candidate_name: 'Jean Test',
   candidate_email: 'jean@mail.com',
@@ -51,6 +52,7 @@ describe('rowToSummary', () => {
     const s = rowToSummary(ROW);
     expect(s).toEqual({
       id: 'can_42',
+      uid: 'can_42',
       campaignId: 'CAMP-9',
       candidateName: 'Jean Test',
       candidateEmail: 'jean@mail.com',
@@ -69,6 +71,11 @@ describe('rowToSummary', () => {
     const s = rowToSummary({ ...ROW, campaign_id: null, candidate_email: null });
     expect(s.campaignId).toBeNull();
     expect(s.candidateEmail).toBeNull();
+  });
+
+  it('uid null (row antérieure) retombe sur id', () => {
+    const s = rowToSummary({ ...ROW, uid: null });
+    expect(s.uid).toBe('can_42');
   });
 });
 

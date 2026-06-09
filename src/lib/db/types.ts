@@ -75,6 +75,8 @@ export type DonneurOrdreRow = {
  */
 export type CandidateAnalysisRow = {
   id: string;
+  /** Clé de corrélation avec les marqueurs de parcours du journal. Nullable (rows antérieures à la colonne). */
+  uid: string | null;
   campaign_id: string | null;
   candidate_name: string;
   candidate_email: string | null;

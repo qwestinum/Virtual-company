@@ -10,6 +10,7 @@
  * ce module.
  */
 
+import type { CandidateJourney } from '@/lib/reporting/candidate-journey';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
 import type { CandidateStatus } from '@/types/scoring';
@@ -22,6 +23,8 @@ import type { CandidateStatus } from '@/types/scoring';
 export type CandidateAnalysisSummary = {
   /** Identifiant de l'analyse = « numéro de candidature » dans l'audit. */
   id: string;
+  /** Clé de corrélation avec les marqueurs de parcours du journal (fallback = id). */
+  uid: string;
   /** Campagne de rattachement (null pour une analyse hors campagne). */
   campaignId: string | null;
   candidateName: string;
@@ -36,6 +39,11 @@ export type CandidateAnalysisSummary = {
   computedAt: string;
   /** Horodatage d'insertion en base (ISO 8601). */
   createdAt: string;
+  /**
+   * Parcours dérivé du journal (étape + intervention humaine). Présent
+   * uniquement quand l'endpoint a enrichi le résumé ; absent sinon.
+   */
+  journey?: CandidateJourney;
 };
 
 /**
@@ -52,6 +60,7 @@ export type CandidateAnalysisFilters = {
   /** Recherche libre : nom, email, ou identifiant d'analyse. */
   search?: string;
   campaignId?: string;
+  /** Verdict de screening (filtré en SQL). */
   status?: CandidateStatus;
   /** Borne basse de période sur `received_at` (ISO 8601). */
   from?: string;

@@ -28,7 +28,7 @@ const TABLE = 'candidate_analyses';
 
 /** Colonnes du résumé (sans le jsonb `application`). */
 const SUMMARY_COLUMNS =
-  'id, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, created_at';
+  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, created_at';
 
 type SummaryRow = Omit<CandidateAnalysisRow, 'application' | 'criteria_version'>;
 
@@ -36,6 +36,8 @@ type SummaryRow = Omit<CandidateAnalysisRow, 'application' | 'criteria_version'>
 export function rowToSummary(row: SummaryRow): CandidateAnalysisSummary {
   return {
     id: row.id,
+    // Fallback id : rows chat (uid = id) ou antérieures à la colonne uid.
+    uid: row.uid ?? row.id,
     campaignId: row.campaign_id,
     candidateName: row.candidate_name,
     candidateEmail: row.candidate_email,
@@ -60,6 +62,11 @@ export function rowToDetail(row: CandidateAnalysisRow): CandidateAnalysisDetail 
 export type CandidateAnalysisInsert = {
   /** Identifiant unique de l'analyse (uid du CV ou id généré). */
   id: string;
+  /**
+   * Clé de corrélation avec les marqueurs de parcours du journal. Chat :
+   * uid = taskId (= id). IMAP : uid brut du mail. Défaut = id si omis.
+   */
+  uid?: string;
   campaignId: string | null;
   application: CVApplication;
 };
@@ -76,6 +83,7 @@ export async function insertCandidateAnalysis(
   const { candidate, scoringResult } = input.application;
   const { error } = await supabase.from(TABLE).insert({
     id: input.id,
+    uid: input.uid ?? input.id,
     campaign_id: input.campaignId,
     candidate_name: candidate.fullName,
     candidate_email: candidate.email,

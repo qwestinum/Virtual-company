@@ -7,6 +7,12 @@
 import { NextResponse } from 'next/server';
 
 import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import {
+  CANDIDATE_STAGES,
+  deriveJourneyFor,
+  type CandidateStage,
+} from '@/lib/reporting/candidate-journey';
+import { loadCandidateMarkers } from '@/lib/reporting/journey-lookup';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import type { CandidateAnalysisFilters } from '@/types/reporting';
 import { CandidateStatusSchema } from '@/types/scoring';
@@ -35,9 +41,27 @@ export async function GET(request: Request): Promise<NextResponse> {
   const to = params.get('to');
   if (to) filters.to = to;
 
+  // Filtre d'étape de parcours (dérivé, donc appliqué post-enrichissement).
+  const stageRaw = params.get('stage');
+  const stageFilter = (CANDIDATE_STAGES as readonly string[]).includes(
+    stageRaw ?? '',
+  )
+    ? (stageRaw as CandidateStage)
+    : null;
+
   try {
     const candidates = await listCandidateAnalyses(filters);
-    return NextResponse.json({ candidates });
+    // Enrichit chaque candidat avec son parcours dérivé du journal. Un seul
+    // scan journal (toutes campagnes) → map uid→marqueurs partagée.
+    const markers = await loadCandidateMarkers();
+    const enriched = candidates.map((c) => ({
+      ...c,
+      journey: deriveJourneyFor(c.status, markers.get(c.uid)),
+    }));
+    const filtered = stageFilter
+      ? enriched.filter((c) => c.journey.stage === stageFilter)
+      : enriched;
+    return NextResponse.json({ candidates: filtered });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) return notConfigured();
     return NextResponse.json(
