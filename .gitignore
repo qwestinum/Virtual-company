@@ -43,3 +43,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# bench CV Analyzer — données et sorties LOCALES :
+# - les CV de test (cv*.txt/.pdf) sont des données personnelles, jamais committés ;
+# - les sorties de bench (openai.json, bench-cv-*.json) sont dérivées ;
+# - seule la fiche de scoring fixture (bench/fiche.json) est tracée.
+bench-cv-*.json
+bench/*
+!bench/fiche.json

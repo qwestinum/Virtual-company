@@ -1,0 +1,73 @@
+{
+  "campaignId": "CAMP-CHARGE-RECRUTEMENT",
+  "isValidated": true,
+  "acceptanceThreshold": 70,
+  "criteria": [
+    {
+      "id": "exp-recrutement",
+      "label": "Expérience préalable en recrutement (cabinet ou entreprise), au moins 2 ans",
+      "level": "redhibitoire",
+      "weight": 0
+    },
+    {
+      "id": "sourcing",
+      "label": "Maîtrise des techniques de sourcing (LinkedIn Recruiter, jobboards, approche directe)",
+      "level": "obligatoire",
+      "weight": 10
+    },
+    {
+      "id": "entretiens",
+      "label": "Conduite d'entretiens de recrutement structurés et évaluation des candidats",
+      "level": "obligatoire",
+      "weight": 10
+    },
+    {
+      "id": "pipeline",
+      "label": "Gestion simultanée de plusieurs recrutements (suivi de pipeline et priorisation)",
+      "level": "critique",
+      "weight": 8
+    },
+    {
+      "id": "relationnel",
+      "label": "Excellentes compétences relationnelles et de communication",
+      "level": "critique",
+      "weight": 8
+    },
+    {
+      "id": "ats",
+      "label": "Maîtrise d'un ATS (ex. Lever, Greenhouse, Workday, Recruitee)",
+      "level": "tres_important",
+      "weight": 6
+    },
+    {
+      "id": "redaction-offres",
+      "label": "Rédaction d'offres d'emploi claires et attractives",
+      "level": "tres_important",
+      "weight": 6
+    },
+    {
+      "id": "profils-tech",
+      "label": "Expérience du recrutement de profils techniques / IT",
+      "level": "important",
+      "weight": 4
+    },
+    {
+      "id": "marque-employeur",
+      "label": "Notions de marque employeur et d'expérience candidat",
+      "level": "important",
+      "weight": 4
+    },
+    {
+      "id": "anglais",
+      "label": "Anglais professionnel (écrit et oral)",
+      "level": "souhaitable",
+      "weight": 2
+    },
+    {
+      "id": "droit-travail",
+      "label": "Connaissance du droit du travail appliqué au recrutement",
+      "level": "souhaitable",
+      "weight": 2
+    }
+  ]
+}
