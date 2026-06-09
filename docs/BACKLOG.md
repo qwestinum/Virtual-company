@@ -472,3 +472,59 @@ clôture, édition FDP) + round-trip persistance repo. Rapide, sans LLM ni navig
 **Coût/risque** : ajout d'infra (download navigateurs, setup CI). Non bloquant —
 le moteur critique est déjà couvert en déterministe. À prioriser avant la mise en
 prod VPS (Session 8) pour sécuriser les parcours UI.
+
+---
+
+## Préparation modèle de données pour le module reporting (donneur d'ordre + site)
+
+**Statut** : à faire AVANT toute première session reporting. Non urgent, mais
+**bloquant pour le reporting** (qui consomme ces deux dimensions). Idéalement un
+**commit dédié** juste avant d'attaquer le reporting.
+
+**Contexte.** Le reporting à venir aura besoin de deux concepts métier qui
+n'existent pas encore dans le modèle. Les introduire d'abord, sinon le reporting
+n'aura pas de dimensions à agréger.
+
+### Entité 1 — Donneur d'ordre
+La personne (interne à l'organisation cliente) qui a **initié** une campagne.
+**Distinct de l'utilisateur ORQA** qui manipule l'interface. Une campagne a un
+**seul** donneur d'ordre identifié.
+- `id`
+- nom + prénom
+- email professionnel
+- rôle / fonction (texte libre — « Directeur du site de Lyon », « Manager R&D »,
+  « DRH adjoint »)
+
+### Entité 2 — Site
+L'entité géographique/organisationnelle de rattachement d'une campagne (orgs
+multi-sites : réseaux d'établissements, groupes avec filiales, multi-implantations).
+Une campagne a un **seul** site associé. Orgs mono-site : créer un site
+« par défaut » et y rattacher toutes les campagnes sans friction.
+- `id`
+- nom du site (« Clinique de Bordeaux », « Filiale Industrie », « Siège Paris »)
+- type / catégorie (texte libre — « Établissement médical », « Site industriel »,
+  « Bureau commercial »)
+- localisation (ville ; code postal optionnel)
+
+### Migration des campagnes existantes
+Les deux liens sont **nullable au début** : remplis manuellement au fil du temps
+par les utilisateurs, ou laissés vides pour les campagnes anciennes. **Aucune
+rupture** sur l'existant.
+
+### Tâches (session de préparation reporting)
+1. **Schéma Supabase** : tables `donneur_ordre` et `site` + relations vers
+   `campaign` (probablement deux colonnes **nullable** `donneur_ordre_id` et
+   `site_id` sur la table des campagnes). Migration dans `scripts/migrate.sql`.
+2. **Écrans de cadrage de campagne (Temps 1)** : capturer ces deux infos à la
+   création. Le Manager RH pose les questions correspondantes au donneur d'ordre
+   lors du brief initial (cf. règle « une seule question à la fois »).
+3. **Admin légère** : gérer la liste des donneurs d'ordre et des sites au niveau
+   de l'organisation cliente (création / modification / archivage).
+4. **Documenter dans `CLAUDE.md`** ces deux concepts pour que toute session
+   future en tienne compte.
+
+**Règle** : ne PAS démarrer le développement reporting tant que ces deux entités
+ne sont pas en place dans le modèle.
+
+**Risque** : moyen — touche le schéma de campagne (lifecycle) + la persistance
+Supabase + le cadrage Temps 1. Isolable en commit dédié.
