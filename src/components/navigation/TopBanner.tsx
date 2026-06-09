@@ -58,12 +58,6 @@ export function TopBanner({
       ) : null}
       <nav className="ml-auto flex items-center gap-4">
         <Link
-          href="/reporting"
-          className="font-body text-[13px] font-semibold text-stone-900/85 transition-opacity hover:opacity-70"
-        >
-          Reporting
-        </Link>
-        <Link
           href="/settings"
           className="font-body text-[13px] font-semibold text-stone-900/85 transition-opacity hover:opacity-70"
         >
