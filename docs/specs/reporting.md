@@ -271,6 +271,53 @@ première page.
 - **Conformité et traçabilité** : mention RGPD synthétique, référence aux audit
   logs
 
+### 4.8. État d'implémentation (Phase 3 — livré)
+
+Sous-onglet **fonctionnel** (onglet interne au `ReportingHub`). Différences clés
+avec le rapport de campagne :
+
+- **Période libre** (défaut « Ce mois ») via `PeriodFilter` (8 chips :
+  semaine/mois/trimestre/année, en cours + précédent).
+- **Génération à la volée, sans cache stable** : chaque appel à
+  `GET /api/reporting/multi-campaigns/report` re-rend le PDF (`Cache-Control:
+  no-store`) avec la date+heure de génération en page 1. Idem envoi.
+- **Aperçu réactif client-side** : un fetch unique de `GET /reporting/campaigns`
+  (campagnes clôturées), filtré/agrégé côté client (pas de saturation API).
+- **Périmètre** : `closed_at` ∈ [début, fin] (repli `updated_at`). Une campagne
+  ré-ouverte puis re-clôturée n'est incluse que par son dernier `closed_at`.
+- **Traçabilité (Option A)** : envoi consigné au journal
+  (`multi_campaign_report_sent`, payload période + filtres + destinataires).
+  Pas d'historique UI (le rapport multi n'a pas d'objet permanent) — un
+  historique « 5 derniers envois » reste en backlog, faisable sans refactor.
+
+#### Agrégation
+
+- **Volumes cumulés** sur toutes les campagnes du périmètre (reçues, retenus,
+  écartés, arbitrés). **Taux** : retenue = retenus/reçues ; arbitrage =
+  arbitrés/reçues ; réponse = candidats contactés/reçues.
+- **Time-to-hire moyen** = moyenne **sur les campagnes ayant abouti à un
+  recrutement** uniquement (mention explicite sous le KPI dans le PDF).
+- **Performance par canal** = proxy canal de **réception** (faute d'attribution
+  diffusion → candidat), agrégée sur toute la période.
+- **Marque employeur agrégée** ≈ **taux de réponse aux candidats** pour cette
+  session. Limitation : métriques plus fines (NPS, délai de réponse, taux de
+  désistement) à enrichir ultérieurement.
+
+#### Seuils de référence (recommandations transverses)
+
+Constantes nommées et exportées depuis `src/lib/reporting/aggregations.ts`.
+**Statut : hypothèses initiales, à recalibrer sur données réelles.**
+
+| Constante | Valeur | Intention métier (ce qu'on signale) |
+|---|---|---|
+| `TIME_TO_HIRE_REFERENCE_DAYS` | 45 j | ≥ 2 campagnes au-delà → goulots d'étranglement à investiguer |
+| `ARBITRATION_HIGH_RATE` | 0,20 | arbitrage manuel global élevé → décalage grilles ↔ marché |
+| `CHANNEL_DOMINANT_SHARE` | 0,40 | un canal ≥ 40 % des retenus → à privilégier |
+| `SITE_RETENTION_GAP_PTS` | 20 pts | écart de taux de retenue entre 2 sites → harmonisation |
+
+Les recommandations sont produites par **règles** (pas de LLM cette session) ;
+au moins une recommandation est toujours émise (fallback « pilotage conforme »).
+
 ## 5. Sous-onglet 3 — Audit
 
 ### 5.1. Vue d'accueil du sous-onglet
@@ -344,7 +391,7 @@ critères inutiles, corrélation score / issue, suggestions de recalibration).
   adaptation des écrans de cadrage de campagne. ✅ _livré_
 - **Phase 2** — Sous-onglet 1 (Rapport de campagne). ✅ _livré (cf. §3.7)_
 - **Phase 3** — Sous-onglet 2 (Rapport multi-campagnes), en réutilisant les
-  briques du sous-onglet 1.
+  briques du sous-onglet 1. ✅ _livré (cf. §4.8)_
 - **Phase 4** — Sous-onglet 3 / Audit candidat uniquement (en priorité
   commerciale forte pour les démonstrations).
 - **Phase 5** — Audit campagne et Audit scoring, dans un ordre à arbitrer
