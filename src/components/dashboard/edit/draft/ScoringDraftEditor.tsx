@@ -9,6 +9,7 @@
  * `onChange` avec la nouvelle liste.
  */
 
+import { MethodBadge } from '@/components/scoring/MethodBadge';
 import {
   buildCriterion,
   DEFAULT_WEIGHTS,
@@ -57,7 +58,7 @@ export function ScoringDraftEditor({
           key={c.id}
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr auto auto auto',
+            gridTemplateColumns: '1fr auto auto auto auto',
             gap: 8,
             alignItems: 'center',
             padding: '8px 10px',
@@ -82,6 +83,8 @@ export function ScoringDraftEditor({
               minWidth: 0,
             }}
           />
+          {/* Badge méthode (lecture seule — édition dans l'éditeur du chat). */}
+          <MethodBadge method={c.verificationMethod} />
           <select
             value={c.level}
             onChange={(e) => {

@@ -3,8 +3,18 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCriterion,
   validateScoringSheet,
+  VERIFICATION_METHOD_BADGES,
   type ScoringSheet,
 } from '@/types/scoring';
+
+describe('VERIFICATION_METHOD_BADGES', () => {
+  it('libellé de badge par méthode', () => {
+    expect(VERIFICATION_METHOD_BADGES.llm_with_quote).toBe('LLM');
+    expect(VERIFICATION_METHOD_BADGES.keywords_exact).toBe('MOTS-CLÉS');
+    expect(VERIFICATION_METHOD_BADGES.keywords_with_variants).toBe('MOTS-CLÉS');
+    expect(VERIFICATION_METHOD_BADGES.hybrid_keywords_llm).toBe('HYBRIDE');
+  });
+});
 
 function sheet(criteria: ScoringSheet['criteria']): ScoringSheet {
   return { campaignId: 'CAMP-1', criteria, isValidated: true };

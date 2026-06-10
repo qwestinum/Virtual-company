@@ -14,6 +14,7 @@
 
 import { useState } from 'react';
 
+import { MethodBadge } from '@/components/scoring/MethodBadge';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
@@ -206,7 +207,7 @@ function CriterionRow({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '1fr auto auto auto',
+        gridTemplateColumns: '1fr auto auto auto auto',
         gap: 8,
         alignItems: 'center',
         padding: '8px 10px',
@@ -231,6 +232,9 @@ function CriterionRow({
           minWidth: 0,
         }}
       />
+      {/* Badge méthode de vérification (lecture seule côté dashboard — édition
+          complète dans l'éditeur de fiche du chat). */}
+      <MethodBadge method={criterion.verificationMethod} />
       <select
         value={criterion.level}
         onChange={(e) => {

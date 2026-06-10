@@ -49,7 +49,12 @@ export type ScoringState = {
   ) => void;
   updateCriterion: (
     id: string,
-    patch: Partial<Pick<ScoringCriterion, 'label' | 'level' | 'weight'>>,
+    patch: Partial<
+      Pick<
+        ScoringCriterion,
+        'label' | 'level' | 'weight' | 'verificationMethod' | 'keywords'
+      >
+    >,
   ) => void;
   removeCriterion: (id: string) => void;
   validate: () => void;
@@ -126,6 +131,13 @@ export const useScoringStore = create<ScoringState>()((set) => ({
         label: patch.label ?? current.label,
         level: nextLevel,
         weight: nextWeight,
+        // Méthode de vérification & mots-clés (fiche hybride) : on ne
+        // matérialise que ce que le patch fournit (préserve l'existant via
+        // le spread, ne crée pas de clés `undefined`).
+        ...(patch.verificationMethod !== undefined
+          ? { verificationMethod: patch.verificationMethod }
+          : {}),
+        ...(patch.keywords !== undefined ? { keywords: patch.keywords } : {}),
       };
       const criteria = [...state.sheet.criteria];
       criteria[idx] = updated;
