@@ -23,7 +23,7 @@ import { CampaignStatusSchema } from '@/types/campaign-status';
 import { CVSourceSchema } from '@/types/cv-source';
 import { FDPInProgressSchema } from '@/types/field-collection';
 import { PublicationChannelSchema } from '@/types/publication-channel';
-import { ScoringSheetSchema } from '@/types/scoring';
+import { ScoringSheetSchema, validateScoringSheet } from '@/types/scoring';
 
 export const runtime = 'nodejs';
 
@@ -78,6 +78,19 @@ export async function PUT(request: Request): Promise<NextResponse> {
       },
       { status: 400 },
     );
+  }
+
+  // Cohérence de la fiche de scoring hybride (cf. scoring-hybrid.md §7.1) :
+  // refus de persister une fiche VALIDÉE dont un critère déterministe/hybride
+  // n'a aucun mot-clé. Les brouillons non validés ne sont pas bloqués.
+  if (parsed.scoringSheet?.isValidated) {
+    const sheetErrors = validateScoringSheet(parsed.scoringSheet);
+    if (sheetErrors.length > 0) {
+      return NextResponse.json(
+        { error: 'invalid_scoring_sheet', message: sheetErrors.join(' ') },
+        { status: 422 },
+      );
+    }
   }
 
   try {

@@ -60,6 +60,13 @@ create index if not exists fdps_archived_archived_at_idx
 -- ──────────────────────────────────────────────────────────────────────
 -- Le snapshot principal vit dans campaigns.scoring_sheet. Cette table
 -- garde l'historique des validations successives — utile pour audit.
+--
+-- Note (fiche de scoring hybride, juin 2026) : les critères de fiche de
+-- scoring vivent dans le jsonb campaigns.scoring_sheet et dans
+-- scoring_sheets_archived. Les nouveaux champs verificationMethod et keywords
+-- sont optionnels avec valeurs par défaut gérées au parse Zod côté
+-- application, pas via DDL. Voir ScoringCriterionSchema dans
+-- src/types/scoring.ts.
 
 create table if not exists public.scoring_sheets_archived (
   id           bigserial primary key,

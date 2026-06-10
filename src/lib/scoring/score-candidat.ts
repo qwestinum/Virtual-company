@@ -31,6 +31,7 @@ import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
 import {
   criterionBehavior,
   DECISION_OUTCOME_MATRIX,
+  DEFAULT_VERIFICATION_METHOD,
   LlmDecisionSchema,
   ScoreResultSchema,
   type CandidateStatus,
@@ -224,6 +225,9 @@ export function scoreCandidat(
         llmJustification: verdict.llmJustification,
         llmCVQuote: verdict.llmCVQuote,
         contribution,
+        // Trace la méthode appliquée (coalescée pour les grilles antérieures).
+        verificationMethodUsed:
+          criterion.verificationMethod ?? DEFAULT_VERIFICATION_METHOD,
       };
     },
   );

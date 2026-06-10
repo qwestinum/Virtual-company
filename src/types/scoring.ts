@@ -77,6 +77,48 @@ export const DEFAULT_WEIGHTS: Record<ScoringLevel, number> = {
   souhaitable: 2,
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// Méthode de vérification par critère (fiche de scoring hybride — juin 2026).
+// Cf. docs/specs/scoring-hybrid.md. Chaque critère choisit COMMENT il est
+// vérifié : matching déterministe de mots-clés, analyse LLM contextuelle, ou
+// hybride. Le LLM reste le défaut (rétro-compatibilité totale).
+// ───────────────────────────────────────────────────────────────────────────
+
+export const VERIFICATION_METHODS = [
+  'keywords_exact',
+  'keywords_with_variants',
+  'llm_with_quote',
+  'hybrid_keywords_llm',
+] as const;
+export const VerificationMethodSchema = z.enum(VERIFICATION_METHODS);
+export type VerificationMethod = z.infer<typeof VerificationMethodSchema>;
+
+/** Défaut appliqué partout où `verificationMethod` est absent (coalescing). */
+export const DEFAULT_VERIFICATION_METHOD: VerificationMethod = 'llm_with_quote';
+
+/** Méthodes qui exigent au moins un mot-clé (validation de cohérence). */
+export const KEYWORD_BASED_METHODS: VerificationMethod[] = [
+  'keywords_exact',
+  'keywords_with_variants',
+  'hybrid_keywords_llm',
+];
+
+/** Libellé long pour le sélecteur de cadrage. */
+export const VERIFICATION_METHOD_LABELS: Record<VerificationMethod, string> = {
+  keywords_exact: 'Mots-clés exacts',
+  keywords_with_variants: 'Mots-clés avec variantes',
+  llm_with_quote: 'Vérification LLM avec citation',
+  hybrid_keywords_llm: 'Hybride mots-clés + LLM',
+};
+
+/** Libellé court du badge de la vue récap. */
+export const VERIFICATION_METHOD_BADGES: Record<VerificationMethod, string> = {
+  keywords_exact: 'MOTS-CLÉS',
+  keywords_with_variants: 'MOTS-CLÉS',
+  llm_with_quote: 'LLM',
+  hybrid_keywords_llm: 'HYBRIDE',
+};
+
 export const ScoringCriterionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
@@ -88,6 +130,19 @@ export const ScoringCriterionSchema = z.object({
    * cohérence mais n'intervient pas dans le score (knockout pur).
    */
   weight: z.number().min(0),
+  /**
+   * Méthode de vérification du critère (fiche hybride). OPTIONNEL pour la
+   * rétro-compatibilité : les grilles antérieures (et tout point de lecture)
+   * coalescent `undefined → 'llm_with_quote'` (cf. DEFAULT_VERIFICATION_METHOD).
+   * Aucune migration DDL : les critères vivent dans le jsonb `scoring_sheet`.
+   */
+  verificationMethod: VerificationMethodSchema.optional(),
+  /**
+   * Mots-clés / variantes pour les méthodes déterministes & hybride.
+   * OPTIONNEL : coalescé `undefined → []`. Doit être non vide pour toute
+   * méthode de `KEYWORD_BASED_METHODS` (cf. `validateScoringSheet`).
+   */
+  keywords: z.array(z.string()).optional(),
 });
 export type ScoringCriterion = z.infer<typeof ScoringCriterionSchema>;
 
@@ -114,13 +169,45 @@ export function buildCriterion(input: {
   label: string;
   level: ScoringLevel;
   weight?: number;
+  verificationMethod?: VerificationMethod;
+  keywords?: string[];
 }): ScoringCriterion {
   return {
     id: input.id,
     label: input.label,
     level: input.level,
     weight: input.weight ?? DEFAULT_WEIGHTS[input.level],
+    // Coalescing : on ne matérialise les nouveaux champs que s'ils sont fournis
+    // (les critères LLM par défaut restent identiques aux fixtures existantes).
+    ...(input.verificationMethod !== undefined
+      ? { verificationMethod: input.verificationMethod }
+      : {}),
+    ...(input.keywords !== undefined ? { keywords: input.keywords } : {}),
   };
+}
+
+/**
+ * Valide la cohérence des méthodes de vérification d'une fiche (cf.
+ * docs/specs/scoring-hybrid.md §7.1). PUR : renvoie la liste des messages
+ * d'erreur (vide = fiche valide). Appelée côté UI (blocage « Valider la
+ * fiche ») ET côté serveur (refus de persistance d'une fiche corrompue).
+ *
+ * Règle : une méthode déterministe ou hybride exige au moins un mot-clé non
+ * vide. `llm_with_quote` (défaut) n'impose rien.
+ */
+export function validateScoringSheet(sheet: ScoringSheet): string[] {
+  const errors: string[] = [];
+  for (const c of sheet.criteria) {
+    const method = c.verificationMethod ?? DEFAULT_VERIFICATION_METHOD;
+    if (!KEYWORD_BASED_METHODS.includes(method)) continue;
+    const hasKeyword = (c.keywords ?? []).some((k) => k.trim().length > 0);
+    if (!hasKeyword) {
+      errors.push(
+        `Le critère « ${c.label} » utilise la méthode « ${VERIFICATION_METHOD_LABELS[method]} » mais n'a aucun mot-clé. Ajoutez au moins un mot-clé ou choisissez la vérification LLM.`,
+      );
+    }
+  }
+  return errors;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -329,6 +416,13 @@ export const CriterionDecisionSchema = z.object({
   llmCVQuote: z.string(),
   /** Points effectivement apportés au total par ce critère (calcul C2). */
   contribution: z.number(),
+  /**
+   * Méthode de vérification effectivement appliquée pour produire ce verdict
+   * (fiche hybride — juin 2026). OPTIONNEL : coalescé `undefined →
+   * 'llm_with_quote'` à l'affichage. Stampé par `scoreCandidat` depuis le
+   * critère. Trace la méthode dans le rapport / l'audit candidat (Phase 4).
+   */
+  verificationMethodUsed: VerificationMethodSchema.optional(),
 });
 export type CriterionDecision = z.infer<typeof CriterionDecisionSchema>;
 
