@@ -34,7 +34,12 @@ import {
 } from '@/lib/agents/cv-narration';
 import { AIValidationError } from '@/lib/ai/errors';
 import { chatCompleteJson } from '@/lib/ai/provider';
-import { scoreCandidat, type LlmCriterionVerdict } from '@/lib/scoring';
+import {
+  scoreCandidat,
+  verifyKeywordsExact,
+  verifyKeywordsWithVariants,
+  type LlmCriterionVerdict,
+} from '@/lib/scoring';
 import {
   CVApplicationSchema,
   CVFactLedgerSchema,
@@ -46,7 +51,38 @@ import {
   type CVNarration,
 } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
-import { LlmDecisionSchema, type ScoringSheet } from '@/types/scoring';
+import {
+  LlmDecisionSchema,
+  type ScoringCriterion,
+  type ScoringSheet,
+  type VerificationMethod,
+} from '@/types/scoring';
+
+/** Méthodes 100% déterministes (vérifiées en local, sans LLM). */
+function isKeywordOnlyMethod(method: VerificationMethod | undefined): boolean {
+  return method === 'keywords_exact' || method === 'keywords_with_variants';
+}
+
+/** Verdict déterministe d'un critère mots-clés, au format `LlmCriterionVerdict`. */
+function keywordVerdict(
+  cvText: string,
+  criterion: ScoringCriterion,
+): LlmCriterionVerdict {
+  const keywords = criterion.keywords ?? [];
+  const res =
+    criterion.verificationMethod === 'keywords_with_variants'
+      ? verifyKeywordsWithVariants(cvText, keywords)
+      : verifyKeywordsExact(cvText, keywords);
+  return {
+    criterionId: criterion.id,
+    llmDecision: res.verdict,
+    llmJustification:
+      res.verdict === 'satisfait'
+        ? `Mot-clé « ${res.matchedKeyword} » trouvé dans le CV (vérification déterministe).`
+        : 'Aucun des mots-clés attendus n’a été trouvé dans le CV (vérification déterministe).',
+    llmCVQuote: res.citation,
+  };
+}
 
 /** Sous-ensemble FACTUEL extrait par le LLM (le code complète les métadonnées système). */
 const ExtractedCandidateSchema = z
@@ -227,57 +263,83 @@ export async function analyzeCVApplication(
     };
   }
 
-  // 1bis. Relevé de faits (ledger) — SOURCE CANONIQUE partagée par tous les
-  // critères. Extrait UNE fois ; les verdicts s'y ancrent pour qu'un même fait
-  // (« Xray ») ne soit pas jugé présent ici et absent là. Dégrade proprement :
-  // un échec → relevé vide, les verdicts se rabattent sur le seul texte du CV.
-  let ledger: CVFactLedger = EMPTY_CV_FACT_LEDGER;
+  // Dispatcher hybride (cf. docs/specs/scoring-hybrid.md §5.1) : on PARTITIONNE
+  // les critères par méthode de vérification. Les critères déterministes
+  // (mots-clés) sont vérifiés EN LOCAL, sans LLM. Les critères LLM —
+  // `llm_with_quote` et, pour l'instant, `hybrid_keywords_llm` (TODO Phase 3 :
+  // gardiens mots-clés + LLM contextuel) — passent par le relevé de faits + le
+  // batch verdicts existant, restreint à ce sous-ensemble. Une grille tout-LLM
+  // (défaut) ⇒ `llmCriteria` = toute la fiche ⇒ chemin strictement inchangé.
+  const llmCriteria = input.sheet.criteria.filter(
+    (c) => !isKeywordOnlyMethod(c.verificationMethod),
+  );
+  const deterministicVerdicts: LlmCriterionVerdict[] = input.sheet.criteria
+    .filter((c) => isKeywordOnlyMethod(c.verificationMethod))
+    .map((c) => keywordVerdict(input.cvText, c));
+
   let ledgerFailed = false;
-  try {
-    const r = await chatCompleteJson(
-      [
-        { role: 'system', content: buildLedgerSystemPrompt() },
-        { role: 'user', content: buildLedgerUserPrompt(input.cvText, input.fileName) },
-      ],
-      CVFactLedgerSchema,
-    );
-    ledger = r.data;
-    accumulate(r.raw);
-  } catch (err) {
-    if (!(err instanceof AIValidationError)) throw err;
-    ledgerFailed = true;
+  let verdictsFailed = false;
+  let llmVerdicts: LlmCriterionVerdict[] = [];
+
+  if (llmCriteria.length > 0) {
+    const llmSheet: ScoringSheet = { ...input.sheet, criteria: llmCriteria };
+
+    // 1bis. Relevé de faits (ledger) — SOURCE CANONIQUE des critères LLM.
+    // Extrait UNE fois ; les verdicts s'y ancrent pour qu'un même fait
+    // (« Xray ») ne soit pas jugé présent ici et absent là. Dégrade proprement :
+    // un échec → relevé vide, les verdicts se rabattent sur le seul texte du CV.
+    let ledger: CVFactLedger = EMPTY_CV_FACT_LEDGER;
+    try {
+      const r = await chatCompleteJson(
+        [
+          { role: 'system', content: buildLedgerSystemPrompt() },
+          { role: 'user', content: buildLedgerUserPrompt(input.cvText, input.fileName) },
+        ],
+        CVFactLedgerSchema,
+      );
+      ledger = r.data;
+      accumulate(r.raw);
+    } catch (err) {
+      if (!(err instanceof AIValidationError)) throw err;
+      ledgerFailed = true;
+    }
+
+    // 2. Extraction des décisions des critères LLM, ANCRÉES sur le relevé.
+    try {
+      const r = await chatCompleteJson(
+        [
+          { role: 'system', content: buildVerdictsSystemPrompt() },
+          {
+            role: 'user',
+            content: buildVerdictsUserPrompt(input.cvText, llmSheet, ledger),
+          },
+        ],
+        VerdictsResponseSchema,
+      );
+      llmVerdicts = remapVerdictsToCriteria(r.data.verdicts, llmCriteria);
+      accumulate(r.raw);
+    } catch (err) {
+      if (!(err instanceof AIValidationError)) throw err;
+      verdictsFailed = true;
+      // Fallback : aucune décision exploitable ⇒ critères LLM non vérifiables,
+      // marqués llmFailure pour traçabilité. scoreCandidat appliquera knockout/cap.
+      llmVerdicts = llmCriteria.map((c) => ({
+        criterionId: c.id,
+        llmDecision: 'non_verifiable',
+        llmJustification:
+          'Décision indisponible : échec de l’extraction LLM après plusieurs tentatives.',
+        llmCVQuote: '',
+        llmFailure: true,
+      }));
+    }
   }
 
-  // 2. Extraction des décisions par critère, ANCRÉES sur le relevé de faits.
-  let verdicts: LlmCriterionVerdict[];
-  let verdictsFailed = false;
-  try {
-    const r = await chatCompleteJson(
-      [
-        { role: 'system', content: buildVerdictsSystemPrompt() },
-        {
-          role: 'user',
-          content: buildVerdictsUserPrompt(input.cvText, input.sheet, ledger),
-        },
-      ],
-      VerdictsResponseSchema,
-    );
-    verdicts = remapVerdictsToCriteria(r.data.verdicts, input.sheet.criteria);
-    accumulate(r.raw);
-  } catch (err) {
-    if (!(err instanceof AIValidationError)) throw err;
-    verdictsFailed = true;
-    // Fallback : aucune décision exploitable ⇒ tous les critères non vérifiables,
-    // marqués llmFailure pour traçabilité. scoreCandidat appliquera knockout/cap.
-    verdicts = input.sheet.criteria.map((c) => ({
-      criterionId: c.id,
-      llmDecision: 'non_verifiable',
-      llmJustification:
-        'Décision indisponible : échec de l’extraction LLM après plusieurs tentatives.',
-      llmCVQuote: '',
-      llmFailure: true,
-    }));
-  }
+  // Fusion déterministe + LLM (l'ordre est indifférent : scoreCandidat indexe
+  // par criterionId et itère la fiche complète).
+  const verdicts: LlmCriterionVerdict[] = [
+    ...deterministicVerdicts,
+    ...llmVerdicts,
+  ];
 
   // Email résolu de façon DÉTERMINISTE depuis le texte du CV (anti-hallucination),
   // y compris si l'extraction candidat a échoué.
