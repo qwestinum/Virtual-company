@@ -133,13 +133,21 @@ export function resultCountLabel(count: number): string {
  * Valeurs pré-remplies de la modale d'envoi en contexte rapport de campagne
  * (cf. docs/specs/reporting.md §3.5). PUR & testable.
  */
+/** Rappel de campagne pour l'objet du mail : intitulé distinct + identifiant. */
+export function campaignSubjectRef(summary: CampaignReportSummary): string {
+  return summary.campaignName && summary.campaignName !== summary.jobTitle
+    ? `${summary.campaignName} · ${summary.campaignId}`
+    : summary.campaignId;
+}
+
 export function campaignSendDefaults(summary: CampaignReportSummary): {
   subject: string;
   message: string;
   attachmentName: string;
 } {
   return {
-    subject: `Rapport de campagne — ${summary.jobTitle}`,
+    // Rappel de la campagne (pas juste le poste) dans l'objet.
+    subject: `Rapport de campagne — ${summary.jobTitle} (${campaignSubjectRef(summary)})`,
     message: [
       'Bonjour,',
       '',

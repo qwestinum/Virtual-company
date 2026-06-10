@@ -167,8 +167,12 @@ d'audit RGPD consigné.
 ### 3.7. État d'implémentation (Phase 2 — livré)
 
 Le sous-onglet est **fonctionnel** (onglet interne au `ReportingHub`, pas de
-route Next dédiée — cohérent avec l'audit candidat). Décisions et proxies
-retenus, à connaître pour les évolutions :
+route Next dédiée — cohérent avec l'audit candidat). Le **clic sur une carte**
+ouvre une vue détail (`CampaignReportDetail`) consultable à l'écran — toutes
+les sections du rapport en HTML — en plus des actions Générer / Envoyer /
+Régénérer (route `GET /api/reporting/campaigns/[id]`). L'**objet du mail**
+rappelle la campagne (intitulé distinct + identifiant), pas seulement le poste.
+Décisions et proxies retenus, à connaître pour les évolutions :
 
 - **Dates de cycle de vie** : colonnes `campaigns.launched_at` / `closed_at`
   (nullable), posées par `patchCampaign` sur transition de statut (`closed_at`

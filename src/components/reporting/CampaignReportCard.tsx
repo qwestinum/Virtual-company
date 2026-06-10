@@ -20,12 +20,14 @@ import type { CampaignReportSummary } from '@/types/reporting';
 
 export function CampaignReportCard({
   summary,
+  onOpen,
   onGenerate,
   onRegenerate,
   onSend,
   onShowHistory,
 }: {
   summary: CampaignReportSummary;
+  onOpen: () => void;
   onGenerate: () => void;
   onRegenerate: () => void;
   onSend: () => void;
@@ -38,7 +40,18 @@ export function CampaignReportCard({
   const recruited = summary.issue === 'recruited';
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="flex cursor-pointer flex-col gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3 text-left hover:border-amber-300 hover:bg-amber-50/30"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-display text-[15px] font-bold text-stone-900">
@@ -82,7 +95,10 @@ export function CampaignReportCard({
           {sent ? (
             <button
               type="button"
-              onClick={onShowHistory}
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowHistory();
+              }}
               className="underline-offset-2 hover:text-stone-600 hover:underline"
             >
               {sent}
@@ -92,7 +108,10 @@ export function CampaignReportCard({
         </div>
       )}
 
-      <div className="mt-1 flex items-center justify-end gap-2">
+      <div
+        className="mt-1 flex items-center justify-end gap-2"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           onClick={onGenerate}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   campaignReportFileName,
+  campaignSubjectRef,
   donneurOrdreLabel,
   filterCampaignSummaries,
   generatedMention,
@@ -64,6 +65,15 @@ describe('mentions de carte', () => {
   it('donneurOrdreLabel : « Nom (rôle) » ou —', () => {
     expect(donneurOrdreLabel(summary({}))).toBe('M. Durand (DRH)');
     expect(donneurOrdreLabel(summary({ donneurOrdre: null }))).toBe('—');
+  });
+
+  it('campaignSubjectRef : intitulé distinct + id, sinon id seul', () => {
+    expect(
+      campaignSubjectRef(summary({ campaignName: 'Recrutement été', jobTitle: 'Dev' })),
+    ).toBe('Recrutement été · CAMP-1');
+    expect(
+      campaignSubjectRef(summary({ campaignName: 'Dev', jobTitle: 'Dev' })),
+    ).toBe('CAMP-1');
   });
 });
 

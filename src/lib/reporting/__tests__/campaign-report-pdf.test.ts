@@ -55,10 +55,13 @@ describe('renderCampaignReportPdf', () => {
 });
 
 describe('campaignSendDefaults (contexte rapport de campagne)', () => {
-  it('sujet, message et pièce jointe pré-remplis corrects', () => {
+  it('sujet rappelle la campagne (pas juste le poste), message et PJ corrects', () => {
     const summary = buildCampaignReportSummary(META, ANALYSES, [], null);
     const d = campaignSendDefaults(summary);
-    expect(d.subject).toBe('Rapport de campagne — Développeur Front');
+    // Rappel de la campagne : intitulé distinct + identifiant.
+    expect(d.subject).toBe(
+      'Rapport de campagne — Développeur Front (Campagne dev · CAMP-7)',
+    );
     expect(d.message).toMatch(/« Développeur Front »/);
     expect(d.message).toMatch(/clôturée le 1 juin 2026/);
     expect(d.attachmentName).toBe(

@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
+import { campaignSubjectRef } from '@/lib/reporting/campaign-report-display';
 import { renderCampaignReportPdf } from '@/lib/reporting/campaign-report-pdf';
 import { assembleCampaignReport } from '@/lib/reporting/campaign-report-loader';
 import { downloadArtifact, uploadArtifactBinary } from '@/lib/storage/blob';
@@ -86,7 +87,7 @@ export async function POST(
     const subject =
       typeof body.subject === 'string' && body.subject.trim().length > 0
         ? body.subject.trim()
-        : `Rapport de campagne — ${data.summary.jobTitle}`;
+        : `Rapport de campagne — ${data.summary.jobTitle} (${campaignSubjectRef(data.summary)})`;
     const message =
       typeof body.message === 'string' && body.message.trim().length > 0
         ? body.message

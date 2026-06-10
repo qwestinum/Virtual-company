@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { CampaignReportCard } from '@/components/reporting/CampaignReportCard';
+import { CampaignReportDetail } from '@/components/reporting/CampaignReportDetail';
 import { CampaignReportFilters } from '@/components/reporting/CampaignReportFilters';
 import type { DonneurOption } from '@/components/reporting/DonneurOrdreSelect';
 import { SendReportModal } from '@/components/reporting/SendReportModal';
@@ -46,6 +47,8 @@ export function CampaignReportList() {
   const [referenceDate] = useState(() => new Date());
   const [sendTarget, setSendTarget] = useState<CampaignReportSummary | null>(null);
   const [historyTarget, setHistoryTarget] =
+    useState<CampaignReportSummary | null>(null);
+  const [detailTarget, setDetailTarget] =
     useState<CampaignReportSummary | null>(null);
 
   async function load() {
@@ -141,6 +144,55 @@ export function CampaignReportList() {
     );
   }
 
+  // Modales partagées entre la liste et la vue détail.
+  const modals = (
+    <>
+      {sendTarget ? (
+        (() => {
+          const defaults = campaignSendDefaults(sendTarget);
+          return (
+            <SendReportModal
+              key={sendTarget.campaignId}
+              open
+              onClose={() => setSendTarget(null)}
+              sendEndpoint={`/api/reporting/campaigns/${sendTarget.campaignId}/send`}
+              attachmentName={defaults.attachmentName}
+              defaultSubject={defaults.subject}
+              defaultMessage={defaults.message}
+              onSent={() => {
+                window.setTimeout(() => void load(), 800);
+              }}
+            />
+          );
+        })()
+      ) : null}
+      {historyTarget ? (
+        <SentHistoryModal
+          open
+          onClose={() => setHistoryTarget(null)}
+          jobTitle={historyTarget.jobTitle}
+          sends={historyTarget.sends}
+        />
+      ) : null}
+    </>
+  );
+
+  // Vue détail (consultation du rapport à l'écran) au clic sur une carte.
+  if (detailTarget) {
+    return (
+      <>
+        <CampaignReportDetail
+          summary={detailTarget}
+          onBack={() => setDetailTarget(null)}
+          onGenerate={() => generate(detailTarget)}
+          onRegenerate={() => regenerate(detailTarget)}
+          onSend={() => setSendTarget(detailTarget)}
+        />
+        {modals}
+      </>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <CampaignReportFilters
@@ -170,6 +222,7 @@ export function CampaignReportList() {
             <CampaignReportCard
               key={s.campaignId}
               summary={s}
+              onOpen={() => setDetailTarget(s)}
               onGenerate={() => generate(s)}
               onRegenerate={() => regenerate(s)}
               onSend={() => setSendTarget(s)}
@@ -203,34 +256,7 @@ export function CampaignReportList() {
         </div>
       ) : null}
 
-      {sendTarget ? (
-        (() => {
-          const defaults = campaignSendDefaults(sendTarget);
-          return (
-            <SendReportModal
-              key={sendTarget.campaignId}
-              open
-              onClose={() => setSendTarget(null)}
-              sendEndpoint={`/api/reporting/campaigns/${sendTarget.campaignId}/send`}
-              attachmentName={defaults.attachmentName}
-              defaultSubject={defaults.subject}
-              defaultMessage={defaults.message}
-              onSent={() => {
-                window.setTimeout(() => void load(), 800);
-              }}
-            />
-          );
-        })()
-      ) : null}
-
-      {historyTarget ? (
-        <SentHistoryModal
-          open
-          onClose={() => setHistoryTarget(null)}
-          jobTitle={historyTarget.jobTitle}
-          sends={historyTarget.sends}
-        />
-      ) : null}
+      {modals}
     </div>
   );
 }
