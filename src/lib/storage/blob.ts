@@ -83,3 +83,45 @@ export async function uploadArtifact(
 
   return { bucket: ARTIFACTS_BUCKET, path, publicUrl };
 }
+
+/**
+ * Upload BINAIRE (PDF du rapport de campagne…). Pas de BOM, content-type
+ * réel, `upsert` pour écraser le cache à la régénération. Renvoie le chemin
+ * Storage + l'URL publique, comme `uploadArtifact`.
+ */
+export async function uploadArtifactBinary(input: {
+  owner: ArtifactOwner;
+  name: string;
+  content: Buffer;
+  mimeType: string;
+}): Promise<UploadArtifactResult> {
+  const supabase = requireServerSupabase();
+  const path = buildPath(input.owner, input.name);
+  const { error: uploadError } = await supabase.storage
+    .from(ARTIFACTS_BUCKET)
+    .upload(path, input.content, {
+      contentType: input.mimeType,
+      upsert: true,
+    });
+  if (uploadError) {
+    throw new Error(`uploadArtifactBinary: ${uploadError.message}`);
+  }
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from(ARTIFACTS_BUCKET).getPublicUrl(path);
+  return { bucket: ARTIFACTS_BUCKET, path, publicUrl };
+}
+
+/**
+ * Télécharge le contenu binaire d'un artefact depuis Storage. Sert au cache
+ * stable du rapport de campagne (re-sert le PDF mis en cache). Retourne null
+ * si l'objet est absent (cache invalidé / jamais généré).
+ */
+export async function downloadArtifact(path: string): Promise<Buffer | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase.storage
+    .from(ARTIFACTS_BUCKET)
+    .download(path);
+  if (error || !data) return null;
+  return Buffer.from(await data.arrayBuffer());
+}

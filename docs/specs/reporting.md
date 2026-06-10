@@ -164,6 +164,31 @@ d'audit RGPD consigné.
 - **Droits d'accès** : l'utilisateur ne voit que les campagnes auxquelles il a
   accès selon son rôle.
 
+### 3.7. État d'implémentation (Phase 2 — livré)
+
+Le sous-onglet est **fonctionnel** (onglet interne au `ReportingHub`, pas de
+route Next dédiée — cohérent avec l'audit candidat). Décisions et proxies
+retenus, à connaître pour les évolutions :
+
+- **Dates de cycle de vie** : colonnes `campaigns.launched_at` / `closed_at`
+  (nullable), posées par `patchCampaign` sur transition de statut (`closed_at`
+  ré-écrit à chaque clôture → « seul le dernier état compte » ; `launched_at`
+  au 1ᵉʳ passage `active`). Repli `created_at` / `updated_at` pour l'historique.
+- **Volumes** : dérivés de `candidate_analyses` (reçues / retenues / écartées)
+  + parcours HITL pour les **arbitrées** (intervention humaine).
+- **Issue** : `recruited` (≥ 1 recrutement finalisé) vs `no_hire`. La nuance
+  « abandonnée / sans suite » nécessiterait un motif saisi (non disponible).
+- **Performance par canal** : proxy = canal de **réception** du CV (`source`),
+  faute d'attribution diffusion → candidat.
+- **Time-to-hire** : proxy lancement → clôture (jours) quand recrutement.
+- **Recommandations** : par **règles** (pas de LLM cette session). Référence
+  time-to-hire = constante documentée (pas de baseline historique).
+- **Cache PDF stable** : Supabase Storage (`campagnes/<id>/<fichier>.pdf`,
+  upsert), re-servi tel quel ; `?force=1` régénère. Traçabilité génération /
+  envoi via le **journal** (`campaign_report_generated` / `campaign_report_sent`).
+- **Droits d'accès** : MVP mono-utilisateur sans auth → toutes les campagnes
+  clôturées sont visibles (règle de rôle non implémentée).
+
 ## 4. Sous-onglet 2 — Rapport multi-campagnes
 
 ### 4.1. Vue principale
@@ -312,8 +337,8 @@ critères inutiles, corrélation score / issue, suggestions de recalibration).
 ## 6. Phasage de développement recommandé
 
 - **Phase 1** — Pré-requis modèle de données (donneur d'ordre, site) +
-  adaptation des écrans de cadrage de campagne.
-- **Phase 2** — Sous-onglet 1 (Rapport de campagne).
+  adaptation des écrans de cadrage de campagne. ✅ _livré_
+- **Phase 2** — Sous-onglet 1 (Rapport de campagne). ✅ _livré (cf. §3.7)_
 - **Phase 3** — Sous-onglet 2 (Rapport multi-campagnes), en réutilisant les
   briques du sous-onglet 1.
 - **Phase 4** — Sous-onglet 3 / Audit candidat uniquement (en priorité

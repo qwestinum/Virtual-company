@@ -83,6 +83,8 @@ Deux dimensions métier rattachées à une campagne, introduites comme pré-requ
 
 Implémentation : types `src/types/organisation.ts` ; rows + colonnes `campaigns.site_id` / `campaigns.donneur_ordre_id` (**nullable**, `on delete set null`) dans `src/lib/db/types.ts` + `scripts/migrate.sql` ; repos `src/lib/db/repos/{sites,donneurs-ordre}.ts` ; API `src/app/api/{sites,donneurs-ordre}` ; admin légère (CRUD + archivage soft) dans `/settings` (`SitesManager`, `DonneursOrdreManager`). Les deux liens campagne sont **nullable** (migration douce : vides pour les campagnes historiques, à remplir via l'admin ou — phase ultérieure — la capture conversationnelle au brief Temps 1).
 
+**Rapport de campagne (Reporting Phase 2, livré).** Sous-onglet `Rapport de campagne` du `ReportingHub` (onglet interne, pas de route Next dédiée). Colonnes `campaigns.launched_at` / `closed_at` (**nullable**, posées par `patchCampaign` sur transition de statut ; repli `created_at` / `updated_at`). Logique **pure** dans `src/lib/reporting/campaign-report*.ts` (calcul + tri/filtre + libellés), template PDF `campaign-report-pdf.tsx` sur charte partagée `pdf-theme.ts`. **Cache PDF stable** en Supabase Storage (`uploadArtifactBinary`/`downloadArtifact`), traçabilité génération/envoi via le **journal** (`campaign_report_generated` / `campaign_report_sent`). Proxies documentés (canal = réception, time-to-hire = lancement→clôture, recos par règles) — cf. `docs/specs/reporting.md` §3.7.
+
 ## Ce que Claude Code doit savoir
 
 - **Le projet est un prototype client-facing.** Il doit être visuellement crédible en démo. L'effet wow compte autant que la fonctionnalité — un client doit voir « une équipe » au travail, pas un dashboard technique.

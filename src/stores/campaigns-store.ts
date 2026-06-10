@@ -86,6 +86,14 @@ export type ActiveCampaign = {
    */
   siteId: string | null;
   donneurOrdreId: string | null;
+  /**
+   * Reporting (rapport de campagne) — dates de cycle de vie. `launchedAt`
+   * posée au 1er passage en 'active', `closedAt` à chaque passage en
+   * 'closed' (ré-clôture écrase). Nullable : repli createdAt / updatedAt
+   * pour les campagnes historiques. Cf. docs/specs/reporting.md §3.
+   */
+  launchedAt: string | null;
+  closedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -329,6 +337,8 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       donneurOrdreId,
       status,
       lifecycle,
+      launchedAt: existing?.launchedAt ?? null,
+      closedAt: existing?.closedAt ?? null,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };

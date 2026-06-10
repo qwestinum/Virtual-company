@@ -90,6 +90,10 @@ export async function PUT(request: Request): Promise<NextResponse> {
       sources,
       siteId: parsed.siteId ?? null,
       donneurOrdreId: parsed.donneurOrdreId ?? null,
+      // Dates de cycle de vie gérées par patchCampaign (transitions de statut)
+      // — upsertCampaign retire les clés nulles pour ne pas écraser l'existant.
+      launchedAt: null,
+      closedAt: null,
       // lifecycle non persisté (campaignToRow le drop) — fourni pour
       // satisfaire le type ActiveCampaign ; re-dérivé au chargement.
       lifecycle: reconcileLifecycle(null, {

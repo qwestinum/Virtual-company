@@ -33,6 +33,8 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     threshold: row.threshold ?? 75,
     siteId: row.site_id ?? null,
     donneurOrdreId: row.donneur_ordre_id ?? null,
+    launchedAt: row.launched_at ?? null,
+    closedAt: row.closed_at ?? null,
     status: row.status,
     // Inc. 2a — lifecycle non persisté : re-dérivé des artefacts au
     // chargement (les `postponed` ne survivent pas encore au reload ;
@@ -62,6 +64,8 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     threshold: campaign.threshold,
     site_id: campaign.siteId,
     donneur_ordre_id: campaign.donneurOrdreId,
+    launched_at: campaign.launchedAt,
+    closed_at: campaign.closedAt,
     created_at: campaign.createdAt,
     updated_at: campaign.updatedAt,
   };
@@ -77,13 +81,49 @@ export async function listCampaigns(): Promise<ActiveCampaign[]> {
   return (data ?? []).map(rowToCampaign);
 }
 
+/**
+ * Campagnes au statut « clôturée » uniquement (rapport de campagne, cf.
+ * docs/specs/reporting.md §3.1). Tri par défaut = clôture décroissante
+ * (repli sur updated_at quand closed_at est absent — campagnes historiques).
+ * Le tri fin (nom, durée) et les filtres restent à la charge de l'appelant.
+ */
+export async function listClosedCampaigns(): Promise<ActiveCampaign[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('status', 'closed')
+    .order('closed_at', { ascending: false, nullsFirst: false })
+    .order('updated_at', { ascending: false });
+  if (error) throw new Error(`listClosedCampaigns: ${error.message}`);
+  return (data ?? []).map(rowToCampaign);
+}
+
+/** Résout une campagne par id (tous statuts). */
+export async function getCampaign(id: string): Promise<ActiveCampaign | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`getCampaign: ${error.message}`);
+  return data ? rowToCampaign(data as CampaignRow) : null;
+}
+
 export async function upsertCampaign(
   campaign: ActiveCampaign,
 ): Promise<ActiveCampaign> {
   const supabase = requireServerSupabase();
+  const row = campaignToRow(campaign);
+  // Les dates de cycle de vie (launched_at/closed_at) appartiennent à
+  // patchCampaign (transitions de statut). On retire les clés nulles pour ne
+  // PAS écraser une date déjà posée lors d'une édition générale de campagne.
+  if (row.launched_at == null) delete (row as Partial<CampaignRow>).launched_at;
+  if (row.closed_at == null) delete (row as Partial<CampaignRow>).closed_at;
   const { data, error } = await supabase
     .from(TABLE)
-    .upsert(campaignToRow(campaign), { onConflict: 'id' })
+    .upsert(row, { onConflict: 'id' })
     .select('*')
     .single();
   if (error) throw new Error(`upsertCampaign: ${error.message}`);
@@ -116,6 +156,23 @@ export async function patchCampaign(
   if (patch.siteId !== undefined) row.site_id = patch.siteId;
   if (patch.donneurOrdreId !== undefined)
     row.donneur_ordre_id = patch.donneurOrdreId;
+
+  // Reporting — horodatage du cycle de vie sur transition de statut.
+  // closed_at : posé à CHAQUE clôture (ré-clôture écrase → « seul le dernier
+  // état compte »). launched_at : posé au PREMIER passage 'active' seulement.
+  if (patch.status === 'closed') {
+    row.closed_at = new Date().toISOString();
+  } else if (patch.status === 'active') {
+    const { data: cur } = await supabase
+      .from(TABLE)
+      .select('launched_at')
+      .eq('id', id)
+      .maybeSingle();
+    if (!(cur as { launched_at: string | null } | null)?.launched_at) {
+      row.launched_at = new Date().toISOString();
+    }
+  }
+
   if (Object.keys(row).length === 0) return null;
   const { data, error } = await supabase
     .from(TABLE)

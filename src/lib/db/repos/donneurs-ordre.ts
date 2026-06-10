@@ -31,6 +31,18 @@ export function donneurOrdreRowToDomain(row: DonneurOrdreRow): DonneurOrdre {
   };
 }
 
+/** Résout un donneur d'ordre par id (archivé inclus — historique/reporting). */
+export async function getDonneurOrdre(id: string): Promise<DonneurOrdre | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`getDonneurOrdre: ${error.message}`);
+  return data ? donneurOrdreRowToDomain(data as DonneurOrdreRow) : null;
+}
+
 export async function listDonneursOrdre(opts?: {
   includeArchived?: boolean;
 }): Promise<DonneurOrdre[]> {

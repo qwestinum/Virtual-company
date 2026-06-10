@@ -4,16 +4,16 @@
  * Hub du module Reporting (cf. docs/specs/reporting.md §1) — trois
  * sous-onglets : Rapport de campagne, Rapport multi-campagnes, Audit.
  *
- * Périmètre actuel : seul l'Audit (→ Audit candidat) est fonctionnel. Les
- * deux premiers sous-onglets affichent un état « Bientôt disponible » : le
- * module est posé en entier pour rester cohérent, l'implémentation suit le
- * phasage de la spec (§6).
+ * Périmètre actuel : Rapport de campagne + Audit (→ Audit candidat) sont
+ * fonctionnels. Le sous-onglet multi-campagnes reste « Bientôt disponible »
+ * (phasage de la spec, §6).
  */
 
 import { useState } from 'react';
 
 import { AuditCandidatView } from './AuditCandidatView';
 import { AuditHome } from './AuditHome';
+import { CampaignReportList } from './CampaignReportList';
 
 type SubTab = 'campaign' | 'multi' | 'audit';
 
@@ -53,10 +53,10 @@ export function ReportingHub() {
         ) : (
           <AuditCandidatView onBack={() => setAuditView('home')} />
         )
+      ) : tab === 'campaign' ? (
+        <CampaignReportList />
       ) : (
-        <ComingSoon
-          title={tab === 'campaign' ? 'Rapport de campagne' : 'Rapport multi-campagnes'}
-        />
+        <ComingSoon title="Rapport multi-campagnes" />
       )}
     </div>
   );

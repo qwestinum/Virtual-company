@@ -42,6 +42,12 @@ export type CampaignRow = {
    */
   site_id: string | null;
   donneur_ordre_id: string | null;
+  /**
+   * Reporting — dates de cycle de vie (rapport de campagne). Nullable :
+   * repli applicatif sur created_at / updated_at pour l'historique.
+   */
+  launched_at: string | null;
+  closed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -140,6 +146,7 @@ export type ArtifactKind =
   | 'job_ad'
   | 'cv_report'
   | 'scoring_sheet'
+  | 'campaign_report'
   | 'other';
 
 export type ArtifactMetaRow = {

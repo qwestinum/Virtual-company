@@ -41,6 +41,8 @@ function buildCampaign(overrides: Partial<ActiveCampaign> = {}): ActiveCampaign 
     donneurOrdreId: null,
     status: 'in_progress',
     lifecycle: buildLifecycle(),
+    launchedAt: null,
+    closedAt: null,
     createdAt: '2026-05-01T00:00:00Z',
     updatedAt: '2026-05-01T00:00:00Z',
     ...overrides,

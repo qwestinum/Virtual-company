@@ -437,6 +437,15 @@ alter table public.campaigns
 alter table public.campaigns
   add column if not exists donneur_ordre_id text references public.donneurs_ordre(id) on delete set null;
 
+-- Reporting (rapport de campagne) — dates de cycle de vie. Posées sur
+-- transition de statut (launched_at au 1er passage 'active' ; closed_at à
+-- chaque passage 'closed' → ré-clôture écrase). Nullable : repli applicatif
+-- created_at / updated_at pour les campagnes historiques.
+alter table public.campaigns
+  add column if not exists launched_at timestamptz;
+alter table public.campaigns
+  add column if not exists closed_at timestamptz;
+
 -- Site « par défaut » pour les organisations mono-site (rattachement sans
 -- friction). Idempotent.
 insert into public.sites (id, name, type)

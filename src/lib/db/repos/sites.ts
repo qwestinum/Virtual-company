@@ -26,6 +26,18 @@ export function siteRowToDomain(row: SiteRow): Site {
   };
 }
 
+/** Résout un site par id (archivé inclus — l'audit/reporting lit l'historique). */
+export async function getSite(id: string): Promise<Site | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`getSite: ${error.message}`);
+  return data ? siteRowToDomain(data as SiteRow) : null;
+}
+
 export async function listSites(opts?: {
   includeArchived?: boolean;
 }): Promise<Site[]> {
