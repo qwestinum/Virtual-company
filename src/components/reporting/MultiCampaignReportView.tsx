@@ -8,11 +8,12 @@
  * clôturées (pas de saturation API).
  */
 
-import { Download, Send } from 'lucide-react';
+import { Download, Eye, Send } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { DonneurOrdreSelect } from '@/components/reporting/DonneurOrdreSelect';
 import { MultiCampaignPreview } from '@/components/reporting/MultiCampaignPreview';
+import { MultiCampaignReportDetail } from '@/components/reporting/MultiCampaignReportDetail';
 import type { SelectOption } from '@/components/reporting/SearchableSelect';
 import { SendReportModal } from '@/components/reporting/SendReportModal';
 import { SiteSelect } from '@/components/reporting/SiteSelect';
@@ -36,6 +37,7 @@ export function MultiCampaignReportView() {
   const [donneurId, setDonneurId] = useState('');
   const [siteId, setSiteId] = useState('');
   const [sendOpen, setSendOpen] = useState(false);
+  const [viewing, setViewing] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -122,6 +124,32 @@ export function MultiCampaignReportView() {
     );
   }
 
+  const sendModal = sendOpen ? (
+    <SendReportModal
+      open
+      onClose={() => setSendOpen(false)}
+      sendEndpoint={`/api/reporting/multi-campaigns/send?${queryString()}`}
+      attachmentName={sendDefaults.attachmentName}
+      defaultSubject={sendDefaults.subject}
+      defaultMessage={sendDefaults.message}
+    />
+  ) : null;
+
+  // Vue détail (consultation à l'écran avant génération / envoi).
+  if (viewing) {
+    return (
+      <>
+        <MultiCampaignReportDetail
+          queryString={queryString()}
+          onBack={() => setViewing(false)}
+          onGenerate={generate}
+          onSend={() => setSendOpen(true)}
+        />
+        {sendModal}
+      </>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4">
@@ -159,6 +187,15 @@ export function MultiCampaignReportView() {
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
+          onClick={() => setViewing(true)}
+          disabled={disabled}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 px-3 py-1.5 font-body text-[13px] font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+        >
+          <Eye className="h-3.5 w-3.5" aria-hidden />
+          Visualiser le rapport
+        </button>
+        <button
+          type="button"
           onClick={generate}
           disabled={disabled}
           className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 px-3 py-1.5 font-body text-[13px] font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40"
@@ -177,16 +214,7 @@ export function MultiCampaignReportView() {
         </button>
       </div>
 
-      {sendOpen ? (
-        <SendReportModal
-          open
-          onClose={() => setSendOpen(false)}
-          sendEndpoint={`/api/reporting/multi-campaigns/send?${queryString()}`}
-          attachmentName={sendDefaults.attachmentName}
-          defaultSubject={sendDefaults.subject}
-          defaultMessage={sendDefaults.message}
-        />
-      ) : null}
+      {sendModal}
     </div>
   );
 }

@@ -278,6 +278,10 @@ avec le rapport de campagne :
 
 - **Période libre** (défaut « Ce mois ») via `PeriodFilter` (8 chips :
   semaine/mois/trimestre/année, en cours + précédent).
+- **Visualisation à l'écran avant décision** (symétrique du rapport de
+  campagne) : bouton « Visualiser le rapport » → `MultiCampaignReportDetail`
+  rend toutes les sections en HTML (`GET /api/reporting/multi-campaigns`, JSON,
+  sans génération PDF) avec Générer / Envoyer / Retour.
 - **Génération à la volée, sans cache stable** : chaque appel à
   `GET /api/reporting/multi-campaigns/report` re-rend le PDF (`Cache-Control:
   no-store`) avec la date+heure de génération en page 1. Idem envoi.
