@@ -4,9 +4,9 @@
  * Hub du module Reporting (cf. docs/specs/reporting.md §1) — trois
  * sous-onglets : Rapport de campagne, Rapport multi-campagnes, Audit.
  *
- * Périmètre actuel : Rapport de campagne + Audit (→ Audit candidat) sont
- * fonctionnels. Le sous-onglet multi-campagnes reste « Bientôt disponible »
- * (phasage de la spec, §6).
+ * Périmètre actuel : Rapport de campagne, Rapport multi-campagnes et Audit
+ * (→ Audit candidat) sont fonctionnels. Les autres types d'audit (campagne,
+ * scoring) suivent le phasage de la spec (§6).
  */
 
 import { useState } from 'react';
@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { AuditCandidatView } from './AuditCandidatView';
 import { AuditHome } from './AuditHome';
 import { CampaignReportList } from './CampaignReportList';
+import { MultiCampaignReportView } from './MultiCampaignReportView';
 
 type SubTab = 'campaign' | 'multi' | 'audit';
 
@@ -56,19 +57,8 @@ export function ReportingHub() {
       ) : tab === 'campaign' ? (
         <CampaignReportList />
       ) : (
-        <ComingSoon title="Rapport multi-campagnes" />
+        <MultiCampaignReportView />
       )}
-    </div>
-  );
-}
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="rounded-xl border border-stone-200 bg-stone-50/60 px-6 py-12 text-center">
-      <p className="font-display text-[15px] font-bold text-stone-700">{title}</p>
-      <p className="mt-1 font-body text-[13px] text-stone-500">
-        Bientôt disponible — ce sous-onglet suit le phasage du module Reporting.
-      </p>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Liste déroulante de donneurs d'ordre avec recherche (filtre Reporting).
- * Construit sur la primitive `SearchableSelect`. Option « Tous » par défaut.
+ * Liste déroulante de sites avec recherche (filtre Reporting). Construit sur
+ * la primitive `SearchableSelect`. Option « Tous » par défaut.
  */
 
 import {
@@ -10,20 +10,20 @@ import {
   type SelectOption,
 } from '@/components/reporting/SearchableSelect';
 
-export type DonneurOption = SelectOption;
+export type SiteOption = SelectOption;
 
-export function DonneurOrdreSelect({
+export function SiteSelect({
   options,
   value,
   onChange,
 }: {
-  options: DonneurOption[];
+  options: SiteOption[];
   value: string;
   onChange: (id: string) => void;
 }) {
   return (
     <SearchableSelect
-      label="Donneur d'ordre"
+      label="Site"
       options={options}
       value={value}
       onChange={onChange}
