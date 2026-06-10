@@ -173,6 +173,69 @@ export type CampaignReportData = {
   lowVolume: boolean;
 };
 
+// ─────────────────────────────────────────────────────────────────────────
+// Sous-onglet « Rapport multi-campagnes » (cf. docs/specs/reporting.md §4)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Ligne du tableau de répartition par campagne (PDF multi). */
+export type MultiCampaignPerCampaignRow = {
+  campaignId: string;
+  jobTitle: string;
+  donneurLabel: string;
+  siteLabel: string;
+  closedAt: string;
+  durationDays: number;
+  received: number;
+  retentionRate: number;
+  timeToHireDays: number | null;
+  issue: CampaignIssueKind;
+};
+
+/** Libellés des filtres appliqués (affichés sur la couverture du PDF). */
+export type MultiCampaignFilterLabels = {
+  search: string | null;
+  donneurLabel: string | null;
+  siteLabel: string | null;
+};
+
+/** Données agrégées du rapport multi-campagnes (alimente le PDF). */
+export type MultiCampaignReportData = {
+  period: { from: string; to: string };
+  filters: MultiCampaignFilterLabels;
+  campaignCount: number;
+  /** Volumes cumulés sur la période. */
+  aggregateVolumes: CampaignVolumes;
+  totalRecruited: number;
+  rates: {
+    retentionRate: number;
+    /** Moyenne sur les campagnes ayant abouti à un recrutement (jours). */
+    avgTimeToHireDays: number | null;
+    arbitrationRate: number;
+    /** Marque employeur approximée par le taux de réponse aux candidats. */
+    responseRate: number;
+  };
+  perCampaign: MultiCampaignPerCampaignRow[];
+  channels: ChannelPerformance[];
+  topChannelLabels: string[];
+  underperformingChannelLabels: string[];
+  scoring: {
+    distribution: ScoreBucket[];
+    stdDev: number | null;
+    average: number | null;
+    arbitrationRate: number;
+  };
+  recommendations: string[];
+  rgpd: { totalCandidates: number; retentionMonths: number };
+};
+
+/** 3 chiffres-clés de l'aperçu réactif (zone de validation pré-génération). */
+export type MultiCampaignPreview = {
+  campaignCount: number;
+  totalReceived: number;
+  totalRetained: number;
+  totalRecruited: number;
+};
+
 /** Filtres de sélection de l'audit candidat (combinés en ET logique). */
 export type CandidateAnalysisFilters = {
   /** Recherche libre : nom, email, ou identifiant d'analyse. */
