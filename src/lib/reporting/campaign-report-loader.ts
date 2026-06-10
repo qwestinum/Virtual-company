@@ -16,11 +16,9 @@ import {
   buildCampaignReportSummary,
   type CampaignReportMeta,
 } from '@/lib/reporting/campaign-report';
+import { analysisToDatum } from '@/lib/reporting/analysis-datum';
 import { campaignReportFileName } from '@/lib/reporting/campaign-report-display';
-import {
-  journeyFromSignals,
-  loadJourneySignals,
-} from '@/lib/reporting/journey-lookup';
+import { loadJourneySignals } from '@/lib/reporting/journey-lookup';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type {
   CampaignAnalysisDatum,
@@ -60,20 +58,9 @@ export async function assembleCampaignReport(
     }),
   ]);
 
-  const data: CampaignAnalysisDatum[] = analyses.map((a) => {
-    const j = journeyFromSignals(signals, a.uid, a.status, a.hitlConfig);
-    return {
-      status: a.status,
-      totalScore: a.totalScore,
-      source: a.source,
-      humanIntervention: j.humanIntervention,
-      recruited: j.final === 'retenu',
-      contacted:
-        j.final !== 'na' ||
-        j.validation === 'retenu_entretien' ||
-        j.interview !== 'na',
-    };
-  });
+  const data: CampaignAnalysisDatum[] = analyses.map((a) =>
+    analysisToDatum(a, signals),
+  );
 
   const donneur = campaign.donneurOrdreId
     ? await getDonneurOrdre(campaign.donneurOrdreId)
@@ -100,6 +87,7 @@ export async function assembleCampaignReport(
         }
       : null,
     donneurOrdreId: campaign.donneurOrdreId,
+    siteId: campaign.siteId,
     siteLabel: site?.name ?? null,
   };
 

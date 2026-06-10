@@ -107,6 +107,8 @@ export type CampaignReportSummary = {
   donneurOrdre: { label: string; role: string | null } | null;
   /** Id du donneur d'ordre (filtre dédié) ou null. */
   donneurOrdreId: string | null;
+  /** Id du site (filtre dédié) ou null. */
+  siteId: string | null;
   siteLabel: string | null;
   volumes: CampaignVolumes;
   issue: CampaignIssueKind;

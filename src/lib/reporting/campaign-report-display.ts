@@ -73,6 +73,8 @@ export type CampaignFilters = {
   to?: string;
   /** Filtre donneur d'ordre par id ('' = tous). */
   donneurOrdreId?: string;
+  /** Filtre site par id ('' = tous). */
+  siteId?: string;
 };
 
 /** Applique les 3 filtres combinés (ET logique). PUR. */
@@ -95,6 +97,7 @@ export function filterCampaignSummaries(
     if (filters.donneurOrdreId && it.donneurOrdreId !== filters.donneurOrdreId) {
       return false;
     }
+    if (filters.siteId && it.siteId !== filters.siteId) return false;
     // Période sur la date de clôture (jour ISO comparable lexicographiquement).
     const day = it.closedAt.slice(0, 10);
     if (filters.from && day < filters.from) return false;

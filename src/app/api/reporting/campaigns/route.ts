@@ -13,14 +13,12 @@ import { listDonneursOrdre } from '@/lib/db/repos/donneurs-ordre';
 import { listJournalEntries, type JournalEntry } from '@/lib/db/repos/journal';
 import { listSites } from '@/lib/db/repos/sites';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { analysisToDatum } from '@/lib/reporting/analysis-datum';
 import {
   buildCampaignReportSummary,
   type CampaignReportMeta,
 } from '@/lib/reporting/campaign-report';
-import {
-  journeyFromSignals,
-  loadJourneySignals,
-} from '@/lib/reporting/journey-lookup';
+import { loadJourneySignals } from '@/lib/reporting/journey-lookup';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type {
   CampaignAnalysisDatum,
@@ -90,20 +88,9 @@ export async function GET(): Promise<NextResponse> {
 
     const summaries = campaigns.map((c) => {
       const own = analysesByCampaign.get(c.id) ?? [];
-      const data: CampaignAnalysisDatum[] = own.map((a) => {
-        const j = journeyFromSignals(signals, a.uid, a.status, a.hitlConfig);
-        return {
-          status: a.status,
-          totalScore: a.totalScore,
-          source: a.source,
-          humanIntervention: j.humanIntervention,
-          recruited: j.final === 'retenu',
-          contacted:
-            j.final !== 'na' ||
-            j.validation === 'retenu_entretien' ||
-            j.interview !== 'na',
-        };
-      });
+      const data: CampaignAnalysisDatum[] = own.map((a) =>
+        analysisToDatum(a, signals),
+      );
       const donneur = c.donneurOrdreId ? donneurById.get(c.donneurOrdreId) : null;
       const site = c.siteId ? siteById.get(c.siteId) : null;
       const meta: CampaignReportMeta = {
@@ -121,6 +108,7 @@ export async function GET(): Promise<NextResponse> {
             }
           : null,
         donneurOrdreId: c.donneurOrdreId,
+        siteId: c.siteId,
         siteLabel: site?.name ?? null,
       };
       return buildCampaignReportSummary(

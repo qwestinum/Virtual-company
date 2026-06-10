@@ -22,6 +22,7 @@ function summary(p: Partial<CampaignReportSummary>): CampaignReportSummary {
     durationDays: 92,
     donneurOrdre: { label: 'M. Durand', role: 'DRH' },
     donneurOrdreId: 'DO-1',
+    siteId: 'SITE-1',
     siteLabel: 'Paris',
     volumes: { received: 10, retained: 3, rejected: 7, arbitrated: 1 },
     issue: 'recruited',
@@ -80,7 +81,7 @@ describe('mentions de carte', () => {
 describe('filterCampaignSummaries', () => {
   const items = [
     summary({ campaignId: 'A', jobTitle: 'Développeur', donneurOrdreId: 'DO-1', closedAt: '2026-06-01T00:00:00Z' }),
-    summary({ campaignId: 'B', jobTitle: 'Comptable', donneurOrdreId: 'DO-2', donneurOrdre: { label: 'Mme Bernard', role: null }, closedAt: '2026-04-15T00:00:00Z' }),
+    summary({ campaignId: 'B', jobTitle: 'Comptable', donneurOrdreId: 'DO-2', donneurOrdre: { label: 'Mme Bernard', role: null }, siteId: 'SITE-2', closedAt: '2026-04-15T00:00:00Z' }),
   ];
 
   it('recherche sur poste / donneur', () => {
@@ -92,6 +93,11 @@ describe('filterCampaignSummaries', () => {
     expect(
       filterCampaignSummaries(items, { donneurOrdreId: 'DO-2' })[0]!.campaignId,
     ).toBe('B');
+  });
+
+  it('filtre site', () => {
+    expect(filterCampaignSummaries(items, { siteId: 'SITE-1' })[0]!.campaignId).toBe('A');
+    expect(filterCampaignSummaries(items, { siteId: 'SITE-2' })).toHaveLength(1);
   });
 
   it('filtre période sur la date de clôture (bornes incluses)', () => {

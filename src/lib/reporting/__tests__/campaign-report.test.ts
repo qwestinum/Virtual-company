@@ -35,6 +35,7 @@ const META: CampaignReportMeta = {
   closedAt: '2026-06-01T00:00:00.000Z',
   donneurOrdre: { label: 'M. Durand', role: 'DRH' },
   donneurOrdreId: 'DO-1',
+  siteId: 'SITE-1',
   siteLabel: 'Paris',
 };
 

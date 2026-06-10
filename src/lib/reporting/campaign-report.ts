@@ -12,28 +12,44 @@
  *   - taux de réponse = part des candidats ayant reçu une communication.
  */
 
-import { CV_SOURCE_LABELS } from '@/types/cv-source';
+import {
+  ARBITRATION_HIGH_RATE,
+  LOW_VOLUME_THRESHOLD,
+  RGPD_RETENTION_MONTHS,
+  TIME_TO_HIRE_REFERENCE_DAYS,
+  addMonthsIso,
+  channelPerformance,
+  computeVolumes,
+  daysBetween,
+  pct,
+  scoreDistribution,
+  stdDev,
+} from '@/lib/reporting/aggregations';
 import type {
   CampaignAnalysisDatum,
   CampaignIssueKind,
   CampaignReportData,
   CampaignReportSend,
   CampaignReportSummary,
-  CampaignVolumes,
-  ChannelPerformance,
-  ScoreBucket,
 } from '@/types/reporting';
 
-/** Mois de conservation RGPD par défaut (référence documentée, pas de réglage). */
-export const RGPD_RETENTION_MONTHS = 24;
-/** Référence time-to-hire (jours) faute de baseline historique stockée. */
-export const TIME_TO_HIRE_REFERENCE_DAYS = 45;
-/** Seuils de déclenchement des recommandations. */
-const ARBITRATION_HIGH = 0.2;
+// Re-export des primitives + seuils mutualisés (API stable : les importeurs
+// existants — tests, loader, route — continuent d'importer depuis ce module).
+export {
+  RGPD_RETENTION_MONTHS,
+  TIME_TO_HIRE_REFERENCE_DAYS,
+  LOW_VOLUME_THRESHOLD,
+  daysBetween,
+  computeVolumes,
+  scoreDistribution,
+  stdDev,
+  channelPerformance,
+  addMonthsIso,
+} from '@/lib/reporting/aggregations';
+
+/** Seuils de retenue propres aux recos d'une campagne unique (internes). */
 const RETENTION_LOW = 0.1;
 const RETENTION_HIGH = 0.6;
-/** En deçà, statistiques peu significatives (encart PDF + reco). */
-export const LOW_VOLUME_THRESHOLD = 5;
 
 export type CampaignReportMeta = {
   campaignId: string;
@@ -43,25 +59,9 @@ export type CampaignReportMeta = {
   closedAt: string;
   donneurOrdre: { label: string; role: string | null } | null;
   donneurOrdreId: string | null;
+  siteId: string | null;
   siteLabel: string | null;
 };
-
-/** Nombre de jours pleins entre deux dates ISO (≥ 0). */
-export function daysBetween(fromIso: string, toIso: string): number {
-  const from = new Date(fromIso).getTime();
-  const to = new Date(toIso).getTime();
-  if (Number.isNaN(from) || Number.isNaN(to)) return 0;
-  return Math.max(0, Math.round((to - from) / 86_400_000));
-}
-
-export function computeVolumes(analyses: CampaignAnalysisDatum[]): CampaignVolumes {
-  return {
-    received: analyses.length,
-    retained: analyses.filter((a) => a.status === 'accepted').length,
-    rejected: analyses.filter((a) => a.status === 'rejected').length,
-    arbitrated: analyses.filter((a) => a.humanIntervention).length,
-  };
-}
 
 export function computeIssue(analyses: CampaignAnalysisDatum[]): {
   issue: CampaignIssueKind;
@@ -69,64 +69,6 @@ export function computeIssue(analyses: CampaignAnalysisDatum[]): {
 } {
   const recruitedCount = analyses.filter((a) => a.recruited).length;
   return { issue: recruitedCount > 0 ? 'recruited' : 'no_hire', recruitedCount };
-}
-
-/** Distribution des scores en 5 tranches (alignées sur les paliers ORQA). */
-export function scoreDistribution(scores: number[]): ScoreBucket[] {
-  const buckets: ScoreBucket[] = [
-    { label: '0–39', count: 0 },
-    { label: '40–59', count: 0 },
-    { label: '60–74', count: 0 },
-    { label: '75–89', count: 0 },
-    { label: '90–100', count: 0 },
-  ];
-  for (const s of scores) {
-    const i = s < 40 ? 0 : s < 60 ? 1 : s < 75 ? 2 : s < 90 ? 3 : 4;
-    buckets[i]!.count += 1;
-  }
-  return buckets;
-}
-
-/** Écart-type (population) ; null si moins de 2 valeurs. */
-export function stdDev(scores: number[]): number | null {
-  if (scores.length < 2) return null;
-  const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
-  const variance =
-    scores.reduce((a, b) => a + (b - mean) ** 2, 0) / scores.length;
-  return Math.round(Math.sqrt(variance) * 10) / 10;
-}
-
-export function channelPerformance(
-  analyses: CampaignAnalysisDatum[],
-): ChannelPerformance[] {
-  const by = new Map<string, ChannelPerformance>();
-  for (const a of analyses) {
-    const channelLabel = CV_SOURCE_LABELS[a.source] ?? a.source;
-    const row =
-      by.get(channelLabel) ??
-      { channelLabel, volume: 0, retained: 0, retentionRate: 0, recruited: 0 };
-    row.volume += 1;
-    if (a.status === 'accepted') row.retained += 1;
-    if (a.recruited) row.recruited += 1;
-    by.set(channelLabel, row);
-  }
-  const rows = [...by.values()];
-  for (const r of rows) {
-    r.retentionRate = r.volume > 0 ? Math.round((r.retained / r.volume) * 100) : 0;
-  }
-  return rows.sort((a, b) => b.retained - a.retained || b.volume - a.volume);
-}
-
-function pct(part: number, whole: number): number {
-  return whole > 0 ? Math.round((part / whole) * 100) : 0;
-}
-
-/** Ajoute `months` à une date ISO, renvoie ISO (jour conservé au mieux). */
-export function addMonthsIso(iso: string, months: number): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString();
 }
 
 /** Construit le résumé (carte + base du PDF). */
@@ -147,6 +89,7 @@ export function buildCampaignReportSummary(
     durationDays: daysBetween(meta.launchedAt, meta.closedAt),
     donneurOrdre: meta.donneurOrdre,
     donneurOrdreId: meta.donneurOrdreId,
+    siteId: meta.siteId,
     siteLabel: meta.siteLabel,
     volumes,
     issue,
@@ -183,7 +126,7 @@ export function buildRecommendations(
       `Time-to-hire de ${performance.timeToHireDays} jours, supérieur à la référence de ${TIME_TO_HIRE_REFERENCE_DAYS} jours — identifier les goulots d'étranglement (diffusion, validation, entretiens).`,
     );
   }
-  if (scoring.arbitrationRate >= ARBITRATION_HIGH) {
+  if (scoring.arbitrationRate >= ARBITRATION_HIGH_RATE) {
     recs.push(
       `Taux d'arbitrage manuel de ${Math.round(scoring.arbitrationRate * 100)}% — la grille de scoring mériterait une recalibration (verdicts IA souvent corrigés).`,
     );
