@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { rowToDetail, rowToSummary } from '@/lib/db/repos/candidate-analyses';
 import type { CandidateAnalysisRow } from '@/lib/db/types';
+import { DEFAULT_HITL_CONFIG } from '@/types/hitl';
 
 const ROW: CandidateAnalysisRow = {
   id: 'can_42',
@@ -44,6 +45,7 @@ const ROW: CandidateAnalysisRow = {
       justification: 'Au-dessus du seuil.',
     },
   },
+  hitl_config: { rejectionMail: false, acceptanceMail: true },
   created_at: '2026-06-06T09:05:01.000Z',
 };
 
@@ -63,8 +65,14 @@ describe('rowToSummary', () => {
       status: 'accepted',
       computedAt: '2026-06-06T09:05:00.000Z',
       createdAt: '2026-06-06T09:05:01.000Z',
+      hitlConfig: { rejectionMail: false, acceptanceMail: true },
     });
     expect('application' in s).toBe(false);
+  });
+
+  it('hitl_config null (row historique) retombe sur DEFAULT (ON)', () => {
+    const s = rowToSummary({ ...ROW, hitl_config: null });
+    expect(s.hitlConfig).toEqual(DEFAULT_HITL_CONFIG);
   });
 
   it('préserve les nullables (campagne / email)', () => {

@@ -23,6 +23,7 @@ const DETAIL: CandidateAnalysisDetail = {
   status: 'accepted',
   computedAt: '2026-06-06T09:05:00.000Z',
   createdAt: '2026-06-06T09:05:01.000Z',
+  hitlConfig: { rejectionMail: true, acceptanceMail: true },
   application: {
     candidate: {
       fullName: 'Jean Müller',
@@ -102,13 +103,26 @@ describe('buildCandidateHistory', () => {
     expect(h[2]!.label).toMatch(/Décision/);
     expect(h[0]!.at).toBe('2026-06-06T09:00:00.000Z');
   });
+
+  it('replie le scoring/décision sur createdAt si computedAt = sentinel 1970', () => {
+    const h = buildCandidateHistory({
+      ...DETAIL,
+      computedAt: '1970-01-01T00:00:00.000Z',
+      createdAt: '2026-06-06T09:05:01.000Z',
+    });
+    expect(h[1]!.at).toBe('2026-06-06T09:05:01.000Z');
+    expect(h[2]!.at).toBe('2026-06-06T09:05:01.000Z');
+  });
 });
 
 describe('formatFrDate', () => {
   it('formate en français long', () => {
     expect(formatFrDate('2026-06-09T00:00:00.000Z')).toBe('9 juin 2026');
   });
-  it('renvoie la valeur brute si date invalide', () => {
-    expect(formatFrDate('pas-une-date')).toBe('pas-une-date');
+  it('renvoie « — » si date invalide', () => {
+    expect(formatFrDate('pas-une-date')).toBe('—');
+  });
+  it('renvoie « — » pour le sentinel epoch (1970)', () => {
+    expect(formatFrDate('1970-01-01T00:00:00.000Z')).toBe('—');
   });
 });

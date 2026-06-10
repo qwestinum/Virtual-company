@@ -6,8 +6,10 @@ import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { ScoringError } from '@/lib/scoring';
 import { AIProviderError } from '@/lib/ai/errors';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { DEFAULT_HITL_CONFIG } from '@/types/hitl';
 import {
   type CVApplication,
   DEFAULT_CV_THRESHOLD,
@@ -143,6 +145,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       sheet,
       source: 'manual',
       receivedAt: new Date().toISOString(),
+      computedAt: new Date().toISOString(),
       acceptanceThreshold: threshold,
     });
 
@@ -173,6 +176,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       id: taskId,
       campaignId: campaignId ?? null,
       application,
+      // Fige l'état HITL au moment de l'analyse (audit fidèle). Repli ON si
+      // les réglages ne sont pas chargeables (démo locale sans Supabase).
+      hitlConfig: (await getAppSettings())?.hitlConfig ?? DEFAULT_HITL_CONFIG,
     });
 
     return NextResponse.json({

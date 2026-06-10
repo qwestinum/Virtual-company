@@ -13,6 +13,7 @@
 import type { CandidateJourney } from '@/lib/reporting/candidate-journey';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
+import type { HitlConfig } from '@/types/hitl';
 import type { CandidateStatus } from '@/types/scoring';
 
 /**
@@ -39,6 +40,11 @@ export type CandidateAnalysisSummary = {
   computedAt: string;
   /** Horodatage d'insertion en base (ISO 8601). */
   createdAt: string;
+  /**
+   * Toggles HITL FIGÉS au moment de l'analyse (verdict provisoire vs
+   * définitif). Repli sur `DEFAULT_HITL_CONFIG` pour les rows historiques.
+   */
+  hitlConfig: HitlConfig;
   /**
    * Parcours dérivé du journal (étape + intervention humaine). Présent
    * uniquement quand l'endpoint a enrichi le résumé ; absent sinon.

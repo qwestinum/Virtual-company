@@ -32,6 +32,7 @@ export async function GET(
       signals,
       candidate.uid,
       candidate.status,
+      candidate.hitlConfig,
     );
     return NextResponse.json({ candidate: { ...candidate, journey } });
   } catch (err) {

@@ -39,6 +39,8 @@ import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import { getAppSettings } from '@/lib/db/repos/app-settings';
+import { DEFAULT_HITL_CONFIG } from '@/types/hitl';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
   listCampaignsForMailbox,
@@ -463,6 +465,7 @@ async function processEmailAttachment(args: {
     sheet,
     source: 'email',
     receivedAt: new Date().toISOString(),
+    computedAt: new Date().toISOString(),
     // Convergence seuil (6c) : campaign.threshold est la source unique.
     acceptanceThreshold: campaign.threshold,
   });
@@ -552,6 +555,8 @@ async function processEmailAttachment(args: {
     uid: String(uid),
     campaignId: isTaskOwner ? null : campaign.id,
     application,
+    // Fige l'état HITL au moment de l'analyse (audit fidèle). Repli ON.
+    hitlConfig: (await getAppSettings())?.hitlConfig ?? DEFAULT_HITL_CONFIG,
   });
 
   // Round 5 fix — déclenche le mail au candidat (refus ou invitation)

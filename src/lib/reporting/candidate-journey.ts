@@ -17,6 +17,7 @@
  *   screening (le recruteur a « switché » l'issue).
  */
 
+import type { HitlConfig } from '@/types/hitl';
 import type { CandidateStatus } from '@/types/scoring';
 
 export type ScreeningState = 'retenu' | 'ecarte';
@@ -34,11 +35,17 @@ export type CandidateJourney = {
 };
 
 /** Tonalité d'affichage (couleur) d'un état. */
-export type JourneyTone = 'positive' | 'negative' | 'pending' | 'neutral';
+export type JourneyTone =
+  | 'positive'
+  | 'negative'
+  | 'screening_out'
+  | 'pending'
+  | 'neutral';
 
 export const JOURNEY_TONE_COLORS: Record<JourneyTone, string> = {
   positive: '#15803d', // green-700
-  negative: '#b91c1c', // red-700
+  negative: '#b91c1c', // red-700 — écarté définitivement
+  screening_out: '#f97316', // orange-500 — écarté AU SCREENING (≠ définitif)
   pending: '#b45309', // amber-700
   neutral: '#a8a29e', // stone-400
 };
@@ -86,6 +93,15 @@ function toneOf(
   }
 }
 
+/**
+ * Tonalité de la PRÉSÉLECTION : « écarté au screening » est distinct d'un
+ * « écarté définitivement » (rouge-orangé vs rouge) — c'est un filtrage IA
+ * précoce, pas la décision finale d'un humain.
+ */
+function screeningTone(state: ScreeningState): JourneyTone {
+  return state === 'retenu' ? 'positive' : 'screening_out';
+}
+
 // ─── Entrée de dérivation ──────────────────────────────────────────────────
 
 export type CandidateJourneyInput = {
@@ -107,6 +123,18 @@ export type CandidateJourneyInput = {
   validationMarked: 'validated' | 'rejected' | null;
   /** Recommandation finale du dashboard (intègre l'override HITL). */
   recommendation: 'go' | 'no-go' | null;
+  /**
+   * Toggle HITL FIGÉ — validation du REFUS requise. ON → un refus de
+   * screening est provisoire (« Écarté au screening ») jusqu'à confirmation ;
+   * OFF → définitif d'emblée (pas d'attente humaine).
+   */
+  rejectionGated: boolean;
+  /**
+   * Toggle HITL FIGÉ — validation de l'ACCEPTATION requise. ON → un retenu
+   * reste « Retenu au screening » (en attente) ; OFF → « Retenu pour
+   * entretien » directement (auto).
+   */
+  acceptanceGated: boolean;
 };
 
 /** Dérive les 4 phases + le drapeau d'intervention humaine. */
@@ -115,34 +143,45 @@ export function deriveCandidateJourney(
 ): CandidateJourney {
   const {
     screeningStatus,
-    isPendingValidation,
     dashboardStatus,
     interviewMarked,
     validationMarked,
     recommendation,
+    rejectionGated,
+    acceptanceGated,
   } = input;
   const aiGo = screeningStatus === 'accepted';
 
   // Phase 1 — présélection (toujours déterminée).
   const screening: ScreeningState = aiGo ? 'retenu' : 'ecarte';
 
-  // Phase 2 — validation RH (uniquement si retenu au screening).
   const invited =
     interviewMarked !== null ||
     dashboardStatus === 'invited' ||
     dashboardStatus === 'scheduled' ||
     dashboardStatus === 'interview_done';
+
+  // Un REFUS au screening est-il DÉFINITIF ? HITL refus OFF → définitif
+  // d'emblée. HITL refus ON → définitif seulement une fois le refus envoyé
+  // (dashboardStatus 'rejected') ; sinon provisoire (« Écarté au screening »).
+  const screeningRejectDefinitive =
+    !aiGo && (!rejectionGated || dashboardStatus === 'rejected');
+
+  // Phase 2 — validation RH (uniquement si retenu au screening).
   let validation: ValidationState;
   if (!aiGo) {
     validation = 'na';
-  } else if (isPendingValidation) {
-    validation = 'en_attente';
   } else if (invited) {
     validation = 'retenu_entretien';
   } else if (dashboardStatus === 'rejected') {
+    // Refus envoyé après un screening positif (sans entretien).
     validation = 'ecarte';
-  } else {
+  } else if (acceptanceGated) {
+    // HITL acceptation ON, rien d'acté → en attente (« Retenu au screening »).
     validation = 'en_attente';
+  } else {
+    // HITL acceptation OFF → auto : retenu pour entretien directement.
+    validation = 'retenu_entretien';
   }
 
   // Phase 3 — entretien (uniquement si retenu pour entretien).
@@ -157,11 +196,20 @@ export function deriveCandidateJourney(
     interview = 'en_attente';
   }
 
-  // Phase 4 — décision finale.
+  // Phase 4 — décision finale. « Écarté définitivement » = point de
+  // convergence : décision finale humaine (rejet), entretien non réalisé,
+  // refus envoyé après screening positif, OU refus de screening rendu
+  // définitif (HITL refus OFF / refus confirmé).
   let final: FinalState;
   if (validationMarked === 'validated') {
     final = 'retenu';
   } else if (validationMarked === 'rejected') {
+    final = 'ecarte';
+  } else if (interview === 'non_realise') {
+    final = 'ecarte';
+  } else if (validation === 'ecarte') {
+    final = 'ecarte';
+  } else if (screeningRejectDefinitive) {
     final = 'ecarte';
   } else if (validation === 'retenu_entretien') {
     final = 'en_attente';
@@ -199,7 +247,13 @@ export function journeyColumns(j: CandidateJourney): JourneyColumn[] {
       key: 'screening',
       title: 'Présélection',
       label: SCREENING_LABELS[j.screening],
-      tone: toneOf(j.screening),
+      // Refus provisoire → orange ; refus devenu définitif → rouge.
+      tone:
+        j.screening === 'retenu'
+          ? 'positive'
+          : j.final === 'ecarte'
+            ? 'negative'
+            : 'screening_out',
       reached: true,
     },
     {
@@ -241,11 +295,16 @@ export function journeyCurrentState(j: CandidateJourney): {
     return { label: `Entretien ${INTERVIEW_LABELS[j.interview].toLowerCase()}`, tone: toneOf(j.interview) };
   }
   if (j.validation !== 'na') {
-    return { label: VALIDATION_LABELS[j.validation], tone: toneOf(j.validation) };
+    // Retenu par le système, en attente de validation humaine.
+    const label =
+      j.validation === 'en_attente'
+        ? 'Retenu au screening'
+        : VALIDATION_LABELS[j.validation];
+    return { label, tone: toneOf(j.validation) };
   }
   return {
     label: j.screening === 'retenu' ? 'Retenu (présélection)' : 'Écarté au screening',
-    tone: toneOf(j.screening),
+    tone: screeningTone(j.screening),
   };
 }
 
@@ -260,7 +319,7 @@ export const JOURNEY_FILTER_STATES = [
 export type JourneyFilterState = (typeof JOURNEY_FILTER_STATES)[number];
 
 export const JOURNEY_FILTER_LABELS: Record<JourneyFilterState, string> = {
-  en_attente_validation: 'En attente de validation',
+  en_attente_validation: 'Retenu au screening',
   retenu_entretien: 'Retenu pour entretien',
   entretien_realise: 'Entretien réalisé',
   retenu_definitif: 'Retenu définitivement',
@@ -281,12 +340,13 @@ export function journeyFilterKey(j: CandidateJourney): JourneyFilterState {
 // ─── Helper endpoint (fallback sans marqueurs) ─────────────────────────────
 
 /**
- * Dérive le parcours à partir du verdict screening + des marqueurs journal
- * éventuels + de l'état HITL. Sans marqueurs, retombe sur le verdict
- * screening (retenu → en attente de validation ; écarté → écarté).
+ * Dérive le parcours à partir du verdict screening + de l'état HITL FIGÉ
+ * (snapshot à l'analyse) + des marqueurs journal éventuels. Sans marqueurs,
+ * retombe sur le verdict screening modulé par les toggles HITL.
  */
 export function deriveJourneyFor(
   screeningStatus: CandidateStatus,
+  hitlConfig: HitlConfig,
   markers?: {
     dashboardStatus: CandidateJourneyInput['dashboardStatus'];
     interviewMarked: 'realized' | 'missed' | null;
@@ -304,5 +364,7 @@ export function deriveJourneyFor(
     recommendation:
       markers?.recommendation ??
       (screeningStatus === 'accepted' ? 'go' : null),
+    rejectionGated: hitlConfig.rejectionMail,
+    acceptanceGated: hitlConfig.acceptanceMail,
   });
 }

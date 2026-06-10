@@ -18,8 +18,17 @@ import {
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
 import { CandidateStatePill } from './CandidateStatePill';
+import { InterventionFlag } from './InterventionFlag';
 import { PeriodFilter } from './PeriodFilter';
 import { ScoreBadge } from './ScoreBadge';
+
+/**
+ * Gabarit de la grille invisible (aucun filet vertical) — colonnes alignées
+ * ligne à ligne : Candidat · Score · Modifié · Statut actuel. Partagé entre
+ * l'en-tête et chaque ligne pour garantir la cohérence d'alignement.
+ */
+const AUDIT_GRID =
+  'grid grid-cols-[minmax(0,1fr)_64px_104px_200px] items-center gap-3';
 
 export function CandidateSelectionPanel({
   onSelect,
@@ -163,36 +172,55 @@ export function CandidateSelectionPanel({
           Aucun candidat ne correspond aux filtres.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {visible.map((it) => (
-            <li key={it.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(it.id)}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-4 py-3 text-left hover:border-amber-300 hover:bg-amber-50/40"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-body text-[14px] font-semibold text-stone-800">
-                    {it.candidateName}
-                  </p>
-                  <p className="truncate font-body text-[12px] text-stone-500">
-                    {(it.candidateEmail ?? '— email manquant') +
-                      ' · ' +
-                      (it.campaignId ?? 'Hors campagne') +
-                      ' · ' +
-                      formatFrDate(it.receivedAt)}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <ScoreBadge score={it.totalScore} size="sm" />
-                  {it.journey ? (
-                    <CandidateStatePill journey={it.journey} />
-                  ) : null}
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="flex flex-col gap-2">
+          <div
+            className={`${AUDIT_GRID} px-4 font-body text-[11px] font-semibold uppercase tracking-wide text-stone-400`}
+          >
+            <span>Candidat</span>
+            <span className="text-center">Score</span>
+            <span className="text-center">Modifié</span>
+            <span>Statut actuel</span>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {visible.map((it) => (
+              <li key={it.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(it.id)}
+                  className={`${AUDIT_GRID} w-full rounded-lg border border-stone-200 bg-white px-4 py-3 text-left hover:border-amber-300 hover:bg-amber-50/40`}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-body text-[14px] font-semibold text-stone-800">
+                      {it.candidateName}
+                    </p>
+                    <p className="truncate font-body text-[12px] text-stone-500">
+                      {(it.candidateEmail ?? '— email manquant') +
+                        ' · ' +
+                        (it.campaignId ?? 'Hors campagne') +
+                        ' · ' +
+                        formatFrDate(it.receivedAt)}
+                    </p>
+                  </div>
+                  <span className="flex justify-center">
+                    <ScoreBadge score={it.totalScore} size="sm" />
+                  </span>
+                  <span className="flex justify-center">
+                    {it.journey ? (
+                      <InterventionFlag active={it.journey.humanIntervention} />
+                    ) : (
+                      <span className="font-body text-[12px] text-stone-300">—</span>
+                    )}
+                  </span>
+                  <span className="block w-full">
+                    {it.journey ? (
+                      <CandidateStatePill journey={it.journey} />
+                    ) : null}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

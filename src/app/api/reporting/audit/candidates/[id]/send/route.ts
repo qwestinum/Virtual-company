@@ -64,7 +64,12 @@ export async function POST(
     const signals = await loadJourneySignals({
       campaignId: detail.campaignId ?? undefined,
     });
-    const journey = journeyFromSignals(signals, detail.uid, detail.status);
+    const journey = journeyFromSignals(
+      signals,
+      detail.uid,
+      detail.status,
+      detail.hitlConfig,
+    );
     const generatedAtIso = new Date().toISOString();
     const pdf = await renderCandidateAuditPdf({
       detail: { ...detail, journey },

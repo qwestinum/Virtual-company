@@ -11,6 +11,7 @@ import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
+import type { HitlConfig } from '@/types/hitl';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { PublicationChannel } from '@/types/publication-channel';
 import type { CandidateStatus, ScoringSheet } from '@/types/scoring';
@@ -88,6 +89,8 @@ export type CandidateAnalysisRow = {
   criteria_version: string;
   computed_at: string;
   application: CVApplication;
+  /** Snapshot des toggles HITL au moment de l'analyse. Null = rows historiques. */
+  hitl_config: HitlConfig | null;
   created_at: string;
 };
 

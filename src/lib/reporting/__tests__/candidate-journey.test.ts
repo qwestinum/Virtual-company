@@ -8,6 +8,7 @@ import {
   journeyFilterKey,
   type CandidateJourneyInput,
 } from '@/lib/reporting/candidate-journey';
+import { DEFAULT_HITL_CONFIG } from '@/types/hitl';
 
 function input(p: Partial<CandidateJourneyInput>): CandidateJourneyInput {
   return {
@@ -17,6 +18,9 @@ function input(p: Partial<CandidateJourneyInput>): CandidateJourneyInput {
     interviewMarked: null,
     validationMarked: null,
     recommendation: 'go',
+    // HITL ON par défaut (= DEFAULT_HITL_CONFIG) : verdict système provisoire.
+    rejectionGated: true,
+    acceptanceGated: true,
     ...p,
   };
 }
@@ -48,11 +52,13 @@ describe('deriveCandidateJourney — 4 phases', () => {
     expect(j.final).toBe('en_attente');
   });
 
-  it('refus envoyé après screening → validation écarté', () => {
+  it('refus envoyé après screening → validation écarté, final écarté définitivement', () => {
     const j = deriveCandidateJourney(input({ dashboardStatus: 'rejected' }));
     expect(j.validation).toBe('ecarte');
     expect(j.interview).toBe('na');
-    expect(j.final).toBe('na');
+    // Un refus envoyé après screening clôt le parcours (plus de « en attente »).
+    expect(j.final).toBe('ecarte');
+    expect(journeyCurrentState(j).label).toBe('Écarté définitivement');
   });
 
   it('entretien réalisé sans décision finale → final en attente', () => {
@@ -64,12 +70,15 @@ describe('deriveCandidateJourney — 4 phases', () => {
     expect(j.final).toBe('en_attente');
   });
 
-  it('entretien non réalisé → interview non_realise', () => {
+  it('entretien non réalisé → interview non_realise, final écarté définitivement', () => {
     const j = deriveCandidateJourney(
       input({ dashboardStatus: 'rejected', interviewMarked: 'missed' }),
     );
     expect(j.validation).toBe('retenu_entretien');
     expect(j.interview).toBe('non_realise');
+    // Un entretien non réalisé clôt le parcours : jamais « en attente ».
+    expect(j.final).toBe('ecarte');
+    expect(journeyCurrentState(j).label).toBe('Écarté définitivement');
   });
 
   it('validation définitive → final retenu (et NON dès la validation HITL)', () => {
@@ -130,7 +139,7 @@ describe('journeyCurrentState / journeyFilterKey', () => {
     const enAttente = journeyCurrentState(
       deriveCandidateJourney(input({ isPendingValidation: true })),
     );
-    expect(enAttente.label).toBe('En attente de validation');
+    expect(enAttente.label).toBe('Retenu au screening');
 
     const retenuDef = journeyCurrentState(
       deriveCandidateJourney(
@@ -172,15 +181,67 @@ describe('journeyColumns', () => {
 
 describe('deriveJourneyFor — fallback', () => {
   it('sans marqueurs : retenu → en attente de validation', () => {
-    const j = deriveJourneyFor('accepted');
+    const j = deriveJourneyFor('accepted', DEFAULT_HITL_CONFIG);
     expect(j.validation).toBe('en_attente');
   });
   it('sans marqueurs : écarté → présélection écarté', () => {
-    expect(deriveJourneyFor('rejected').screening).toBe('ecarte');
+    expect(deriveJourneyFor('rejected', DEFAULT_HITL_CONFIG).screening).toBe(
+      'ecarte',
+    );
   });
   it('drapeau pending propagé', () => {
     expect(
-      deriveJourneyFor('accepted', undefined, true).validation,
+      deriveJourneyFor('accepted', DEFAULT_HITL_CONFIG, undefined, true)
+        .validation,
     ).toBe('en_attente');
+  });
+});
+
+describe('toggles HITL figés', () => {
+  it('rejeté + HITL refus OFF → écarté définitivement (pas d’attente)', () => {
+    const j = deriveCandidateJourney(
+      input({
+        screeningStatus: 'rejected',
+        recommendation: null,
+        rejectionGated: false,
+      }),
+    );
+    expect(j.screening).toBe('ecarte');
+    expect(j.final).toBe('ecarte');
+    expect(journeyCurrentState(j).label).toBe('Écarté définitivement');
+  });
+
+  it('rejeté + HITL refus ON, non envoyé → écarté au screening (provisoire)', () => {
+    const j = deriveCandidateJourney(
+      input({ screeningStatus: 'rejected', recommendation: null }),
+    );
+    expect(j.final).toBe('na');
+    const cur = journeyCurrentState(j);
+    expect(cur.label).toBe('Écarté au screening');
+    expect(cur.tone).toBe('screening_out');
+  });
+
+  it('rejeté + HITL refus ON + refus envoyé → écarté définitivement', () => {
+    const j = deriveCandidateJourney(
+      input({
+        screeningStatus: 'rejected',
+        recommendation: null,
+        dashboardStatus: 'rejected',
+      }),
+    );
+    expect(j.final).toBe('ecarte');
+    expect(journeyCurrentState(j).label).toBe('Écarté définitivement');
+  });
+
+  it('retenu + HITL acceptation OFF → retenu pour entretien direct (auto)', () => {
+    const j = deriveCandidateJourney(input({ acceptanceGated: false }));
+    expect(j.validation).toBe('retenu_entretien');
+    expect(journeyCurrentState(j).label).toBe('Retenu pour entretien');
+  });
+
+  it('retenu + HITL acceptation ON, rien d’acté → retenu au screening', () => {
+    const j = deriveCandidateJourney(input({}));
+    expect(j.validation).toBe('en_attente');
+    expect(journeyCurrentState(j).label).toBe('Retenu au screening');
   });
 });

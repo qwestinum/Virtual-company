@@ -478,6 +478,9 @@ create table if not exists public.candidate_analyses (
   criteria_version text not null,
   computed_at     timestamptz not null,
   application     jsonb not null,
+  -- HITL figé au moment de l'analyse (toggles validation humaine). L'audit
+  -- doit refléter l'état au moment de la décision, pas le réglage courant.
+  hitl_config     jsonb,
   created_at      timestamptz not null default now()
 );
 
@@ -493,6 +496,11 @@ create index if not exists candidate_analyses_status_idx
 -- Idempotence : si la table préexistait sans la colonne uid (1ʳᵉ version).
 alter table public.candidate_analyses
   add column if not exists uid text;
+
+-- Idempotence : HITL figé ajouté après coup. Rows historiques = null →
+-- l'audit retombe sur DEFAULT_HITL_CONFIG (ON) côté applicatif.
+alter table public.candidate_analyses
+  add column if not exists hitl_config jsonb;
 
 -- Recherche fuzzy sur le nom du candidat (sélection audit).
 create index if not exists candidate_analyses_name_trgm_idx

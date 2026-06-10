@@ -52,28 +52,38 @@ export function sortByCriticality(
   );
 }
 
-/** Date FR longue : « 15 juin 2026 ». Tolère une date invalide. */
+/**
+ * Date « inconnue » = invalide, vide, ou ≤ epoch Unix. Couvre `null`
+ * (`new Date(null)` → epoch) et le sentinel `UNSET_COMPUTED_AT`
+ * (`1970-01-01T00:00:00.000Z`) du scoring — pour ne jamais afficher
+ * « 1er janvier 1970 » dans un rapport.
+ */
+function isUnknownDate(iso: string | null | undefined): boolean {
+  if (!iso) return true;
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) || t <= 0;
+}
+
+/** Date FR longue : « 15 juin 2026 ». Date inconnue → « — ». */
 export function formatFrDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
+  if (isUnknownDate(iso)) return '—';
   return new Intl.DateTimeFormat('fr-FR', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(d);
+  }).format(new Date(iso));
 }
 
-/** Date+heure FR : « 15 juin 2026 à 14:32 ». Pour la mention de génération. */
+/** Date+heure FR : « 15 juin 2026 à 14:32 ». Date inconnue → « — ». */
 export function formatFrDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
+  if (isUnknownDate(iso)) return '—';
   return new Intl.DateTimeFormat('fr-FR', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(d);
+  }).format(new Date(iso));
 }
 
 /**
@@ -121,6 +131,11 @@ export function buildCandidateHistory(
   detail: CandidateAnalysisDetail,
 ): CandidateHistoryEvent[] {
   const { application } = detail;
+  // Analyses historiques : `computedAt` n'était pas injecté (sentinel 1970).
+  // On retombe sur `createdAt` (insertion en base ≈ moment de l'analyse).
+  const computedAt = isUnknownDate(detail.computedAt)
+    ? detail.createdAt
+    : detail.computedAt;
   const events: CandidateHistoryEvent[] = [
     {
       at: detail.receivedAt,
@@ -128,12 +143,12 @@ export function buildCandidateHistory(
       detail: `Canal : ${application.candidate.source} · ${detail.fileName}`,
     },
     {
-      at: detail.computedAt,
+      at: computedAt,
       label: 'Analyse et scoring',
       detail: `Score ${detail.totalScore}/100 · grille ${application.scoringResult.criteriaVersion}`,
     },
     {
-      at: detail.computedAt,
+      at: computedAt,
       label: `Décision : ${CANDIDATE_STATUS_LABELS[detail.status]}`,
       detail: application.narration.justification,
     },

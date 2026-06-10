@@ -18,6 +18,7 @@ import {
 } from '@/lib/db/supabase-server';
 import type { CandidateAnalysisRow } from '@/lib/db/types';
 import type { CVApplication } from '@/types/cv-analysis';
+import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
 import type {
   CandidateAnalysisDetail,
   CandidateAnalysisFilters,
@@ -28,7 +29,7 @@ const TABLE = 'candidate_analyses';
 
 /** Colonnes du résumé (sans le jsonb `application`). */
 const SUMMARY_COLUMNS =
-  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, created_at';
+  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, hitl_config, created_at';
 
 type SummaryRow = Omit<CandidateAnalysisRow, 'application' | 'criteria_version'>;
 
@@ -48,6 +49,8 @@ export function rowToSummary(row: SummaryRow): CandidateAnalysisSummary {
     status: row.status,
     computedAt: row.computed_at,
     createdAt: row.created_at,
+    // Rows historiques sans snapshot → DEFAULT (ON) : comportement préservé.
+    hitlConfig: row.hitl_config ?? DEFAULT_HITL_CONFIG,
   };
 }
 
@@ -69,6 +72,8 @@ export type CandidateAnalysisInsert = {
   uid?: string;
   campaignId: string | null;
   application: CVApplication;
+  /** Snapshot des toggles HITL au moment de l'analyse (figé pour l'audit). */
+  hitlConfig: HitlConfig;
 };
 
 /**
@@ -95,6 +100,7 @@ export async function insertCandidateAnalysis(
     criteria_version: scoringResult.criteriaVersion,
     computed_at: scoringResult.computedAt,
     application: input.application,
+    hitl_config: input.hitlConfig,
   });
   if (error) throw new Error(`insertCandidateAnalysis: ${error.message}`);
 }
@@ -145,8 +151,11 @@ export async function listCandidateAnalyses(
 
   const search = filters.search ? sanitizeSearch(filters.search) : '';
   if (search) {
+    // Joker PostgREST dans `.or(...)` = `*` (pas `%` — celui-ci n'est pas
+    // interprété et la recherche ne matche jamais). `sanitizeSearch` a déjà
+    // retiré tout `*`/`%` de la saisie, donc le joker reste maîtrisé.
     q = q.or(
-      `candidate_name.ilike.%${search}%,candidate_email.ilike.%${search}%,id.ilike.%${search}%`,
+      `candidate_name.ilike.*${search}*,candidate_email.ilike.*${search}*,id.ilike.*${search}*`,
     );
   }
 
