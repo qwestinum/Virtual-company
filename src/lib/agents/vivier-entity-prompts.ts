@@ -36,8 +36,9 @@ export function buildVivierEntitySystemPrompt(): string {
 }
 
 export function buildVivierEntityUserPrompt(cvText: string, fileName: string): string {
+  const name = fileName.trim();
   return [
-    `CV à indexer (fichier ${fileName}) :`,
+    name ? `CV à indexer (fichier ${name}) :` : 'CV à indexer :',
     '',
     cvText.trim(),
     '',

@@ -12,6 +12,7 @@
  * critère-par-critère.
  */
 
+import { sanitizePostgrestSearch } from '@/lib/db/sanitize-search';
 import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
@@ -123,16 +124,6 @@ export async function persistCandidateAnalysis(
   }
 }
 
-/**
- * Neutralise les caractères qui casseraient la syntaxe d'un filtre
- * PostgREST `.or(...)` (virgules, parenthèses, joker `%`/`*`). On garde
- * une recherche « contient » insensible à la casse, suffisante pour la
- * sélection audit.
- */
-function sanitizeSearch(raw: string): string {
-  return raw.replace(/[,()%*]/g, ' ').trim();
-}
-
 export async function listCandidateAnalyses(
   filters: CandidateAnalysisFilters = {},
 ): Promise<CandidateAnalysisSummary[]> {
@@ -149,11 +140,11 @@ export async function listCandidateAnalyses(
   if (filters.from) q = q.gte('received_at', filters.from);
   if (filters.to) q = q.lte('received_at', filters.to);
 
-  const search = filters.search ? sanitizeSearch(filters.search) : '';
+  const search = filters.search ? sanitizePostgrestSearch(filters.search) : '';
   if (search) {
     // Joker PostgREST dans `.or(...)` = `*` (pas `%` — celui-ci n'est pas
-    // interprété et la recherche ne matche jamais). `sanitizeSearch` a déjà
-    // retiré tout `*`/`%` de la saisie, donc le joker reste maîtrisé.
+    // interprété et la recherche ne matche jamais). `sanitizePostgrestSearch` a
+    // déjà retiré tout `*`/`%` de la saisie, donc le joker reste maîtrisé.
     q = q.or(
       `candidate_name.ilike.*${search}*,candidate_email.ilike.*${search}*,id.ilike.*${search}*`,
     );

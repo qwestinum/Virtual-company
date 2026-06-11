@@ -33,6 +33,7 @@ function candidate(overrides: Partial<VivierCandidate> = {}): VivierCandidate {
     prenom: null,
     telephone: null,
     cvPath: `vivier/${EXISTING_UUID}/cv.pdf`,
+    cvFileName: 'jane.pdf',
     cvText: 'texte cv',
     tags: [],
     source: 'manual_upload',

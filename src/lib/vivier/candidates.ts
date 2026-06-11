@@ -90,6 +90,7 @@ export async function upsertVivierCandidate(
       prenom: input.prenom,
       telephone: input.telephone,
       cvPath: upload.path,
+      cvFileName: input.cvFileName,
       cvText: input.cvText,
     });
     if (updated) return { candidate: updated, created: false };
@@ -106,6 +107,7 @@ export async function upsertVivierCandidate(
     prenom: input.prenom,
     telephone: input.telephone,
     cvPath: null,
+    cvFileName: input.cvFileName,
     cvText: input.cvText,
     source: input.source,
   });

@@ -13,6 +13,7 @@
  */
 
 import { requireServerSupabase } from '@/lib/db/supabase-server';
+import { sanitizePostgrestSearch } from '@/lib/db/sanitize-search';
 import type {
   VivierCandidateRow,
   VivierEmbeddingRow,
@@ -31,7 +32,7 @@ const ENTITIES_TABLE = 'vivier_entities';
 
 /** Colonnes de résumé (sans le volumineux `cv_text`). */
 const SUMMARY_COLUMNS =
-  'id, email, nom, prenom, telephone, cv_path, tags, source, indexing_status, indexing_error, entered_at, updated_at';
+  'id, email, nom, prenom, telephone, cv_path, cv_file_name, tags, source, indexing_status, indexing_error, entered_at, updated_at';
 
 /** Mapping row → domaine (pur, exporté pour test). Tolère l'absence de cv_text (résumés). */
 export function vivierRowToDomain(
@@ -44,6 +45,7 @@ export function vivierRowToDomain(
     prenom: row.prenom,
     telephone: row.telephone,
     cvPath: row.cv_path,
+    cvFileName: row.cv_file_name ?? null,
     cvText: row.cv_text ?? null,
     tags: row.tags ?? [],
     source: row.source,
@@ -73,11 +75,6 @@ export function vivierEntitiesRowToDomain(row: VivierEntitiesRow): VivierEntitie
  */
 export function toVectorLiteral(vector: number[]): string {
   return `[${vector.join(',')}]`;
-}
-
-/** Neutralise les caractères qui casseraient un filtre PostgREST `.or(...)`. */
-function sanitizeSearch(raw: string): string {
-  return raw.replace(/[,()%*]/g, ' ').trim();
 }
 
 export async function getVivierCandidate(
@@ -133,7 +130,7 @@ export async function listVivierCandidates(
     .range(offset, offset + limit - 1);
 
   if (filters.status) q = q.eq('indexing_status', filters.status);
-  const search = filters.search ? sanitizeSearch(filters.search) : '';
+  const search = filters.search ? sanitizePostgrestSearch(filters.search) : '';
   if (search) {
     q = q.or(`nom.ilike.*${search}*,email.ilike.*${search}*`);
   }
@@ -168,6 +165,7 @@ export type InsertVivierCandidateInput = {
   prenom: string | null;
   telephone: string | null;
   cvPath: string | null;
+  cvFileName: string | null;
   cvText: string | null;
   source: VivierSource;
   tags?: string[];
@@ -191,6 +189,7 @@ export async function insertVivierCandidate(
       prenom: input.prenom,
       telephone: input.telephone,
       cv_path: input.cvPath,
+      cv_file_name: input.cvFileName,
       cv_text: input.cvText,
       source: input.source,
       tags: input.tags ?? [],
@@ -208,6 +207,7 @@ export type UpdateVivierCVInput = {
   prenom: string | null;
   telephone: string | null;
   cvPath: string | null;
+  cvFileName: string | null;
   cvText: string | null;
 };
 
@@ -227,6 +227,7 @@ export async function updateVivierCandidateCV(
       prenom: patch.prenom,
       telephone: patch.telephone,
       cv_path: patch.cvPath,
+      cv_file_name: patch.cvFileName,
       cv_text: patch.cvText,
       indexing_status: 'pending',
       indexing_error: null,

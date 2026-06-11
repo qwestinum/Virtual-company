@@ -177,6 +177,7 @@ export type VivierCandidateRow = {
   prenom: string | null;
   telephone: string | null;
   cv_path: string | null;
+  cv_file_name: string | null;
   cv_text: string | null;
   tags: string[];
   source: VivierSource;

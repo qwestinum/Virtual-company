@@ -49,6 +49,8 @@ export type VivierCandidate = {
   prenom: string | null;
   telephone: string | null;
   cvPath: string | null;
+  /** Nom du fichier CV d'origine — contexte d'extraction d'entités (jamais l'id technique). */
+  cvFileName: string | null;
   cvText: string | null;
   tags: string[];
   source: VivierSource;

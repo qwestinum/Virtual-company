@@ -79,7 +79,9 @@ export async function indexVivierCandidate(
     // poursuit. Un échec d'écriture base remonte au catch global (cohérence).
     let entities = { ...EMPTY_VIVIER_ENTITIES };
     try {
-      entities = await extractVivierEntities(cvText, candidate.id);
+      // Contexte d'extraction = nom de fichier d'origine (jamais l'id technique
+      // du dossier). Fallback chaîne vide si non persisté.
+      entities = await extractVivierEntities(cvText, candidate.cvFileName ?? '');
     } catch (err) {
       console.error(`[vivier] entity extraction failed for ${candidateId}`, err);
     }

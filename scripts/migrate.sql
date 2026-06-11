@@ -563,6 +563,7 @@ create table if not exists public.vivier_candidates (
   prenom           text,
   telephone        text,
   cv_path          text,                                   -- chemin Storage du CV
+  cv_file_name     text,                                   -- nom de fichier d'origine (contexte d'extraction d'entités)
   cv_text          text,                                   -- texte extrait
   tags             text[] not null default '{}',
   source           text not null
