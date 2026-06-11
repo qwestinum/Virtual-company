@@ -106,6 +106,47 @@ describe('deriveCandidateJourney — 4 phases', () => {
   });
 });
 
+describe('repêchage humain d’un refus screening (régression)', () => {
+  it('rejeté + invité par un humain → retenu pour entretien (pas écarté au screening)', () => {
+    const j = deriveCandidateJourney(
+      input({
+        screeningStatus: 'rejected',
+        dashboardStatus: 'invited',
+        recommendation: 'go',
+      }),
+    );
+    expect(j.validation).toBe('retenu_entretien');
+    expect(journeyCurrentState(j).label).toBe('Retenu pour entretien');
+    expect(j.humanIntervention).toBe(true);
+  });
+
+  it('rejeté repêché + entretien réalisé → « Entretien réalisé »', () => {
+    const j = deriveCandidateJourney(
+      input({
+        screeningStatus: 'rejected',
+        dashboardStatus: 'interview_done',
+        interviewMarked: 'realized',
+        recommendation: 'go',
+      }),
+    );
+    expect(j.interview).toBe('realise');
+    expect(journeyCurrentState(j).label).toBe('Entretien réalisé');
+  });
+
+  it('rejeté repêché en HITL refus OFF : ne bascule PAS en écarté définitif', () => {
+    const j = deriveCandidateJourney(
+      input({
+        screeningStatus: 'rejected',
+        dashboardStatus: 'invited',
+        recommendation: 'go',
+        rejectionGated: false,
+      }),
+    );
+    expect(j.validation).toBe('retenu_entretien');
+    expect(j.final).toBe('en_attente');
+  });
+});
+
 describe('intervention humaine', () => {
   it('aucune quand la décision suit le verdict IA', () => {
     expect(

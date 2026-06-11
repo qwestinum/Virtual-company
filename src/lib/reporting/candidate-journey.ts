@@ -167,21 +167,24 @@ export function deriveCandidateJourney(
   const screeningRejectDefinitive =
     !aiGo && (!rejectionGated || dashboardStatus === 'rejected');
 
-  // Phase 2 — validation RH (uniquement si retenu au screening).
+  // Phase 2 — validation RH. L'INVITATION (humaine) prime sur le verdict de
+  // screening : un candidat rejeté au screening puis REPÊCHÉ par un humain
+  // (invité / entretien marqué) progresse normalement dans le parcours — c'est
+  // le rôle de l'intervention humaine. Le drapeau `humanIntervention` trace
+  // cette contradiction avec le verdict IA.
   let validation: ValidationState;
-  if (!aiGo) {
-    validation = 'na';
-  } else if (invited) {
+  if (invited) {
     validation = 'retenu_entretien';
-  } else if (dashboardStatus === 'rejected') {
+  } else if (aiGo && dashboardStatus === 'rejected') {
     // Refus envoyé après un screening positif (sans entretien).
     validation = 'ecarte';
-  } else if (acceptanceGated) {
-    // HITL acceptation ON, rien d'acté → en attente (« Retenu au screening »).
-    validation = 'en_attente';
+  } else if (aiGo) {
+    // Retenu au screening, pas encore acté : en attente si HITL acceptation
+    // ON, sinon retenu pour entretien directement (auto).
+    validation = acceptanceGated ? 'en_attente' : 'retenu_entretien';
   } else {
-    // HITL acceptation OFF → auto : retenu pour entretien directement.
-    validation = 'retenu_entretien';
+    // Rejeté au screening, aucune action humaine de repêchage.
+    validation = 'na';
   }
 
   // Phase 3 — entretien (uniquement si retenu pour entretien).
@@ -209,10 +212,14 @@ export function deriveCandidateJourney(
     final = 'ecarte';
   } else if (validation === 'ecarte') {
     final = 'ecarte';
-  } else if (screeningRejectDefinitive) {
-    final = 'ecarte';
   } else if (validation === 'retenu_entretien') {
+    // Repêché / retenu pour entretien : décision finale en attente. PRIME sur
+    // le « refus définitif » de screening (le candidat n'est plus au stade
+    // screening). Sinon un repêchage en HITL-off basculerait à tort en écarté.
     final = 'en_attente';
+  } else if (screeningRejectDefinitive) {
+    // Atteint uniquement quand validation === 'na' (resté au stade screening).
+    final = 'ecarte';
   } else {
     final = 'na';
   }
