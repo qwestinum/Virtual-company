@@ -53,4 +53,10 @@ export type ShortlistEntry = {
   /** Rang 1-based dans la short-list. */
   rank: number;
   state: VivierPreselectionState;
+  /** Faits datés du cycle (V3, §6) — null tant que non posés. */
+  contactedAt: string | null;
+  rejectedAt: string | null;
+  decidedBy: string | null;
+  /** Rapprochement : le candidat a postulé à la campagne (§6.3). */
+  appliedAt: string | null;
 };

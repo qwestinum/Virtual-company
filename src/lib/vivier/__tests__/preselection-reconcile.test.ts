@@ -18,6 +18,10 @@ function entry(candidateId: string): ShortlistEntry {
     passedFilters: [],
     rank: 1,
     state: 'identified',
+    contactedAt: null,
+    rejectedAt: null,
+    decidedBy: null,
+    appliedAt: null,
   };
 }
 

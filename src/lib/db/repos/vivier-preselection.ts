@@ -103,5 +103,132 @@ export async function listPreselection(
     passedFilters: (row.passed_filters ?? []) as HardFilterMatch[],
     rank: row.rank,
     state: row.state,
+    contactedAt: row.contacted_at,
+    rejectedAt: row.rejected_at,
+    decidedBy: row.decided_by,
+    appliedAt: row.applied_at,
   }));
+}
+
+/** Email joint depuis le dossier (lecture cooldown). */
+type EmailJoinRow = { vivier_candidates: { email: string } | null };
+
+function emailsOf(rows: EmailJoinRow[]): string[] {
+  const out: string[] = [];
+  for (const r of rows) {
+    const email = r.vivier_candidates?.email;
+    if (email) out.push(email.trim().toLowerCase());
+  }
+  return out;
+}
+
+/**
+ * Marque des propositions `identified` comme `contacted` (invitation envoyée).
+ * Transition ATOMIQUE état↔date : pose `contacted_at` + `decided_by` dans la
+ * même opération. La garde `state = identified` rend l'appel idempotent (une
+ * ligne déjà contactée/rejetée n'est jamais retouchée). Renvoie les ids mutés.
+ */
+export async function markContacted(
+  campaignId: string,
+  candidateIds: string[],
+  actor: string,
+): Promise<string[]> {
+  if (candidateIds.length === 0) return [];
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      state: 'contacted',
+      contacted_at: new Date().toISOString(),
+      decided_by: actor,
+    })
+    .eq('campaign_id', campaignId)
+    .in('candidate_id', candidateIds)
+    .eq('state', 'identified')
+    .select('candidate_id');
+  if (error) throw new Error(`markContacted: ${error.message}`);
+  return ((data ?? []) as { candidate_id: string }[]).map((r) => r.candidate_id);
+}
+
+/**
+ * Marque des propositions `identified` comme `rejected` (prise de contact
+ * refusée). Transition ATOMIQUE : pose `rejected_at` + `decided_by`. Idempotent
+ * (garde `state = identified`). Renvoie les ids mutés.
+ */
+export async function markRejected(
+  campaignId: string,
+  candidateIds: string[],
+  actor: string,
+): Promise<string[]> {
+  if (candidateIds.length === 0) return [];
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      state: 'rejected',
+      rejected_at: new Date().toISOString(),
+      decided_by: actor,
+    })
+    .eq('campaign_id', campaignId)
+    .in('candidate_id', candidateIds)
+    .eq('state', 'identified')
+    .select('candidate_id');
+  if (error) throw new Error(`markRejected: ${error.message}`);
+  return ((data ?? []) as { candidate_id: string }[]).map((r) => r.candidate_id);
+}
+
+/**
+ * Rapprochement (§6.3) : note qu'un candidat CONTACTÉ a postulé à la campagne.
+ * Pose `applied_at` une seule fois (première candidature — `applied_at is null`),
+ * uniquement sur une proposition `contacted`. Renvoie true si nouvellement posé.
+ */
+export async function recordApplied(
+  campaignId: string,
+  candidateId: string,
+): Promise<boolean> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ applied_at: new Date().toISOString() })
+    .eq('campaign_id', campaignId)
+    .eq('candidate_id', candidateId)
+    .eq('state', 'contacted')
+    .is('applied_at', null)
+    .select('candidate_id');
+  if (error) throw new Error(`recordApplied: ${error.message}`);
+  return ((data ?? []) as unknown[]).length > 0;
+}
+
+/**
+ * Emails (normalisés) des candidats CONTACTÉS depuis `sinceIso` — fenêtre de
+ * cooldown GLOBAL (toutes campagnes confondues, §7).
+ */
+export async function listContactedEmailsSince(
+  sinceIso: string,
+): Promise<string[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('vivier_candidates(email)')
+    .eq('state', 'contacted')
+    .gte('contacted_at', sinceIso);
+  if (error) throw new Error(`listContactedEmailsSince: ${error.message}`);
+  return emailsOf((data ?? []) as unknown as EmailJoinRow[]);
+}
+
+/**
+ * Emails (normalisés) des candidats REJETÉS pour une campagne donnée —
+ * exclusion PAR campagne (éligibles ailleurs, §7).
+ */
+export async function listRejectedEmailsForCampaign(
+  campaignId: string,
+): Promise<string[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('vivier_candidates(email)')
+    .eq('campaign_id', campaignId)
+    .eq('state', 'rejected');
+  if (error) throw new Error(`listRejectedEmailsForCampaign: ${error.message}`);
+  return emailsOf((data ?? []) as unknown as EmailJoinRow[]);
 }

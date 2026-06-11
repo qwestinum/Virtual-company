@@ -688,3 +688,34 @@ create table if not exists public.vivier_preselections (
 
 create index if not exists vivier_preselections_campaign_rank_idx
   on public.vivier_preselections (campaign_id, rank);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Cycle factuel des propositions vivier (Session V3 — boucle de contact)
+-- Spec : docs/specs/vivier.md §6
+-- ──────────────────────────────────────────────────────────────────────
+-- La table vivier_preselections EST la table de liaison campagne↔candidat :
+-- le cycle factuel est l'évolution de l'`state` d'une ligne (identified →
+-- contacted | rejected), pas une autre réalité. On ajoute les FAITS datés.
+-- Aucun statut spéculatif (a postulé sans réponse, a décliné…) n'est géré.
+alter table public.vivier_preselections
+  add column if not exists contacted_at timestamptz,   -- invitation envoyée (§6.2)
+  add column if not exists rejected_at  timestamptz,   -- prise de contact refusée
+  add column if not exists decided_by   text,          -- auteur de la décision
+  add column if not exists applied_at   timestamptz;   -- rapprochement : a postulé (§6.3)
+
+-- Cohérence ATOMIQUE état ↔ dates : jamais un état sans sa date, ni l'inverse.
+-- identified : aucune date de décision. contacted : contacted_at requis.
+-- rejected : rejected_at + decided_by requis. (idempotent : drop puis add.)
+alter table public.vivier_preselections
+  drop constraint if exists vivier_preselections_state_dates_chk;
+alter table public.vivier_preselections
+  add constraint vivier_preselections_state_dates_chk check (
+    (state = 'identified' and contacted_at is null and rejected_at is null)
+    or (state = 'contacted' and contacted_at is not null)
+    or (state = 'rejected' and rejected_at is not null and decided_by is not null)
+  );
+
+-- Cooldown : retrouver vite les contactés récents (fenêtre glissante, §7).
+create index if not exists vivier_preselections_contacted_at_idx
+  on public.vivier_preselections (contacted_at)
+  where state = 'contacted';

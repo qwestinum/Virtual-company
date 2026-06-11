@@ -288,6 +288,10 @@ export async function runVivierPreselection(
       passedFilters: s.matches,
       rank: 0,
       state: 'identified',
+      contactedAt: null,
+      rejectedAt: null,
+      decidedBy: null,
+      appliedAt: null,
     });
   }
 

@@ -230,4 +230,9 @@ export type VivierPreselectionRow = {
   passed_filters: unknown;
   rank: number;
   generated_at: string;
+  /** Faits datés du cycle (Session V3, §6) — nullable tant qu'ils ne sont pas posés. */
+  contacted_at: string | null;
+  rejected_at: string | null;
+  decided_by: string | null;
+  applied_at: string | null;
 };
