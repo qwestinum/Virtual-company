@@ -9,6 +9,16 @@ const PRICING: Record<string, ModelPricing> = {
   // Anthropic Sonnet 4.6 (chemin CV_ANALYZER_PROVIDER=anthropic).
   'claude-sonnet-4-6': { promptUsdPerMTokens: 3, completionUsdPerMTokens: 15 },
   'whisper-1': { promptUsdPerMTokens: 0, completionUsdPerMTokens: 0 },
+  // Embeddings vivier (EMBEDDING_PROVIDER=openai). Tarif facturé sur les
+  // tokens d'entrée uniquement (pas de complétion).
+  'text-embedding-3-small': {
+    promptUsdPerMTokens: 0.02,
+    completionUsdPerMTokens: 0,
+  },
+  'text-embedding-3-large': {
+    promptUsdPerMTokens: 0.13,
+    completionUsdPerMTokens: 0,
+  },
 };
 
 export function estimateCost(

@@ -15,6 +15,7 @@ import type { HitlConfig } from '@/types/hitl';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { PublicationChannel } from '@/types/publication-channel';
 import type { CandidateStatus, ScoringSheet } from '@/types/scoring';
+import type { VivierIndexingStatus, VivierSource } from '@/types/vivier';
 
 export type CampaignRow = {
   id: string;
@@ -161,4 +162,53 @@ export type ArtifactMetaRow = {
   public_url: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+};
+
+/**
+ * Vivier de candidats (Session V1, cf. docs/specs/vivier.md). Le dossier
+ * d'identité (stable) ; l'embedding et les entités vivent dans des tables
+ * 1-1 séparées (régénérées à chaque réindexation). `email` est la clé de
+ * déduplication (normalisée lowercase+trim côté application).
+ */
+export type VivierCandidateRow = {
+  id: string;
+  email: string;
+  nom: string;
+  prenom: string | null;
+  telephone: string | null;
+  cv_path: string | null;
+  cv_text: string | null;
+  tags: string[];
+  source: VivierSource;
+  indexing_status: VivierIndexingStatus;
+  indexing_error: string | null;
+  entered_at: string;
+  updated_at: string;
+};
+
+/**
+ * Index sémantique d'un dossier (1-1, cascade). `provider`/`model` stockés
+ * avec le vecteur : deux fournisseurs produisent des espaces NON comparables
+ * → une bascule impose une réindexation complète (cf. spec §3.4). Le vecteur
+ * pgvector n'est pas relu côté application en V1 (la recherche arrive en V2),
+ * d'où l'absence de la colonne `embedding` dans ce type de lecture.
+ */
+export type VivierEmbeddingRow = {
+  candidate_id: string;
+  provider: string;
+  model: string;
+  generated_at: string;
+};
+
+/** Entités structurées d'un dossier (1-1, cascade, régénérables). */
+export type VivierEntitiesRow = {
+  candidate_id: string;
+  technologies: string[];
+  certifications: string[];
+  diplomes: string[];
+  secteurs: string[];
+  langues: string[];
+  experience_years: number | null;
+  localisation: string | null;
+  extracted_at: string;
 };

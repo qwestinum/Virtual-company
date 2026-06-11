@@ -524,3 +524,108 @@ create index if not exists candidate_analyses_name_trgm_idx
 
 create index if not exists candidate_analyses_uid_idx
   on public.candidate_analyses (uid);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Vivier de candidats (Session V1 — socle)
+-- Spec : docs/specs/vivier.md
+-- ──────────────────────────────────────────────────────────────────────
+-- Stock interne de dossiers candidats persistants, indépendants des
+-- campagnes, unique par organisation (MVP mono-org). Trois tables :
+--   - vivier_candidates : le dossier (identité STABLE), clé de dédup = email
+--   - vivier_embeddings : index sémantique (RÉGÉNÉRABLE), 1-1 cascade
+--   - vivier_entities   : entités structurées (RÉGÉNÉRABLES), 1-1 cascade
+-- La séparation identité / index permet de réécrire embeddings + entités à
+-- chaque réindexation (delete+insert atomique) sans toucher au dossier, et le
+-- `on delete cascade` garantit la suppression effective (RGPD §8.2).
+--
+-- PRÉ-REQUIS : l'extension pgvector doit être activée. Elle est livrée par
+-- défaut sur tout projet Supabase mais désactivée ; on l'active ici (idempotent).
+-- Si la service_role n'a pas le droit de créer l'extension, l'activer en un clic
+-- via Dashboard → Database → Extensions → « vector » AVANT de jouer ce script.
+create extension if not exists vector;
+
+-- Le dossier candidat. `email` normalisé (lowercase+trim) côté application
+-- AVANT insert : la contrainte unique réalise la déduplication (cf. spec §2.3).
+-- `indexing_status` pilote l'exclusion des recherches (pending/failed exclus —
+-- garantie consommée par la présélection V2).
+create table if not exists public.vivier_candidates (
+  id               text primary key,                       -- VIV-XXXX
+  email            text not null unique,                   -- clé de dédup (normalisée)
+  nom              text not null,
+  prenom           text,
+  telephone        text,
+  cv_path          text,                                   -- chemin Storage du CV
+  cv_text          text,                                   -- texte extrait
+  tags             text[] not null default '{}',
+  source           text not null
+                     check (source in ('manual_upload','campaign_application')),
+  indexing_status  text not null default 'pending'
+                     check (indexing_status in ('pending','indexed','failed')),
+  indexing_error   text,                                   -- motif du dernier échec
+  entered_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+create index if not exists vivier_candidates_status_idx
+  on public.vivier_candidates (indexing_status);
+create index if not exists vivier_candidates_updated_at_idx
+  on public.vivier_candidates (updated_at desc);
+create index if not exists vivier_candidates_tags_idx
+  on public.vivier_candidates using gin (tags);
+-- Recherche texte simple (nom / email) — fuzzy via trigram (pg_trgm déjà activé).
+create index if not exists vivier_candidates_nom_trgm_idx
+  on public.vivier_candidates using gin (nom gin_trgm_ops);
+create index if not exists vivier_candidates_email_trgm_idx
+  on public.vivier_candidates using gin (email gin_trgm_ops);
+
+drop trigger if exists vivier_candidates_touch_updated_at on public.vivier_candidates;
+create trigger vivier_candidates_touch_updated_at
+  before update on public.vivier_candidates
+  for each row execute function public.touch_updated_at();
+
+-- Embedding sémantique (1-1, régénérable). Dimension 1536 = text-embedding-3-small
+-- (OpenAI). `provider`/`model` stockés AVEC le vecteur pour détecter les
+-- incohérences : deux fournisseurs produisent des espaces vectoriels NON
+-- comparables → toute bascule impose une réindexation complète (cf. spec §3.4).
+create table if not exists public.vivier_embeddings (
+  candidate_id  text primary key
+                  references public.vivier_candidates(id) on delete cascade,
+  embedding     vector(1536) not null,
+  provider      text not null,
+  model         text not null,
+  generated_at  timestamptz not null default now()
+);
+
+-- Index de similarité : HNSW (et non ivfflat). Choix documenté — HNSW ne
+-- nécessite aucune phase d'entraînement ni recalibrage du paramètre `lists`
+-- quand le vivier grossit en continu, et offre un meilleur rappel. Coût :
+-- build/insert plus lents, acceptable au volume prototype. Opérateur cosinus
+-- (vector_cosine_ops) car la présélection V2 classe par similarité cosinus.
+-- pgvector ≥ 0.5 requis pour HNSW (Supabase est sur 0.8+). 1536 < limite 2000.
+create index if not exists vivier_embeddings_hnsw_idx
+  on public.vivier_embeddings using hnsw (embedding vector_cosine_ops);
+
+-- Entités structurées (1-1, régénérables). text[] + GIN pour les FILTRES DURS
+-- déterministes de la présélection V2 (opérateur d'overlap `&&` / `@>`), sans
+-- appel LLM à la recherche. `experience_years` / `localisation` nullable.
+create table if not exists public.vivier_entities (
+  candidate_id      text primary key
+                      references public.vivier_candidates(id) on delete cascade,
+  technologies      text[] not null default '{}',
+  certifications    text[] not null default '{}',
+  diplomes          text[] not null default '{}',
+  secteurs          text[] not null default '{}',
+  langues           text[] not null default '{}',
+  experience_years  integer,
+  localisation      text,
+  extracted_at      timestamptz not null default now()
+);
+
+create index if not exists vivier_entities_technologies_idx
+  on public.vivier_entities using gin (technologies);
+create index if not exists vivier_entities_certifications_idx
+  on public.vivier_entities using gin (certifications);
+create index if not exists vivier_entities_diplomes_idx
+  on public.vivier_entities using gin (diplomes);
+create index if not exists vivier_entities_langues_idx
+  on public.vivier_entities using gin (langues);

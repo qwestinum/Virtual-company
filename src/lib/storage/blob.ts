@@ -26,7 +26,8 @@ export const ARTIFACTS_BUCKET = 'artifacts';
 
 export type ArtifactOwner =
   | { kind: 'campaign'; id: string }
-  | { kind: 'task'; id: string };
+  | { kind: 'task'; id: string }
+  | { kind: 'vivier'; id: string };
 
 export type UploadArtifactInput = {
   owner: ArtifactOwner;
@@ -41,8 +42,14 @@ export type UploadArtifactResult = {
   publicUrl: string;
 };
 
+const OWNER_PREFIX: Record<ArtifactOwner['kind'], string> = {
+  campaign: 'campagnes',
+  task: 'tasks',
+  vivier: 'vivier',
+};
+
 function buildPath(owner: ArtifactOwner, name: string): string {
-  const prefix = owner.kind === 'campaign' ? 'campagnes' : 'tasks';
+  const prefix = OWNER_PREFIX[owner.kind];
   // On garde le nom original côté client (« fdp.md ») et on préfixe
   // par owner pour éviter les collisions inter-campagnes. La key
   // primaire d'artifacts_meta reste l'id applicatif (art_xxx) — le
@@ -124,4 +131,17 @@ export async function downloadArtifact(path: string): Promise<Buffer | null> {
     .download(path);
   if (error || !data) return null;
   return Buffer.from(await data.arrayBuffer());
+}
+
+/**
+ * Supprime un objet du Storage (suppression cascade du vivier — RGPD §8.2).
+ * Idempotent : retirer un objet déjà absent ne lève pas. Lève uniquement sur
+ * une vraie erreur Storage, pour que la cascade s'interrompe et signale l'échec.
+ */
+export async function deleteArtifact(path: string): Promise<void> {
+  const supabase = requireServerSupabase();
+  const { error } = await supabase.storage.from(ARTIFACTS_BUCKET).remove([path]);
+  if (error) {
+    throw new Error(`deleteArtifact: ${error.message}`);
+  }
 }
