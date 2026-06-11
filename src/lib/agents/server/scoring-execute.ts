@@ -21,6 +21,7 @@ import {
 import {
   buildCriterion,
   ScoringLevelSchema,
+  VerificationMethodSchema,
   type ScoringCriterion,
 } from '@/types/scoring';
 
@@ -53,6 +54,12 @@ const LLMScoringResponseSchema = z.object({
       z.object({
         label: z.string().min(1).max(120),
         level: ScoringLevelSchema,
+        // Phase 3c — méthode + mots-clés. TOLÉRANT : si le LLM les omet,
+        // fallback `llm_with_quote` / `[]` (rétro-compat, cf. scoring-hybrid.md
+        // §3c). `.catch` encaisse une valeur d'énum invalide sans rejeter la
+        // proposition entière.
+        verificationMethod: VerificationMethodSchema.optional().catch(undefined),
+        keywords: z.array(z.string()).optional().catch(undefined),
       }),
     )
     .min(5)
@@ -124,6 +131,10 @@ export async function runScoringProposal(
       id: `proposed_${idx + 1}`,
       label: item.label,
       level: item.level,
+      // Coalescing géré par buildCriterion : undefined → champs non
+      // matérialisés (méthode lue comme llm_with_quote, mots-clés comme []).
+      verificationMethod: item.verificationMethod,
+      keywords: item.keywords,
     }),
   );
 

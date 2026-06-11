@@ -5,6 +5,7 @@ vi.mock('@/lib/ai/provider', () => ({
 }));
 
 import { chatComplete } from '@/lib/ai/provider';
+import { buildScoringSystemPrompt } from '@/lib/agents/scoring-prompts';
 import {
   runScoringProposal,
   ScoringProposalError,
@@ -160,5 +161,51 @@ describe('runScoringProposal', () => {
     await expect(runScoringProposal(buildCompleteFDP())).rejects.toMatchObject({
       code: 'invalid_response_shape',
     });
+  });
+});
+
+describe('buildScoringSystemPrompt — discipline de méthode (Phase 3c)', () => {
+  it('contient la section méthode + les 4 méthodes + le champ verificationMethod', () => {
+    const p = buildScoringSystemPrompt();
+    expect(p).toMatch(/MÉTHODE DE VÉRIFICATION/);
+    expect(p).toMatch(/keywords_exact/);
+    expect(p).toMatch(/keywords_with_variants/);
+    expect(p).toMatch(/hybrid_keywords_llm/);
+    expect(p).toMatch(/llm_with_quote/);
+    expect(p).toMatch(/verificationMethod/);
+  });
+});
+
+describe('runScoringProposal — méthode + mots-clés (Phase 3c)', () => {
+  beforeEach(() => chatCompleteMock.mockReset());
+
+  it('parse les 4 méthodes proposées + leurs mots-clés', async () => {
+    chatCompleteMock.mockResolvedValueOnce(
+      fakeCompletion(
+        JSON.stringify({
+          criteria: [
+            { label: 'Maîtrise de Python', level: 'critique', verificationMethod: 'keywords_with_variants', keywords: ['Python', 'Django'] },
+            { label: 'Certification AWS Solutions Architect', level: 'tres_important', verificationMethod: 'keywords_exact', keywords: ['AWS Solutions Architect'] },
+            { label: 'Excellentes compétences relationnelles', level: 'important', verificationMethod: 'llm_with_quote', keywords: [] },
+            { label: "Expérience management d'équipe", level: 'critique', verificationMethod: 'hybrid_keywords_llm', keywords: ['manager', 'management'] },
+            { label: 'Anglais courant', level: 'souhaitable', verificationMethod: 'keywords_with_variants', keywords: ['anglais'] },
+          ],
+        }),
+      ),
+    );
+    const out = await runScoringProposal(buildCompleteFDP());
+    const by = (s: string) => out.criteria.find((c) => c.label.includes(s))!;
+    expect(by('Python').verificationMethod).toBe('keywords_with_variants');
+    expect(by('AWS').verificationMethod).toBe('keywords_exact');
+    expect(by('relationnelles').verificationMethod).toBe('llm_with_quote');
+    expect(by('management').verificationMethod).toBe('hybrid_keywords_llm');
+    expect(by('Python').keywords).toEqual(['Python', 'Django']);
+  });
+
+  it('tolérant : réponse SANS les nouveaux champs → fallback (champs non matérialisés)', async () => {
+    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_LLM_RESPONSE));
+    const out = await runScoringProposal(buildCompleteFDP());
+    expect(out.criteria.every((c) => c.verificationMethod === undefined)).toBe(true);
+    expect(out.criteria.every((c) => c.keywords === undefined)).toBe(true);
   });
 });
