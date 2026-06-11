@@ -343,7 +343,8 @@ pictogramme :
 - **Vérification LLM** pour `llm_with_quote`
 - **Mots-clés détectés** pour `keywords_exact` et `keywords_with_variants` (avec liste
   des mots trouvés)
-- **Mots-clés validés par LLM** pour `hybrid_keywords_llm`
+- **Mots-clés + Vérification LLM** pour `hybrid_keywords_llm` avec match (avec liste)
+- **Aucun mot-clé trouvé** pour `hybrid_keywords_llm` sans match (verdict `non` immédiat)
 
 ### 6.2. Traçabilité dans l'audit candidat
 
@@ -397,14 +398,43 @@ Enrichissement de l'interface de définition d'un critère pour permettre le cho
 méthode et la saisie des mots-clés. Badges visuels dans la vue récapitulative de la
 grille.
 
-**Phase 3 — Méthode hybride et suggestion par IA.**
+**Phase 1 — Modèle + méthodes déterministes. ✅ livré.**
+
+**Phase 2 — Interface de cadrage. ✅ livré.**
+
+**Phase 3 — Méthode hybride et suggestion par IA. ✅ livré.**
 Implémentation de `verifyHybrid` avec son prompt LLM spécifique. Implémentation du
 bouton « Suggérer des variantes par IA » dans l'interface de cadrage.
 
-**Phase 4 — Affichage et traçabilité.**
+**Phase 4 — Affichage et traçabilité. ✅ livré.**
 Enrichissement du rapport candidat et de l'audit candidat pour afficher la méthode de
 vérification appliquée. Filtrage par méthode dans l'audit.
 
-**Phase 5 — Bench de validation.**
+**Phase 5 — Bench de validation. _(à mener manuellement)_.**
 Bench comparatif sur les CV de test (CV1 à CV5) entre grille tout-LLM et grille
 hybride. Mesure des gains en fiabilité et en coût.
+
+### 8.1. Notes d'implémentation (Phases 3-4 livrées)
+
+- **Dispatcher 3-voies** (`cv-application-analyze.ts`) : déterministe (local) /
+  hybride sans match (verdict `non` LOCAL, sans LLM) / hybride avec match +
+  LLM pur (batch groupé). Le user prompt verdicts est enrichi par critère
+  hybride avec la mention « termes détectés … **nécessaires mais pas
+  suffisants** … vérifie le contexte (objet/sujet, marginal, domaine
+  étranger) ». **Non-régression** : grille tout-LLM ⇒ contexte hybride vide ⇒
+  prompt identique ⇒ mêmes appels, même ordre.
+- **`matchedKeywords`** (optionnel sur `LlmCriterionVerdict` et
+  `CriterionDecision`) porte les mots-clés trouvés : liste (déterministe /
+  hybride avec match), `[]` (hybride sans match), `undefined` (`llm_with_quote`).
+- **Suggestion de variantes (3b)** : `POST /api/scoring/suggest-keyword-variants`
+  (`chatCompleteJson`, dédup `dedupeVariants`, cap 15, **pas de cache** — appel
+  manuel). Panneau inline `KeywordVariantsSuggester`.
+- **Suggestion de méthode (3c)** : section « MÉTHODE DE VÉRIFICATION » ajoutée à
+  `buildScoringSystemPrompt` ; parsing **tolérant** (`verificationMethod` /
+  `keywords` en `.optional().catch(undefined)` → fallback `llm_with_quote` /
+  `[]`). Stateless ⇒ pas de feature flag. L'affichage de la proposition réutilise
+  l'éditeur de Phase 2.
+- **Affichage Phase 4** : `formatCriterionMethod` (libellé court + mots-clés) dans
+  la vue web (`CandidateAuditDetail`) et le PDF (`candidate-audit-pdf`) + filtre
+  par méthode (`CriterionMethodFilter`). Côté dashboard : badges en lecture seule
+  (inchangé Phase 2).
