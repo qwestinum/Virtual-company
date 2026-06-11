@@ -35,9 +35,9 @@ import {
 import { AIValidationError } from '@/lib/ai/errors';
 import { chatCompleteJson } from '@/lib/ai/provider';
 import {
+  findMatchedKeywords,
+  matchKeywordsForHybrid,
   scoreCandidat,
-  verifyKeywordsExact,
-  verifyKeywordsWithVariants,
   type LlmCriterionVerdict,
 } from '@/lib/scoring';
 import {
@@ -58,8 +58,13 @@ import {
   type VerificationMethod,
 } from '@/types/scoring';
 
+/** Méthode coalescée (défaut llm_with_quote pour les grilles antérieures). */
+function methodOf(c: ScoringCriterion): VerificationMethod {
+  return c.verificationMethod ?? 'llm_with_quote';
+}
+
 /** Méthodes 100% déterministes (vérifiées en local, sans LLM). */
-function isKeywordOnlyMethod(method: VerificationMethod | undefined): boolean {
+function isKeywordOnlyMethod(method: VerificationMethod): boolean {
   return method === 'keywords_exact' || method === 'keywords_with_variants';
 }
 
@@ -68,19 +73,28 @@ function keywordVerdict(
   cvText: string,
   criterion: ScoringCriterion,
 ): LlmCriterionVerdict {
-  const keywords = criterion.keywords ?? [];
-  const res =
-    criterion.verificationMethod === 'keywords_with_variants'
-      ? verifyKeywordsWithVariants(cvText, keywords)
-      : verifyKeywordsExact(cvText, keywords);
+  const { matched, citation } = findMatchedKeywords(cvText, criterion.keywords ?? []);
+  const found = matched.length > 0;
   return {
     criterionId: criterion.id,
-    llmDecision: res.verdict,
+    llmDecision: found ? 'satisfait' : 'non',
+    llmJustification: found
+      ? `Mots-clés trouvés dans le CV (vérification déterministe) : ${matched.join(', ')}.`
+      : 'Aucun des mots-clés attendus n’a été trouvé dans le CV (vérification déterministe).',
+    llmCVQuote: citation,
+    matchedKeywords: matched,
+  };
+}
+
+/** Verdict hybride SANS match : `non` immédiat, sans appel LLM (étape 2a). */
+function hybridNoMatchVerdict(criterion: ScoringCriterion): LlmCriterionVerdict {
+  return {
+    criterionId: criterion.id,
+    llmDecision: 'non',
     llmJustification:
-      res.verdict === 'satisfait'
-        ? `Mot-clé « ${res.matchedKeyword} » trouvé dans le CV (vérification déterministe).`
-        : 'Aucun des mots-clés attendus n’a été trouvé dans le CV (vérification déterministe).',
-    llmCVQuote: res.citation,
+      'Aucun mot-clé gardien trouvé dans le CV — critère non satisfait (méthode hybride, sans appel LLM).',
+    llmCVQuote: '',
+    matchedKeywords: [],
   };
 }
 
@@ -263,19 +277,36 @@ export async function analyzeCVApplication(
     };
   }
 
-  // Dispatcher hybride (cf. docs/specs/scoring-hybrid.md §5.1) : on PARTITIONNE
-  // les critères par méthode de vérification. Les critères déterministes
-  // (mots-clés) sont vérifiés EN LOCAL, sans LLM. Les critères LLM —
-  // `llm_with_quote` et, pour l'instant, `hybrid_keywords_llm` (TODO Phase 3 :
-  // gardiens mots-clés + LLM contextuel) — passent par le relevé de faits + le
-  // batch verdicts existant, restreint à ce sous-ensemble. Une grille tout-LLM
-  // (défaut) ⇒ `llmCriteria` = toute la fiche ⇒ chemin strictement inchangé.
-  const llmCriteria = input.sheet.criteria.filter(
-    (c) => !isKeywordOnlyMethod(c.verificationMethod),
-  );
-  const deterministicVerdicts: LlmCriterionVerdict[] = input.sheet.criteria
-    .filter((c) => isKeywordOnlyMethod(c.verificationMethod))
-    .map((c) => keywordVerdict(input.cvText, c));
+  // Dispatcher hybride (cf. docs/specs/scoring-hybrid.md §3a, §5.1) : partition
+  // en 3 voies.
+  //   - déterministe (keywords_exact/with_variants) → vérifié EN LOCAL, sans LLM ;
+  //   - hybride (hybrid_keywords_llm) → pré-check des mots-clés gardiens :
+  //       · aucun trouvé → verdict `non` LOCAL (sans LLM) ;
+  //       · au moins un trouvé → rejoint le batch LLM avec contexte enrichi
+  //         (« nécessaires mais pas suffisants ») ;
+  //   - LLM pur (llm_with_quote / défaut) → batch LLM.
+  // Grille tout-LLM (défaut) ⇒ déterministe/hybride vides, `hybridContext`
+  // vide ⇒ user prompt IDENTIQUE ⇒ mêmes appels, même ordre (non-régression).
+  const deterministicVerdicts: LlmCriterionVerdict[] = [];
+  const llmCriteria: ScoringCriterion[] = [];
+  const hybridContext = new Map<string, string[]>(); // criterionId → gardiens trouvés
+
+  for (const c of input.sheet.criteria) {
+    const method = methodOf(c);
+    if (isKeywordOnlyMethod(method)) {
+      deterministicVerdicts.push(keywordVerdict(input.cvText, c));
+    } else if (method === 'hybrid_keywords_llm') {
+      const { found } = matchKeywordsForHybrid(input.cvText, c.keywords ?? []);
+      if (found.length === 0) {
+        deterministicVerdicts.push(hybridNoMatchVerdict(c)); // étape 2a, sans LLM
+      } else {
+        llmCriteria.push(c); // étape 2b : batch LLM + contexte
+        hybridContext.set(c.id, found);
+      }
+    } else {
+      llmCriteria.push(c); // llm_with_quote / défaut
+    }
+  }
 
   let ledgerFailed = false;
   let verdictsFailed = false;
@@ -311,12 +342,23 @@ export async function analyzeCVApplication(
           { role: 'system', content: buildVerdictsSystemPrompt() },
           {
             role: 'user',
-            content: buildVerdictsUserPrompt(input.cvText, llmSheet, ledger),
+            content: buildVerdictsUserPrompt(
+              input.cvText,
+              llmSheet,
+              ledger,
+              hybridContext,
+            ),
           },
         ],
         VerdictsResponseSchema,
       );
-      llmVerdicts = remapVerdictsToCriteria(r.data.verdicts, llmCriteria);
+      llmVerdicts = remapVerdictsToCriteria(r.data.verdicts, llmCriteria).map(
+        (v) =>
+          // Reporte les gardiens trouvés sur le verdict hybride (affichage Phase 4).
+          hybridContext.has(v.criterionId)
+            ? { ...v, matchedKeywords: hybridContext.get(v.criterionId) }
+            : v,
+      );
       accumulate(r.raw);
     } catch (err) {
       if (!(err instanceof AIValidationError)) throw err;

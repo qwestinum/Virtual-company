@@ -80,6 +80,12 @@ export const LlmCriterionVerdictSchema = z.object({
   llmJustification: z.string().min(1),
   llmCVQuote: z.string(),
   llmFailure: z.boolean().optional(),
+  /**
+   * Mots-clés trouvés (méthodes déterministes / hybride). Porté jusqu'à la
+   * `CriterionDecision` pour l'affichage Phase 4. `undefined` = non applicable
+   * (llm_with_quote) ; `[]` = cherché mais rien trouvé (hybride sans match).
+   */
+  matchedKeywords: z.array(z.string()).optional(),
 });
 export type LlmCriterionVerdict = z.infer<typeof LlmCriterionVerdictSchema>;
 
@@ -228,6 +234,11 @@ export function scoreCandidat(
         // Trace la méthode appliquée (coalescée pour les grilles antérieures).
         verificationMethodUsed:
           criterion.verificationMethod ?? DEFAULT_VERIFICATION_METHOD,
+        // Mots-clés trouvés : recopiés tels quels (undefined pour LLM pur → la
+        // clé reste absente, décisions LLM existantes inchangées).
+        ...(verdict.matchedKeywords !== undefined
+          ? { matchedKeywords: verdict.matchedKeywords }
+          : {}),
       };
     },
   );

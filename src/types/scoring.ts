@@ -423,6 +423,13 @@ export const CriterionDecisionSchema = z.object({
    * critère. Trace la méthode dans le rapport / l'audit candidat (Phase 4).
    */
   verificationMethodUsed: VerificationMethodSchema.optional(),
+  /**
+   * Mots-clés effectivement trouvés dans le CV (fiche hybride — affichage
+   * Phase 4). Sémantique : `undefined` = non applicable (`llm_with_quote`) ;
+   * `[]` = cherché mais aucun trouvé (hybride sans match) ; liste = termes
+   * détectés (keywords_exact/variants, hybride avec match).
+   */
+  matchedKeywords: z.array(z.string()).optional(),
 });
 export type CriterionDecision = z.infer<typeof CriterionDecisionSchema>;
 

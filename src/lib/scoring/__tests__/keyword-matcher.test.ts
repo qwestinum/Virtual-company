@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  findMatchedKeywords,
+  matchKeywordsForHybrid,
   verifyKeywordsExact,
   verifyKeywordsWithVariants,
 } from '@/lib/scoring/keyword-matcher';
@@ -72,5 +74,31 @@ describe('verifyKeywordsWithVariants', () => {
     expect(
       verifyKeywordsWithVariants('Backend Python.', ['JavaScript', 'JS', 'Node.js']).verdict,
     ).toBe('non');
+  });
+});
+
+describe('findMatchedKeywords', () => {
+  it('retourne TOUS les mots-clés trouvés (pas seulement le premier) + citation', () => {
+    const r = findMatchedKeywords('Stack React, Redux et Vue.', ['Angular', 'React', 'Vue']);
+    expect(r.matched).toEqual(['React', 'Vue']);
+    expect(r.citation).toMatch(/React/);
+  });
+  it('aucun trouvé → liste vide, citation vide', () => {
+    expect(findMatchedKeywords('Backend Go.', ['React', 'Vue'])).toEqual({
+      matched: [],
+      citation: '',
+    });
+  });
+});
+
+describe('matchKeywordsForHybrid', () => {
+  it('found = gardiens trouvés', () => {
+    expect(
+      matchKeywordsForHybrid('Chef d’équipe et management produit.', [
+        'manager',
+        'management',
+        'chef d’équipe',
+      ]).found,
+    ).toEqual(['management', 'chef d’équipe']);
   });
 });

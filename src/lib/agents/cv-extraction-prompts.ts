@@ -159,12 +159,29 @@ export function buildVerdictsUserPrompt(
   cvText: string,
   sheet: ScoringSheet,
   ledger: CVFactLedger,
+  /**
+   * Contexte hybride (Phase 3a) : criterionId → mots-clés gardiens DÉJÀ
+   * détectés dans le CV. Une mention « nécessaires mais pas suffisants » est
+   * ajoutée sous le critère concerné. Absent / vide ⇒ prompt IDENTIQUE à
+   * l'existant (non-régression des grilles tout-LLM).
+   */
+  hybridContext?: Map<string, string[]>,
 ): string {
   const lines: string[] = ['Critères de la fiche de scoring à évaluer :', ''];
   sheet.criteria.forEach((c, idx) => {
     lines.push(
       `${idx + 1}. criticité=${SCORING_LEVEL_LABELS[c.level]} | « ${c.label} »`,
     );
+    const found = hybridContext?.get(c.id);
+    if (found && found.length > 0) {
+      lines.push(
+        `   Les termes suivants ont été détectés dans le CV : ${found.join(', ')}. ` +
+          'Ces termes sont NÉCESSAIRES MAIS PAS SUFFISANTS pour conclure que le critère est satisfait. ' +
+          "Vérifie pour chaque occurrence si le contexte d'apparition soutient effectivement le critère, " +
+          "ou si l'occurrence est trompeuse (candidat objet et non sujet de l'action, contexte marginal, domaine étranger). " +
+          'Applique les règles de discipline de domaine standard pour produire le verdict.',
+      );
+    }
   });
   lines.push(
     '',

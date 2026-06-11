@@ -78,3 +78,42 @@ export function verifyKeywordsWithVariants(
 ): VerdictResult {
   return verifyKeywordsExact(cvText, keywords);
 }
+
+/**
+ * TOUS les mots-clés présents dans le CV (pas seulement le premier), dans
+ * l'ordre de la liste, + une citation autour du premier trouvé. Sert à
+ * renseigner `matchedKeywords` (affichage Phase 4) et le contexte hybride.
+ */
+export function findMatchedKeywords(
+  cvText: string,
+  keywords: string[],
+): { matched: string[]; citation: string } {
+  const matched: string[] = [];
+  let citation = '';
+  for (const keyword of keywords) {
+    const trimmed = keyword.trim();
+    if (trimmed.length === 0) continue;
+    const m = keywordRegex(trimmed).exec(cvText);
+    if (m) {
+      matched.push(trimmed);
+      if (citation === '') {
+        citation = buildCitation(cvText, m.index, m.index + m[0].length);
+      }
+    }
+  }
+  return { matched, citation };
+}
+
+/**
+ * Étape 1 de la méthode hybride (cf. scoring-hybrid.md §3a) : recherche des
+ * mots-clés GARDIENS. Retourne la liste trouvée (vide → verdict `non` direct,
+ * sans LLM) et une citation. `found` non vide ⇒ le critère rejoint le batch
+ * LLM avec contexte « nécessaires mais pas suffisants ».
+ */
+export function matchKeywordsForHybrid(
+  cvText: string,
+  keywords: string[],
+): { found: string[]; citation: string } {
+  const { matched, citation } = findMatchedKeywords(cvText, keywords);
+  return { found: matched, citation };
+}
