@@ -208,6 +208,38 @@ Nouvelle section « Vivier » dans les settings de l'organisation :
 
 ## 11. Phasage de développement
 
-- **Session V1 — Socle** : entité vivier, modèle de données, upload manuel, indexation (embedding + entités + abstraction provider), déduplication par email, suppression cascade, script de réindexation.
-- **Session V2 — Alimentation automatique depuis les flux + intégration campagne** : source Vivier à la création, traitement de présélection à l'activation, short-list.
+- **Session V1 — Socle** ✅ *livré* : entité vivier, modèle de données, upload manuel, indexation (embedding + entités + abstraction provider), déduplication par email, suppression cascade, script de réindexation.
+- **Session V2 — Alimentation automatique depuis les flux + intégration campagne** ✅ *livré* : source Vivier à la création, traitement de présélection à l'activation, short-list (cf. §12).
 - **Session V3 — Validation vivier + contact** : section validation, message d'invitation, cycle factuel, rapprochement par email, cooldown, settings, mention RGPD dans les annonces.
+
+## 12. Notes d'implémentation (V1–V2)
+
+Décisions et constantes figées à l'implémentation — à respecter par les sessions ultérieures.
+
+### 12.1. Alimentation automatique (§3.1 porte 2)
+
+Point d'accroche : **après** la persistance de la candidature (`persistCandidateAnalysis`), aux deux portes de réception — route `POST /api/cv-analyzer` (upload manuel, en `after()`) et poller IMAP (`src/lib/imap/poller.ts`, fire-and-forget). Helper unique `feedVivierFromApplication` (`src/lib/vivier/ingest-application.ts`) : mappe la candidature vers `upsertVivierCandidate` (source `campaign_application`) puis indexe. **Non bloquant de bout en bout** (n'échoue jamais vers l'appelant ; la planification elle-même est best-effort). **Garde email** : sans email résolu, pas d'alimentation. **Périmètre** : toute candidature avec email + CV (campagnes ET tâches). Idempotence = déduplication par email V1.
+
+### 12.2. Source Vivier (§4.1)
+
+`'vivier'` ajouté à `CVSource` (`src/types/cv-source.ts`) : apparaît nativement dans les pickers de sources, persisté dans `campaigns.sources` (text[]), vérif = `sources.includes('vivier')`. **Pas de colonne dédiée.** Source interne : opérationnelle, jamais activée par défaut (pas un canal de diffusion), exclue des intégrations API des settings.
+
+### 12.3. Présélection — cascade (§4.2)
+
+Module `src/lib/vivier/preselection.ts`. RPC pgvector `match_vivier_candidates` (similarité cosinus ; supabase-js ne peut pas exprimer `<=>` en direct).
+
+- **Mapping critère → filtre dur** : pas de champ « type » sur un critère ⇒ un critère est un filtre dur **mappable** ssi sa criticité est dure (`redhibitoire`/`obligatoire`, via `criterionBehavior`) **ET** il porte des mots-clés non vides. Le matching cherche la présence d'au moins un mot-clé (frontière de mot, `findMatchedKeywords` réutilisé) dans le **pool** `technologies ∪ certifications ∪ diplômes ∪ langues`. Un candidat survit ssi il passe **tous** les filtres durs mappables. Critère dur **sans** mots-clés = non mappable, ignoré ici (évalué au scoring réel).
+- **Texte de requête sémantique** (`buildVivierQueryText`) : champs FDP (`job_title`, `main_missions`, `key_skills`, `seniority`, `location`) + libellés des critères **triés par poids décroissant**, **sans répétition** (la répétition pour pondérer un embedding est un artefact peu fiable).
+- **Modulation fraîcheur** (`freshnessFactor`) : facteur 1 jusqu'à **12 mois**, puis dégressif **−5 %/mois**, **plancher 0,5**. `relevanceScore = similarity × freshnessFactor` (clé de tri).
+- **Exclusions** : `pending`/`failed` (implicite — seuls les `indexed` entrent), candidats déjà candidats sur la campagne (rapprochement **exact** par email), cooldown (**point d'extension V3** — paramètre `cooldownEmails`, vide en V2).
+- **Plafond** : `SHORTLIST_CAP = 50` (constante en V2, paramétrable en V3).
+
+### 12.4. Persistance de la short-list
+
+Table `vivier_preselections` (PK `(campaign_id, candidate_id)`, `on delete cascade` sur le dossier). Porte un champ **`state`** (`identified` | `contacted` | `rejected`) dès la V2 — substrat du cycle factuel V3. Seule la short-list **issue de la fiche** est persistée ; la **recherche libre** (§4.3) est **éphémère**.
+
+`replacePreselection` (réconciliation pure `reconcilePreselection`) est **idempotent et non destructif des décisions** : il purge les `identified` périmés et upsert le reste, mais ne **ressuscite ni ne supprime jamais** une ligne `contacted`/`rejected`. L'idempotence vit dans la donnée (réconciliation par contenu), pas dans l'hypothèse d'un appel unique.
+
+### 12.5. Déclenchement à l'activation
+
+L'activation est une mutation de store synchronisée (pas de transition serveur). Hook = **déclencheur client** (`triggerVivierPreselection`) dans `onActivate` (si `sources.includes('vivier')`) appelant le **même endpoint idempotent** que la relance manuelle : `POST /api/campaigns/[id]/vivier-preselection` (corps vide = présélection fiche persistée ; `{ freeText }` = recherche libre éphémère ; `GET` = relit la short-list persistée).
