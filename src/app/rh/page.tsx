@@ -17,6 +17,16 @@ const RH_SERVICES: ServiceCardProps[] = [
     href: '/rh/recrutement',
   },
   {
+    id: 'vivier',
+    name: 'Vivier de candidats',
+    description:
+      'Votre stock interne de CV, indexé et réutilisable d’une campagne à l’autre. Dépôt manuel, déduplication par email, recherche à venir.',
+    icon: '🗂️',
+    accent: 'linear-gradient(135deg, #15A364, #0E7C6B)',
+    status: 'active',
+    href: '/vivier',
+  },
+  {
     id: 'admin-personnel',
     name: 'Administration du personnel',
     description:
