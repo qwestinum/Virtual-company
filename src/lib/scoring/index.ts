@@ -5,3 +5,4 @@
 export * from './score-candidat';
 export * from './rejection-cause';
 export * from './keyword-matcher';
+export * from './variant-selection';

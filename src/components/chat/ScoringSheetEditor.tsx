@@ -262,6 +262,8 @@ function CriterionRow({
               keywords={criterion.keywords ?? []}
               onChange={(kw) => onUpdate({ keywords: kw })}
               showSuggest={showSuggest}
+              criterionLabel={criterion.label}
+              targetMethod={method}
               label={
                 method === 'hybrid_keywords_llm' ? 'Mots-clés gardiens' : 'Mots-clés'
               }

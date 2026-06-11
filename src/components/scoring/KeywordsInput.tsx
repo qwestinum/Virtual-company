@@ -7,11 +7,13 @@
  * mais DÉSACTIVÉ (implémentation Phase 3).
  */
 
-import { Sparkles, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useState } from 'react';
 
+import { KeywordVariantsSuggester } from '@/components/scoring/KeywordVariantsSuggester';
 import { cn } from '@/lib/utils';
 import { addKeywords, removeKeywordAt } from '@/lib/scoring/keywords-input';
+import type { VerificationMethod } from '@/types/scoring';
 
 export function KeywordsInput({
   keywords,
@@ -19,13 +21,18 @@ export function KeywordsInput({
   disabled = false,
   label = 'Mots-clés',
   showSuggest = false,
+  criterionLabel,
+  targetMethod,
 }: {
   keywords: string[];
   onChange: (keywords: string[]) => void;
   disabled?: boolean;
   label?: string;
-  /** Affiche le bouton « Suggérer par IA » (désactivé — Phase 3). */
+  /** Active la suggestion de variantes par IA (Phase 3b). */
   showSuggest?: boolean;
+  /** Contexte requis par le suggester IA. */
+  criterionLabel?: string;
+  targetMethod?: VerificationMethod;
 }) {
   const [draft, setDraft] = useState('');
 
@@ -37,22 +44,9 @@ export function KeywordsInput({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
-        <span className="font-body text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-          {label}
-        </span>
-        {showSuggest ? (
-          <button
-            type="button"
-            disabled
-            title="Disponible en phase 3"
-            className="inline-flex cursor-not-allowed items-center gap-1 rounded border border-stone-200 px-1.5 py-0.5 font-body text-[10px] font-semibold text-stone-400"
-          >
-            <Sparkles className="h-3 w-3" aria-hidden />
-            Suggérer des variantes par IA
-          </button>
-        ) : null}
-      </div>
+      <span className="font-body text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+        {label}
+      </span>
 
       {keywords.length > 0 ? (
         <div className="flex flex-wrap gap-1">
@@ -93,6 +87,17 @@ export function KeywordsInput({
             'font-body text-[12px] px-2 py-1 rounded border',
             'border-stone-200 bg-white outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-300',
           )}
+        />
+      ) : null}
+
+      {!disabled && showSuggest && criterionLabel && targetMethod ? (
+        <KeywordVariantsSuggester
+          criterionLabel={criterionLabel}
+          existingKeywords={keywords}
+          targetMethod={targetMethod}
+          onAccept={(variants) =>
+            onChange(addKeywords(keywords, variants.join('\n')))
+          }
         />
       ) : null}
     </div>
