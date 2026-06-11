@@ -436,5 +436,10 @@ hybride. Mesure des gains en fiabilité et en coût.
   l'éditeur de Phase 2.
 - **Affichage Phase 4** : `formatCriterionMethod` (libellé court + mots-clés) dans
   la vue web (`CandidateAuditDetail`) et le PDF (`candidate-audit-pdf`) + filtre
-  par méthode (`CriterionMethodFilter`). Côté dashboard : badges en lecture seule
-  (inchangé Phase 2).
+  par méthode (`CriterionMethodFilter`).
+- **Édition de la méthode au dashboard** (post-Phase 4) : les éditeurs de grille
+  du dashboard (`ScoringEditBlock`, `ScoringDraftEditor`) permettent désormais
+  d'éditer la méthode + les mots-clés (sélecteur + `KeywordsInput`, comme
+  l'éditeur du chat), pas seulement de les lire. La validation
+  `validateScoringSheet` bloque l'enregistrement d'une fiche déterministe/hybride
+  sans mot-clé.

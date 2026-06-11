@@ -14,19 +14,23 @@
 
 import { useState } from 'react';
 
-import { MethodBadge } from '@/components/scoring/MethodBadge';
+import { KeywordsInput } from '@/components/scoring/KeywordsInput';
+import { VerificationMethodSelector } from '@/components/scoring/VerificationMethodSelector';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 import {
   buildCriterion,
+  DEFAULT_VERIFICATION_METHOD,
   DEFAULT_WEIGHTS,
   SCORING_LEVELS,
   SCORING_LEVEL_COLORS,
   SCORING_LEVEL_LABELS,
+  validateScoringSheet,
   type ScoringCriterion,
   type ScoringLevel,
   type ScoringSheet,
+  type VerificationMethod,
 } from '@/types/scoring';
 
 import { SaveBanner, SaveFooter } from './SaveBanner';
@@ -60,12 +64,25 @@ function ScoringEditInner({ campaign }: ScoringEditBlockProps) {
   // VALIDÉE (l'enregistrement la valide → débloque l'activation). Sans ça, une
   // grille déjà peuplée mais non validée restait non enregistrable, forçant le
   // DRH à ajouter un critère factice pour activer le bouton.
+  // Cohérence hybride : une méthode déterministe/hybride exige ≥ 1 mot-clé.
+  const validationErrors = validateScoringSheet({
+    campaignId: campaign.id,
+    criteria,
+    isValidated: criteria.length > 0,
+  });
   const canSave =
-    criteria.length > 0 && (dirty || campaign.scoringSheet?.isValidated !== true);
+    criteria.length > 0 &&
+    validationErrors.length === 0 &&
+    (dirty || campaign.scoringSheet?.isValidated !== true);
 
   const updateCriterion = (
     id: string,
-    delta: Partial<Pick<ScoringCriterion, 'label' | 'level' | 'weight'>>,
+    delta: Partial<
+      Pick<
+        ScoringCriterion,
+        'label' | 'level' | 'weight' | 'verificationMethod' | 'keywords'
+      >
+    >,
   ) => setCriteria(criteria.map((c) => (c.id === id ? { ...c, ...delta } : c)));
 
   const removeCriterion = (id: string) =>
@@ -138,6 +155,25 @@ function ScoringEditInner({ campaign }: ScoringEditBlockProps) {
           />
         ))}
       </div>
+      {validationErrors.length > 0 ? (
+        <ul
+          className="font-body"
+          style={{
+            marginTop: 10,
+            padding: '8px 10px',
+            borderRadius: 8,
+            background: '#fffbeb',
+            border: '1px solid #fcd34d',
+            color: '#92400e',
+            fontSize: 12,
+            listStyle: 'none',
+          }}
+        >
+          {validationErrors.map((e, i) => (
+            <li key={i}>{e}</li>
+          ))}
+        </ul>
+      ) : null}
       <div
         style={{
           display: 'flex',
@@ -199,101 +235,136 @@ function CriterionRow({
   onRemove,
 }: {
   criterion: ScoringCriterion;
-  onUpdate: (patch: Partial<Pick<ScoringCriterion, 'label' | 'level' | 'weight'>>) => void;
+  onUpdate: (
+    patch: Partial<
+      Pick<
+        ScoringCriterion,
+        'label' | 'level' | 'weight' | 'verificationMethod' | 'keywords'
+      >
+    >,
+  ) => void;
   onRemove: () => void;
 }) {
   const levelColor = SCORING_LEVEL_COLORS[criterion.level];
+  const method: VerificationMethod =
+    criterion.verificationMethod ?? DEFAULT_VERIFICATION_METHOD;
+  const showKeywords = method !== 'llm_with_quote';
+  const showSuggest =
+    method === 'keywords_with_variants' || method === 'hybrid_keywords_llm';
   return (
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr auto auto auto auto',
+        display: 'flex',
+        flexDirection: 'column',
         gap: 8,
-        alignItems: 'center',
         padding: '8px 10px',
         borderRadius: 10,
         background: 'var(--dash-warm)',
         border: '1px solid var(--dash-border)',
       }}
     >
-      <input
-        type="text"
-        value={criterion.label}
-        onChange={(e) => onUpdate({ label: e.currentTarget.value })}
-        className="font-body"
+      <div
         style={{
-          background: 'transparent',
-          border: 'none',
-          fontSize: 13,
-          fontWeight: 600,
-          color: 'var(--dash-text)',
-          padding: '4px 0',
-          outline: 'none',
-          minWidth: 0,
-        }}
-      />
-      {/* Badge méthode de vérification (lecture seule côté dashboard — édition
-          complète dans l'éditeur de fiche du chat). */}
-      <MethodBadge method={criterion.verificationMethod} />
-      <select
-        value={criterion.level}
-        onChange={(e) => {
-          const next = e.currentTarget.value as ScoringLevel;
-          onUpdate({ level: next, weight: DEFAULT_WEIGHTS[next] });
-        }}
-        className="font-body"
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: levelColor,
-          background: 'var(--dash-surface)',
-          border: `1px solid ${levelColor}40`,
-          borderRadius: 6,
-          padding: '3px 6px',
-          cursor: 'pointer',
+          display: 'grid',
+          gridTemplateColumns: '1fr auto auto auto',
+          gap: 8,
+          alignItems: 'center',
         }}
       >
-        {SCORING_LEVELS.map((lvl) => (
-          <option key={lvl} value={lvl}>
-            {SCORING_LEVEL_LABELS[lvl]}
-          </option>
-        ))}
-      </select>
-      <input
-        type="number"
-        min={0}
-        max={20}
-        step={1}
-        value={criterion.weight}
-        onChange={(e) => onUpdate({ weight: Number(e.currentTarget.value) })}
-        className="font-data"
-        style={{
-          width: 50,
-          fontSize: 12,
-          fontWeight: 700,
-          color: 'var(--dash-text)',
-          background: 'var(--dash-surface)',
-          border: '1px solid var(--dash-border)',
-          borderRadius: 6,
-          padding: '3px 6px',
-          textAlign: 'center',
-        }}
-      />
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label="Supprimer ce critère"
-        style={{
-          background: 'transparent',
-          border: 'none',
-          color: 'var(--dash-text-tertiary)',
-          cursor: 'pointer',
-          fontSize: 16,
-          padding: 2,
-        }}
-      >
-        ×
-      </button>
+        <input
+          type="text"
+          value={criterion.label}
+          onChange={(e) => onUpdate({ label: e.currentTarget.value })}
+          className="font-body"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            fontSize: 13,
+            fontWeight: 600,
+            color: 'var(--dash-text)',
+            padding: '4px 0',
+            outline: 'none',
+            minWidth: 0,
+          }}
+        />
+        <select
+          value={criterion.level}
+          onChange={(e) => {
+            const next = e.currentTarget.value as ScoringLevel;
+            onUpdate({ level: next, weight: DEFAULT_WEIGHTS[next] });
+          }}
+          className="font-body"
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: levelColor,
+            background: 'var(--dash-surface)',
+            border: `1px solid ${levelColor}40`,
+            borderRadius: 6,
+            padding: '3px 6px',
+            cursor: 'pointer',
+          }}
+        >
+          {SCORING_LEVELS.map((lvl) => (
+            <option key={lvl} value={lvl}>
+              {SCORING_LEVEL_LABELS[lvl]}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          min={0}
+          max={20}
+          step={1}
+          value={criterion.weight}
+          onChange={(e) => onUpdate({ weight: Number(e.currentTarget.value) })}
+          className="font-data"
+          style={{
+            width: 50,
+            fontSize: 12,
+            fontWeight: 700,
+            color: 'var(--dash-text)',
+            background: 'var(--dash-surface)',
+            border: '1px solid var(--dash-border)',
+            borderRadius: 6,
+            padding: '3px 6px',
+            textAlign: 'center',
+          }}
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Supprimer ce critère"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--dash-text-tertiary)',
+            cursor: 'pointer',
+            fontSize: 16,
+            padding: 2,
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Édition de la méthode de vérification (fiche hybride). */}
+      <div className="flex flex-col gap-1.5">
+        <VerificationMethodSelector
+          value={method}
+          onChange={(m) => onUpdate({ verificationMethod: m })}
+        />
+        {showKeywords ? (
+          <KeywordsInput
+            keywords={criterion.keywords ?? []}
+            onChange={(kw) => onUpdate({ keywords: kw })}
+            showSuggest={showSuggest}
+            criterionLabel={criterion.label}
+            targetMethod={method}
+            label={method === 'hybrid_keywords_llm' ? 'Mots-clés gardiens' : 'Mots-clés'}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -305,7 +376,10 @@ function sameCriteria(a: ScoringCriterion[], b: ScoringCriterion[]): boolean {
       a[i].id !== b[i].id ||
       a[i].label !== b[i].label ||
       a[i].level !== b[i].level ||
-      a[i].weight !== b[i].weight
+      a[i].weight !== b[i].weight ||
+      (a[i].verificationMethod ?? 'llm_with_quote') !==
+        (b[i].verificationMethod ?? 'llm_with_quote') ||
+      (a[i].keywords ?? []).join('') !== (b[i].keywords ?? []).join('')
     )
       return false;
   }
