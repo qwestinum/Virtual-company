@@ -213,3 +213,21 @@ export type VivierEntitiesRow = {
   localisation: string | null;
   extracted_at: string;
 };
+
+/**
+ * Short-list de présélection persistée (Session V2, cf. docs/specs/vivier.md §4).
+ * PK composite (campaign_id, candidate_id). `state` porte le cycle factuel
+ * (identified/contacted/rejected) ; `passed_filters` est un JSONB de
+ * `HardFilterMatch[]` (cf. src/types/vivier-preselection.ts).
+ */
+export type VivierPreselectionRow = {
+  campaign_id: string;
+  candidate_id: string;
+  state: 'identified' | 'contacted' | 'rejected';
+  similarity: number;
+  freshness_factor: number;
+  relevance_score: number;
+  passed_filters: unknown;
+  rank: number;
+  generated_at: string;
+};

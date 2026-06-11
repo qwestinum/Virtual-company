@@ -12,6 +12,7 @@
 import { canActivate } from '@/lib/campaign/lifecycle';
 import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
+import { triggerVivierPreselection } from '@/lib/vivier/trigger-preselection';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 
@@ -53,6 +54,10 @@ export function LifecycleEditBlock({
   const onActivate = () => {
     if (!activateCampaign(campaign.id)) return;
     ack('campaign_activated');
+    // Source Vivier cochée ⇒ déclenche la présélection (endpoint idempotent).
+    if (campaign.sources.includes('vivier')) {
+      triggerVivierPreselection(campaign.id);
+    }
   };
   const onCloseCampaign = () => {
     const ok = window.confirm(

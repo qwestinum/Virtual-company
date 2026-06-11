@@ -19,11 +19,12 @@ import type {
   VivierEmbeddingRow,
   VivierEntitiesRow,
 } from '@/lib/db/types';
-import type {
-  VivierCandidate,
-  VivierEntities,
-  VivierIndexingStatus,
-  VivierSource,
+import {
+  EMPTY_VIVIER_ENTITIES,
+  type VivierCandidate,
+  type VivierEntities,
+  type VivierIndexingStatus,
+  type VivierSource,
 } from '@/types/vivier';
 
 const TABLE = 'vivier_candidates';
@@ -356,6 +357,91 @@ export async function getVivierEmbeddingMeta(
     .maybeSingle();
   if (error) throw new Error(`getVivierEmbeddingMeta: ${error.message}`);
   return data ? (data as VivierEmbeddingRow) : null;
+}
+
+/**
+ * Un dossier INDEXÉ avec ses entités + sa fraîcheur — entrée de la présélection
+ * V2 (filtres durs sur entités + modulation par `updatedAt`).
+ */
+export type IndexedVivierCandidate = {
+  id: string;
+  nom: string;
+  email: string;
+  updatedAt: string;
+  entities: VivierEntities;
+};
+
+/**
+ * Liste les dossiers INDEXÉS (pending/failed exclus — §3.2/4.2) avec leurs
+ * entités structurées et leur date de mise à jour. Base des étapes 1 (filtres
+ * durs) et 3 (fraîcheur) de la présélection. Deux requêtes + jointure en
+ * mémoire (échelle prototype). Tout dossier indexé a une ligne d'entités
+ * (l'indexation upsert toujours, même vides) ; repli `EMPTY_VIVIER_ENTITIES`.
+ */
+export async function listIndexedVivierEntities(): Promise<
+  IndexedVivierCandidate[]
+> {
+  const supabase = requireServerSupabase();
+  const { data: cands, error } = await supabase
+    .from(TABLE)
+    .select('id, nom, email, updated_at')
+    .eq('indexing_status', 'indexed');
+  if (error) throw new Error(`listIndexedVivierEntities: ${error.message}`);
+  const rows = (cands ?? []) as {
+    id: string;
+    nom: string;
+    email: string;
+    updated_at: string;
+  }[];
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((r) => r.id);
+  const { data: ents, error: entErr } = await supabase
+    .from(ENTITIES_TABLE)
+    .select('*')
+    .in('candidate_id', ids);
+  if (entErr)
+    throw new Error(`listIndexedVivierEntities(entités): ${entErr.message}`);
+  const byId = new Map<string, VivierEntities>();
+  for (const e of (ents ?? []) as VivierEntitiesRow[]) {
+    byId.set(e.candidate_id, vivierEntitiesRowToDomain(e));
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    nom: r.nom,
+    email: r.email,
+    updatedAt: r.updated_at,
+    entities: byId.get(r.id) ?? { ...EMPTY_VIVIER_ENTITIES },
+  }));
+}
+
+/**
+ * Tri sémantique (étape 2) : similarité cosinus entre l'embedding de requête et
+ * les dossiers indexés du sous-ensemble `candidateIds` (survivants des filtres
+ * durs). Délègue à la RPC pgvector `match_vivier_candidates`. Renvoie une map
+ * candidateId → similarité (0..1). Vide si aucun survivant.
+ */
+export async function matchVivierCandidates(
+  queryEmbedding: number[],
+  candidateIds: string[],
+): Promise<Map<string, number>> {
+  if (candidateIds.length === 0) return new Map();
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase.rpc('match_vivier_candidates', {
+    // Littéral pgvector : PostgREST coerce text → vector(1536).
+    query_embedding: toVectorLiteral(queryEmbedding),
+    candidate_ids: candidateIds,
+  });
+  if (error) throw new Error(`matchVivierCandidates: ${error.message}`);
+  const map = new Map<string, number>();
+  for (const row of (data ?? []) as {
+    candidate_id: string;
+    similarity: number;
+  }[]) {
+    map.set(row.candidate_id, row.similarity);
+  }
+  return map;
 }
 
 /** Liste tous les ids du vivier (script de réindexation). Optionnel : statut. */

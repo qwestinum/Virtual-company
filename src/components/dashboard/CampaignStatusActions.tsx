@@ -21,6 +21,7 @@ import {
   pushManagerAcknowledgment,
   type AcknowledgmentAction,
 } from '@/lib/chat/manager-acknowledgments';
+import { triggerVivierPreselection } from '@/lib/vivier/trigger-preselection';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 
 export type CampaignActionStatus =
@@ -78,6 +79,10 @@ export function CampaignStatusActions({
     // Verrou déterministe : le store refuse si la campagne n'est pas prête.
     if (!activateCampaign(campaignId)) return;
     ack('campaign_activated');
+    // Source Vivier cochée ⇒ déclenche la présélection (endpoint idempotent).
+    if (camp?.sources.includes('vivier')) {
+      triggerVivierPreselection(campaignId);
+    }
   };
   const onClose = () => {
     const ok = window.confirm(

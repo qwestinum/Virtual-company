@@ -638,3 +638,53 @@ create index if not exists vivier_entities_diplomes_idx
   on public.vivier_entities using gin (diplomes);
 create index if not exists vivier_entities_langues_idx
   on public.vivier_entities using gin (langues);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Présélection vivier (Session V2 — source Vivier + traitement à l'activation)
+-- Spec : docs/specs/vivier.md §4
+-- ──────────────────────────────────────────────────────────────────────
+-- RPC de tri sémantique : similarité cosinus (pgvector `<=>`) entre un embedding
+-- de requête et les dossiers INDEXÉS d'un sous-ensemble (survivants des filtres
+-- durs). supabase-js ne peut pas exprimer `<=>` en direct → on passe par cette
+-- fonction. `similarity = 1 - distance_cosinus` (1 = identique). Seuls les
+-- dossiers `indexed` participent (pending/failed exclus — garantie §3.2/4.2).
+create or replace function public.match_vivier_candidates(
+  query_embedding vector(1536),
+  candidate_ids   uuid[]
+)
+returns table (candidate_id uuid, similarity double precision)
+language sql
+stable
+as $$
+  select ve.candidate_id,
+         1 - (ve.embedding <=> query_embedding) as similarity
+  from public.vivier_embeddings ve
+  join public.vivier_candidates vc on vc.id = ve.candidate_id
+  where vc.indexing_status = 'indexed'
+    and ve.candidate_id = any(candidate_ids)
+  order by similarity desc
+$$;
+
+-- Short-list persistée d'une campagne (substrat du cycle factuel V3). PK
+-- composite (campaign_id, candidate_id) ⇒ idempotence : une relance réconcilie
+-- au lieu de dupliquer. `state` porte le cycle factuel ; en V2 seul `identified`
+-- est produit, mais le schéma accueille `contacted`/`rejected` que toute relance
+-- PRÉSERVE (cf. replacePreselection). `on delete cascade` sur le dossier :
+-- supprimer un candidat du vivier purge ses présélections (cohérence RGPD §8.2).
+create table if not exists public.vivier_preselections (
+  campaign_id      text not null,
+  candidate_id     uuid not null
+                     references public.vivier_candidates(id) on delete cascade,
+  state            text not null default 'identified'
+                     check (state in ('identified','contacted','rejected')),
+  similarity       double precision not null,
+  freshness_factor double precision not null,
+  relevance_score  double precision not null,
+  passed_filters   jsonb not null default '[]'::jsonb,
+  rank             integer not null,
+  generated_at     timestamptz not null default now(),
+  primary key (campaign_id, candidate_id)
+);
+
+create index if not exists vivier_preselections_campaign_rank_idx
+  on public.vivier_preselections (campaign_id, rank);
