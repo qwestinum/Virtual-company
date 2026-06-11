@@ -115,6 +115,34 @@ describe('indexVivierCandidate', () => {
     );
   });
 
+  it('échec upsert embedding (ex. dimension incompatible) ⇒ failed, jamais pending silencieux', async () => {
+    repo.getVivierCandidate.mockResolvedValue(candidate());
+    embeddings.embedText.mockResolvedValueOnce({
+      vector: [0.1, 0.2, 0.3],
+      provider: 'openai',
+      model: 'text-embedding-3-large',
+    });
+    // L'embedding est produit mais sa persistance échoue (ex. vecteur 3072
+    // dims rejeté par la colonne vector(1536)).
+    repo.upsertVivierEmbedding.mockRejectedValueOnce(
+      new Error('expected 1536 dimensions, not 3072'),
+    );
+
+    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
+    const res = await indexVivierCandidate('VIV-0001');
+
+    expect(res.status).toBe('failed');
+    expect(res.error).toContain('1536');
+    // Le dossier est repositionné failed (re-tentable), pas laissé pending.
+    expect(repo.setVivierIndexingStatus).toHaveBeenCalledWith(
+      'VIV-0001',
+      'failed',
+      expect.stringContaining('1536'),
+    );
+    // L'écriture des entités n'a pas lieu (court-circuit sur l'échec embedding).
+    expect(repo.upsertVivierEntities).not.toHaveBeenCalled();
+  });
+
   it('échec entités (transport) ⇒ entités vides mais statut indexed (non bloquant)', async () => {
     repo.getVivierCandidate.mockResolvedValue(candidate());
     embeddings.embedText.mockResolvedValueOnce({

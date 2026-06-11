@@ -163,7 +163,6 @@ export async function getVivierEntities(
 }
 
 export type InsertVivierCandidateInput = {
-  id: string;
   email: string;
   nom: string;
   prenom: string | null;
@@ -174,6 +173,12 @@ export type InsertVivierCandidateInput = {
   tags?: string[];
 };
 
+/**
+ * Insère un nouveau dossier. L'`id` (uuid) est généré PAR LA BASE
+ * (`gen_random_uuid()`) — jamais fourni par l'application : aucune collision de
+ * PK possible. À la création, `cv_path` est null (le chemin Storage dérive de
+ * l'id, donc connu seulement APRÈS l'insert — cf. `setVivierCandidateCvPath`).
+ */
 export async function insertVivierCandidate(
   input: InsertVivierCandidateInput,
 ): Promise<VivierCandidate> {
@@ -181,7 +186,6 @@ export async function insertVivierCandidate(
   const { data, error } = await supabase
     .from(TABLE)
     .insert({
-      id: input.id,
       email: input.email,
       nom: input.nom,
       prenom: input.prenom,
@@ -231,6 +235,26 @@ export async function updateVivierCandidateCV(
     .select('*')
     .maybeSingle();
   if (error) throw new Error(`updateVivierCandidateCV: ${error.message}`);
+  return data ? vivierRowToDomain(data as VivierCandidateRow) : null;
+}
+
+/**
+ * Renseigne le chemin Storage du CV d'un dossier fraîchement créé. Le chemin
+ * dérive de l'id (uuid) généré par la base : il n'est connu qu'APRÈS l'insert.
+ * Ne touche pas au statut (le dossier reste `pending`, prêt pour l'indexation).
+ */
+export async function setVivierCandidateCvPath(
+  id: string,
+  cvPath: string,
+): Promise<VivierCandidate | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ cv_path: cvPath })
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  if (error) throw new Error(`setVivierCandidateCvPath: ${error.message}`);
   return data ? vivierRowToDomain(data as VivierCandidateRow) : null;
 }
 

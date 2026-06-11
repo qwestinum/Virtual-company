@@ -548,8 +548,16 @@ create extension if not exists vector;
 -- AVANT insert : la contrainte unique réalise la déduplication (cf. spec §2.3).
 -- `indexing_status` pilote l'exclusion des recherches (pending/failed exclus —
 -- garantie consommée par la présélection V2).
+--
+-- CLÉ PRIMAIRE = UUID GÉNÉRÉ PAR LA BASE (`gen_random_uuid()`). L'identité du
+-- dossier n'est jamais fabriquée côté application : pas de plafond, pas de
+-- collision de PK possible (cf. revue V1). L'id est opaque (non affiché) — il
+-- ne sert que de clé technique et de préfixe de chemin Storage.
+-- NB : `create table if not exists` n'altère pas une table préexistante. Si une
+-- ébauche de cette table (id text) a été appliquée pendant cette même branche,
+-- la recréer (drop) — aucune donnée de production, V1 non clôturée.
 create table if not exists public.vivier_candidates (
-  id               text primary key,                       -- VIV-XXXX
+  id               uuid primary key default gen_random_uuid(),
   email            text not null unique,                   -- clé de dédup (normalisée)
   nom              text not null,
   prenom           text,
@@ -588,7 +596,7 @@ create trigger vivier_candidates_touch_updated_at
 -- incohérences : deux fournisseurs produisent des espaces vectoriels NON
 -- comparables → toute bascule impose une réindexation complète (cf. spec §3.4).
 create table if not exists public.vivier_embeddings (
-  candidate_id  text primary key
+  candidate_id  uuid primary key
                   references public.vivier_candidates(id) on delete cascade,
   embedding     vector(1536) not null,
   provider      text not null,
@@ -609,7 +617,7 @@ create index if not exists vivier_embeddings_hnsw_idx
 -- déterministes de la présélection V2 (opérateur d'overlap `&&` / `@>`), sans
 -- appel LLM à la recherche. `experience_years` / `localisation` nullable.
 create table if not exists public.vivier_entities (
-  candidate_id      text primary key
+  candidate_id      uuid primary key
                       references public.vivier_candidates(id) on delete cascade,
   technologies      text[] not null default '{}',
   certifications    text[] not null default '{}',

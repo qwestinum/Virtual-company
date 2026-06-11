@@ -6,6 +6,7 @@ const repo = {
   getVivierCandidate: vi.fn(),
   getVivierCandidateByEmail: vi.fn(),
   insertVivierCandidate: vi.fn(),
+  setVivierCandidateCvPath: vi.fn(),
   updateVivierCandidateCV: vi.fn(),
   deleteVivierCandidateRow: vi.fn(),
 };
@@ -19,14 +20,19 @@ vi.mock('@/lib/db/repos/vivier', () => repo);
 vi.mock('@/lib/storage/blob', () => blob);
 vi.mock('@/lib/db/repos/journal', () => journal);
 
+// Les ids sont désormais des uuid générés par la base (jamais fabriqués côté
+// app) — on les représente par des uuid réalistes dans les fixtures.
+const EXISTING_UUID = 'a1111111-1111-1111-1111-111111111111';
+const NEW_UUID = 'b2222222-2222-2222-2222-222222222222';
+
 function candidate(overrides: Partial<VivierCandidate> = {}): VivierCandidate {
   return {
-    id: 'VIV-0001',
+    id: EXISTING_UUID,
     email: 'jane@doe.com',
     nom: 'Jane Doe',
     prenom: null,
     telephone: null,
-    cvPath: 'vivier/VIV-0001/cv.pdf',
+    cvPath: `vivier/${EXISTING_UUID}/cv.pdf`,
     cvText: 'texte cv',
     tags: [],
     source: 'manual_upload',
@@ -75,11 +81,6 @@ describe('helpers purs', () => {
     expect(cvExtension('sansext')).toBe('.pdf');
   });
 
-  it('generateVivierId renvoie VIV-NNNN', async () => {
-    const { generateVivierId } = await import('@/lib/vivier/candidates');
-    expect(generateVivierId()).toMatch(/^VIV-[0-9A-Z]{4,5}$/);
-  });
-
   it('isVivierSearchable vrai seulement si indexed', async () => {
     const { isVivierSearchable } = await import('@/lib/vivier/candidates');
     expect(isVivierSearchable(candidate({ indexingStatus: 'indexed' }))).toBe(true);
@@ -89,15 +90,22 @@ describe('helpers purs', () => {
 });
 
 describe('upsertVivierCandidate — déduplication par email', () => {
-  it('email inconnu ⇒ création (insert), email normalisé', async () => {
+  it('email inconnu ⇒ création insert-first (id généré par la base), upload puis cv_path', async () => {
     repo.getVivierCandidateByEmail.mockResolvedValueOnce(null);
+    repo.insertVivierCandidate.mockResolvedValueOnce(
+      candidate({ id: NEW_UUID, cvPath: null, indexingStatus: 'pending' }),
+    );
     blob.uploadArtifactBinary.mockResolvedValueOnce({
       bucket: 'artifacts',
-      path: 'vivier/VIV-0009/cv.pdf',
+      path: `vivier/${NEW_UUID}/cv.pdf`,
       publicUrl: 'http://x',
     });
-    repo.insertVivierCandidate.mockImplementationOnce(async (i) =>
-      candidate({ id: i.id, email: i.email, cvPath: i.cvPath, indexingStatus: 'pending' }),
+    repo.setVivierCandidateCvPath.mockResolvedValueOnce(
+      candidate({
+        id: NEW_UUID,
+        cvPath: `vivier/${NEW_UUID}/cv.pdf`,
+        indexingStatus: 'pending',
+      }),
     );
 
     const { upsertVivierCandidate } = await import('@/lib/vivier/candidates');
@@ -105,24 +113,38 @@ describe('upsertVivierCandidate — déduplication par email', () => {
 
     expect(repo.getVivierCandidateByEmail).toHaveBeenCalledWith('jane@doe.com');
     expect(res.created).toBe(true);
+    expect(res.candidate.cvPath).toBe(`vivier/${NEW_UUID}/cv.pdf`);
+    // Insert SANS id (la base génère l'uuid) et SANS cv_path (connu après upload).
     expect(repo.insertVivierCandidate).toHaveBeenCalledTimes(1);
-    expect(repo.insertVivierCandidate.mock.calls[0][0].email).toBe('jane@doe.com');
+    const insertArg = repo.insertVivierCandidate.mock.calls[0][0];
+    expect(insertArg.email).toBe('jane@doe.com');
+    expect(insertArg.id).toBeUndefined();
+    expect(insertArg.cvPath).toBeNull();
+    // Upload APRÈS l'insert, sous le chemin dérivé de l'id réel.
+    expect(blob.uploadArtifactBinary.mock.calls[0][0].owner).toEqual({
+      kind: 'vivier',
+      id: NEW_UUID,
+    });
+    expect(repo.setVivierCandidateCvPath).toHaveBeenCalledWith(
+      NEW_UUID,
+      `vivier/${NEW_UUID}/cv.pdf`,
+    );
+    // Pas le chemin de mise à jour, pas d'ancien fichier à purger.
     expect(repo.updateVivierCandidateCV).not.toHaveBeenCalled();
-    // Pas d'ancien fichier à purger.
     expect(blob.deleteArtifact).not.toHaveBeenCalled();
   });
 
   it('email connu ⇒ mise à jour (update), réutilise l’id existant', async () => {
     repo.getVivierCandidateByEmail.mockResolvedValueOnce(
-      candidate({ id: 'VIV-0001', cvPath: 'vivier/VIV-0001/cv.pdf' }),
+      candidate({ id: EXISTING_UUID, cvPath: `vivier/${EXISTING_UUID}/cv.pdf` }),
     );
     blob.uploadArtifactBinary.mockResolvedValueOnce({
       bucket: 'artifacts',
-      path: 'vivier/VIV-0001/cv.pdf',
+      path: `vivier/${EXISTING_UUID}/cv.pdf`,
       publicUrl: 'http://x',
     });
     repo.updateVivierCandidateCV.mockResolvedValueOnce(
-      candidate({ id: 'VIV-0001', indexingStatus: 'pending' }),
+      candidate({ id: EXISTING_UUID, indexingStatus: 'pending' }),
     );
 
     const { upsertVivierCandidate } = await import('@/lib/vivier/candidates');
@@ -131,55 +153,60 @@ describe('upsertVivierCandidate — déduplication par email', () => {
     expect(res.created).toBe(false);
     expect(blob.uploadArtifactBinary.mock.calls[0][0].owner).toEqual({
       kind: 'vivier',
-      id: 'VIV-0001',
+      id: EXISTING_UUID,
     });
     expect(repo.updateVivierCandidateCV).toHaveBeenCalledTimes(1);
     expect(repo.insertVivierCandidate).not.toHaveBeenCalled();
+    expect(repo.setVivierCandidateCvPath).not.toHaveBeenCalled();
     // Même chemin ⇒ pas de suppression d'ancien fichier.
     expect(blob.deleteArtifact).not.toHaveBeenCalled();
   });
 
   it('remplacement avec extension différente ⇒ purge de l’ancien fichier', async () => {
     repo.getVivierCandidateByEmail.mockResolvedValueOnce(
-      candidate({ id: 'VIV-0001', cvPath: 'vivier/VIV-0001/cv.txt' }),
+      candidate({ id: EXISTING_UUID, cvPath: `vivier/${EXISTING_UUID}/cv.txt` }),
     );
     blob.uploadArtifactBinary.mockResolvedValueOnce({
       bucket: 'artifacts',
-      path: 'vivier/VIV-0001/cv.pdf',
+      path: `vivier/${EXISTING_UUID}/cv.pdf`,
       publicUrl: 'http://x',
     });
     repo.updateVivierCandidateCV.mockResolvedValueOnce(
-      candidate({ id: 'VIV-0001', indexingStatus: 'pending' }),
+      candidate({ id: EXISTING_UUID, indexingStatus: 'pending' }),
     );
 
     const { upsertVivierCandidate } = await import('@/lib/vivier/candidates');
     await upsertVivierCandidate(baseInput());
 
-    expect(blob.deleteArtifact).toHaveBeenCalledWith('vivier/VIV-0001/cv.txt');
+    expect(blob.deleteArtifact).toHaveBeenCalledWith(
+      `vivier/${EXISTING_UUID}/cv.txt`,
+    );
   });
 });
 
 describe('deleteVivierCandidate — cascade + trace anonyme', () => {
   it('supprime fichier puis dossier, journalise sans donnée personnelle', async () => {
     repo.getVivierCandidate.mockResolvedValueOnce(
-      candidate({ id: 'VIV-0001', cvPath: 'vivier/VIV-0001/cv.pdf' }),
+      candidate({ id: EXISTING_UUID, cvPath: `vivier/${EXISTING_UUID}/cv.pdf` }),
     );
     repo.deleteVivierCandidateRow.mockResolvedValueOnce(undefined);
 
     const { deleteVivierCandidate } = await import('@/lib/vivier/candidates');
-    const res = await deleteVivierCandidate('VIV-0001', {
+    const res = await deleteVivierCandidate(EXISTING_UUID, {
       reason: 'candidate_request',
       actor: 'drh',
     });
 
     expect(res.deleted).toBe(true);
-    expect(blob.deleteArtifact).toHaveBeenCalledWith('vivier/VIV-0001/cv.pdf');
-    expect(repo.deleteVivierCandidateRow).toHaveBeenCalledWith('VIV-0001');
+    expect(blob.deleteArtifact).toHaveBeenCalledWith(
+      `vivier/${EXISTING_UUID}/cv.pdf`,
+    );
+    expect(repo.deleteVivierCandidateRow).toHaveBeenCalledWith(EXISTING_UUID);
 
     const entry = journal.appendJournalEntry.mock.calls[0][0];
     expect(entry.action).toBe('vivier_candidate_deleted');
     expect(entry.payload).toEqual({
-      vivierId: 'VIV-0001',
+      vivierId: EXISTING_UUID,
       reason: 'candidate_request',
     });
     // La trace ne contient AUCUNE donnée personnelle.
@@ -191,7 +218,7 @@ describe('deleteVivierCandidate — cascade + trace anonyme', () => {
   it('dossier inexistant ⇒ deleted:false, pas de journal', async () => {
     repo.getVivierCandidate.mockResolvedValueOnce(null);
     const { deleteVivierCandidate } = await import('@/lib/vivier/candidates');
-    const res = await deleteVivierCandidate('VIV-9999', {
+    const res = await deleteVivierCandidate(NEW_UUID, {
       reason: 'internal_decision',
     });
     expect(res.deleted).toBe(false);

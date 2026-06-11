@@ -20,6 +20,7 @@ import {
   getVivierCandidate,
   getVivierCandidateByEmail,
   insertVivierCandidate,
+  setVivierCandidateCvPath,
   updateVivierCandidateCV,
 } from '@/lib/db/repos/vivier';
 import { deleteArtifact, uploadArtifactBinary } from '@/lib/storage/blob';
@@ -32,23 +33,6 @@ import type { VivierCandidate, VivierSource } from '@/types/vivier';
  */
 export function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
-}
-
-const VIVIER_ID_TAKEN = new Set<string>();
-
-/** Génère un identifiant `VIV-XXXX`. Même esprit que `generateCampaignId`. */
-export function generateVivierId(takenIds: Iterable<string> = []): string {
-  for (const id of takenIds) VIVIER_ID_TAKEN.add(id);
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const n = Math.floor(Math.random() * 9999) + 1;
-    const id = `VIV-${String(n).padStart(4, '0')}`;
-    if (!VIVIER_ID_TAKEN.has(id)) {
-      VIVIER_ID_TAKEN.add(id);
-      return id;
-    }
-  }
-  const stamp = Date.now().toString(36).slice(-5).toUpperCase();
-  return `VIV-${stamp}`;
 }
 
 /** Déduit l'extension de fichier (.pdf/.txt/.md) — défaut .pdf. Pure. */
@@ -85,46 +69,54 @@ export async function upsertVivierCandidate(
 ): Promise<UpsertVivierResult> {
   const email = normalizeEmail(input.email);
   const existing = await getVivierCandidateByEmail(email);
-  const id = existing?.id ?? generateVivierId();
+  const cvName = `cv${cvExtension(input.cvFileName)}`;
 
-  // Upload du CV (écrase l'objet au même chemin si même extension).
-  const upload = await uploadArtifactBinary({
-    owner: { kind: 'vivier', id },
-    name: `cv${cvExtension(input.cvFileName)}`,
-    content: input.cvContent,
-    mimeType: input.cvMimeType,
-  });
-
-  // Remplacement : purge l'ancien fichier s'il portait un chemin DIFFÉRENT
-  // (extension changée) — pas d'accumulation de fichiers orphelins (§5).
-  if (existing?.cvPath && existing.cvPath !== upload.path) {
-    await deleteArtifact(existing.cvPath);
-  }
-
+  // Email connu ⇒ mise à jour du dossier existant (déduplication §2.3). Le
+  // chemin Storage dérive de l'id STABLE du dossier (upload en place).
   if (existing) {
-    const updated = await updateVivierCandidateCV(id, {
+    const upload = await uploadArtifactBinary({
+      owner: { kind: 'vivier', id: existing.id },
+      name: cvName,
+      content: input.cvContent,
+      mimeType: input.cvMimeType,
+    });
+    // Purge l'ancien fichier s'il portait un chemin DIFFÉRENT (extension
+    // changée) — pas d'accumulation de fichiers orphelins (§5).
+    if (existing.cvPath && existing.cvPath !== upload.path) {
+      await deleteArtifact(existing.cvPath);
+    }
+    const updated = await updateVivierCandidateCV(existing.id, {
       nom: input.nom,
       prenom: input.prenom,
       telephone: input.telephone,
       cvPath: upload.path,
       cvText: input.cvText,
     });
-    // updateVivierCandidateCV ne renvoie null que si la ligne a disparu entre
-    // le get et l'update (course rare) : on retombe sur une création.
     if (updated) return { candidate: updated, created: false };
+    // updateVivierCandidateCV ne renvoie null que si la ligne a disparu entre
+    // le get et l'update (course rare) : on retombe sur la création ci-dessous.
   }
 
-  const created = await insertVivierCandidate({
-    id,
+  // Email inconnu ⇒ création. L'id (uuid) est généré PAR LA BASE à l'insert ;
+  // on uploade ensuite le CV sous le chemin dérivé de cet id, puis on renseigne
+  // cv_path. Le dossier reste `pending` (prêt pour l'indexation).
+  const inserted = await insertVivierCandidate({
     email,
     nom: input.nom,
     prenom: input.prenom,
     telephone: input.telephone,
-    cvPath: upload.path,
+    cvPath: null,
     cvText: input.cvText,
     source: input.source,
   });
-  return { candidate: created, created: true };
+  const upload = await uploadArtifactBinary({
+    owner: { kind: 'vivier', id: inserted.id },
+    name: cvName,
+    content: input.cvContent,
+    mimeType: input.cvMimeType,
+  });
+  const withCv = await setVivierCandidateCvPath(inserted.id, upload.path);
+  return { candidate: withCv ?? inserted, created: true };
 }
 
 export type VivierDeletionReason = 'candidate_request' | 'internal_decision';

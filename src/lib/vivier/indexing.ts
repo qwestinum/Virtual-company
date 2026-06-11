@@ -59,33 +59,44 @@ export async function indexVivierCandidate(
     return { status: 'failed', error: msg };
   }
 
-  // 1. Embedding sémantique (critique).
-  let embedding;
+  // Garantie de résilience : TOUTE exception du pipeline d'indexation (échec
+  // d'embedding, dimension de vecteur incompatible avec la colonne, échec
+  // d'upsert embedding/entités, panne base sur la transition de statut…) repose
+  // le dossier en `failed` — re-tentable, JAMAIS laissé `pending` en silence.
+  // Le contrat « pending/failed exclus des recherches, failed re-tentable »
+  // (§3.2/4.2) est ainsi tenu sans trou.
   try {
-    embedding = await embedText(cvText);
+    // 1. Embedding sémantique (critique) + persistance.
+    const embedding = await embedText(cvText);
+    await upsertVivierEmbedding(candidateId, {
+      vector: embedding.vector,
+      provider: embedding.provider,
+      model: embedding.model,
+    });
+
+    // 2. Entités structurées (enrichissement non bloquant). Un échec
+    // d'EXTRACTION (LLM/transport) reste non bloquant : entités vides, on
+    // poursuit. Un échec d'écriture base remonte au catch global (cohérence).
+    let entities = { ...EMPTY_VIVIER_ENTITIES };
+    try {
+      entities = await extractVivierEntities(cvText, candidate.id);
+    } catch (err) {
+      console.error(`[vivier] entity extraction failed for ${candidateId}`, err);
+    }
+    await upsertVivierEntities(candidateId, entities);
+
+    // 3. Succès : le dossier devient recherchable.
+    await setVivierIndexingStatus(candidateId, 'indexed', null);
+    return { status: 'indexed', error: null };
   } catch (err) {
     const msg = errorMessage(err);
-    await setVivierIndexingStatus(candidateId, 'failed', msg);
+    try {
+      await setVivierIndexingStatus(candidateId, 'failed', msg);
+    } catch (statusErr) {
+      // Même la transition `failed` peut échouer (base injoignable) : on loggue,
+      // le dossier reste re-tentable via le script de réindexation.
+      console.error(`[vivier] could not mark ${candidateId} failed`, statusErr);
+    }
     return { status: 'failed', error: msg };
   }
-  await upsertVivierEmbedding(candidateId, {
-    vector: embedding.vector,
-    provider: embedding.provider,
-    model: embedding.model,
-  });
-
-  // 2. Entités structurées (enrichissement non bloquant).
-  let entities = { ...EMPTY_VIVIER_ENTITIES };
-  try {
-    entities = await extractVivierEntities(cvText, candidate.id);
-  } catch (err) {
-    // Toute défaillance (y compris transport) reste non bloquante : entités
-    // vides, le dossier sera tout de même `indexed` (l'embedding a réussi).
-    console.error(`[vivier] entity extraction failed for ${candidateId}`, err);
-  }
-  await upsertVivierEntities(candidateId, entities);
-
-  // 3. Succès : le dossier devient recherchable.
-  await setVivierIndexingStatus(candidateId, 'indexed', null);
-  return { status: 'indexed', error: null };
 }
