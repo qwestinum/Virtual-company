@@ -25,11 +25,19 @@ import {
 export const CV_SOURCE_MANUAL = 'manual';
 export const CV_SOURCE_EMAIL = 'email';
 export const CV_SOURCE_LOCAL_FOLDER = 'local_folder';
+/**
+ * Source INTERNE de sourcing (Vivier — Session V2, docs/specs/vivier.md §4.1).
+ * Contrairement aux autres sources (flux entrants continus), le vivier déclenche
+ * une PRÉSÉLECTION dans le stock interne à l'activation de la campagne — pas de
+ * flux entrant, pas d'API à configurer.
+ */
+export const CV_SOURCE_VIVIER = 'vivier';
 
 export const CVSourceSchema = z.union([
   z.literal(CV_SOURCE_MANUAL),
   z.literal(CV_SOURCE_EMAIL),
   z.literal(CV_SOURCE_LOCAL_FOLDER),
+  z.literal(CV_SOURCE_VIVIER),
   PublicationChannelSchema,
 ]);
 export type CVSource = z.infer<typeof CVSourceSchema>;
@@ -42,6 +50,7 @@ export type CVSource = z.infer<typeof CVSourceSchema>;
 export const CV_SOURCES: CVSource[] = [
   'manual',
   'email',
+  'vivier',
   'local_folder',
   'linkedin',
   'indeed',
@@ -54,6 +63,7 @@ export const CV_SOURCES: CVSource[] = [
 export const CV_SOURCE_LABELS: Record<CVSource, string> = {
   manual: 'Upload manuel',
   email: 'Boîte mail générique',
+  vivier: 'Vivier de candidats',
   local_folder: 'Emplacement local',
   linkedin: 'LinkedIn',
   indeed: 'Indeed',
@@ -66,6 +76,7 @@ export const CV_SOURCE_LABELS: Record<CVSource, string> = {
 export const CV_SOURCE_HINTS: Record<CVSource, string> = {
   manual: 'Téléverser les CV via le trombone',
   email: 'Réception auto depuis une boîte mail configurée',
+  vivier: 'Présélection dans votre stock interne de CV à l\'activation',
   local_folder: 'Surveillance d\'un dossier local (à configurer)',
   linkedin: 'Réception auto via LinkedIn (Publisher — bientôt)',
   indeed: 'Réception auto via Indeed (Publisher — bientôt)',
@@ -87,6 +98,8 @@ export const CV_SOURCE_OPERATIONAL: Record<CVSource, boolean> = {
   // dans /settings/mailboxes peut être associée à une campagne pour
   // déclencher l'analyse automatique des CV reçus par email.
   email: true,
+  // Vivier : opérationnel en V2 (présélection à l'activation).
+  vivier: true,
   local_folder: false,
   linkedin: false,
   indeed: false,

@@ -4,6 +4,7 @@ import {
   FolderOpen,
   Globe,
   Inbox,
+  Library,
   Newspaper,
   Paperclip,
   Sparkles,
@@ -31,6 +32,7 @@ export type CVSourcesPickerProps = {
 const SOURCE_ICONS: Record<CVSource, typeof Globe> = {
   manual: Paperclip,
   email: Inbox,
+  vivier: Library,
   local_folder: FolderOpen,
   linkedin: Sparkles,
   indeed: Newspaper,

@@ -7,15 +7,28 @@ import {
 } from '@/types/cv-source';
 
 describe('cv-source', () => {
-  it('manual and email are operational (Session 5 round 5 — IMAP polling activé)', () => {
+  it('manual, email et vivier sont opérationnels ; les jobboards restent placeholders', () => {
     expect(CV_SOURCE_OPERATIONAL.manual).toBe(true);
     expect(CV_SOURCE_OPERATIONAL.email).toBe(true);
+    // Vivier opérationnel en V2 (présélection interne à l'activation).
+    expect(CV_SOURCE_OPERATIONAL.vivier).toBe(true);
     // Les autres sources (local_folder + jobboards) restent placeholders
     // tant que le Publisher réel n'est pas câblé.
+    const operational = new Set(['manual', 'email', 'vivier']);
     for (const source of CV_SOURCES) {
-      if (source === 'manual' || source === 'email') continue;
+      if (operational.has(source)) continue;
       expect(CV_SOURCE_OPERATIONAL[source]).toBe(false);
     }
+  });
+
+  it('le vivier figure dans la liste des sources cochables', () => {
+    expect(CV_SOURCES).toContain('vivier');
+  });
+
+  it('buildDefaultSourcesConfig n’active jamais le vivier par défaut (pas un canal de diffusion)', () => {
+    // Même avec des channels sélectionnés, le vivier reste à cocher manuellement.
+    expect(buildDefaultSourcesConfig([]).vivier).toBe(false);
+    expect(buildDefaultSourcesConfig(['linkedin', 'apec']).vivier).toBe(false);
   });
 
   it('buildDefaultSourcesConfig activates manual + the published channels', () => {

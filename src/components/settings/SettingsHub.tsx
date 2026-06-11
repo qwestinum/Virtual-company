@@ -405,7 +405,9 @@ export function SettingsHub() {
         description="Identifiants d'API pour les canaux de réception automatique de CV. Configurez celles dont vous avez besoin ; les autres restent en mode manuel."
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {CV_SOURCES.filter((s) => s !== 'manual' && s !== 'local_folder').map(
+          {CV_SOURCES.filter(
+            (s) => s !== 'manual' && s !== 'local_folder' && s !== 'vivier',
+          ).map(
             (source) => {
               const id = source as CVSource;
               const config = settings.fluxConfig[id] ?? {
