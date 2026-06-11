@@ -11,6 +11,7 @@
 import { useState, type ReactNode } from 'react';
 
 import type { ActiveCampaign } from '@/stores/campaigns-store';
+import { VivierPreselectionPanel } from '@/components/vivier/VivierPreselectionPanel';
 
 import { ChannelsEditBlock } from './ChannelsEditBlock';
 import { FDPEditBlock } from './FDPEditBlock';
@@ -29,6 +30,7 @@ type BlockKey =
   | 'scoring'
   | 'channels'
   | 'flux'
+  | 'vivier'
   | 'threshold'
   | 'lifecycle';
 
@@ -89,6 +91,17 @@ export function CampaignEditAccordion({
       >
         <FluxEditBlock campaign={campaign} />
       </AccordionItem>
+      {campaign.sources.includes('vivier') ? (
+        <AccordionItem
+          title="Vivier — présélection"
+          subtitle="Short-list issue de votre stock interne"
+          icon="🗂️"
+          open={expanded === 'vivier'}
+          onToggle={() => toggle('vivier')}
+        >
+          <VivierPreselectionPanel campaignId={campaign.id} />
+        </AccordionItem>
+      ) : null}
       <AccordionItem
         title="Seuil d'acceptation"
         subtitle={`${campaign.threshold}% — applique aux prochains CV`}
