@@ -9,10 +9,36 @@
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
   CANDIDATE_STATUS_LABELS,
+  DEFAULT_VERIFICATION_METHOD,
   SCORING_LEVELS,
   type CriterionDecision,
   type LlmDecision,
 } from '@/types/scoring';
+
+/**
+ * Affichage de la MÉTHODE de vérification d'un critère (Phase 4). PUR. Le
+ * libellé court et la liste des mots-clés trouvés se dérivent de
+ * `verificationMethodUsed` + `matchedKeywords` (cf. scoring-hybrid.md §4.1).
+ */
+export function formatCriterionMethod(decision: CriterionDecision): {
+  label: string;
+  foundKeywords: string[];
+} {
+  const method = decision.verificationMethodUsed ?? DEFAULT_VERIFICATION_METHOD;
+  const kw = decision.matchedKeywords ?? [];
+  switch (method) {
+    case 'keywords_exact':
+    case 'keywords_with_variants':
+      return { label: 'Mots-clés détectés', foundKeywords: kw };
+    case 'hybrid_keywords_llm':
+      return kw.length > 0
+        ? { label: 'Mots-clés + Vérification LLM', foundKeywords: kw }
+        : { label: 'Aucun mot-clé trouvé', foundKeywords: [] };
+    case 'llm_with_quote':
+    default:
+      return { label: 'Vérification LLM', foundKeywords: [] };
+  }
+}
 
 /** Libellé lisible d'un verdict LLM (audit = texte, pas d'emoji). */
 export const LLM_DECISION_LABELS: Record<LlmDecision, string> = {

@@ -15,17 +15,26 @@ import {
   LLM_DECISION_LABELS,
   auditCandidatFileName,
   buildCandidateHistory,
+  formatCriterionMethod,
   formatFrDate,
   formatFrDateTime,
   sortByCriticality,
 } from '@/lib/reporting/audit-display';
+import {
+  criterionMethodCounts,
+  decisionMethod,
+  filterByMethod,
+} from '@/lib/reporting/criterion-method-filter';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
   CANDIDATE_STATUS_LABELS,
   SCORING_LEVEL_LABELS,
+  type VerificationMethod,
 } from '@/types/scoring';
 
 import { CandidateJourneyColumns } from './CandidateJourneyColumns';
+import { CriterionMethodFilter } from './CriterionMethodFilter';
+import { MethodBadge } from '@/components/scoring/MethodBadge';
 import { ScoreBadge } from './ScoreBadge';
 import { SendReportModal } from './SendReportModal';
 
@@ -36,10 +45,13 @@ export function CandidateAuditDetail({
 }) {
   const [sendOpen, setSendOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [methodFilter, setMethodFilter] = useState<VerificationMethod | null>(null);
 
   const { application } = detail;
   const { candidate, scoringResult, narration } = application;
   const ordered = sortByCriticality(scoringResult.breakdown);
+  const methodCounts = criterionMethodCounts(ordered);
+  const visibleCriteria = filterByMethod(ordered, methodFilter);
   const history = buildCandidateHistory(detail);
   const accepted = scoringResult.status === 'accepted';
   const reportEndpoint = `/api/reporting/audit/candidates/${detail.id}/report`;
@@ -134,35 +146,57 @@ export function CandidateAuditDetail({
 
       {/* Grille critère par critère */}
       <Section title="Grille de scoring — critère par critère">
+        {methodCounts.length > 1 ? (
+          <div className="mb-2">
+            <CriterionMethodFilter
+              counts={methodCounts}
+              total={ordered.length}
+              selected={methodFilter}
+              onSelect={setMethodFilter}
+            />
+          </div>
+        ) : null}
         <ul className="flex flex-col divide-y divide-stone-100">
-          {ordered.map((b, i) => (
-            <li key={`${b.criterionId}-${i}`} className="py-3">
-              <div className="flex items-start justify-between gap-3">
-                <p className="font-body text-[14px] font-semibold text-stone-800">
-                  {b.criterionLabel}
+          {visibleCriteria.map((b, i) => {
+            const m = formatCriterionMethod(b);
+            return (
+              <li key={`${b.criterionId}-${i}`} className="py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <p className="font-body text-[14px] font-semibold text-stone-800">
+                      {b.criterionLabel}
+                    </p>
+                    <MethodBadge method={decisionMethod(b)} />
+                  </div>
+                  <span
+                    className="shrink-0 font-body text-[12px] font-bold"
+                    style={{ color: LLM_DECISION_COLORS[b.llmDecision] }}
+                  >
+                    {LLM_DECISION_LABELS[b.llmDecision]}
+                  </span>
+                </div>
+                <p className="font-body text-[11px] text-stone-500">
+                  {SCORING_LEVEL_LABELS[b.criticityLevel]} · poids {b.weight} ·
+                  contribution {b.contribution > 0 ? '+' : ''}
+                  {b.contribution} pts
                 </p>
-                <span
-                  className="shrink-0 font-body text-[12px] font-bold"
-                  style={{ color: LLM_DECISION_COLORS[b.llmDecision] }}
-                >
-                  {LLM_DECISION_LABELS[b.llmDecision]}
-                </span>
-              </div>
-              <p className="font-body text-[11px] text-stone-500">
-                {SCORING_LEVEL_LABELS[b.criticityLevel]} · poids {b.weight} ·
-                contribution {b.contribution > 0 ? '+' : ''}
-                {b.contribution} pts
-              </p>
-              {b.llmCVQuote ? (
-                <p className="mt-1 border-l-2 border-stone-200 pl-2 font-body text-[12px] italic text-stone-600">
-                  « {b.llmCVQuote} »
+                <p className="font-body text-[11px] text-stone-500">
+                  {m.label}
+                  {m.foundKeywords.length > 0
+                    ? ` : ${m.foundKeywords.join(', ')}`
+                    : ''}
                 </p>
-              ) : null}
-              <p className="mt-1 font-body text-[12px] text-stone-600">
-                {b.llmJustification}
-              </p>
-            </li>
-          ))}
+                {b.llmCVQuote ? (
+                  <p className="mt-1 border-l-2 border-stone-200 pl-2 font-body text-[12px] italic text-stone-600">
+                    « {b.llmCVQuote} »
+                  </p>
+                ) : null}
+                <p className="mt-1 font-body text-[12px] text-stone-600">
+                  {b.llmJustification}
+                </p>
+              </li>
+            );
+          })}
         </ul>
         {scoringResult.hardFailures.length > 0 ? (
           <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2">

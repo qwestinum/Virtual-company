@@ -23,6 +23,7 @@ import {
   LLM_DECISION_COLORS,
   LLM_DECISION_LABELS,
   buildCandidateHistory,
+  formatCriterionMethod,
   formatFrDate,
   formatFrDateTime,
   sortByCriticality,
@@ -257,6 +258,14 @@ function AuditDocument({ detail, generatedAtIso, campaignLabel }: AuditPdfProps)
               {SCORING_LEVEL_LABELS[b.criticityLevel]} · poids {b.weight} ·
               contribution {b.contribution > 0 ? '+' : ''}
               {b.contribution} pts
+            </Text>
+            <Text style={styles.critMeta}>
+              {(() => {
+                const m = formatCriterionMethod(b);
+                return m.foundKeywords.length > 0
+                  ? `${m.label} : ${m.foundKeywords.join(', ')}`
+                  : m.label;
+              })()}
             </Text>
             {b.llmCVQuote ? (
               <Text style={styles.critQuote}>« {b.llmCVQuote} »</Text>
