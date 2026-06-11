@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test": "vitest run",
     "test:watch": "vitest",
-    "bench:cv": "tsx scripts/bench-cv-analyzer.ts"
+    "bench:cv": "tsx scripts/bench-cv-analyzer.ts",
+    "reindex:vivier": "tsx scripts/reindex-vivier.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
