@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 
 import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
+import { feedVivierFromApplication } from '@/lib/vivier/ingest-application';
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { ScoringError } from '@/lib/scoring';
@@ -180,6 +181,24 @@ export async function POST(request: Request): Promise<NextResponse> {
       // les réglages ne sont pas chargeables (démo locale sans Supabase).
       hitlConfig: (await getAppSettings())?.hitlConfig ?? DEFAULT_HITL_CONFIG,
     });
+
+    // Alimentation automatique du vivier APRÈS la réponse (non bloquant —
+    // §3.1 porte 2). Le File est rebufférisable (Blob.arrayBuffer relisible).
+    // Strictement best-effort : même la PLANIFICATION (after/arrayBuffer) ne
+    // doit jamais casser la réponse d'analyse.
+    try {
+      const cvBuffer = Buffer.from(await file.arrayBuffer());
+      after(() =>
+        feedVivierFromApplication({
+          application,
+          cvText: extracted.text,
+          cvContent: cvBuffer,
+          cvMimeType: file.type,
+        }),
+      );
+    } catch (vivierErr) {
+      console.error('[vivier] planification alimentation auto échouée', vivierErr);
+    }
 
     return NextResponse.json({
       application,

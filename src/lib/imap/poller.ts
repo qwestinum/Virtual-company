@@ -49,6 +49,7 @@ import {
   type MailboxRow,
 } from '@/lib/db/repos/mailboxes';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { feedVivierFromApplication } from '@/lib/vivier/ingest-application';
 import { openConnection } from '@/lib/imap/client';
 import { uploadArtifact } from '@/lib/storage/blob';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
@@ -557,6 +558,15 @@ async function processEmailAttachment(args: {
     application,
     // Fige l'état HITL au moment de l'analyse (audit fidèle). Repli ON.
     hitlConfig: (await getAppSettings())?.hitlConfig ?? DEFAULT_HITL_CONFIG,
+  });
+
+  // Alimentation automatique du vivier (§3.1 porte 2). Fire-and-forget : ne
+  // bloque pas la suite du poll (outreach), n'échoue jamais vers l'appelant.
+  void feedVivierFromApplication({
+    application,
+    cvText: extracted.text,
+    cvContent: buffer,
+    cvMimeType: mime,
   });
 
   // Round 5 fix — déclenche le mail au candidat (refus ou invitation)
