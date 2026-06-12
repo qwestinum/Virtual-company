@@ -210,7 +210,7 @@ Nouvelle section « Vivier » dans les settings de l'organisation :
 
 - **Session V1 — Socle** ✅ *livré* : entité vivier, modèle de données, upload manuel, indexation (embedding + entités + abstraction provider), déduplication par email, suppression cascade, script de réindexation.
 - **Session V2 — Alimentation automatique depuis les flux + intégration campagne** ✅ *livré* : source Vivier à la création, traitement de présélection à l'activation, short-list (cf. §12).
-- **Session V3 — Validation vivier + contact** : section validation, message d'invitation, cycle factuel, rapprochement par email, cooldown, settings, mention RGPD dans les annonces.
+- **Session V3 — Validation vivier + contact** ✅ *livré* : section validation, message d'invitation, cycle factuel, rapprochement par email, cooldown, settings, mention RGPD dans les annonces (cf. §13).
 
 ## 12. Notes d'implémentation (V1–V2)
 
@@ -243,3 +243,33 @@ Table `vivier_preselections` (PK `(campaign_id, candidate_id)`, `on delete casca
 ### 12.5. Déclenchement à l'activation
 
 L'activation est une mutation de store synchronisée (pas de transition serveur). Hook = **déclencheur client** (`triggerVivierPreselection`) dans `onActivate` (si `sources.includes('vivier')`) appelant le **même endpoint idempotent** que la relance manuelle : `POST /api/campaigns/[id]/vivier-preselection` (corps vide = présélection fiche persistée ; `{ freeText }` = recherche libre éphémère ; `GET` = relit la short-list persistée).
+
+## 13. Notes d'implémentation (V3)
+
+### 13.1. Cycle factuel & table de liaison (§6.2)
+
+La table `vivier_preselections` (V2) **est** la liaison campagne↔candidat : le cycle factuel est l'évolution de son `state`. Étendue de faits datés **nullable** : `contacted_at`, `rejected_at`, `decided_by`, `applied_at`. **Cohérence atomique état↔dates** garantie en base (CHECK : `identified` sans date de décision ; `contacted` ⇒ `contacted_at` ; `rejected` ⇒ `rejected_at` + `decided_by`) **et** dans la couche d'accès (`markContacted`/`markRejected` posent état + date en une opération, garde `state = identified` ⇒ idempotent, jamais de spéculatif ni de retour arrière). Transitions autorisées : `identified → contacted | rejected` uniquement (guard pur `proposal-cycle.ts`).
+
+### 13.2. Section Validation vivier (§5)
+
+Vue **org-level dédiée** `/validations-vivier` (lien + badge global dans le `TopBanner`), pas un onglet campagne. Niveau 1 : campagnes ayant ≥1 proposition `identified` (compteur via RPC `vivier_pending_by_campaign`, agrégation en base ; triées par charge ; une campagne sans attente n'apparaît pas). Niveau 2 : candidats `identified` de la campagne, vue compacte/détaillée dépliable, décisions **unitaires + en masse** tracées au journal (`vivier_contact_accepted`/`rejected`). Composant `VivierValidationList` autonome (props).
+
+### 13.3. Message d'invitation (§6.1) & permission d'envoi
+
+Template **déterministe** éditable en settings (renderer pur `invitation-template.ts`, défaut §6.1), variables `[prénom]`/`[intitulé du poste]`/`[nom de la campagne]`/`[adresse de réception]`/`[Organisation]`, **mention RGPD apposée systématiquement** (partagée avec les annonces via `rgpd-mention.ts`). Invitation à **candidater**, jamais à un entretien. Réutilise `sendEmail` (Resend). **L'envoi fait passer à `contacted`** : succès ou email non configuré ⇒ marqué (best-effort) ; échec dur ⇒ re-tentable. **Permission** : en **manuel**, l'acceptation explicite (route `…/decisions`) déclenche l'envoi ; en **auto**, `autoContactIfEnabled` envoie toute la short-list après la présélection (non bloquant, dans la limite du plafond).
+
+### 13.4. Rapprochement par email (§6.3)
+
+Aux deux points d'entrée d'une candidature (route `cv-analyzer` + poller IMAP), `matchVivierApplication` : correspondance **exacte** sur l'email normalisé (jamais de fuzzy) avec un candidat vivier **contacté** pour cette campagne ⇒ `recordApplied` pose `applied_at` (première candidature only) + journal `vivier_application_matched`. Hors campagne / sans email : no-op. **Annotations dérivées à la lecture** (pas d'écho persisté) : candidature « issu du vivier — contacté le [date] » (audit candidat, `findContactedProposalByEmail`) ; dossier « a postulé à la campagne X » (historique des propositions).
+
+### 13.5. Cooldown (§7)
+
+Câblé dans l'étape 4 de la présélection : **contacté ⇒ cooldown GLOBAL** (exclu de toute short-list tant que `contacted_at` est dans la fenêtre ; échéance = `contacted_at + cooldownDays`, via `listContactedEmailsSince`) ; **rejeté ⇒ exclusion PAR campagne** (`listRejectedEmailsForCampaign`, éligible ailleurs) ; **sortie de cooldown à la candidature** automatique (devient « déjà candidat »). Le **plafond** de short-list est désormais lu des settings (remplace la constante V2).
+
+### 13.6. Settings vivier (§9) & métrique de conversion (§8)
+
+`AppSettings.vivierConfig` (jsonb) : mode de contact (manuel/auto), template d'invitation, cooldown (jours), plafond, nom d'organisation — section Settings `VivierConfigManager`. **Métrique de conversion** dans le rapport de campagne : `countVivierMetricsForCampaign` (contactés / candidatures rapprochées), portée par `CampaignReportData.vivier`, rendue au PDF (« au moins N ont postulé »).
+
+### 13.7. Mention RGPD dans les annonces (§7)
+
+`withVivierRgpdMention` appose la mention (libellé partagé) au corps de l'annonce générée, de façon **déterministe** (jamais soumise au LLM ⇒ toujours présente). Contact = intake/expéditeur des settings, repli générique.
