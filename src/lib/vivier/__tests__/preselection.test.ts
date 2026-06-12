@@ -12,13 +12,19 @@ const vivierRepo = {
   matchVivierCandidates: vi.fn(),
 };
 const analyses = { listCandidateAnalyses: vi.fn() };
-const presel = { replacePreselection: vi.fn() };
+const presel = {
+  replacePreselection: vi.fn(),
+  listContactedEmailsSince: vi.fn(),
+  listRejectedEmailsForCampaign: vi.fn(),
+};
+const settings = { getAppSettings: vi.fn() };
 const ai = { embedText: vi.fn() };
 
 vi.mock('@/lib/db/repos/campaigns', () => campaigns);
 vi.mock('@/lib/db/repos/vivier', () => vivierRepo);
 vi.mock('@/lib/db/repos/candidate-analyses', () => analyses);
 vi.mock('@/lib/db/repos/vivier-preselection', () => presel);
+vi.mock('@/lib/db/repos/app-settings', () => settings);
 vi.mock('@/lib/ai/embeddings', () => ai);
 vi.mock('@/lib/vivier/candidates', () => ({
   normalizeEmail: (s: string) => s.trim().toLowerCase(),
@@ -67,11 +73,14 @@ function ent(over: Partial<VivierEntities>): VivierEntities {
 }
 
 beforeEach(() => {
-  [campaigns, vivierRepo, analyses, presel, ai].forEach((m) =>
+  [campaigns, vivierRepo, analyses, presel, settings, ai].forEach((m) =>
     Object.values(m).forEach((f) => f.mockReset()),
   );
   analyses.listCandidateAnalyses.mockResolvedValue([]);
   presel.replacePreselection.mockResolvedValue(undefined);
+  presel.listContactedEmailsSince.mockResolvedValue([]);
+  presel.listRejectedEmailsForCampaign.mockResolvedValue([]);
+  settings.getAppSettings.mockResolvedValue(null); // → DEFAULT_VIVIER_CONFIG
   ai.embedText.mockResolvedValue({ vector: [0.1, 0.2] });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -198,7 +207,78 @@ describe('runVivierPreselection — cascade', () => {
     expect(res.map((e) => e.candidateId)).toEqual(['c2']);
   });
 
-  it('plafonne la short-list à SHORTLIST_CAP (50)', async () => {
+  it('cooldown global : un candidat contacté récemment (autre campagne) est exclu', async () => {
+    campaigns.getCampaign.mockResolvedValue(campaign());
+    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1'), cand('c2')]);
+    vivierRepo.matchVivierCandidates.mockResolvedValue(
+      new Map([
+        ['c1', 0.9],
+        ['c2', 0.8],
+      ]),
+    );
+    presel.listContactedEmailsSince.mockResolvedValue(['c1@x.com']);
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    expect(res.map((e) => e.candidateId)).toEqual(['c2']);
+  });
+
+  it('rejeté pour cette campagne ⇒ exclu de cette campagne', async () => {
+    campaigns.getCampaign.mockResolvedValue(campaign());
+    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1'), cand('c2')]);
+    vivierRepo.matchVivierCandidates.mockResolvedValue(
+      new Map([
+        ['c1', 0.9],
+        ['c2', 0.8],
+      ]),
+    );
+    presel.listRejectedEmailsForCampaign.mockResolvedValue(['c1@x.com']);
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    expect(res.map((e) => e.candidateId)).toEqual(['c2']);
+  });
+
+  it('échéance cooldown : fenêtre = now − cooldownDays (défaut 90 j)', async () => {
+    campaigns.getCampaign.mockResolvedValue(campaign());
+    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1')]);
+    vivierRepo.matchVivierCandidates.mockResolvedValue(new Map([['c1', 0.9]]));
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    await runVivierPreselection('CAMP-1', { now: NOW });
+
+    const expected = new Date(NOW - 90 * 24 * 60 * 60 * 1000).toISOString();
+    expect(presel.listContactedEmailsSince).toHaveBeenCalledWith(expected);
+  });
+
+  it('plafond appliqué depuis les settings (remplace la constante V2)', async () => {
+    settings.getAppSettings.mockResolvedValue({
+      vivierConfig: {
+        contactMode: 'manual',
+        invitationTemplate: 't',
+        cooldownDays: 90,
+        shortlistCap: 2,
+        organisationName: '',
+      },
+    });
+    campaigns.getCampaign.mockResolvedValue(campaign());
+    const many = [cand('c1'), cand('c2'), cand('c3')];
+    vivierRepo.listIndexedVivierEntities.mockResolvedValue(many);
+    vivierRepo.matchVivierCandidates.mockResolvedValue(
+      new Map([
+        ['c1', 0.9],
+        ['c2', 0.8],
+        ['c3', 0.7],
+      ]),
+    );
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    expect(res).toHaveLength(2);
+    expect(res.map((e) => e.candidateId)).toEqual(['c1', 'c2']);
+  });
+
+  it('plafonne la short-list au défaut (50) sans settings', async () => {
     campaigns.getCampaign.mockResolvedValue(campaign());
     const many = Array.from({ length: 55 }, (_, i) => cand(`c${i}`));
     vivierRepo.listIndexedVivierEntities.mockResolvedValue(many);

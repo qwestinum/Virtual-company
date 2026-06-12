@@ -31,17 +31,23 @@
  */
 
 import { embedText } from '@/lib/ai/embeddings';
+import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
   listIndexedVivierEntities,
   matchVivierCandidates,
 } from '@/lib/db/repos/vivier';
-import { replacePreselection } from '@/lib/db/repos/vivier-preselection';
+import {
+  listContactedEmailsSince,
+  listRejectedEmailsForCampaign,
+  replacePreselection,
+} from '@/lib/db/repos/vivier-preselection';
 import { findMatchedKeywords } from '@/lib/scoring/keyword-matcher';
 import { normalizeEmail } from '@/lib/vivier/candidates';
 import type { FDPInProgress, FieldKey } from '@/types/field-collection';
 import { criterionBehavior, type ScoringSheet } from '@/types/scoring';
+import { DEFAULT_VIVIER_CONFIG } from '@/types/vivier-settings';
 import type { VivierEntities } from '@/types/vivier';
 import type {
   HardFilter,
@@ -60,6 +66,7 @@ export const FRESHNESS_FLOOR = 0.5;
 export const SHORTLIST_CAP = 50;
 
 const MS_PER_MONTH = 1000 * 60 * 60 * 24 * 30.44;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 /** Champs FDP injectés dans le texte de requête sémantique (ordre signifiant). */
 const QUERY_FIELDS: FieldKey[] = [
@@ -200,8 +207,6 @@ export type PreselectionOptions = {
    * libre est ÉPHÉMÈRE (l'appelant ne la persiste pas).
    */
   freeText?: string;
-  /** Emails sous cooldown à exclure — point d'extension V3 (vide en V2). */
-  cooldownEmails?: Set<string>;
 };
 
 /** Emails déjà candidats sur la campagne (rapprochement exact, §6.3 préparé). */
@@ -265,15 +270,33 @@ export async function runVivierPreselection(
     survivors.map((s) => s.cand.id),
   );
 
-  // Étape 4 — exclusions (rapprochement email + cooldown V3).
-  const excluded = await loadExcludedEmails(campaignId);
-  const cooldown = opts.cooldownEmails ?? new Set<string>();
+  // Étape 4 — exclusions. Réglages vivier (cooldown, plafond) depuis les
+  // settings (repli défauts). Trois exclusions combinées :
+  //   - déjà candidat sur la campagne (rapprochement email) ;
+  //   - cooldown GLOBAL : contacté il y a moins de `cooldownDays` (toutes
+  //     campagnes) — échéance = contacted_at + cooldownDays ;
+  //   - rejeté POUR cette campagne (éligible ailleurs).
+  const settings = await getAppSettings();
+  const config = settings?.vivierConfig ?? DEFAULT_VIVIER_CONFIG;
+  const cooldownSince = new Date(
+    now - config.cooldownDays * MS_PER_DAY,
+  ).toISOString();
+  const [appliedEmails, cooldownEmails, rejectedEmails] = await Promise.all([
+    loadExcludedEmails(campaignId),
+    listContactedEmailsSince(cooldownSince),
+    listRejectedEmailsForCampaign(campaignId),
+  ]);
+  const excluded = new Set<string>([
+    ...appliedEmails,
+    ...cooldownEmails,
+    ...rejectedEmails,
+  ]);
 
   // Étape 3 — modulation fraîcheur + assemblage.
   const scored: ShortlistEntry[] = [];
   for (const s of survivors) {
     const email = normalizeEmail(s.cand.email);
-    if (excluded.has(email) || cooldown.has(email)) continue;
+    if (excluded.has(email)) continue;
     const similarity = sims.get(s.cand.id);
     if (similarity === undefined) continue;
     const freshness = freshnessFactor(s.cand.updatedAt, now);
@@ -296,7 +319,7 @@ export async function runVivierPreselection(
   }
 
   scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
-  const capped = scored.slice(0, SHORTLIST_CAP);
+  const capped = scored.slice(0, config.shortlistCap);
   capped.forEach((e, i) => {
     e.rank = i + 1;
   });

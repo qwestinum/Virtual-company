@@ -30,6 +30,7 @@ import {
   type PublicationChannel,
 } from '@/types/publication-channel';
 import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
+import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 
 import { DonneursOrdreManager } from './DonneursOrdreManager';
 import { EmailListField } from './EmailListField';
@@ -37,6 +38,7 @@ import { IntegrationCard } from './IntegrationCard';
 import { MailboxesManager } from './MailboxesManager';
 import { SettingsSection } from './SettingsSection';
 import { SitesManager } from './SitesManager';
+import { VivierConfigManager } from './VivierConfigManager';
 
 export type IntegrationConfig = {
   status: 'configured' | 'unconfigured';
@@ -53,6 +55,7 @@ type Settings = {
   fluxConfig: Record<string, IntegrationConfig>;
   channelsConfig: Record<string, IntegrationConfig>;
   hitlConfig: HitlConfig;
+  vivierConfig: VivierConfig;
   updatedAt: string;
 };
 
@@ -283,6 +286,19 @@ export function SettingsHub() {
             }
           />
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        icon="🗂️"
+        title="Vivier de candidats"
+        description="Mode de contact (validation manuelle ou automatique), template du message d'invitation à postuler, cooldown anti-sollicitation et plafond de short-list."
+      >
+        <VivierConfigManager
+          config={settings.vivierConfig ?? DEFAULT_VIVIER_CONFIG}
+          onSave={(next) =>
+            patchAndSave({ vivierConfig: next }, 'Réglages vivier mis à jour.')
+          }
+        />
       </SettingsSection>
 
       <SettingsSection
