@@ -3,17 +3,15 @@
 /**
  * Vue racine du dashboard (Session 6).
  *
- * Compose toutes les sections : header, KPIs, campagnes, et la bottom
- * grid candidats + activité + agents. Gère aussi l'ouverture du Sheet
- * d'édition campagne via un id local — pas de routing modal externe
- * pour rester self-contained.
+ * Compose les sections : header, KPIs, et la bottom grid candidats +
+ * activité + agents. La gestion de campagne a été extraite vers l'onglet
+ * dédié « Campagnes » (cf. CampaignsWorkspace) ; cette vue est résiduelle,
+ * en attente d'une refonte décisionnelle.
  *
  * La largeur disponible est partagée avec le chat à droite : la grille
  * KPI s'auto-ajuste (minmax(140px, 1fr)) et la bottom grid devient
  * une colonne quand l'espace manque (< 900px).
  */
-
-import { useState } from 'react';
 
 import type {
   ActivityItem,
@@ -21,10 +19,6 @@ import type {
   CandidateRow,
 } from '@/lib/dashboard/derive-metrics';
 import { useDashboardData } from '@/hooks/useDashboardData';
-
-import { CampaignsList } from '@/components/campagnes/CampaignsList';
-import { CampaignCreateSheet } from '@/components/campagnes/edit/CampaignCreateSheet';
-import { CampaignEditSheet } from '@/components/campagnes/edit/CampaignEditSheet';
 
 import { ActivityCard } from './ActivityCard';
 import { AgentsCard } from './AgentsCard';
@@ -34,10 +28,6 @@ import { KPIGrid } from './KPIGrid';
 
 export function DashboardView() {
   const { data, isStale, refresh } = useDashboardData();
-  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
-    null,
-  );
-  const [creating, setCreating] = useState(false);
 
   const offline = data?.offline ?? false;
   const kpis = data?.kpis ?? {
@@ -67,11 +57,6 @@ export function DashboardView() {
       <div style={{ padding: '24px 28px 60px', maxWidth: 1400, margin: '0 auto' }}>
         <DashboardHeader offline={offline} isStale={isStale} />
         <KPIGrid kpis={kpis} />
-        <CampaignsList
-          candidates={candidates}
-          onEditCampaign={setEditingCampaignId}
-          onCreateCampaign={() => setCreating(true)}
-        />
         <BottomGrid
           candidates={candidates}
           activity={activity}
@@ -79,15 +64,6 @@ export function DashboardView() {
           onCandidateAction={refresh}
         />
       </div>
-      {editingCampaignId ? (
-        <CampaignEditSheet
-          campaignId={editingCampaignId}
-          onClose={() => setEditingCampaignId(null)}
-        />
-      ) : null}
-      {creating ? (
-        <CampaignCreateSheet onClose={() => setCreating(false)} />
-      ) : null}
     </div>
   );
 }
