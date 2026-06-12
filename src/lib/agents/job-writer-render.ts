@@ -1,4 +1,20 @@
+import { buildVivierRgpdMention } from '@/lib/vivier/rgpd-mention';
 import type { JobAdResult } from '@/types/job-writer';
+
+/**
+ * Appose la mention RGPD vivier (§7/§8.1) à la fin du corps de l'annonce, de
+ * façon DÉTERMINISTE (jamais soumise au LLM ⇒ toujours présente). `contact` est
+ * l'adresse à laquelle demander la suppression. Pur.
+ */
+export function withVivierRgpdMention(
+  ad: JobAdResult,
+  contact: string,
+): JobAdResult {
+  return {
+    ...ad,
+    body: `${ad.body.trim()}\n\n${buildVivierRgpdMention(contact)}`,
+  };
+}
 
 /**
  * Sérialise une annonce générée en Markdown téléchargeable.
