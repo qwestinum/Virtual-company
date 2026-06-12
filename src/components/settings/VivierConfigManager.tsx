@@ -64,6 +64,23 @@ export function VivierConfigManager({
           />
         </label>
         <label className="flex flex-col gap-1">
+          <span className="font-semibold text-stone-700">
+            Seuil de pertinence
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.01}
+            value={draft.similarityFloor}
+            onChange={(e) => set('similarityFloor', Number(e.currentTarget.value))}
+            className="w-32 rounded-md border border-stone-200 px-2 py-1.5 text-stone-700 outline-none focus:border-emerald-400"
+          />
+          <span className="text-[11px] text-stone-400">
+            0 à 1 — sous ce seuil, un candidat est écarté.
+          </span>
+        </label>
+        <label className="flex flex-col gap-1">
           <span className="font-semibold text-stone-700">Organisation</span>
           <input
             type="text"

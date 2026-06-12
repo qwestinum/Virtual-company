@@ -66,15 +66,11 @@ export const FRESHNESS_FLOOR = 0.5;
 export const SHORTLIST_CAP = 50;
 
 /**
- * Plancher de similarité cosinus : en-dessous, un candidat est jugé NON
- * pertinent et exclu de la short-list (mieux vaut 3 pertinents que 50 au
- * hasard). Évite que le plafond se remplisse de bruit. Valeur calibrée pour des
- * embeddings de PROFIL DISTILLÉ (cf. profile-text.ts) — à ajuster si l'on change
- * de modèle/représentation.
- */
-export const SIMILARITY_FLOOR = 0.25;
-
-/**
+ * Plancher de similarité cosinus (en-dessous ⇒ non pertinent, écarté) :
+ * désormais RÉGLABLE en settings (`vivierConfig.similarityFloor`) car la valeur
+ * dépend du modèle/représentation et se calibre à l'œil sur le corpus. Mieux
+ * vaut 3 pertinents que 50 au hasard.
+ *
  * Poids de la fraîcheur comme DÉPARTAGE (et non multiplicateur). La fraîcheur ne
  * peut plus inverser un écart de similarité significatif : elle ne fait que
  * nudger légèrement (au plus −2,5 pts de score pour un dossier ancien). La
@@ -85,14 +81,14 @@ const FRESHNESS_TIEBREAK_WEIGHT = 0.05;
 const MS_PER_MONTH = 1000 * 60 * 60 * 24 * 30.44;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-/** Champs FDP injectés dans le texte de requête sémantique (ordre signifiant). */
-const QUERY_FIELDS: FieldKey[] = [
-  'job_title',
-  'main_missions',
-  'key_skills',
-  'seniority',
-  'location',
-];
+/**
+ * Champs FDP injectés dans le texte de requête sémantique. Volontairement
+ * RESSERRÉS sur le vocabulaire métier discriminant (intitulé, séniorité,
+ * compétences clés) : on exclut `main_missions` (prose de verbes génériques qui
+ * tasse les similarités) et `location` (qui relève du filtrage, pas du fit
+ * sémantique). Les libellés de critères (ci-dessous) complètent le signal.
+ */
+const QUERY_FIELDS: FieldKey[] = ['job_title', 'seniority', 'key_skills'];
 
 /** Codes d'échec métier de la présélection (mappés en HTTP côté route). */
 export type PreselectionErrorCode =
@@ -366,7 +362,7 @@ export async function runVivierPreselection(
     if (excluded.has(email)) continue;
     const similarity = sims.get(s.cand.id);
     if (similarity === undefined) continue;
-    if (similarity < SIMILARITY_FLOOR) {
+    if (similarity < config.similarityFloor) {
       belowFloor++;
       continue;
     }

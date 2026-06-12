@@ -19,6 +19,11 @@ export const VivierConfigSchema = z.object({
   cooldownDays: z.number().int().min(0).max(3650),
   /** Plafond de la short-list (remplace la constante V2). */
   shortlistCap: z.number().int().min(1).max(500),
+  /**
+   * Plancher de similarité cosinus (0..1) : sous ce seuil, un candidat est jugé
+   * non pertinent et écarté de la short-list. À calibrer sur le corpus.
+   */
+  similarityFloor: z.number().min(0).max(1),
   /** Nom de l'organisation, injecté dans [Organisation]. Vide ⇒ repli. */
   organisationName: z.string().max(200),
 });
@@ -48,5 +53,6 @@ export const DEFAULT_VIVIER_CONFIG: VivierConfig = {
   invitationTemplate: DEFAULT_VIVIER_INVITATION_TEMPLATE,
   cooldownDays: 90,
   shortlistCap: 50,
+  similarityFloor: 0.2,
   organisationName: '',
 };

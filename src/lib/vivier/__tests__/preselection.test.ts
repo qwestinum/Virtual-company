@@ -316,6 +316,7 @@ describe('runVivierPreselection — cascade', () => {
         invitationTemplate: 't',
         cooldownDays: 90,
         shortlistCap: 2,
+        similarityFloor: 0.2,
         organisationName: '',
       },
     });

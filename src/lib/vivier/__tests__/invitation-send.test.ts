@@ -42,6 +42,7 @@ beforeEach(() => {
       invitationTemplate: 'Bonjour [prénom], poste [intitulé du poste] à [adresse de réception]. [Organisation]',
       cooldownDays: 90,
       shortlistCap: 50,
+      similarityFloor: 0.2,
       organisationName: 'ACME',
     },
   });
@@ -118,6 +119,7 @@ describe('autoContactIfEnabled', () => {
         invitationTemplate: 'Bonjour [prénom]',
         cooldownDays: 90,
         shortlistCap: 50,
+        similarityFloor: 0.2,
         organisationName: 'ACME',
       },
     });

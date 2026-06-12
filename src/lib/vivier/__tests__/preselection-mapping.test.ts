@@ -139,9 +139,13 @@ describe('candidatePassesHardFilters', () => {
 });
 
 describe('buildVivierQueryText', () => {
-  it('combine champs FDP + libellés des critères triés par poids décroissant', () => {
+  it('combine champs FDP métier + libellés des critères triés par poids décroissant', () => {
     const text = buildVivierQueryText(
-      fdpWith({ job_title: 'Développeur backend', main_missions: 'API REST' }),
+      fdpWith({
+        job_title: 'Développeur backend',
+        key_skills: 'Java, SQL',
+        main_missions: 'API REST', // exclu volontairement de la requête
+      }),
       sheet([
         buildCriterion({ id: 'a', label: 'SQL', level: 'important', weight: 4 }),
         buildCriterion({ id: 'b', label: 'Java', level: 'critique', weight: 8 }),
@@ -149,7 +153,9 @@ describe('buildVivierQueryText', () => {
     );
     const lines = text.split('\n');
     expect(lines).toContain('Développeur backend');
-    expect(lines).toContain('API REST');
+    expect(lines).toContain('Java, SQL'); // key_skills inclus
+    // main_missions n'est PAS injecté (prose générique qui tasse la similarité).
+    expect(text).not.toContain('API REST');
     // Java (poids 8) avant SQL (poids 4).
     expect(lines.indexOf('Java')).toBeLessThan(lines.indexOf('SQL'));
   });

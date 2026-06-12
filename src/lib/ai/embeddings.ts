@@ -139,9 +139,21 @@ export async function embedText(text: string): Promise<EmbedResult> {
   const client = getEmbeddingClient();
   const startedAt = Date.now();
 
+  // La colonne pgvector du vivier est `vector(1536)`. Les modèles
+  // `text-embedding-3-*` acceptent le paramètre `dimensions` : on force 1536
+  // pour que `text-embedding-3-large` (3072 par défaut, nettement plus
+  // discriminant) RENTRE dans la colonne sans changer la DDL. Pour 3-small,
+  // 1536 est la dimension native (no-op). On ne passe `dimensions` que pour les
+  // modèles `3-*` (les anciens, ex. ada-002, ne supportent pas le paramètre).
+  const params: { model: string; input: string; dimensions?: number } = {
+    model,
+    input,
+  };
+  if (model.startsWith('text-embedding-3')) params.dimensions = 1536;
+
   let response;
   try {
-    response = await client.embeddings.create({ model, input });
+    response = await client.embeddings.create(params);
   } catch (err) {
     throw mapOpenAIEmbeddingError(err);
   }

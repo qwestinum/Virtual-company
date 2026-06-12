@@ -13,8 +13,12 @@
 
 import type { VivierEntities } from '@/types/vivier';
 
-/** Tête de CV incluse (titre/résumé sont généralement en haut). */
-export const PROFILE_CV_HEAD_CHARS = 1200;
+/**
+ * Tête de CV incluse (titre/résumé en haut, en général). Volontairement COURTE :
+ * une tête trop longue (prose générique) noie le relevé d'entités et tasse les
+ * similarités. On garde juste de quoi capter le titre/headline.
+ */
+export const PROFILE_CV_HEAD_CHARS = 500;
 
 export function buildVivierProfileText(
   entities: VivierEntities,
@@ -37,7 +41,10 @@ export function buildVivierProfileText(
     lines.push(`Localisation : ${entities.localisation}`);
 
   const head = cvText.trim().slice(0, PROFILE_CV_HEAD_CHARS);
-  const profile = [head, lines.join('\n')]
+  // Entités D'ABORD (signal métier discriminant), puis tête de CV courte
+  // (titre/headline). L'embedding moyennant les tokens, c'est la PROPORTION qui
+  // compte : on veut que les entités pèsent, pas qu'elles soient un appendice.
+  const profile = [lines.join('\n'), head]
     .filter((s) => s.trim().length > 0)
     .join('\n\n')
     .trim();
