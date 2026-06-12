@@ -50,6 +50,7 @@ import {
 } from '@/lib/db/repos/mailboxes';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { feedVivierFromApplication } from '@/lib/vivier/ingest-application';
+import { matchVivierApplication } from '@/lib/vivier/match-application';
 import { openConnection } from '@/lib/imap/client';
 import { uploadArtifact } from '@/lib/storage/blob';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
@@ -568,6 +569,11 @@ async function processEmailAttachment(args: {
     cvContent: buffer,
     cvMimeType: mime,
   });
+  // Rapprochement opportuniste (§6.3) — hors campagne (tâche) : no-op.
+  void matchVivierApplication(
+    isTaskOwner ? null : campaign.id,
+    application.candidate.email,
+  );
 
   // Round 5 fix — déclenche le mail au candidat (refus ou invitation)
   // et, si accepté, le brief DRH avec trame d'entretien. Sans ça,

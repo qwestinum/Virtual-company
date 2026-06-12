@@ -153,6 +153,21 @@ describe('buildCampaignReportData — recommandations (règles)', () => {
     expect(data.recommendations.join(' ')).toMatch(/arbitrage/i);
   });
 
+  it('porte la métrique de conversion vivier quand fournie (§8)', () => {
+    const analyses = [datum({ recruited: true })];
+    const summary = buildCampaignReportSummary(META, analyses, [], null);
+    const data = buildCampaignReportData(summary, analyses, {
+      vivier: { contacted: 5, applied: 2 },
+    });
+    expect(data.vivier).toEqual({ contacted: 5, applied: 2 });
+  });
+
+  it('vivier null par défaut (campagne sans mobilisation du vivier)', () => {
+    const analyses = [datum({ recruited: true })];
+    const summary = buildCampaignReportSummary(META, analyses, [], null);
+    expect(buildCampaignReportData(summary, analyses).vivier).toBeNull();
+  });
+
   it('fallback : toujours au moins une recommandation', () => {
     // 6 retenus, aucun arbitrage, volume suffisant, recrutement → pas de règle
     // critique déclenchée hormis canal/retenue.

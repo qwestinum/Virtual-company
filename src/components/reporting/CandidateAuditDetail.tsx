@@ -40,8 +40,11 @@ import { SendReportModal } from './SendReportModal';
 
 export function CandidateAuditDetail({
   detail,
+  vivierOrigin,
 }: {
   detail: CandidateAnalysisDetail;
+  /** Annotation « issu du vivier » dérivée (§6.3), null si non concerné. */
+  vivierOrigin?: { contactedAt: string | null } | null;
 }) {
   const [sendOpen, setSendOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -117,6 +120,16 @@ export function CandidateAuditDetail({
           {narration.justification}
         </p>
       </div>
+
+      {/* Annotation factuelle « issu du vivier » (§6.3), dérivée du proposal. */}
+      {vivierOrigin ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 font-body text-[12px] text-amber-800">
+          <strong>Candidat issu du vivier</strong>
+          {vivierOrigin.contactedAt
+            ? ` — contacté le ${formatFrDate(vivierOrigin.contactedAt)}`
+            : ''}
+        </div>
+      ) : null}
 
       {/* Parcours en colonnes (dérivé du journal, lecture seule) */}
       {detail.journey ? (

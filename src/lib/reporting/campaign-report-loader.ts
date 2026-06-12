@@ -11,6 +11,7 @@ import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import { getDonneurOrdre } from '@/lib/db/repos/donneurs-ordre';
 import { listJournalEntries } from '@/lib/db/repos/journal';
 import { getSite } from '@/lib/db/repos/sites';
+import { countVivierMetricsForCampaign } from '@/lib/db/repos/vivier-preselection';
 import {
   buildCampaignReportData,
   buildCampaignReportSummary,
@@ -48,7 +49,7 @@ export async function assembleCampaignReport(
   const campaign = await getCampaign(campaignId);
   if (!campaign || campaign.status !== 'closed') return null;
 
-  const [analyses, signals, sentJournal] = await Promise.all([
+  const [analyses, signals, sentJournal, vivierCounts] = await Promise.all([
     listCandidateAnalyses({ campaignId, limit: 1000 }),
     loadJourneySignals({ campaignId }),
     listJournalEntries({
@@ -56,6 +57,7 @@ export async function assembleCampaignReport(
       campaignId,
       limit: 500,
     }),
+    countVivierMetricsForCampaign(campaignId),
   ]);
 
   const data: CampaignAnalysisDatum[] = analyses.map((a) =>
@@ -100,8 +102,11 @@ export async function assembleCampaignReport(
   }));
 
   const summary = buildCampaignReportSummary(meta, data, sends, null);
+  // Mobilisation vivier : on n'expose la métrique que si au moins un candidat a
+  // été contacté (sinon la campagne n'a pas utilisé le vivier).
+  const vivier = vivierCounts.contacted > 0 ? vivierCounts : null;
   return {
-    data: buildCampaignReportData(summary, data),
+    data: buildCampaignReportData(summary, data, { vivier }),
     fileName: campaignReportFileName(jobTitle, closedAt),
     jobTitle,
     closedAt,

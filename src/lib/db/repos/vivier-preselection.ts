@@ -187,6 +187,60 @@ export async function listProposalsForCandidate(
   }));
 }
 
+/** Métrique de conversion vivier d'une campagne (reporting §8). */
+export type VivierConversionCounts = { contacted: number; applied: number };
+
+/**
+ * Compte, pour une campagne : les candidats vivier CONTACTÉS et ceux qui ont
+ * RAPPROCHÉ une candidature (applied_at posé — « au moins N ont postulé »).
+ * `applied ⊆ contacted` (applied_at n'est posé que sur une proposition contactée).
+ */
+export async function countVivierMetricsForCampaign(
+  campaignId: string,
+): Promise<VivierConversionCounts> {
+  const supabase = requireServerSupabase();
+  const [contacted, applied] = await Promise.all([
+    supabase
+      .from(TABLE)
+      .select('candidate_id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('state', 'contacted'),
+    supabase
+      .from(TABLE)
+      .select('candidate_id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .not('applied_at', 'is', null),
+  ]);
+  if (contacted.error)
+    throw new Error(`countVivierMetricsForCampaign(contacted): ${contacted.error.message}`);
+  if (applied.error)
+    throw new Error(`countVivierMetricsForCampaign(applied): ${applied.error.message}`);
+  return { contacted: contacted.count ?? 0, applied: applied.count ?? 0 };
+}
+
+/**
+ * Annotation « issu du vivier » d'une candidature (dérivée §6.3) : la
+ * proposition CONTACTÉE de cette campagne dont l'email correspond, ou null.
+ * Correspondance EXACTE sur l'email normalisé (pas de fuzzy).
+ */
+export async function findContactedProposalByEmail(
+  campaignId: string,
+  email: string,
+): Promise<{ contactedAt: string | null; appliedAt: string | null } | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('contacted_at, applied_at, vivier_candidates!inner(email)')
+    .eq('campaign_id', campaignId)
+    .eq('state', 'contacted')
+    .eq('vivier_candidates.email', email.trim().toLowerCase())
+    .maybeSingle();
+  if (error) throw new Error(`findContactedProposalByEmail: ${error.message}`);
+  if (!data) return null;
+  const row = data as { contacted_at: string | null; applied_at: string | null };
+  return { contactedAt: row.contacted_at, appliedAt: row.applied_at };
+}
+
 /** Email joint depuis le dossier (lecture cooldown). */
 type EmailJoinRow = { vivier_candidates: { email: string } | null };
 

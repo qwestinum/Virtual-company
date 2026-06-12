@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 
 import { getCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import { findContactedProposalByEmail } from '@/lib/db/repos/vivier-preselection';
 import {
   journeyFromSignals,
   loadJourneySignals,
@@ -34,7 +35,16 @@ export async function GET(
       candidate.status,
       candidate.hitlConfig,
     );
-    return NextResponse.json({ candidate: { ...candidate, journey } });
+    // Annotation factuelle « issu du vivier » (§6.3), dérivée du proposal —
+    // visible par le recruteur. Rapprochement EXACT par email.
+    const vivierOrigin =
+      candidate.campaignId && candidate.candidateEmail
+        ? await findContactedProposalByEmail(
+            candidate.campaignId,
+            candidate.candidateEmail,
+          )
+        : null;
+    return NextResponse.json({ candidate: { ...candidate, journey }, vivierOrigin });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json(

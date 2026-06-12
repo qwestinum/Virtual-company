@@ -159,7 +159,7 @@ export function buildRecommendations(
 export function buildCampaignReportData(
   summary: CampaignReportSummary,
   analyses: CampaignAnalysisDatum[],
-  opts?: { retentionMonths?: number },
+  opts?: { retentionMonths?: number; vivier?: CampaignReportData['vivier'] },
 ): CampaignReportData {
   const { volumes } = summary;
   const scores = analyses.map((a) => a.totalScore);
@@ -196,6 +196,7 @@ export function buildCampaignReportData(
       plannedDeletionAt: addMonthsIso(summary.closedAt, retentionMonths),
     },
     lowVolume: volumes.received < LOW_VOLUME_THRESHOLD,
+    vivier: opts?.vivier ?? null,
   };
 
   return { ...partial, recommendations: buildRecommendations(partial) };

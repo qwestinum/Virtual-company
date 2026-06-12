@@ -2,6 +2,7 @@ import { NextResponse, after } from 'next/server';
 
 import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
 import { feedVivierFromApplication } from '@/lib/vivier/ingest-application';
+import { matchVivierApplication } from '@/lib/vivier/match-application';
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { ScoringError } from '@/lib/scoring';
@@ -195,6 +196,11 @@ export async function POST(request: Request): Promise<NextResponse> {
           cvContent: cvBuffer,
           cvMimeType: file.type,
         }),
+      );
+      // Rapprochement opportuniste (§6.3) : si cet email a été contacté au
+      // titre du vivier pour cette campagne, on note « a postulé ».
+      after(() =>
+        matchVivierApplication(campaignId ?? null, application.candidate.email),
       );
     } catch (vivierErr) {
       console.error('[vivier] planification alimentation auto échouée', vivierErr);

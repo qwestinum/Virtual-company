@@ -19,6 +19,9 @@ import { CandidateSelectionPanel } from './CandidateSelectionPanel';
 export function AuditCandidatView({ onBack }: { onBack: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<CandidateAnalysisDetail | null>(null);
+  const [vivierOrigin, setVivierOrigin] = useState<{
+    contactedAt: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +49,7 @@ export function AuditCandidatView({ onBack }: { onBack: () => void }) {
         }
         const data = await res.json();
         setDetail(data.candidate as CandidateAnalysisDetail);
+        setVivierOrigin(data.vivierOrigin ?? null);
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(err instanceof Error ? err.message : 'Erreur réseau.');
@@ -91,7 +95,7 @@ export function AuditCandidatView({ onBack }: { onBack: () => void }) {
           {error}
         </p>
       ) : detail ? (
-        <CandidateAuditDetail detail={detail} />
+        <CandidateAuditDetail detail={detail} vivierOrigin={vivierOrigin} />
       ) : null}
     </div>
   );

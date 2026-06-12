@@ -210,6 +210,28 @@ function CampaignReportDocument({
           </Text>
         ) : null}
 
+        {/* 4bis. Performance du vivier (métrique de conversion §8) */}
+        {data.vivier ? (
+          <>
+            <Text style={pdfBaseStyles.sectionTitle}>Performance du vivier</Text>
+            <View style={s.kpiRow}>
+              <Kpi
+                value={`${data.vivier.contacted}`}
+                label="Candidats vivier contactés"
+              />
+              <Kpi
+                value={`${data.vivier.applied}`}
+                label="Candidatures rapprochées"
+              />
+            </View>
+            <Text style={[pdfBaseStyles.paragraph, { marginTop: 4 }]}>
+              {data.vivier.applied > 0
+                ? `Au moins ${data.vivier.applied} candidat${data.vivier.applied > 1 ? 's' : ''} issu${data.vivier.applied > 1 ? 's' : ''} du vivier ${data.vivier.applied > 1 ? 'ont' : 'a'} postulé.`
+                : 'Aucune candidature rapprochée à ce jour.'}
+            </Text>
+          </>
+        ) : null}
+
         {/* 5. Synthèse du scoring */}
         <Text style={pdfBaseStyles.sectionTitle}>Synthèse du scoring</Text>
         {scoring.distribution.map((b, i) => (

@@ -171,6 +171,17 @@ export type CampaignReportData = {
   };
   /** Volume faible (<5 candidatures) → statistiques peu significatives. */
   lowVolume: boolean;
+  /**
+   * Conversion vivier (§8) : candidats vivier contactés et candidatures
+   * rapprochées par email. null si la campagne n'a pas mobilisé le vivier.
+   */
+  vivier: VivierConversion | null;
+};
+
+/** Métrique de valeur du vivier : contactés vs candidatures rapprochées. */
+export type VivierConversion = {
+  contacted: number;
+  applied: number;
 };
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ type Detail = {
     campaignId: string;
     state: 'identified' | 'contacted' | 'rejected';
     contactedAt: string | null;
+    appliedAt: string | null;
   }[];
 };
 
@@ -161,6 +162,14 @@ export function VivierValidationRow({
           {detail?.cvFileName ? (
             <p className="mb-1 text-stone-400">CV : {detail.cvFileName}</p>
           ) : null}
+          {detail?.history
+            .filter((h) => h.appliedAt)
+            .map((h) => (
+              <p key={`applied-${h.campaignId}`} className="mb-1 text-emerald-700">
+                A postulé à la campagne {h.campaignId} le{' '}
+                {freshnessLabel(h.appliedAt as string)}
+              </p>
+            ))}
           <a
             href="/vivier"
             className="text-emerald-700 hover:underline"
