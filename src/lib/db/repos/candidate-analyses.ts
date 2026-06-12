@@ -82,26 +82,48 @@ export type CandidateAnalysisInsert = {
  * pas configuré, `requireServerSupabase` lève `SupabaseNotConfiguredError`
  * — l'appelant l'attrape silencieusement (démo locale).
  */
+/** Échappe les métacaractères LIKE (`%` `_` `\`) d'une valeur exacte. */
+function escapeLike(value: string): string {
+  return value.replace(/([\\%_])/g, '\\$1');
+}
+
 /**
- * Dernière candidature (la plus récente) d'un email donné — campagne visée +
- * date. Sert à afficher « dernier poste visé » d'un candidat vivier (dérivé,
- * non stocké sur le dossier). Renvoie null si l'email n'a jamais postulé.
+ * Dernière candidature (la plus récente) PAR EMAIL — campagne visée + date.
+ * Sert à afficher « dernier poste visé » des candidats vivier (dérivé, non
+ * stocké). Correspondance INSENSIBLE À LA CASSE (l'email d'analyse garde la
+ * casse du CV, l'email vivier est normalisé). Une requête (`ilike`), résultat
+ * trié décroissant ⇒ on retient la 1ʳᵉ ligne (la plus récente) par email.
+ * Clé du Map = email en minuscules.
  */
-export async function getLatestApplicationByEmail(
-  email: string,
-): Promise<{ campaignId: string | null; receivedAt: string } | null> {
+export async function getLatestApplicationsByEmails(
+  emails: string[],
+): Promise<Map<string, { campaignId: string | null; receivedAt: string }>> {
+  const out = new Map<string, { campaignId: string | null; receivedAt: string }>();
+  const clean = [...new Set(emails.map((e) => e.trim()).filter(Boolean))];
+  if (clean.length === 0) return out;
+
   const supabase = requireServerSupabase();
+  const orFilter = clean
+    .map((e) => `candidate_email.ilike.${escapeLike(e)}`)
+    .join(',');
   const { data, error } = await supabase
     .from(TABLE)
-    .select('campaign_id, received_at')
-    .eq('candidate_email', email)
-    .order('received_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(`getLatestApplicationByEmail: ${error.message}`);
-  if (!data) return null;
-  const row = data as { campaign_id: string | null; received_at: string };
-  return { campaignId: row.campaign_id, receivedAt: row.received_at };
+    .select('candidate_email, campaign_id, received_at')
+    .or(orFilter)
+    .order('received_at', { ascending: false });
+  if (error) throw new Error(`getLatestApplicationsByEmails: ${error.message}`);
+
+  for (const row of (data ?? []) as {
+    candidate_email: string | null;
+    campaign_id: string | null;
+    received_at: string;
+  }[]) {
+    const key = row.candidate_email?.trim().toLowerCase();
+    if (key && !out.has(key)) {
+      out.set(key, { campaignId: row.campaign_id, receivedAt: row.received_at });
+    }
+  }
+  return out;
 }
 
 export async function insertCandidateAnalysis(

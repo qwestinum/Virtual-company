@@ -59,4 +59,10 @@ export type ShortlistEntry = {
   decidedBy: string | null;
   /** Rapprochement : le candidat a postulé à la campagne (§6.3). */
   appliedAt: string | null;
+  /**
+   * Intitulé du dernier poste auquel le candidat a postulé (dérivé à la
+   * lecture, non persisté ; absent s'il n'a jamais postulé). Affiché en vue
+   * compacte de validation.
+   */
+  lastJobTitle?: string | null;
 };

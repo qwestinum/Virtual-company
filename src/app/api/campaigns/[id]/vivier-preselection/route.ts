@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { listPreselection } from '@/lib/db/repos/vivier-preselection';
 import { autoContactIfEnabled } from '@/lib/vivier/invitation-send';
+import { resolveLastAppliedJobs } from '@/lib/vivier/last-applied-job';
 import {
   PreselectionError,
   runAndPersistPreselection,
@@ -99,7 +100,13 @@ export async function GET(
   const { id } = await context.params;
   try {
     const entries = await listPreselection(id);
-    return NextResponse.json({ entries });
+    // Enrichissement « dernier poste visé » (dérivé, batch) pour la vue compacte.
+    const jobs = await resolveLastAppliedJobs(entries.map((e) => e.email));
+    const enriched = entries.map((e) => ({
+      ...e,
+      lastJobTitle: jobs.get(e.email.toLowerCase())?.jobTitle ?? null,
+    }));
+    return NextResponse.json({ entries: enriched });
   } catch (err) {
     return mapError(err);
   }

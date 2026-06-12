@@ -111,6 +111,14 @@ export function VivierValidationRow({
             </span>
           </span>
         </button>
+        {entry.lastJobTitle ? (
+          <span
+            title={`Dernier poste visé : ${entry.lastJobTitle}`}
+            className="hidden max-w-[180px] shrink-0 truncate font-body text-[12px] text-stone-600 md:inline"
+          >
+            {entry.lastJobTitle}
+          </span>
+        ) : null}
         <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 font-body text-[12px] font-semibold text-emerald-700">
           {score}%
         </span>

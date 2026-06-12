@@ -5,8 +5,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { getLatestApplicationByEmail } from '@/lib/db/repos/candidate-analyses';
-import { getCampaign } from '@/lib/db/repos/campaigns';
 import {
   getVivierCandidate,
   getVivierEntities,
@@ -15,30 +13,21 @@ import {
 import { listProposalsForCandidate } from '@/lib/db/repos/vivier-preselection';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { deleteVivierCandidate } from '@/lib/vivier/candidates';
-import type { ActiveCampaign } from '@/stores/campaigns-store';
+import { resolveLastAppliedJobs } from '@/lib/vivier/last-applied-job';
 
 export const runtime = 'nodejs';
 
-/** Intitulé de poste d'une campagne (FDP), repli sur le nom. */
-function jobTitleOf(c: ActiveCampaign): string {
-  const v = c.fdp?.fields?.job_title?.value;
-  return typeof v === 'string' && v.trim().length > 0 ? v.trim() : c.name;
-}
-
 /**
- * Dernier poste auquel le candidat a postulé (dérivé de candidate_analyses →
- * campagne). null s'il n'a jamais postulé. Best-effort (n'échoue pas le détail).
+ * Dernier poste auquel le candidat a postulé (dérivé, §5.2). null s'il n'a
+ * jamais postulé. Best-effort (n'échoue pas le détail).
  */
 async function lastApplicationFor(
   email: string | null,
 ): Promise<{ jobTitle: string; at: string } | null> {
   if (!email) return null;
   try {
-    const latest = await getLatestApplicationByEmail(email);
-    if (!latest?.campaignId) return null;
-    const campaign = await getCampaign(latest.campaignId);
-    if (!campaign) return null;
-    return { jobTitle: jobTitleOf(campaign), at: latest.receivedAt };
+    const jobs = await resolveLastAppliedJobs([email]);
+    return jobs.get(email.trim().toLowerCase()) ?? null;
   } catch {
     return null;
   }
