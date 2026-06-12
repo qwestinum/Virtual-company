@@ -65,7 +65,7 @@ L'indexation est asynchrone et non-bloquante : elle ne ralentit ni ne fait écho
 
 ### 3.3. Les trois représentations indexées
 
-**a. Embedding sémantique.** Vecteur généré à partir du texte du CV, stocké en pgvector (Supabase). Permet la recherche par similarité de sens.
+**a. Embedding du titre.** *(Représentation courante — voir §14.1.)* Vecteur généré à partir du **titre seul** du candidat (déclaré en tête de CV, repli sur le poste le plus récent), stocké en pgvector (Supabase, colonne `title_embedding`). Permet le rapprochement titre-à-titre. L'embedding du **CV entier** (colonne `embedding`), signal de présélection historique, n'est **plus généré** mais les vecteurs existants sont conservés (cf. §14.1).
 
 **b. Entités structurées.** Extraction par LLM (un appel à l'indexation, coût mutualisé sur la vie du dossier) : technologies et outils, certifications, diplômes, secteurs d'activité, langues, durée d'expérience totale estimée, localisation. Stockées en colonnes/JSONB requêtables. Permet les filtres déterministes.
 
@@ -88,6 +88,8 @@ Contrainte documentée : les embeddings de deux fournisseurs ne sont pas compara
 Dans l'écran de sélection des sources/canaux de la campagne, une nouvelle option cochable apparaît : **Vivier**. Elle se présente comme les autres canaux de diffusion. Aucun autre changement dans le flux de cadrage.
 
 ### 4.2. À l'activation de la campagne
+
+> ⚠️ **Cascade remplacée — voir §14.** La cascade décrite ci-dessous (filtre dur → tri sémantique sur l'embedding du **CV entier** → fraîcheur multiplicative) a produit des résultats hors-domaine (asymétrie de forme : requête courte ⇄ document long). Elle est **remplacée** par un rapprochement **titre candidat ⇄ intitulé du poste** (§14.1–14.4). Le texte ci-dessous est conservé comme historique de conception ; le correctif intermédiaire (profil distillé) est en §13.8.
 
 Si la source Vivier est cochée, l'activation de la campagne déclenche le traitement de présélection :
 
