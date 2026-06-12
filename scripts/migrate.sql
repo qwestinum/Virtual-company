@@ -719,3 +719,18 @@ alter table public.vivier_preselections
 create index if not exists vivier_preselections_contacted_at_idx
   on public.vivier_preselections (contacted_at)
   where state = 'contacted';
+
+-- Worklist de validation vivier (Session V3, §5) : compte les propositions
+-- `identified` (en attente de décision) groupées par campagne. Lecture
+-- potentiellement fréquente (badge + page) ⇒ agrégation en base (un aller-retour)
+-- plutôt qu'un fetch de toutes les lignes côté app.
+create or replace function public.vivier_pending_by_campaign()
+returns table (campaign_id text, pending_count bigint)
+language sql
+stable
+as $$
+  select campaign_id, count(*) as pending_count
+  from public.vivier_preselections
+  where state = 'identified'
+  group by campaign_id
+$$;

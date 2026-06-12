@@ -110,6 +110,83 @@ export async function listPreselection(
   }));
 }
 
+/** Une campagne avec des prises de contact vivier en attente (worklist §5). */
+export type PendingCampaignSummary = {
+  campaignId: string;
+  campaignName: string;
+  pendingCount: number;
+};
+
+/**
+ * Liste les campagnes ayant au moins une proposition `identified` en attente,
+ * avec le compteur, triées par charge décroissante. Agrégation en base (RPC)
+ * puis résolution des noms en une requête. Une campagne sans attente n'apparaît
+ * pas (rien à traiter → rien à montrer).
+ */
+export async function listPendingByCampaign(): Promise<PendingCampaignSummary[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase.rpc('vivier_pending_by_campaign');
+  if (error) throw new Error(`listPendingByCampaign: ${error.message}`);
+  const counts = ((data ?? []) as {
+    campaign_id: string;
+    pending_count: number;
+  }[]).map((r) => ({ campaignId: r.campaign_id, pendingCount: Number(r.pending_count) }));
+  if (counts.length === 0) return [];
+
+  const ids = counts.map((c) => c.campaignId);
+  const { data: camps, error: campErr } = await supabase
+    .from('campaigns')
+    .select('id, name')
+    .in('id', ids);
+  if (campErr) throw new Error(`listPendingByCampaign(noms): ${campErr.message}`);
+  const names = new Map(
+    ((camps ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]),
+  );
+
+  return counts
+    .map((c) => ({
+      campaignId: c.campaignId,
+      campaignName: names.get(c.campaignId) ?? c.campaignId,
+      pendingCount: c.pendingCount,
+    }))
+    .sort((a, b) => b.pendingCount - a.pendingCount);
+}
+
+/** Une entrée de l'historique de sollicitation d'un candidat (vue détaillée §5.2). */
+export type CandidateProposalHistory = {
+  campaignId: string;
+  state: 'identified' | 'contacted' | 'rejected';
+  contactedAt: string | null;
+  rejectedAt: string | null;
+  appliedAt: string | null;
+};
+
+/** Historique des propositions d'un candidat, toutes campagnes (vue détaillée). */
+export async function listProposalsForCandidate(
+  candidateId: string,
+): Promise<CandidateProposalHistory[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('campaign_id, state, contacted_at, rejected_at, applied_at')
+    .eq('candidate_id', candidateId)
+    .order('generated_at', { ascending: false });
+  if (error) throw new Error(`listProposalsForCandidate: ${error.message}`);
+  return ((data ?? []) as {
+    campaign_id: string;
+    state: CandidateProposalHistory['state'];
+    contacted_at: string | null;
+    rejected_at: string | null;
+    applied_at: string | null;
+  }[]).map((r) => ({
+    campaignId: r.campaign_id,
+    state: r.state,
+    contactedAt: r.contacted_at,
+    rejectedAt: r.rejected_at,
+    appliedAt: r.applied_at,
+  }));
+}
+
 /** Email joint depuis le dossier (lecture cooldown). */
 type EmailJoinRow = { vivier_candidates: { email: string } | null };
 

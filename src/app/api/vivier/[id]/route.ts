@@ -10,6 +10,7 @@ import {
   getVivierEntities,
   updateVivierTags,
 } from '@/lib/db/repos/vivier';
+import { listProposalsForCandidate } from '@/lib/db/repos/vivier-preselection';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { deleteVivierCandidate } from '@/lib/vivier/candidates';
 
@@ -39,8 +40,12 @@ export async function GET(
     if (!candidate) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
-    const entities = await getVivierEntities(id);
-    return NextResponse.json({ candidate, entities });
+    const [entities, history] = await Promise.all([
+      getVivierEntities(id),
+      // Historique de sollicitation (vue détaillée §5.2) — toutes campagnes.
+      listProposalsForCandidate(id),
+    ]);
+    return NextResponse.json({ candidate, entities, history });
   } catch (err) {
     return dbError(err);
   }

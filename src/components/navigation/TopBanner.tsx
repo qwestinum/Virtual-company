@@ -18,6 +18,7 @@ import { LogoutButton } from '@/components/auth/LogoutButton';
 
 import { Breadcrumb, type BreadcrumbItem } from './Breadcrumb';
 import { OrqaLogo } from './OrqaLogo';
+import { VivierValidationsLink } from './VivierValidationsLink';
 
 const BANNER_FILL = 'rgba(255, 176, 0, 0.5)';
 
@@ -57,6 +58,7 @@ export function TopBanner({
         </div>
       ) : null}
       <nav className="ml-auto flex items-center gap-4">
+        <VivierValidationsLink />
         <Link
           href="/settings"
           className="font-body text-[13px] font-semibold text-stone-900/85 transition-opacity hover:opacity-70"

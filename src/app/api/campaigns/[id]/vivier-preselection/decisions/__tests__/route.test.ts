@@ -1,0 +1,69 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const repo = {
+  markContacted: vi.fn(),
+  markRejected: vi.fn(),
+};
+const journal = { appendJournalEntry: vi.fn() };
+
+vi.mock('@/lib/db/repos/vivier-preselection', () => repo);
+vi.mock('@/lib/db/repos/journal', () => journal);
+
+function req(body: unknown): Request {
+  return new Request('http://localhost/api/campaigns/CAMP-1/vivier-preselection/decisions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+const ctx = { params: Promise.resolve({ id: 'CAMP-1' }) };
+
+beforeEach(() => {
+  repo.markContacted.mockReset();
+  repo.markRejected.mockReset();
+  journal.appendJournalEntry.mockClear();
+});
+afterEach(() => vi.restoreAllMocks());
+
+describe('POST decisions vivier', () => {
+  it('accepter (unitaire) ⇒ markContacted + journal vivier_contact_accepted', async () => {
+    repo.markContacted.mockResolvedValueOnce(['c1']);
+    const { POST } = await import('@/app/api/campaigns/[id]/vivier-preselection/decisions/route');
+
+    const res = await POST(req({ candidateIds: ['c1'], decision: 'accept' }), ctx);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ updated: ['c1'] });
+
+    expect(repo.markContacted).toHaveBeenCalledWith('CAMP-1', ['c1'], 'user');
+    expect(repo.markRejected).not.toHaveBeenCalled();
+    const entry = journal.appendJournalEntry.mock.calls[0][0];
+    expect(entry.action).toBe('vivier_contact_accepted');
+    expect(entry.campaignId).toBe('CAMP-1');
+    expect(entry.payload).toEqual({ candidateIds: ['c1'], decision: 'accept' });
+  });
+
+  it('rejeter (en masse) ⇒ markRejected + journal vivier_contact_rejected', async () => {
+    repo.markRejected.mockResolvedValueOnce(['c1', 'c2', 'c3']);
+    const { POST } = await import('@/app/api/campaigns/[id]/vivier-preselection/decisions/route');
+
+    const res = await POST(
+      req({ candidateIds: ['c1', 'c2', 'c3'], decision: 'reject' }),
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(repo.markRejected).toHaveBeenCalledWith('CAMP-1', ['c1', 'c2', 'c3'], 'user');
+    expect(repo.markContacted).not.toHaveBeenCalled();
+    expect(journal.appendJournalEntry.mock.calls[0][0].action).toBe(
+      'vivier_contact_rejected',
+    );
+  });
+
+  it('corps invalide ⇒ 400, aucune mutation', async () => {
+    const { POST } = await import('@/app/api/campaigns/[id]/vivier-preselection/decisions/route');
+    const res = await POST(req({ candidateIds: [], decision: 'accept' }), ctx);
+    expect(res.status).toBe(400);
+    expect(repo.markContacted).not.toHaveBeenCalled();
+    expect(journal.appendJournalEntry).not.toHaveBeenCalled();
+  });
+});

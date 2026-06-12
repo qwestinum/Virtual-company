@@ -6,21 +6,8 @@
  * La section Validation vivier complète (décisions) arrive en V3.
  */
 
+import { freshnessLabel } from '@/lib/vivier/freshness-label';
 import type { ShortlistEntry } from '@/types/vivier-preselection';
-
-const MS_PER_MONTH = 1000 * 60 * 60 * 24 * 30.44;
-
-/** Libellé de fraîcheur relatif à partir de la dernière mise à jour du dossier. */
-function freshnessLabel(updatedAt: string): string {
-  const d = Date.parse(updatedAt);
-  if (Number.isNaN(d)) return '—';
-  const months = Math.floor((Date.now() - d) / MS_PER_MONTH);
-  if (months <= 0) return 'ce mois-ci';
-  if (months === 1) return 'il y a 1 mois';
-  if (months < 12) return `il y a ${months} mois`;
-  const years = Math.floor(months / 12);
-  return years === 1 ? 'il y a 1 an' : `il y a ${years} ans`;
-}
 
 export function VivierPreselectionRow({ entry }: { entry: ShortlistEntry }) {
   const score = Math.round(entry.relevanceScore * 100);
