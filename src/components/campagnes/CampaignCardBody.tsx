@@ -14,9 +14,10 @@ import type { ReactNode } from 'react';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type { FieldKey } from '@/types/field-collection';
 
-import { AnimatedCounter } from './AnimatedCounter';
+import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
+import { DASH_COLORS } from '@/components/dashboard/tokens';
+
 import type { CampaignCardStats } from './CampaignCard';
-import { DASH_COLORS } from './tokens';
 
 export type CampaignCardBodyProps = {
   campaign: ActiveCampaign;

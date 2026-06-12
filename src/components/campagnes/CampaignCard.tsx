@@ -12,10 +12,11 @@
 
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 
-import { AnimatedCounter } from './AnimatedCounter';
+import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
+import { StatusPill, type PillKind } from '@/components/dashboard/StatusPill';
+import { DASH_COLORS } from '@/components/dashboard/tokens';
+
 import { CampaignCardBody } from './CampaignCardBody';
-import { StatusPill, type PillKind } from './StatusPill';
-import { DASH_COLORS } from './tokens';
 import {
   CampaignStatusActions,
   type CampaignActionStatus,

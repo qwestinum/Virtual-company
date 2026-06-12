@@ -18,7 +18,8 @@ import { useEffect } from 'react';
 
 import { useCampaignsStore } from '@/stores/campaigns-store';
 
-import { StatusPill, type PillKind } from '../StatusPill';
+import { StatusPill, type PillKind } from '@/components/dashboard/StatusPill';
+
 import { CampaignEditAccordion } from './CampaignEditAccordion';
 
 export type CampaignEditSheetProps = {

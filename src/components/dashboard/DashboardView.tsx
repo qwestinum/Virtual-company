@@ -22,14 +22,15 @@ import type {
 } from '@/lib/dashboard/derive-metrics';
 import { useDashboardData } from '@/hooks/useDashboardData';
 
+import { CampaignsList } from '@/components/campagnes/CampaignsList';
+import { CampaignCreateSheet } from '@/components/campagnes/edit/CampaignCreateSheet';
+import { CampaignEditSheet } from '@/components/campagnes/edit/CampaignEditSheet';
+
 import { ActivityCard } from './ActivityCard';
 import { AgentsCard } from './AgentsCard';
-import { CampaignsList } from './CampaignsList';
 import { CandidatesCard } from './CandidatesCard';
 import { DashboardHeader } from './DashboardHeader';
 import { KPIGrid } from './KPIGrid';
-import { CampaignCreateSheet } from './edit/CampaignCreateSheet';
-import { CampaignEditSheet } from './edit/CampaignEditSheet';
 
 export function DashboardView() {
   const { data, isStale, refresh } = useDashboardData();

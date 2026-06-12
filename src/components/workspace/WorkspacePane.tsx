@@ -4,15 +4,17 @@ import { useEffect, useState } from 'react';
 
 import { AgentDetailsPanel } from '@/components/agents/AgentDetailsPanel';
 import { HRDepartmentView } from '@/components/agents/HRDepartmentView';
+import { CampaignsWorkspace } from '@/components/campagnes/CampaignsWorkspace';
 import { DashboardView } from '@/components/dashboard/DashboardView';
 import { ReportingHub } from '@/components/reporting/ReportingHub';
 import { ValidationsHub } from '@/components/validations/ValidationsHub';
 import { cn } from '@/lib/utils';
 
-type Tab = 'rh' | 'dashboard' | 'validations' | 'reporting';
+type Tab = 'rh' | 'campagnes' | 'dashboard' | 'validations' | 'reporting';
 
 const TABS: { id: Tab; label: string; available: boolean }[] = [
   { id: 'rh', label: 'Bureau', available: true },
+  { id: 'campagnes', label: 'Campagnes', available: true },
   { id: 'dashboard', label: 'Dashboard', available: true },
   { id: 'validations', label: 'Validation suspendue', available: true },
   { id: 'reporting', label: 'Reporting', available: true },
@@ -56,6 +58,8 @@ export function WorkspacePane() {
             <HRDepartmentView />
             <AgentDetailsPanel />
           </>
+        ) : tab === 'campagnes' ? (
+          <CampaignsWorkspace />
         ) : tab === 'dashboard' ? (
           <DashboardView />
         ) : tab === 'validations' ? (
