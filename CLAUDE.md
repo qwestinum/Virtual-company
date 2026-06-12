@@ -31,6 +31,7 @@ Le MVP couvre le département RH avec deux modalités de travail : **campagnes c
 - **MVP = Next.js seul.** Pour le MVP actuel, types, store, agents, UI tournent dans Next.js. Pas de n8n, pas de microservice externe, pas d'event bus distribué. Communication agents = appels de fonction côté client + état dans Zustand.
 - **Storage différé.** En Session 3, les fonctions d'accès au storage (`searchExistingJobDescriptions`, etc.) existent mais retournent des valeurs vides ou mockées. Implémentation réelle hybride Supabase + Drive en Session 5.
 - **Pas d'auth utilisateur dans le MVP.** Le système est mono-utilisateur (le donneur d'ordre = la personne devant l'écran).
+- **Gestion de campagne = onglet « Campagnes ».** La gestion de campagne (liste, création, édition, actions de cycle de vie suspendre/arrêter/reprendre) vit dans l'onglet **Campagnes** du `WorkspacePane` (workspace `/rh/recrutement`), hébergée par `src/components/campagnes/CampaignsWorkspace.tsx` ; les composants sont sous `src/components/campagnes/` (`edit/`, `edit/draft/`). Les primitives partagées (`StatusPill`, `AnimatedCounter`, `tokens`) restent sous `src/components/dashboard/`. Le **Dashboard** (`DashboardView`) est désormais une vue résiduelle (KPIs, candidats, activité, agents), en attente d'une refonte décisionnelle. Pas de route `/campagnes` séparée : la navigation reste homogène via les onglets du workspace.
 
 ## Règles absolues
 
