@@ -26,16 +26,6 @@ export type HardFilterMatch = {
 };
 
 /**
- * Un filtre dur mappable, dérivé d'un critère de la fiche (criticité dure +
- * mots-clés exploitables). Cf. `selectHardFilters`.
- */
-export type HardFilter = {
-  criterionId: string;
-  label: string;
-  keywords: string[];
-};
-
-/**
  * Origine d'un candidat dans la short-list (présélection titre) :
  *   - `title_exact` : bloc 1, correspondance déterministe de titre (variante) ;
  *   - `title_semantic` : bloc 2, titre proche par similarité d'embedding.
