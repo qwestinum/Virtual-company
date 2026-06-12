@@ -734,3 +734,9 @@ as $$
   where state = 'identified'
   group by campaign_id
 $$;
+
+-- Réglages vivier (Session V3, §9) : mode de contact, template d'invitation,
+-- cooldown (jours), plafond de short-list. jsonb single-row (cf. app_settings).
+-- Défaut applicatif (DEFAULT_VIVIER_CONFIG) appliqué au mapping si null.
+alter table public.app_settings
+  add column if not exists vivier_config jsonb;

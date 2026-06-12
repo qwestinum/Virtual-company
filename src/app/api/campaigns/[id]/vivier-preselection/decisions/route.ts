@@ -3,19 +3,17 @@
  * vivier (Session V3, §5.3). Accepter la prise de contact / Rejeter, en
  * unitaire ou en masse. Chaque décision est tracée au journal.
  *
- * En V3 commit 2, « accepter » pose l'état `contacted` (transition atomique).
- * L'ENVOI réel de l'invitation (qui conditionne le passage à contacté) est
- * câblé au commit suivant (message d'invitation) — il s'insère AVANT le mark.
+ * « Accepter la prise de contact » DÉCLENCHE l'envoi de l'invitation à postuler
+ * (action à permission : c'est l'acte explicite de l'utilisateur qui envoie) ;
+ * l'envoi fait passer la proposition à `contacted`. « Rejeter » pose `rejected`.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { appendJournalEntry } from '@/lib/db/repos/journal';
-import {
-  markContacted,
-  markRejected,
-} from '@/lib/db/repos/vivier-preselection';
+import { markRejected } from '@/lib/db/repos/vivier-preselection';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { sendVivierInvitation } from '@/lib/vivier/invitation-send';
 
 export const runtime = 'nodejs';
 
@@ -47,10 +45,19 @@ export async function POST(
 
   const actor = 'user';
   try {
-    const updated =
-      body.decision === 'reject'
-        ? await markRejected(campaignId, body.candidateIds, actor)
-        : await markContacted(campaignId, body.candidateIds, actor);
+    let updated: string[];
+    if (body.decision === 'reject') {
+      updated = await markRejected(campaignId, body.candidateIds, actor);
+    } else {
+      // Accepter ⇒ envoi de l'invitation (qui marque `contacted`). On ne retient
+      // que les candidats effectivement contactés.
+      const results = await Promise.all(
+        body.candidateIds.map((id) =>
+          sendVivierInvitation(campaignId, id, actor),
+        ),
+      );
+      updated = body.candidateIds.filter((_, i) => results[i]?.contacted);
+    }
 
     await appendJournalEntry({
       action:

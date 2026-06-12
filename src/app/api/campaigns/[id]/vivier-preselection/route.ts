@@ -12,11 +12,12 @@
  * réconcilie par contenu et ne touche jamais les candidats décidés), pas dans
  * l'hypothèse d'un appel unique — un double-clic / retry / relance converge.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { listPreselection } from '@/lib/db/repos/vivier-preselection';
+import { autoContactIfEnabled } from '@/lib/vivier/invitation-send';
 import {
   PreselectionError,
   runAndPersistPreselection,
@@ -78,6 +79,13 @@ export async function POST(
       return NextResponse.json({ entries, persisted: false });
     }
     const entries = await runAndPersistPreselection(id);
+    // Mode contact automatique : envoi des invitations APRÈS la réponse (non
+    // bloquant). No-op en mode manuel. Best-effort (ne casse pas la réponse).
+    try {
+      after(() => autoContactIfEnabled(id, entries));
+    } catch (autoErr) {
+      console.error('[vivier] planification contact auto échouée', autoErr);
+    }
     return NextResponse.json({ entries, persisted: true });
   } catch (err) {
     return mapError(err);

@@ -17,6 +17,7 @@ import {
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { invalidateEmailAddressesCache } from '@/lib/email/addresses';
 import { DEFAULT_HITL_CONFIG, HitlConfigSchema } from '@/types/hitl';
+import { DEFAULT_VIVIER_CONFIG, VivierConfigSchema } from '@/types/vivier-settings';
 
 export const runtime = 'nodejs';
 
@@ -35,6 +36,7 @@ const PatchSchema = z.object({
   fluxConfig: z.record(z.string(), IntegrationSchema).optional(),
   channelsConfig: z.record(z.string(), IntegrationSchema).optional(),
   hitlConfig: HitlConfigSchema.optional(),
+  vivierConfig: VivierConfigSchema.optional(),
 });
 
 /**
@@ -64,6 +66,7 @@ function emptyPayload() {
       fluxConfig: {} as Record<string, IntegrationConfig>,
       channelsConfig: {} as Record<string, IntegrationConfig>,
       hitlConfig: DEFAULT_HITL_CONFIG,
+      vivierConfig: DEFAULT_VIVIER_CONFIG,
       updatedAt: new Date(0).toISOString(),
     },
   };
