@@ -1,13 +1,17 @@
 /**
- * Réindexation batch du vivier (Session V1, docs/specs/vivier.md §3.4 / §11).
+ * Réindexation batch du vivier (docs/specs/vivier.md §3.4 / §4).
+ *
+ * Régénère, pour chaque dossier (via `indexVivierCandidate`) : entités, TITRE
+ * (+ repli), VARIANTES du titre, et EMBEDDING DU TITRE — les signaux de la
+ * présélection refondue. (L'embedding full-CV n'est plus régénéré.)
  *
  * Deux usages :
  *   1. BASCULE DE FOURNISSEUR/MODÈLE D'EMBEDDINGS. Deux providers (ou deux
  *      modèles) produisent des espaces vectoriels NON comparables : après tout
- *      changement de EMBEDDING_PROVIDER / OPENAI_EMBEDDING_MODEL, les vecteurs
- *      existants sont caducs. Ce script régénère TOUS les embeddings avec le
- *      provider courant (seule voie de récupération — sans lui la recherche V2
- *      compare des espaces incompatibles et renvoie n'importe quoi).
+ *      changement de EMBEDDING_PROVIDER / OPENAI_EMBEDDING_MODEL, les embeddings
+ *      titre existants sont caducs. Ce script les régénère avec le modèle
+ *      courant (seule voie de récupération — sinon la présélection compare des
+ *      espaces incompatibles, ce que le garde-fou refuse).
  *   2. RATTRAPAGE DES DOSSIERS EN ÉCHEC. `--only-failed` ne retraite que les
  *      dossiers `failed` (ex. coupures d'API pendant un import de masse).
  *
