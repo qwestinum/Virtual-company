@@ -19,13 +19,18 @@
  * Seuil) puis « Créer la campagne ».
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { canActivate } from '@/lib/campaign/lifecycle';
+import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import { postFdpProposal, postManagerScoring } from '@/lib/chat/api-client';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import { generateCampaignId } from '@/lib/dashboard/campaign-id';
 import type { JobDescription } from '@/lib/storage/job-descriptions';
-import { useCampaignsStore } from '@/stores/campaigns-store';
+import {
+  useCampaignsStore,
+  type ActiveCampaign,
+} from '@/stores/campaigns-store';
 import type { CVSource } from '@/types/cv-source';
 import {
   buildEmptyFDP,
@@ -60,6 +65,7 @@ type Stage = 'job_title' | 'editing';
 
 export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   const addCampaign = useCampaignsStore((s) => s.addCampaign);
+  const activateCampaign = useCampaignsStore((s) => s.activateCampaign);
   const existingIds = useCampaignsStore((s) => s.order);
   const getCampaignById = useCampaignsStore((s) => s.getById);
 
@@ -90,6 +96,11 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
   const [threshold, setThreshold] = useState(75);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Étape post-création : la campagne est enregistrée (en brouillon) et on
+  // propose de l'activer. `created` porte le snapshot renvoyé par addCampaign.
+  const [created, setCreated] = useState<ActiveCampaign | null>(null);
+  const [activateError, setActivateError] = useState<string | null>(null);
+  const createdOnceRef = useRef(false);
   // Proposition par l'IA (parité avec le chat Manager) — opt-in par bouton.
   const [proposingFdp, setProposingFdp] = useState(false);
   const [proposingScoring, setProposingScoring] = useState(false);
@@ -305,7 +316,10 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       criteria,
       isValidated: criteria.length > 0,
     };
-    addCampaign({
+    // Création en BROUILLON : une campagne neuve n'est jamais activée d'office
+    // (il manque souvent un flux de réception). On enregistre puis on propose
+    // l'activation à l'étape suivante.
+    const campaign = addCampaign({
       fdp: finalFdp,
       name: inferredName,
       scoringSheet,
@@ -317,11 +331,14 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       threshold,
       status: isComplete ? 'in_progress' : 'draft',
     });
-    pushManagerAcknowledgment({
-      kind: 'campaign_activated',
-      campaignId,
-      campaignName: inferredName,
-    });
+    if (!createdOnceRef.current) {
+      createdOnceRef.current = true;
+      pushManagerAcknowledgment({
+        kind: 'campaign_created',
+        campaignId,
+        campaignName: inferredName,
+      });
+    }
     // Associe les mailboxes en parallèle après la création — best-effort.
     if (mailboxIds.length > 0) {
       await Promise.all(
@@ -334,7 +351,28 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
         ),
       );
     }
-    onClose();
+    setActivateError(null);
+    setCreated(campaign);
+  };
+
+  // Active la campagne enregistrée (verrou `canActivate` côté store). Succès →
+  // prise d'acte « lancée » + fermeture. Échec → message (ne devrait pas arriver
+  // tant que le bouton n'est proposé que lorsque l'activation est permise).
+  const onActivate = () => {
+    if (!created) return;
+    const ok = activateCampaign(created.id);
+    if (ok) {
+      pushManagerAcknowledgment({
+        kind: 'campaign_activated',
+        campaignId: created.id,
+        campaignName: created.name,
+      });
+      onClose();
+    } else {
+      setActivateError(
+        'Activation impossible pour le moment — complétez les éléments requis puis réessayez.',
+      );
+    }
   };
 
   return (
@@ -375,7 +413,18 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
         }}
       >
         <Header campaignId={campaignId} onClose={onClose} />
-        {stage === 'job_title' ? (
+        {created ? (
+          <CreatedStep
+            campaign={created}
+            activateError={activateError}
+            onActivate={onActivate}
+            onEdit={() => {
+              setActivateError(null);
+              setCreated(null);
+            }}
+            onClose={onClose}
+          />
+        ) : stage === 'job_title' ? (
           <JobTitleStep
             title={jobTitle}
             onChange={setJobTitle}
@@ -578,6 +627,190 @@ function JobTitleStep({
         >
           {searching ? 'Recherche…' : 'Continuer'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Étape post-création : la campagne est enregistrée (brouillon). On propose de
+ * l'activer si le verrou `canActivate` le permet, sinon on explique ce qui
+ * manque et on offre de revenir compléter la campagne.
+ */
+function CreatedStep({
+  campaign,
+  activateError,
+  onActivate,
+  onEdit,
+  onClose,
+}: {
+  campaign: ActiveCampaign;
+  activateError: string | null;
+  onActivate: () => void;
+  onEdit: () => void;
+  onClose: () => void;
+}) {
+  const gate = canActivate(campaign.lifecycle);
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        padding: '24px 22px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span aria-hidden style={{ fontSize: 22, lineHeight: 1 }}>
+          ✅
+        </span>
+        <div>
+          <h3
+            className="font-display"
+            style={{
+              margin: 0,
+              fontSize: 16,
+              fontWeight: 800,
+              color: 'var(--dash-text)',
+            }}
+          >
+            Campagne enregistrée
+          </h3>
+          <p
+            className="font-body"
+            style={{
+              margin: '2px 0 0',
+              fontSize: 12,
+              color: 'var(--dash-text-secondary)',
+            }}
+          >
+            {campaign.id} — « {campaign.name} » est en brouillon.
+          </p>
+        </div>
+      </div>
+
+      {gate.ok ? (
+        <p
+          className="font-body"
+          style={{
+            margin: 0,
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: 'var(--dash-text-secondary)',
+          }}
+        >
+          Tout est prêt. Activez-la pour démarrer la diffusion et la veille du CV
+          Analyzer — ou gardez-la en brouillon pour plus tard.
+        </p>
+      ) : (
+        <div
+          className="font-body"
+          style={{
+            padding: '12px 14px',
+            borderRadius: 10,
+            background: 'var(--dash-yellow-light)',
+            border: '1px solid var(--dash-yellow)',
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: 'var(--dash-text-secondary)',
+          }}
+        >
+          Pour activer cette campagne, il reste à compléter :{' '}
+          <strong style={{ color: 'var(--dash-text)' }}>
+            {formatMissingPhases(gate.missing)}
+          </strong>
+          . Vous pouvez la garder en brouillon et la compléter plus tard.
+        </div>
+      )}
+
+      {activateError ? (
+        <div
+          role="alert"
+          className="font-body"
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: 'var(--dash-red-light)',
+            color: 'var(--dash-red)',
+            fontSize: 12,
+            fontWeight: 600,
+            border: '1px solid var(--dash-red)',
+          }}
+        >
+          {activateError}
+        </div>
+      ) : null}
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          gap: 10,
+          marginTop: 'auto',
+          paddingTop: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="font-body"
+          style={{
+            padding: '9px 16px',
+            borderRadius: 8,
+            border: '1px solid var(--dash-border)',
+            background: 'var(--dash-surface)',
+            color: 'var(--dash-text-secondary)',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Garder en brouillon
+        </button>
+        {gate.ok ? (
+          <button
+            type="button"
+            onClick={onActivate}
+            className="font-display"
+            style={{
+              padding: '9px 18px',
+              borderRadius: 8,
+              border: 'none',
+              background:
+                'linear-gradient(135deg, var(--dash-green), var(--dash-green))',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 10px rgba(21,163,100,0.3)',
+            }}
+          >
+            Activer la campagne
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="font-display"
+            style={{
+              padding: '9px 18px',
+              borderRadius: 8,
+              border: 'none',
+              background:
+                'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 10px rgba(47,110,235,0.3)',
+            }}
+          >
+            Compléter la campagne
+          </button>
+        )}
       </div>
     </div>
   );

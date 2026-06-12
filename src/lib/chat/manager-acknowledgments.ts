@@ -23,6 +23,7 @@
 import { useChatStore } from '@/stores/chat-store';
 
 export type AcknowledgmentAction =
+  | { kind: 'campaign_created'; campaignId: string; campaignName: string }
   | { kind: 'campaign_paused'; campaignId: string; campaignName: string }
   | { kind: 'campaign_resumed'; campaignId: string; campaignName: string }
   | { kind: 'campaign_closed'; campaignId: string; campaignName: string }
@@ -62,6 +63,8 @@ export function pushManagerAcknowledgment(action: AcknowledgmentAction): void {
 
 function phraseFor(action: AcknowledgmentAction): string {
   switch (action.kind) {
+    case 'campaign_created':
+      return `J'ai enregistré « ${action.campaignName} ». Elle reste en brouillon : activez-la quand vous êtes prêt pour lancer la veille du CV Analyzer.`;
     case 'campaign_paused':
       return `J'ai bien noté que vous avez mis « ${action.campaignName} » en pause. Je suspends la veille du CV Analyzer et les candidatures qui arrivent d'ici la reprise sont mises en file d'attente.`;
     case 'campaign_resumed':
@@ -105,6 +108,7 @@ async function postJournal(action: AcknowledgmentAction): Promise<void> {
 
 function payloadFor(action: AcknowledgmentAction): Record<string, unknown> {
   switch (action.kind) {
+    case 'campaign_created':
     case 'campaign_paused':
     case 'campaign_resumed':
     case 'campaign_closed':

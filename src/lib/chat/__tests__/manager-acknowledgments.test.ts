@@ -31,6 +31,20 @@ describe('manager acknowledgments', () => {
     expect(last.content.toLowerCase()).toContain('pause');
   });
 
+  it('campaign_created : message « enregistrée », jamais « activée »', () => {
+    pushManagerAcknowledgment({
+      kind: 'campaign_created',
+      campaignId: 'CAMP-0007',
+      campaignName: 'Data Engineer',
+    });
+    const messages = useChatStore.getState().messages;
+    const last = messages[messages.length - 1];
+    expect(last.role).toBe('manager');
+    expect(last.content).toContain('Data Engineer');
+    expect(last.content.toLowerCase()).toContain('brouillon');
+    expect(last.content.toLowerCase()).not.toContain('lancée');
+  });
+
   it('mentionne ancien et nouveau seuil sur threshold_changed', () => {
     pushManagerAcknowledgment({
       kind: 'threshold_changed',
