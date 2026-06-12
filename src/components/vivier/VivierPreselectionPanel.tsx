@@ -17,9 +17,16 @@ import type { ShortlistEntry } from '@/types/vivier-preselection';
 import { VivierPreselectionRow } from './VivierPreselectionRow';
 
 type Mode = 'fiche' | 'libre';
+type Meta = {
+  indexedCount: number;
+  survivors: number;
+  eliminatedByHardFilters: number;
+  fallbackSemantic: boolean;
+};
 
 export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) {
   const [entries, setEntries] = useState<ShortlistEntry[]>([]);
+  const [meta, setMeta] = useState<Meta | null>(null);
   const [mode, setMode] = useState<Mode>('fiche');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +62,7 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
       });
       const data = (await res.json()) as {
         entries?: ShortlistEntry[];
+        meta?: Meta;
         message?: string;
       };
       if (!res.ok) {
@@ -62,6 +70,7 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
         return;
       }
       setEntries(data.entries ?? []);
+      setMeta(data.meta ?? null);
     } catch {
       setError('La présélection a échoué (réseau).');
     } finally {
@@ -123,6 +132,28 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
       ) : null}
       {error ? (
         <p className="font-body text-[12px] text-rose-600">{error}</p>
+      ) : null}
+
+      {/* Transparence du run : combien écartés par les filtres durs + repli. */}
+      {meta && mode === 'fiche' ? (
+        meta.fallbackSemantic ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12px] text-amber-800">
+            Aucun candidat ne passe <strong>tous</strong> les critères durs
+            ({meta.eliminatedByHardFilters} dossier
+            {meta.eliminatedByHardFilters > 1 ? 's' : ''} écarté
+            {meta.eliminatedByHardFilters > 1 ? 's' : ''} sur {meta.indexedCount}).
+            Voici les profils les <strong>plus proches sémantiquement</strong> —
+            assouplissez un critère rédhibitoire/obligatoire pour un vrai filtrage.
+          </p>
+        ) : meta.eliminatedByHardFilters > 0 ? (
+          <p className="font-body text-[11px] text-stone-400">
+            {meta.eliminatedByHardFilters} dossier
+            {meta.eliminatedByHardFilters > 1 ? 's' : ''} écarté
+            {meta.eliminatedByHardFilters > 1 ? 's' : ''} par les filtres durs ·{' '}
+            {meta.survivors} retenu{meta.survivors > 1 ? 's' : ''} sur{' '}
+            {meta.indexedCount} indexé{meta.indexedCount > 1 ? 's' : ''}.
+          </p>
+        ) : null
       ) : null}
 
       {entries.length === 0 ? (

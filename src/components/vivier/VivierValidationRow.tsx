@@ -17,6 +17,7 @@ import type { ShortlistEntry } from '@/types/vivier-preselection';
 type Detail = {
   tags: string[];
   cvFileName: string | null;
+  cvText: string | null;
   history: {
     campaignId: string;
     state: 'identified' | 'contacted' | 'rejected';
@@ -67,6 +68,7 @@ export function VivierValidationRow({
           setDetail({
             tags: d.candidate?.tags ?? [],
             cvFileName: d.candidate?.cvFileName ?? null,
+            cvText: d.candidate?.cvText ?? null,
             history: d.history ?? [],
           });
         }
@@ -159,9 +161,6 @@ export function VivierValidationRow({
               {detail.tags.join(', ')}
             </p>
           ) : null}
-          {detail?.cvFileName ? (
-            <p className="mb-1 text-stone-400">CV : {detail.cvFileName}</p>
-          ) : null}
           {detail?.history
             .filter((h) => h.appliedAt)
             .map((h) => (
@@ -170,12 +169,31 @@ export function VivierValidationRow({
                 {freshnessLabel(h.appliedAt as string)}
               </p>
             ))}
-          <a
-            href="/vivier"
-            className="text-emerald-700 hover:underline"
-          >
-            Ouvrir le dossier vivier
-          </a>
+
+          {/* Accès au CV : ouverture du fichier d'origine + aperçu du texte. */}
+          <div className="mb-2 flex flex-wrap items-center gap-3">
+            <a
+              href={`/api/vivier/${entry.candidateId}/cv`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-emerald-700 hover:underline"
+            >
+              Ouvrir le CV{detail?.cvFileName ? ` (${detail.cvFileName})` : ''}
+            </a>
+            <a href="/vivier" className="text-stone-500 hover:underline">
+              Ouvrir le dossier vivier
+            </a>
+          </div>
+          {detail?.cvText ? (
+            <details className="mt-1">
+              <summary className="cursor-pointer select-none font-semibold text-stone-600">
+                Aperçu du CV (texte extrait)
+              </summary>
+              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-stone-200 bg-stone-50 p-2 font-body text-[11px] leading-relaxed text-stone-700">
+                {detail.cvText}
+              </pre>
+            </details>
+          ) : null}
         </div>
       ) : null}
     </li>

@@ -75,10 +75,10 @@ export async function POST(
   try {
     if (freeText) {
       // Recherche libre : éphémère, non persistée.
-      const entries = await runVivierPreselection(id, { freeText });
-      return NextResponse.json({ entries, persisted: false });
+      const { entries, meta } = await runVivierPreselection(id, { freeText });
+      return NextResponse.json({ entries, meta, persisted: false });
     }
-    const entries = await runAndPersistPreselection(id);
+    const { entries, meta } = await runAndPersistPreselection(id);
     // Mode contact automatique : envoi des invitations APRÈS la réponse (non
     // bloquant). No-op en mode manuel. Best-effort (ne casse pas la réponse).
     try {
@@ -86,7 +86,7 @@ export async function POST(
     } catch (autoErr) {
       console.error('[vivier] planification contact auto échouée', autoErr);
     }
-    return NextResponse.json({ entries, persisted: true });
+    return NextResponse.json({ entries, meta, persisted: true });
   } catch (err) {
     return mapError(err);
   }

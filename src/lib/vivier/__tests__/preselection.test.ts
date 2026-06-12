@@ -102,7 +102,7 @@ describe('runVivierPreselection — cascade', () => {
     );
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
 
     expect(res.map((e) => e.candidateId)).toEqual(['c1', 'c3', 'c2']);
     expect(res.map((e) => e.rank)).toEqual([1, 2, 3]);
@@ -124,7 +124,7 @@ describe('runVivierPreselection — cascade', () => {
     );
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
 
     expect(res.map((e) => e.candidateId)).toEqual(['recent', 'old']);
     expect(res[1].freshnessFactor).toBe(0.5);
@@ -152,7 +152,7 @@ describe('runVivierPreselection — cascade', () => {
     vivierRepo.matchVivierCandidates.mockResolvedValue(new Map([['java', 0.7]]));
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
 
     expect(res.map((e) => e.candidateId)).toEqual(['java']);
     expect(res[0].passedFilters[0].matchedTerms).toEqual(['Java']);
@@ -160,7 +160,7 @@ describe('runVivierPreselection — cascade', () => {
     expect(vivierRepo.matchVivierCandidates.mock.calls[0][1]).toEqual(['java']);
   });
 
-  it('aucun survivant aux filtres durs ⇒ short-list vide, pas d’embedding', async () => {
+  it('repli sémantique : si les filtres durs écartent tout, on classe l’ensemble (signalé)', async () => {
     campaigns.getCampaign.mockResolvedValue(
       campaign({
         scoringSheet: sheet([
@@ -177,11 +177,29 @@ describe('runVivierPreselection — cascade', () => {
     vivierRepo.listIndexedVivierEntities.mockResolvedValue([
       cand('python', { entities: ent({ technologies: ['Python'] }) }),
     ]);
+    vivierRepo.matchVivierCandidates.mockResolvedValue(new Map([['python', 0.6]]));
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
 
-    expect(res).toEqual([]);
+    // Personne ne passe le filtre dur, mais pas d'écran vide : repli sémantique
+    // sur tout l'indexé (sans filtre dur ⇒ passedFilters vide), signalé.
+    expect(entries.map((e) => e.candidateId)).toEqual(['python']);
+    expect(entries[0].passedFilters).toEqual([]);
+    expect(meta.fallbackSemantic).toBe(true);
+    expect(meta.eliminatedByHardFilters).toBe(1);
+    expect(ai.embedText).toHaveBeenCalled();
+  });
+
+  it('vivier vide ⇒ short-list vide, pas d’embedding ni de repli', async () => {
+    campaigns.getCampaign.mockResolvedValue(campaign());
+    vivierRepo.listIndexedVivierEntities.mockResolvedValue([]);
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    expect(entries).toEqual([]);
+    expect(meta.fallbackSemantic).toBe(false);
     expect(ai.embedText).not.toHaveBeenCalled();
   });
 
@@ -202,7 +220,7 @@ describe('runVivierPreselection — cascade', () => {
     ]);
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
 
     expect(res.map((e) => e.candidateId)).toEqual(['c2']);
   });
@@ -219,7 +237,7 @@ describe('runVivierPreselection — cascade', () => {
     presel.listContactedEmailsSince.mockResolvedValue(['c1@x.com']);
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
     expect(res.map((e) => e.candidateId)).toEqual(['c2']);
   });
 
@@ -235,7 +253,7 @@ describe('runVivierPreselection — cascade', () => {
     presel.listRejectedEmailsForCampaign.mockResolvedValue(['c1@x.com']);
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
     expect(res.map((e) => e.candidateId)).toEqual(['c2']);
   });
 
@@ -273,7 +291,7 @@ describe('runVivierPreselection — cascade', () => {
     );
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
     expect(res).toHaveLength(2);
     expect(res.map((e) => e.candidateId)).toEqual(['c1', 'c2']);
   });
@@ -287,7 +305,7 @@ describe('runVivierPreselection — cascade', () => {
     );
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const res = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
 
     expect(res).toHaveLength(50);
     expect(res[49].rank).toBe(50);
@@ -347,9 +365,9 @@ describe('runAndPersistPreselection', () => {
     const { runAndPersistPreselection } = await import(
       '@/lib/vivier/preselection'
     );
-    const res = await runAndPersistPreselection('CAMP-1', { now: NOW });
+    const { entries } = await runAndPersistPreselection('CAMP-1', { now: NOW });
 
-    expect(presel.replacePreselection).toHaveBeenCalledWith('CAMP-1', res);
-    expect(res.map((e) => e.candidateId)).toEqual(['c1']);
+    expect(presel.replacePreselection).toHaveBeenCalledWith('CAMP-1', entries);
+    expect(entries.map((e) => e.candidateId)).toEqual(['c1']);
   });
 });

@@ -209,6 +209,26 @@ export type PreselectionOptions = {
   freeText?: string;
 };
 
+/** Métadonnées de transparence d'un run de présélection (affichées au DRH). */
+export type PreselectionMeta = {
+  /** Dossiers indexés évalués (univers de départ). */
+  indexedCount: number;
+  /** Survivants des filtres durs (avant repli éventuel). */
+  survivors: number;
+  /** Dossiers écartés par les filtres durs. */
+  eliminatedByHardFilters: number;
+  /**
+   * Repli sémantique : aucun dossier ne passait TOUS les filtres durs, on a
+   * classé l'ensemble par similarité seule (signalé au DRH). Évite l'écran vide.
+   */
+  fallbackSemantic: boolean;
+};
+
+export type PreselectionResult = {
+  entries: ShortlistEntry[];
+  meta: PreselectionMeta;
+};
+
 /** Emails déjà candidats sur la campagne (rapprochement exact, §6.3 préparé). */
 async function loadExcludedEmails(campaignId: string): Promise<Set<string>> {
   const analyses = await listCandidateAnalyses({ campaignId });
@@ -227,7 +247,7 @@ async function loadExcludedEmails(campaignId: string): Promise<Set<string>> {
 export async function runVivierPreselection(
   campaignId: string,
   opts: PreselectionOptions = {},
-): Promise<ShortlistEntry[]> {
+): Promise<PreselectionResult> {
   const now = opts.now ?? Date.now();
 
   const campaign = await getCampaign(campaignId);
@@ -251,19 +271,41 @@ export async function runVivierPreselection(
   // Étape 1 — filtres durs sur entités.
   const hardFilters = selectHardFilters(sheet);
   const indexed = await listIndexedVivierEntities();
-  const survivors = indexed
+  const passing = indexed
     .map((cand) => ({
       cand,
       ...candidatePassesHardFilters(cand.entities, hardFilters),
     }))
     .filter((s) => s.passed);
-  if (survivors.length === 0) return [];
+  const eliminatedByHardFilters = indexed.length - passing.length;
+
+  // REPLI SÉMANTIQUE : si des filtres durs ont tout écarté alors que le vivier
+  // n'est pas vide, on ne laisse pas un écran vide — on classe l'ensemble des
+  // indexés par similarité seule (sans filtre dur), et on le signale au DRH.
+  const fallbackSemantic =
+    passing.length === 0 && hardFilters.length > 0 && indexed.length > 0;
+  const survivors = fallbackSemantic
+    ? indexed.map((cand) => ({
+        cand,
+        passed: true,
+        matches: [] as HardFilterMatch[],
+      }))
+    : passing;
+
+  const meta: PreselectionMeta = {
+    indexedCount: indexed.length,
+    survivors: passing.length,
+    eliminatedByHardFilters,
+    fallbackSemantic,
+  };
+
+  if (survivors.length === 0) return { entries: [], meta };
 
   // Étape 2 — tri sémantique (fiche, ou requête libre si fournie).
   const queryText = opts.freeText?.trim()
     ? opts.freeText.trim()
     : buildVivierQueryText(campaign.fdp, sheet);
-  if (!queryText) return [];
+  if (!queryText) return { entries: [], meta };
   const { vector } = await embedText(queryText);
   const sims = await matchVivierCandidates(
     vector,
@@ -323,7 +365,7 @@ export async function runVivierPreselection(
   capped.forEach((e, i) => {
     e.rank = i + 1;
   });
-  return capped;
+  return { entries: capped, meta };
 }
 
 /**
@@ -335,8 +377,8 @@ export async function runVivierPreselection(
 export async function runAndPersistPreselection(
   campaignId: string,
   opts: Omit<PreselectionOptions, 'freeText'> = {},
-): Promise<ShortlistEntry[]> {
-  const entries = await runVivierPreselection(campaignId, opts);
-  await replacePreselection(campaignId, entries);
-  return entries;
+): Promise<PreselectionResult> {
+  const result = await runVivierPreselection(campaignId, opts);
+  await replacePreselection(campaignId, result.entries);
+  return result;
 }
