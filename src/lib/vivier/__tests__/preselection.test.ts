@@ -10,6 +10,7 @@ const campaigns = { getCampaign: vi.fn() };
 const vivierRepo = {
   listIndexedVivierEntities: vi.fn(),
   matchVivierCandidates: vi.fn(),
+  listDistinctEmbeddingModels: vi.fn(),
 };
 const analyses = { listCandidateAnalyses: vi.fn() };
 const presel = {
@@ -81,7 +82,13 @@ beforeEach(() => {
   presel.listContactedEmailsSince.mockResolvedValue([]);
   presel.listRejectedEmailsForCampaign.mockResolvedValue([]);
   settings.getAppSettings.mockResolvedValue(null); // → DEFAULT_VIVIER_CONFIG
-  ai.embedText.mockResolvedValue({ vector: [0.1, 0.2] });
+  ai.embedText.mockResolvedValue({
+    vector: [0.1, 0.2],
+    provider: 'openai',
+    model: 'text-embedding-3-small',
+  });
+  // Par défaut : pas d'embeddings stockés ⇒ garde-fou d'espace inactif.
+  vivierRepo.listDistinctEmbeddingModels.mockResolvedValue([]);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -395,6 +402,28 @@ describe('runVivierPreselection — cascade', () => {
     await expect(runVivierPreselection('CAMP-1')).rejects.toMatchObject({
       code: 'campaign_not_found',
     });
+  });
+
+  it('garde : modèle de requête ≠ modèle des dossiers ⇒ embedding_model_mismatch (pas de tri au hasard)', async () => {
+    campaigns.getCampaign.mockResolvedValue(campaign());
+    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1')]);
+    // La requête est embeddée en 3-large…
+    ai.embedText.mockResolvedValue({
+      vector: [0.1, 0.2],
+      provider: 'openai',
+      model: 'text-embedding-3-large',
+    });
+    // …mais les dossiers sont indexés en 3-small ⇒ espaces incomparables.
+    vivierRepo.listDistinctEmbeddingModels.mockResolvedValue([
+      'openai|text-embedding-3-small',
+    ]);
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    await expect(runVivierPreselection('CAMP-1', { now: NOW })).rejects.toMatchObject(
+      { code: 'embedding_model_mismatch' },
+    );
+    // On n'a PAS classé au hasard : la RPC sémantique n'est pas appelée.
+    expect(vivierRepo.matchVivierCandidates).not.toHaveBeenCalled();
   });
 });
 

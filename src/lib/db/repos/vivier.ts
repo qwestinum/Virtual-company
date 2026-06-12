@@ -345,6 +345,25 @@ export async function upsertVivierEntities(
   if (error) throw new Error(`upsertVivierEntities: ${error.message}`);
 }
 
+/**
+ * Couples (provider|model) DISTINCTS présents dans les embeddings indexés.
+ * Sert à détecter une incohérence d'espace vectoriel : si le modèle de la
+ * requête ne correspond pas à celui des dossiers, le cosinus est dénué de sens
+ * (résultats au hasard). Renvoie p.ex. `["openai|text-embedding-3-small"]`.
+ */
+export async function listDistinctEmbeddingModels(): Promise<string[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(EMBEDDINGS_TABLE)
+    .select('provider, model');
+  if (error) throw new Error(`listDistinctEmbeddingModels: ${error.message}`);
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { provider: string; model: string }[]) {
+    set.add(`${r.provider}|${r.model}`);
+  }
+  return [...set];
+}
+
 /** Métadonnées (provider/model) de l'embedding — détection d'incohérence au reindex. */
 export async function getVivierEmbeddingMeta(
   candidateId: string,

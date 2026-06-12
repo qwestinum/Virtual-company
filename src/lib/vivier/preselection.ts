@@ -35,6 +35,7 @@ import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
+  listDistinctEmbeddingModels,
   listIndexedVivierEntities,
   matchVivierCandidates,
 } from '@/lib/db/repos/vivier';
@@ -94,7 +95,8 @@ const QUERY_FIELDS: FieldKey[] = ['job_title', 'seniority', 'key_skills'];
 export type PreselectionErrorCode =
   | 'campaign_not_found'
   | 'vivier_not_enabled'
-  | 'no_validated_sheet';
+  | 'no_validated_sheet'
+  | 'embedding_model_mismatch';
 
 export class PreselectionError extends Error {
   constructor(
@@ -322,7 +324,25 @@ export async function runVivierPreselection(
     ? opts.freeText.trim()
     : buildVivierQueryText(campaign.fdp, sheet);
   if (!queryText) return { entries: [], meta };
-  const { vector } = await embedText(queryText);
+  const { vector, provider, model } = await embedText(queryText);
+
+  // GARDE-FOU espace vectoriel : la requête DOIT être dans le même espace que
+  // les dossiers (même provider+model). Sinon le cosinus est dénué de sens
+  // (résultats au hasard) — typiquement après un changement de
+  // OPENAI_EMBEDDING_MODEL sans réindexation, ou un serveur non redémarré
+  // (env figé) face à un vivier réindexé avec un autre modèle. On échoue FORT.
+  const queryKey = `${provider}|${model}`;
+  const storedKeys = await listDistinctEmbeddingModels();
+  if (storedKeys.length > 0 && !(storedKeys.length === 1 && storedKeys[0] === queryKey)) {
+    throw new PreselectionError(
+      'embedding_model_mismatch',
+      `Incohérence d'espace d'embeddings : la requête utilise « ${queryKey} » ` +
+        `mais les dossiers sont indexés avec « ${storedKeys.join(', ')} ». ` +
+        `Le tri sémantique serait au hasard. Réindexez (npm run reindex:vivier) ` +
+        `avec le modèle voulu ET redémarrez le serveur pour qu'il utilise le même.`,
+    );
+  }
+
   const sims = await matchVivierCandidates(
     vector,
     survivors.map((s) => s.cand.id),
