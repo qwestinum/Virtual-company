@@ -63,9 +63,10 @@ export async function sendVivierInvitation(
   const intake = settings?.intakeEmail ?? '';
   const rgpdContact = intake || (await getSenderEmail()) || '';
 
+  const jobTitle = jobTitleOf(campaign.fdp);
   const text = renderVivierInvitation(config.invitationTemplate, {
     prenom: candidate.prenom?.trim() || firstName(candidate.nom),
-    jobTitle: jobTitleOf(campaign.fdp),
+    jobTitle,
     campaignName: campaign.name,
     // Référence à quoter en objet = l'ID campagne (ce que le poller matche).
     reference: campaign.id,
@@ -76,7 +77,10 @@ export async function sendVivierInvitation(
 
   const result = await sendEmail({
     to: candidate.email,
-    subject: `Une opportunité : ${jobTitleOf(campaign.fdp)}`,
+    // La référence est aussi dans NOTRE objet : si le candidat répond (replyTo =
+    // adresse de réception), sa réponse conserve « Re: … (réf. CAMP-XXXX) » et
+    // reste rattachable par le poller (match `includes`, le préfixe Re: n'y fait rien).
+    subject: `Une opportunité : ${jobTitle} (réf. ${campaign.id})`,
     html: invitationTextToHtml(text),
     replyTo: intake || undefined,
   });

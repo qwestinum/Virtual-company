@@ -60,6 +60,9 @@ describe('sendVivierInvitation', () => {
     expect(res).toEqual({ contacted: true, status: 'sent' });
     const mail = emailClient.sendEmail.mock.calls[0][0];
     expect(mail.to).toBe('jane@doe.com');
+    // La référence campagne est dans l'objet (réponse ⇒ Re: conserve le rattachement).
+    expect(mail.subject).toContain('CAMP-1');
+    expect(mail.replyTo).toBe('jobs@acme.com'); // réponse routée vers la réception
     expect(mail.html).toContain('Jane'); // [prénom] résolu depuis le nom
     expect(mail.html).toContain('vivier de candidatures'); // mention RGPD
     expect(preselRepo.markContacted).toHaveBeenCalledWith('CAMP-1', ['cand-1'], 'user');
