@@ -30,11 +30,16 @@ import {
   type PublicationChannel,
 } from '@/types/publication-channel';
 import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
+import {
+  DEFAULT_INTERVIEW_CONFIG,
+  type InterviewConfig,
+} from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 
 import { DonneursOrdreManager } from './DonneursOrdreManager';
 import { EmailListField } from './EmailListField';
 import { IntegrationCard } from './IntegrationCard';
+import { InterviewConfigManager } from './InterviewConfigManager';
 import { MailboxesManager } from './MailboxesManager';
 import { SettingsSection } from './SettingsSection';
 import { SitesManager } from './SitesManager';
@@ -56,6 +61,7 @@ type Settings = {
   channelsConfig: Record<string, IntegrationConfig>;
   hitlConfig: HitlConfig;
   vivierConfig: VivierConfig;
+  interviewConfig: InterviewConfig;
   updatedAt: string;
 };
 
@@ -167,6 +173,8 @@ export function SettingsHub() {
             settings: {
               ...json.settings,
               hitlConfig: json.settings.hitlConfig ?? DEFAULT_HITL_CONFIG,
+              interviewConfig:
+                json.settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG,
             },
             offline: json.offline,
             fallbacks: json.fallbacks ?? {
@@ -297,6 +305,22 @@ export function SettingsHub() {
           config={settings.vivierConfig ?? DEFAULT_VIVIER_CONFIG}
           onSave={(next) =>
             patchAndSave({ vivierConfig: next }, 'Réglages vivier mis à jour.')
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        icon="📅"
+        title="Entretiens — messages candidat"
+        description="Templates d'acceptation+invitation et de refus (rendus tels quels, sans rédaction par l'IA) et lien d'agenda. L'invitation ne fixe pas de RDV : le candidat choisit son créneau via le lien d'agenda."
+      >
+        <InterviewConfigManager
+          config={settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG}
+          onSave={(next) =>
+            patchAndSave(
+              { interviewConfig: next },
+              'Réglages entretien mis à jour.',
+            )
           }
         />
       </SettingsSection>

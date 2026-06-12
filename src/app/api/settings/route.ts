@@ -17,6 +17,10 @@ import {
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { invalidateEmailAddressesCache } from '@/lib/email/addresses';
 import { DEFAULT_HITL_CONFIG, HitlConfigSchema } from '@/types/hitl';
+import {
+  DEFAULT_INTERVIEW_CONFIG,
+  InterviewConfigSchema,
+} from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG, VivierConfigSchema } from '@/types/vivier-settings';
 
 export const runtime = 'nodejs';
@@ -37,6 +41,7 @@ const PatchSchema = z.object({
   channelsConfig: z.record(z.string(), IntegrationSchema).optional(),
   hitlConfig: HitlConfigSchema.optional(),
   vivierConfig: VivierConfigSchema.optional(),
+  interviewConfig: InterviewConfigSchema.optional(),
 });
 
 /**
@@ -67,6 +72,7 @@ function emptyPayload() {
       channelsConfig: {} as Record<string, IntegrationConfig>,
       hitlConfig: DEFAULT_HITL_CONFIG,
       vivierConfig: DEFAULT_VIVIER_CONFIG,
+      interviewConfig: DEFAULT_INTERVIEW_CONFIG,
       updatedAt: new Date(0).toISOString(),
     },
   };

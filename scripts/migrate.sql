@@ -741,6 +741,14 @@ $$;
 alter table public.app_settings
   add column if not exists vivier_config jsonb;
 
+-- Réglages des messages candidat d'entretien : templates acceptation+invitation
+-- et refus (rendus déterministes, plus de génération LLM), lien d'agenda
+-- org-level (Calendly/Cal.com), nom d'organisation et de recruteur. jsonb
+-- single-row. Défaut applicatif (DEFAULT_INTERVIEW_CONFIG) appliqué au mapping
+-- si null.
+alter table public.app_settings
+  add column if not exists interview_config jsonb;
+
 -- ──────────────────────────────────────────────────────────────────────
 -- Refonte de la présélection sur le TITRE (cf. docs/specs/vivier.md §4)
 -- ──────────────────────────────────────────────────────────────────────

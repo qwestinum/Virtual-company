@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   buildInterviewGuideSystemPrompt,
   buildInterviewGuideUserPrompt,
-  buildMailComposerSystemPrompt,
-  buildMailComposerUserPrompt,
 } from '@/lib/agents/mail-composer-prompts';
 import type { MailCandidate } from '@/types/mail-candidate';
 
@@ -19,46 +17,6 @@ const CANDIDATE: MailCandidate = {
   weaknesses: ['Pas de senior management'],
   justification: 'Score élevé : stack alignée, expérience cohérente, motivation visible.',
 };
-
-describe('buildMailComposerSystemPrompt', () => {
-  it('mentions the strict rules and JSON output', () => {
-    const p = buildMailComposerSystemPrompt();
-    expect(p).toContain('Mail Composer');
-    expect(p).toContain('JSON STRICT');
-    expect(p).toContain('"subject"');
-    expect(p).toContain('"html"');
-    expect(p).toMatch(/jamais d.emoji/i);
-  });
-});
-
-describe('buildMailComposerUserPrompt', () => {
-  it('reject mode includes justification and excludes booking url', () => {
-    const p = buildMailComposerUserPrompt({
-      mode: 'reject',
-      candidate: CANDIDATE,
-      jobTitle: 'Frontend Engineer',
-      campaignId: 'CAMP-1',
-    });
-    expect(p).toContain('Mode : refus');
-    expect(p).toContain('Frontend Engineer');
-    expect(p).toContain(CANDIDATE.justification);
-    expect(p).not.toContain('cal.com');
-    expect(p).not.toContain('Lien Cal.com');
-  });
-
-  it('invite mode includes booking url and omits justification recital', () => {
-    const p = buildMailComposerUserPrompt({
-      mode: 'invite',
-      candidate: CANDIDATE,
-      jobTitle: 'Frontend Engineer',
-      campaignId: 'CAMP-1',
-      bookingUrl: 'https://cal.com/qw/30',
-    });
-    expect(p).toContain('Mode : invitation');
-    expect(p).toContain('https://cal.com/qw/30');
-    expect(p).toContain(CANDIDATE.summary);
-  });
-});
 
 describe('buildInterviewGuideUserPrompt', () => {
   it('includes candidate context for the interview guide', () => {

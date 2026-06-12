@@ -17,6 +17,10 @@ import {
   SupabaseNotConfiguredError,
 } from '@/lib/db/supabase-server';
 import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
+import {
+  DEFAULT_INTERVIEW_CONFIG,
+  type InterviewConfig,
+} from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 
 const TABLE = 'app_settings';
@@ -39,6 +43,8 @@ export type AppSettings = {
   hitlConfig: HitlConfig;
   /** Réglages vivier (mode contact, template invitation, cooldown, plafond). */
   vivierConfig: VivierConfig;
+  /** Réglages entretien (templates acceptation/refus, lien d'agenda org-level). */
+  interviewConfig: InterviewConfig;
   updatedAt: string;
 };
 
@@ -61,6 +67,7 @@ type AppSettingsRow = {
   channels_config: Record<string, IntegrationConfig>;
   hitl_config: HitlConfig | null;
   vivier_config: VivierConfig | null;
+  interview_config: InterviewConfig | null;
   updated_at: string;
 };
 
@@ -92,6 +99,12 @@ function rowToDomain(row: AppSettingsRow): AppSettings {
     // Fusion avec les défauts : tolère une row antérieure à la migration V3
     // (vivier_config absent) ou un jsonb partiel.
     vivierConfig: { ...DEFAULT_VIVIER_CONFIG, ...(row.vivier_config ?? {}) },
+    // Idem : fusion avec les défauts pour une row antérieure (interview_config
+    // absent) ou un jsonb partiel.
+    interviewConfig: {
+      ...DEFAULT_INTERVIEW_CONFIG,
+      ...(row.interview_config ?? {}),
+    },
     updatedAt: row.updated_at,
   };
 }
@@ -156,6 +169,7 @@ export type AppSettingsPatch = {
   channelsConfig?: Record<string, IntegrationConfig>;
   hitlConfig?: HitlConfig;
   vivierConfig?: VivierConfig;
+  interviewConfig?: InterviewConfig;
 };
 
 export async function patchAppSettings(
@@ -176,6 +190,8 @@ export async function patchAppSettings(
     row.channels_config = patch.channelsConfig;
   if (patch.hitlConfig !== undefined) row.hitl_config = patch.hitlConfig;
   if (patch.vivierConfig !== undefined) row.vivier_config = patch.vivierConfig;
+  if (patch.interviewConfig !== undefined)
+    row.interview_config = patch.interviewConfig;
   const { data, error } = await supabase
     .from(TABLE)
     .update(row)

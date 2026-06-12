@@ -5,11 +5,12 @@
  *
  * Pour un candidat analysé par le poller :
  *   - sous seuil → mail de refus envoyé au candidat
- *   - au-dessus  → mail d'invitation Cal.com au candidat + brief
- *                  entretien envoyé au DRH (synthèse + trame)
+ *   - au-dessus  → mail d'acceptation+invitation (template + lien d'agenda) au
+ *                  candidat + brief entretien envoyé au DRH (synthèse + trame)
  *
- * On réutilise les composers serveur (`composeCandidateMail`,
- * `composeInterviewGuide`) et le service email Resend. Toutes les
+ * Les messages candidat sont rendus de manière déterministe
+ * (`buildInterviewMail`, plus de LLM) ; la trame DRH reste générée
+ * (`composeInterviewGuide`). Service email Resend. Toutes les
  * erreurs sont capturées et loggées dans le journal — un mail
  * raté ne tue pas le poller, le DRH retrouve la trace dans la
  * table journal et l'artefact texte dans Storage.
@@ -23,9 +24,10 @@
  */
 
 import {
-  composeCandidateMail,
-  composeInterviewGuide,
-} from '@/lib/agents/server/mail-composer-execute';
+  buildInterviewMail,
+  getResolvedAgendaLink,
+} from '@/lib/agents/server/interview-mail';
+import { composeInterviewGuide } from '@/lib/agents/server/mail-composer-execute';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -53,40 +55,36 @@ export async function dispatchImapCandidateOutreach(
     ? { taskId: input.campaignId }
     : { campaignId: input.campaignId };
 
-  // Lien Cal.com obligatoire en mode invite. Si absent, on logue un
-  // warning et on n'envoie pas l'invitation (mais on continue le
-  // workflow pour ne pas tout planter).
-  const bookingUrl = process.env.CAL_COM_EVENT_URL ?? null;
+  // Lien d'agenda obligatoire en mode invite (réglage org-level, repli env).
+  // Absent ⇒ on logue et on n'envoie NI l'acceptation NI le brief (mais on ne
+  // plante pas le poller). Le refus, lui, ne dépend pas du lien.
+  const agendaLink = await getResolvedAgendaLink();
 
-  // ─── Phase 1 : mail candidat (refus ou invitation) ─────────────────
+  // ─── Phase 1 : mail candidat (refus ou acceptation+invitation) ─────
 
-  if (mode === 'invite' && !bookingUrl) {
+  if (mode === 'invite' && !agendaLink) {
     await appendJournalEntry({
       action: 'imap_outreach_skipped',
       actor: 'imap_poller',
       campaignId: isTaskOwner ? null : input.campaignId,
       payload: {
-        reason: 'cal_com_not_configured',
+        reason: 'agenda_link_not_configured',
         candidate: candidate.candidateName,
         uid: input.uid,
       },
     });
-  } else {
-    await composeAndSendCandidateMail({
-      mode,
-      input,
-      ownerKey,
-      bookingUrl: mode === 'invite' ? bookingUrl! : undefined,
-    });
+    return;
   }
+
+  await composeAndSendCandidateMail({ mode, input, ownerKey });
 
   // ─── Phase 2 : brief DRH (seulement pour les acceptés) ─────────────
 
-  if (mode === 'invite' && bookingUrl) {
+  if (mode === 'invite') {
     await composeAndSendInterviewBrief({
       input,
       ownerKey,
-      bookingUrl,
+      bookingUrl: agendaLink,
     });
   }
 }
@@ -95,9 +93,8 @@ async function composeAndSendCandidateMail(args: {
   mode: 'reject' | 'invite';
   input: OutreachInput;
   ownerKey: { campaignId: string } | { taskId: string };
-  bookingUrl?: string;
 }): Promise<void> {
-  const { mode, input, ownerKey, bookingUrl } = args;
+  const { mode, input, ownerKey } = args;
   const { candidate } = input;
   const isTaskOwner = 'taskId' in ownerKey;
   const campaignIdForJournal = isTaskOwner ? null : input.campaignId;
@@ -105,12 +102,13 @@ async function composeAndSendCandidateMail(args: {
 
   let composed: { subject: string; html: string };
   try {
-    const out = await composeCandidateMail({
+    // Rendu déterministe du template configuré (acceptation ou refus). Le lien
+    // d'agenda a déjà été vérifié en amont pour une acceptation.
+    const out = await buildInterviewMail({
       mode,
       candidate,
       jobTitle: input.jobTitle,
       campaignId: input.campaignId,
-      bookingUrl,
     });
     composed = out.mail;
   } catch (err) {

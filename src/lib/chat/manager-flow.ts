@@ -517,8 +517,8 @@ export async function dispatchCVBatch(args: {
  * Les bulles Manager sont posées au fil de l'eau pour que le DRH
  * voie le travail s'enchaîner — pas de batch silencieux.
  *
- * Le lien Cal.com vient de CAL_COM_EVENT_URL côté env. Si absent,
- * placeholder visible dans les mails et la bulle.
+ * Le lien d'agenda est résolu côté serveur (réglage org-level, repli env).
+ * Si absent, l'acceptation est bloquée côté route (503).
  */
 export async function dispatchPostAnalysisOutreach(args: {
   campaignId: string;
@@ -532,8 +532,8 @@ export async function dispatchPostAnalysisOutreach(args: {
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
   const artifacts = useArtifactsStore.getState();
-  // Le lien Cal.com est résolu côté serveur (CAL_COM_EVENT_URL). Le
-  // client n'a pas besoin de le connaître ni de le transmettre.
+  // Le lien d'agenda est résolu côté serveur (réglage org-level, repli env).
+  // Le client n'a pas besoin de le connaître ni de le transmettre.
 
   // HITL — config des sections gardées. OFF si offline (la file ne pourrait
   // pas persister → on reste sur l'envoi auto pour ne pas perdre les mails).
@@ -585,9 +585,9 @@ export async function dispatchPostAnalysisOutreach(args: {
 
     const artifactId = `art_mail_${mode}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     try {
-      // Le bookingUrl est résolu côté serveur via CAL_COM_EVENT_URL —
-      // pas besoin de le passer ici. La route renvoie 503 si rien
-      // n'est configuré en mode 'invite'.
+      // Le lien d'agenda est résolu côté serveur (réglage org-level) — pas
+      // besoin de le passer ici. La route renvoie 503 en mode 'invite' si
+      // aucun lien d'agenda n'est configuré.
       const body: Record<string, unknown> = {
         artifactId,
         campaignId: args.campaignId,

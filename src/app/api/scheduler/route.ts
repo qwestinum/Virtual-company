@@ -19,6 +19,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { getResolvedAgendaLink } from '@/lib/agents/server/interview-mail';
 import {
   composeInterviewGuide,
   MailComposerError,
@@ -39,8 +40,8 @@ const RequestSchema = z.object({
   jobTitle: z.string().nullable(),
   candidate: MailCandidateSchema,
   /**
-   * Override optionnel — sinon lu depuis CAL_COM_EVENT_URL côté
-   * serveur.
+   * Override optionnel — sinon résolu depuis le lien d'agenda (réglage
+   * org-level, repli env) côté serveur.
    */
   bookingUrl: z.string().url().optional(),
 });
@@ -168,13 +169,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const bookingUrl =
-    parsed.bookingUrl ?? process.env.CAL_COM_EVENT_URL ?? null;
+  // Lien d'agenda : override explicite, sinon réglage org-level (repli env).
+  const resolved = parsed.bookingUrl ?? (await getResolvedAgendaLink());
+  const bookingUrl = resolved && resolved.trim() ? resolved : null;
   if (!bookingUrl) {
     return NextResponse.json(
       {
-        error: 'cal_com_not_configured',
-        message: 'CAL_COM_EVENT_URL is missing.',
+        error: 'agenda_link_not_configured',
+        message: 'Lien d’agenda non configuré dans les paramètres.',
       },
       { status: 503 },
     );

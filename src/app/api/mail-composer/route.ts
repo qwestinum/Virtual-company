@@ -12,11 +12,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import {
-  composeCandidateMail,
-  MailComposerError,
-} from '@/lib/agents/server/mail-composer-execute';
-import { AIProviderError } from '@/lib/ai/errors';
+import { buildInterviewMail } from '@/lib/agents/server/interview-mail';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -40,20 +36,14 @@ const RequestSchema = z.object({
    */
   uid: z.string().optional(),
   /**
-   * Override optionnel. Si absent en mode 'invite', on lit
-   * CAL_COM_EVENT_URL côté serveur. Si rien n'est configuré, on
-   * répond 503 (le mail d'invitation sans URL serait inutile).
-   */
-  bookingUrl: z.string().url().optional(),
-  /**
    * HITL — mode BROUILLON : on rédige le mail et on persiste l'artefact,
    * mais on N'ENVOIE PAS (l'envoi est différé jusqu'à validation humaine).
    */
   draft: z.boolean().optional(),
   /**
    * HITL — OVERRIDE : envoyer ce contenu (éventuellement édité par le DRH dans
-   * « Vérifier le mail ») au lieu de re-composer. Ignore le LLM et le contrôle
-   * Cal.com (le lien est déjà dans le html). Incompatible avec `draft`.
+   * « Vérifier le mail ») au lieu de re-composer. Le lien d'agenda est déjà
+   * dans le html édité. Incompatible avec `draft`.
    */
   mail: z.object({ subject: z.string().min(1), html: z.string().min(1) }).optional(),
 });
@@ -115,63 +105,38 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // Résolution du lien Cal.com pour le mode invitation. Le client
-  // peut le fournir explicitement (override), sinon on lit la conf
-  // serveur. Sans aucun des deux, refus net : un mail d'invitation
-  // sans URL de booking est inutile.
-  // Override (HITL) : on envoie le contenu fourni, sans LLM ni contrôle
-  // Cal.com (le lien est déjà dans le html édité). Sinon, composition normale.
-  let composed: { subject: string; html: string };
+  // Override (HITL) : on envoie le contenu fourni tel quel (le DRH l'a édité
+  // dans « Vérifier le mail », le lien d'agenda est déjà dans le html). Pas de
+  // rendu, pas de contrôle du lien.
   if (parsed.mail) {
-    composed = parsed.mail;
-    return await finalizeSend(parsed, composed);
+    return await finalizeSend(parsed, parsed.mail);
   }
 
-  let bookingUrl: string | undefined = parsed.bookingUrl;
-  if (parsed.mode === 'invite' && !bookingUrl) {
-    bookingUrl = process.env.CAL_COM_EVENT_URL || undefined;
-  }
-  // Le contrôle Cal.com ne concerne QUE l'envoi réel d'une invitation : un
-  // mail d'invitation envoyé sans lien de booking serait inutile. En mode
-  // BROUILLON (HITL), on compose quand même — le prompt insère « (à
-  // configurer) » comme placeholder de lien, que le DRH complète avant
-  // l'envoi via « Vérifier le mail ». Sans cette exception, toute
-  // acceptation restait bloquée sur « brouillon indisponible » dès que
-  // Cal.com n'était pas configuré (idem au switch refus → acceptation).
-  if (parsed.mode === 'invite' && !bookingUrl && !parsed.draft) {
-    return NextResponse.json(
-      {
-        error: 'cal_com_not_configured',
-        message:
-          'CAL_COM_EVENT_URL is missing. Configure it in .env.local or pass bookingUrl explicitly.',
-      },
-      { status: 503 },
-    );
-  }
-
-  // 1. Composition LLM.
+  // Rendu DÉTERMINISTE du message (acceptation+invitation ou refus) à partir du
+  // template configuré — plus aucune génération LLM. La seule validation : pour
+  // une acceptation réellement envoyée, le lien d'agenda doit être configuré.
+  // En mode BROUILLON (HITL), on compose quand même avec un placeholder visible
+  // que le DRH complète avant l'envoi.
+  let composed: { subject: string; html: string };
   try {
-    const out = await composeCandidateMail({
+    const result = await buildInterviewMail({
       mode: parsed.mode,
       candidate: parsed.candidate,
       jobTitle: parsed.jobTitle,
       campaignId: parsed.campaignId,
-      bookingUrl,
+      draft: parsed.draft,
     });
-    composed = out.mail;
+    if (result.blocked) {
+      return NextResponse.json(
+        {
+          error: 'agenda_link_not_configured',
+          message: 'Lien d’agenda non configuré dans les paramètres.',
+        },
+        { status: 503 },
+      );
+    }
+    composed = result.mail;
   } catch (err) {
-    if (err instanceof MailComposerError) {
-      return NextResponse.json(
-        { error: err.code, message: err.message },
-        { status: 502 },
-      );
-    }
-    if (err instanceof AIProviderError) {
-      return NextResponse.json(
-        { error: err.code, message: err.message },
-        { status: 502 },
-      );
-    }
     return NextResponse.json(
       { error: 'compose_failed', message: (err as Error).message },
       { status: 500 },

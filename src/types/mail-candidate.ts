@@ -1,6 +1,6 @@
 /**
  * Interface ÉTROITE du candidat pour le sous-système mail/scheduler
- * (composeCandidateMail / composeInterviewGuide + routes /api/mail-composer et
+ * (buildInterviewMail / composeInterviewGuide + routes /api/mail-composer et
  * /api/scheduler + outreach IMAP). Ces agents n'ont besoin que de quelques
  * champs pour rédiger mails et briefs — pas du modèle d'analyse complet.
  *

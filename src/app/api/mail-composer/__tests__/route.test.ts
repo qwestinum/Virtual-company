@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  composeCandidateMailMock,
+  buildInterviewMailMock,
   sendEmailMock,
   uploadArtifactMock,
   insertArtifactMetaMock,
   appendJournalEntryMock,
 } = vi.hoisted(() => ({
-  composeCandidateMailMock: vi.fn(),
+  buildInterviewMailMock: vi.fn(),
   sendEmailMock: vi.fn(async () => ({ ok: true as const })),
   uploadArtifactMock: vi.fn(async () => ({
     bucket: 'artifacts',
@@ -18,9 +18,8 @@ const {
   appendJournalEntryMock: vi.fn(async () => {}),
 }));
 
-vi.mock('@/lib/agents/server/mail-composer-execute', async (orig) => ({
-  ...(await orig<typeof import('@/lib/agents/server/mail-composer-execute')>()),
-  composeCandidateMail: composeCandidateMailMock,
+vi.mock('@/lib/agents/server/interview-mail', () => ({
+  buildInterviewMail: buildInterviewMailMock,
 }));
 vi.mock('@/lib/email/client', () => ({ sendEmail: sendEmailMock }));
 vi.mock('@/lib/storage/blob', () => ({ uploadArtifact: uploadArtifactMock }));
@@ -55,10 +54,9 @@ function request(body: Record<string, unknown>): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  delete process.env.CAL_COM_EVENT_URL;
-  composeCandidateMailMock.mockResolvedValue({
-    mail: { subject: 'Invitation entretien', html: '<p>Bonjour</p>' },
-    metrics: { tokensUsed: 0, costEstimate: 0, durationMs: 0 },
+  buildInterviewMailMock.mockResolvedValue({
+    blocked: false,
+    mail: { subject: 'Votre candidature retenue', html: '<p>Bonjour</p>' },
   });
 });
 
@@ -66,8 +64,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('POST /api/mail-composer — gating Cal.com', () => {
-  it('compose un BROUILLON d’invitation même sans Cal.com configuré', async () => {
+describe('POST /api/mail-composer — gating lien d’agenda', () => {
+  it('compose un BROUILLON d’invitation même sans lien d’agenda', async () => {
     const res = await POST(
       request({
         artifactId: 'art_1',
@@ -82,12 +80,19 @@ describe('POST /api/mail-composer — gating Cal.com', () => {
     const data = (await res.json()) as { status: string; html: string };
     expect(data.status).toBe('draft');
     expect(data.html).toBe('<p>Bonjour</p>');
-    expect(composeCandidateMailMock).toHaveBeenCalledTimes(1);
+    expect(buildInterviewMailMock).toHaveBeenCalledTimes(1);
+    expect(buildInterviewMailMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'invite', draft: true }),
+    );
     // Brouillon → jamais d'envoi réel.
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
-  it('REFUSE l’ENVOI réel d’une invitation sans Cal.com (503)', async () => {
+  it('REFUSE l’ENVOI réel d’une invitation sans lien d’agenda (503)', async () => {
+    buildInterviewMailMock.mockResolvedValueOnce({
+      blocked: true,
+      mail: { subject: '', html: '' },
+    });
     const res = await POST(
       request({
         artifactId: 'art_2',
@@ -100,20 +105,30 @@ describe('POST /api/mail-composer — gating Cal.com', () => {
     );
     expect(res.status).toBe(503);
     const data = (await res.json()) as { error: string };
-    expect(data.error).toBe('cal_com_not_configured');
-    // Bloqué avant toute composition ou envoi.
-    expect(composeCandidateMailMock).not.toHaveBeenCalled();
+    expect(data.error).toBe('agenda_link_not_configured');
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
-  it('compose un brouillon de refus sans contrôle Cal.com', async () => {
-    composeCandidateMailMock.mockResolvedValueOnce({
-      mail: { subject: 'Votre candidature', html: '<p>Merci</p>' },
-      metrics: { tokensUsed: 0, costEstimate: 0, durationMs: 0 },
-    });
+  it('envoie l’invitation quand le lien d’agenda est configuré', async () => {
     const res = await POST(
       request({
         artifactId: 'art_3',
+        campaignId: 'CAMP-2026-001',
+        jobTitle: 'Comptable',
+        mode: 'invite',
+        candidate: CANDIDATE,
+      }),
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { status: string };
+    expect(data.status).toBe('sent');
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('compose un refus sans contrôle de lien d’agenda', async () => {
+    const res = await POST(
+      request({
+        artifactId: 'art_4',
         campaignId: 'CAMP-2026-001',
         jobTitle: 'Comptable',
         mode: 'reject',
@@ -124,6 +139,26 @@ describe('POST /api/mail-composer — gating Cal.com', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as { status: string };
     expect(data.status).toBe('draft');
-    expect(composeCandidateMailMock).toHaveBeenCalledTimes(1);
+    expect(buildInterviewMailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('override HITL (mail édité) : envoyé tel quel sans recomposer', async () => {
+    const res = await POST(
+      request({
+        artifactId: 'art_5',
+        campaignId: 'CAMP-2026-001',
+        jobTitle: 'Comptable',
+        mode: 'invite',
+        candidate: CANDIDATE,
+        mail: { subject: 'Édité', html: '<p>Édité</p>' },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { status: string; subject: string };
+    expect(data.status).toBe('sent');
+    expect(data.subject).toBe('Édité');
+    // L'override court-circuite le rendu.
+    expect(buildInterviewMailMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
 });
