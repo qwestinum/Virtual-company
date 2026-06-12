@@ -1,6 +1,6 @@
 import type { JobDescription } from '@/lib/storage/job-descriptions';
 import type { CVApplication } from '@/types/cv-analysis';
-import type { FDPInProgress } from '@/types/field-collection';
+import type { FDPInProgress, FieldKey } from '@/types/field-collection';
 import type { IntentClassification } from '@/types/intent';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { JobAdResult } from '@/types/job-writer';
@@ -122,6 +122,28 @@ export async function postManagerScoring(params: {
   });
   if (!res.ok) throw new Error(await readError(res));
   return (await res.json()) as ScoringProposalResult;
+}
+
+export type FdpProposalResult = {
+  fields: Partial<Record<FieldKey, unknown>>;
+};
+
+/**
+ * Demande au Manager de proposer une fiche de poste de départ à partir d'un
+ * intitulé (création directe sans campagne comparable). Renvoie une valeur par
+ * champ, à appliquer aux champs vides puis ajuster.
+ */
+export async function postFdpProposal(params: {
+  jobTitle: string;
+  known?: Partial<Record<FieldKey, unknown>>;
+}): Promise<FdpProposalResult> {
+  const res = await fetch('/api/manager/fdp-proposal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobTitle: params.jobTitle, fields: params.known }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as FdpProposalResult;
 }
 
 export type CVAnalyzerResult = {

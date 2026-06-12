@@ -21,6 +21,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { postFdpProposal, postManagerScoring } from '@/lib/chat/api-client';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import { generateCampaignId } from '@/lib/dashboard/campaign-id';
 import type { JobDescription } from '@/lib/storage/job-descriptions';
@@ -89,6 +90,10 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
   const [threshold, setThreshold] = useState(75);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Proposition par l'IA (parité avec le chat Manager) — opt-in par bouton.
+  const [proposingFdp, setProposingFdp] = useState(false);
+  const [proposingScoring, setProposingScoring] = useState(false);
+  const [proposeError, setProposeError] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -215,6 +220,65 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
     setSearching(false);
   };
 
+  // Propose une fiche de poste de départ via l'IA et l'applique aux SEULS champs
+  // vides (préserve ce que le DRH a déjà saisi). Dégradation douce en cas d'échec.
+  const onProposeFdp = async () => {
+    const title =
+      jobTitle.trim() ||
+      (typeof fdp.fields.job_title?.value === 'string'
+        ? (fdp.fields.job_title.value as string).trim()
+        : '');
+    if (!title) return;
+    setProposingFdp(true);
+    setProposeError(null);
+    try {
+      const { fields } = await postFdpProposal({
+        jobTitle: title,
+        known: collectKnown(fdp),
+      });
+      setFdp((current) => {
+        const next = { ...current.fields };
+        for (const key of Object.keys(fields) as FieldKey[]) {
+          const field = next[key];
+          if (!field) continue;
+          // N'écrase jamais un champ déjà rempli par le DRH.
+          if (field.status === 'filled' && isFilled(field.value)) continue;
+          const value = fields[key];
+          if (!isFilled(value)) continue;
+          next[key] = { ...field, value, status: 'filled' };
+        }
+        return {
+          ...current,
+          fields: next,
+          isComplete: computeIsComplete(next),
+        };
+      });
+    } catch {
+      setProposeError(
+        'Proposition indisponible (service IA non configuré ou erreur). Vous pouvez saisir les champs manuellement.',
+      );
+    } finally {
+      setProposingFdp(false);
+    }
+  };
+
+  // Propose une grille de scoring à partir de la fiche courante (réutilise le
+  // mécanisme du chat). Remplace les critères placeholders.
+  const onProposeScoring = async () => {
+    setProposingScoring(true);
+    setProposeError(null);
+    try {
+      const { criteria: proposed } = await postManagerScoring({ fdp });
+      if (proposed.length > 0) setCriteria(proposed);
+    } catch {
+      setProposeError(
+        'Proposition de grille indisponible (service IA non configuré ou erreur). Vous pouvez éditer la grille manuellement.',
+      );
+    } finally {
+      setProposingScoring(false);
+    }
+  };
+
   const onSubmit = async () => {
     // Validation : flux email exige au moins une mailbox.
     if (sources.includes('email') && mailboxIds.length === 0) {
@@ -324,6 +388,11 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
             matchHint={matchHint}
             fdp={fdp}
             patchField={patchField}
+            onProposeFdp={onProposeFdp}
+            proposingFdp={proposingFdp}
+            onProposeScoring={onProposeScoring}
+            proposingScoring={proposingScoring}
+            proposeError={proposeError}
             criteria={criteria}
             setCriteria={setCriteria}
             channels={channels}
@@ -519,6 +588,11 @@ function EditingStage({
   matchHint,
   fdp,
   patchField,
+  onProposeFdp,
+  proposingFdp,
+  onProposeScoring,
+  proposingScoring,
+  proposeError,
   criteria,
   setCriteria,
   channels,
@@ -537,6 +611,11 @@ function EditingStage({
   matchHint: MatchHint | null;
   fdp: FDPInProgress;
   patchField: (key: FieldKey, value: unknown) => void;
+  onProposeFdp: () => void;
+  proposingFdp: boolean;
+  onProposeScoring: () => void;
+  proposingScoring: boolean;
+  proposeError: string | null;
   criteria: ScoringCriterion[];
   setCriteria: (next: ScoringCriterion[]) => void;
   channels: PublicationChannel[];
@@ -563,12 +642,27 @@ function EditingStage({
           gap: 14,
         }}
       >
-        {matchHint ? <MatchBanner hint={matchHint} /> : null}
+        {matchHint ? <MatchBanner hint={matchHint} /> : <NoMatchHint />}
+        {proposeError ? <ProposeError message={proposeError} /> : null}
 
-        <SectionTitle icon="📄">Fiche de poste</SectionTitle>
+        <SectionRow>
+          <SectionTitle icon="📄">Fiche de poste</SectionTitle>
+          <ProposeButton
+            label="Proposer la fiche"
+            loading={proposingFdp}
+            onClick={onProposeFdp}
+          />
+        </SectionRow>
         <FDPInlineEditor fdp={fdp} onPatch={patchField} />
 
-        <SectionTitle icon="⚖️">Fiche de scoring</SectionTitle>
+        <SectionRow>
+          <SectionTitle icon="⚖️">Fiche de scoring</SectionTitle>
+          <ProposeButton
+            label="Proposer la grille"
+            loading={proposingScoring}
+            onClick={onProposeScoring}
+          />
+        </SectionRow>
         <ScoringDraftEditor criteria={criteria} onChange={setCriteria} />
 
         <SectionTitle icon="📢">Canaux de diffusion</SectionTitle>
@@ -753,7 +847,127 @@ function SectionTitle({
   );
 }
 
+/** Ligne titre de section + action à droite (bouton « Proposer »). */
+function SectionRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        flexWrap: 'wrap',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Bouton de proposition IA (opt-in), avec état de chargement. */
+function ProposeButton({
+  label,
+  loading,
+  onClick,
+}: {
+  label: string;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className="font-body"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 12px',
+        borderRadius: 8,
+        border: '1px solid var(--dash-purple)',
+        background: loading ? 'var(--dash-hover)' : 'var(--dash-purple-light)',
+        color: 'var(--dash-purple)',
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: loading ? 'default' : 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span aria-hidden>✨</span>
+      {loading ? 'Proposition…' : label}
+    </button>
+  );
+}
+
+/** Rappel affiché quand aucune campagne comparable n'a été trouvée. */
+function NoMatchHint() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 10,
+        padding: '12px 14px',
+        borderRadius: 10,
+        background: 'var(--dash-hover)',
+        border: '1px solid var(--dash-border)',
+      }}
+    >
+      <span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>
+        ✨
+      </span>
+      <div
+        className="font-body"
+        style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--dash-text-secondary)' }}
+      >
+        <strong style={{ fontWeight: 700 }}>
+          Aucune campagne comparable.
+        </strong>{' '}
+        Proposez une fiche de poste et une grille de scoring de départ avec les
+        boutons ✨ — chaque valeur reste ajustable — ou saisissez tout
+        manuellement.
+      </div>
+    </div>
+  );
+}
+
+/** Message d'erreur discret pour un échec de proposition IA. */
+function ProposeError({ message }: { message: string }) {
+  return (
+    <div
+      role="alert"
+      className="font-body"
+      style={{
+        padding: '8px 12px',
+        borderRadius: 8,
+        background: 'var(--dash-yellow-light)',
+        color: 'var(--dash-text-secondary)',
+        fontSize: 12,
+        border: '1px solid var(--dash-yellow)',
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────
+
+/** Collecte les champs déjà remplis (pour cohérence de la proposition). */
+function collectKnown(
+  fdp: FDPInProgress,
+): Partial<Record<FieldKey, unknown>> {
+  const out: Partial<Record<FieldKey, unknown>> = {};
+  for (const key of Object.keys(fdp.fields) as FieldKey[]) {
+    const field = fdp.fields[key];
+    if (field && field.status === 'filled' && isFilled(field.value)) {
+      out[key] = field.value;
+    }
+  }
+  return out;
+}
 
 function isFilled(value: unknown): boolean {
   if (value === undefined || value === null) return false;
