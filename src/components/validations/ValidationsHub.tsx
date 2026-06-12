@@ -12,7 +12,7 @@
  * L'envoi réel se fait depuis l'aperçu (« Envoyer ») — branché en P5.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { hydrateArtifactsForCampaign } from '@/lib/db/sync/artifacts-sync';
 import { sendValidation, switchValidation } from '@/lib/hitl/send-validation';
@@ -256,7 +256,53 @@ function ValidationCard({
   const [body, setBody] = useState(payloadString(v, 'mailBody') ?? '');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const canSend = subject.trim().length > 0 && body.trim().length > 0;
+  // L'ouverture de l'éditeur RECOMPOSE la base depuis le template courant (et
+  // non le snapshot figé à la préparation), sauf si le DRH a déjà commencé à
+  // éditer (on ne piétine pas ses modifications).
+  const [draftLoading, setDraftLoading] = useState(false);
+  const editedRef = useRef(false);
+  const canSend =
+    subject.trim().length > 0 && body.trim().length > 0 && !draftLoading;
+
+  useEffect(() => {
+    if (!open || editedRef.current) return;
+    const candidate = v.payload?.candidate;
+    if (!candidate) return; // rien à recomposer → on garde le snapshot
+    const mode = v.decision === 'accept' ? 'invite' : 'reject';
+    let cancelled = false;
+    setDraftLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch('/api/mail-composer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            artifactId: 'preview',
+            campaignId: v.campaignId,
+            jobTitle: payloadString(v, 'jobTitle') ?? null,
+            mode,
+            candidate,
+            preview: true,
+          }),
+        });
+        if (res.ok && !cancelled && !editedRef.current) {
+          const data = (await res.json()) as {
+            subject?: string;
+            html?: string;
+          };
+          if (data.subject != null) setSubject(data.subject);
+          if (data.html != null) setBody(data.html);
+        }
+      } catch {
+        // Échec réseau → on garde le snapshot existant comme base.
+      } finally {
+        if (!cancelled) setDraftLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, v]);
 
   // Contexte de la candidature.
   const jobTitle = payloadString(v, 'jobTitle');
@@ -388,7 +434,11 @@ function ValidationCard({
 
       {open && v.confirmed ? (
         <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3">
-          {body ? (
+          {draftLoading && !editedRef.current ? (
+            <p className="font-body text-[12px] text-stone-400 italic">
+              Préparation du brouillon depuis le modèle…
+            </p>
+          ) : body ? (
             <>
               <label className="block font-body text-[11px] font-semibold uppercase tracking-wide text-stone-500">
                 Objet
@@ -396,7 +446,10 @@ function ValidationCard({
               <input
                 type="text"
                 value={subject}
-                onChange={(e) => setSubject(e.currentTarget.value)}
+                onChange={(e) => {
+                  editedRef.current = true;
+                  setSubject(e.currentTarget.value);
+                }}
                 className="mt-1 w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-body text-[13px] text-stone-800 outline-none focus:border-blue-400"
               />
               <label className="mt-3 block font-body text-[11px] font-semibold uppercase tracking-wide text-stone-500">
@@ -404,7 +457,10 @@ function ValidationCard({
               </label>
               <textarea
                 value={body}
-                onChange={(e) => setBody(e.currentTarget.value)}
+                onChange={(e) => {
+                  editedRef.current = true;
+                  setBody(e.currentTarget.value);
+                }}
                 rows={8}
                 className="mt-1 w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-mono text-[12px] text-stone-800 outline-none focus:border-blue-400"
               />

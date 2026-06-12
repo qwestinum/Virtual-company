@@ -142,6 +142,39 @@ describe('POST /api/mail-composer — gating lien d’agenda', () => {
     expect(buildInterviewMailMock).toHaveBeenCalledTimes(1);
   });
 
+  it('PREVIEW : recompose depuis le template sans envoyer ni persister', async () => {
+    buildInterviewMailMock.mockResolvedValueOnce({
+      blocked: false,
+      mail: { subject: 'Depuis le modèle', html: '<p>Modèle</p>' },
+    });
+    const res = await POST(
+      request({
+        artifactId: 'preview',
+        campaignId: 'CAMP-2026-001',
+        jobTitle: 'Comptable',
+        mode: 'invite',
+        candidate: CANDIDATE,
+        preview: true,
+      }),
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      status: string;
+      subject: string;
+      html: string;
+    };
+    expect(data.status).toBe('preview');
+    expect(data.subject).toBe('Depuis le modèle');
+    expect(data.html).toBe('<p>Modèle</p>');
+    // Recompose en mode brouillon (jamais bloquant) ; aucun effet de bord.
+    expect(buildInterviewMailMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'invite', draft: true }),
+    );
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(uploadArtifactMock).not.toHaveBeenCalled();
+    expect(insertArtifactMetaMock).not.toHaveBeenCalled();
+  });
+
   it('override HITL (mail édité) : envoyé tel quel sans recomposer', async () => {
     const res = await POST(
       request({

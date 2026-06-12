@@ -41,6 +41,13 @@ const RequestSchema = z.object({
    */
   draft: z.boolean().optional(),
   /**
+   * HITL — mode PREVIEW : recompose la base éditable depuis le template courant
+   * (« Vérifier le mail »). Ne persiste rien, n'envoie rien, ne bloque jamais —
+   * renvoie juste { subject, html }. Sert à rafraîchir le brouillon à l'ouverture
+   * de l'éditeur pour repartir du template à jour plutôt que d'un snapshot figé.
+   */
+  preview: z.boolean().optional(),
+  /**
    * HITL — OVERRIDE : envoyer ce contenu (éventuellement édité par le DRH dans
    * « Vérifier le mail ») au lieu de re-composer. Le lien d'agenda est déjà
    * dans le html édité. Incompatible avec `draft`.
@@ -103,6 +110,31 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
       { status: 400 },
     );
+  }
+
+  // PREVIEW (HITL « Vérifier le mail ») : recompose la base éditable depuis le
+  // template courant, sans rien envoyer ni persister. Comme un brouillon, ne
+  // bloque jamais (placeholder de lien d'agenda si non configuré).
+  if (parsed.preview) {
+    try {
+      const result = await buildInterviewMail({
+        mode: parsed.mode,
+        candidate: parsed.candidate,
+        jobTitle: parsed.jobTitle,
+        campaignId: parsed.campaignId,
+        draft: true,
+      });
+      return NextResponse.json({
+        status: 'preview',
+        subject: result.mail.subject,
+        html: result.mail.html,
+      });
+    } catch (err) {
+      return NextResponse.json(
+        { error: 'compose_failed', message: (err as Error).message },
+        { status: 500 },
+      );
+    }
   }
 
   // Override (HITL) : on envoie le contenu fourni tel quel (le DRH l'a édité
