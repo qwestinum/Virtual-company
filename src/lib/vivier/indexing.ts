@@ -19,6 +19,7 @@
  */
 
 import { extractVivierEntities } from '@/lib/vivier/entity-extraction';
+import { buildVivierProfileText } from '@/lib/vivier/profile-text';
 import { embedText } from '@/lib/ai/embeddings';
 import {
   getVivierCandidate,
@@ -66,17 +67,10 @@ export async function indexVivierCandidate(
   // Le contrat « pending/failed exclus des recherches, failed re-tentable »
   // (§3.2/4.2) est ainsi tenu sans trou.
   try {
-    // 1. Embedding sémantique (critique) + persistance.
-    const embedding = await embedText(cvText);
-    await upsertVivierEmbedding(candidateId, {
-      vector: embedding.vector,
-      provider: embedding.provider,
-      model: embedding.model,
-    });
-
-    // 2. Entités structurées (enrichissement non bloquant). Un échec
-    // d'EXTRACTION (LLM/transport) reste non bloquant : entités vides, on
-    // poursuit. Un échec d'écriture base remonte au catch global (cohérence).
+    // 1. Entités structurées D'ABORD. Un échec d'EXTRACTION (LLM/transport)
+    // reste non bloquant : entités vides, on poursuit. Un échec d'écriture base
+    // remonte au catch global (cohérence). Elles alimentent aussi le profil
+    // embeddé ci-dessous.
     let entities = { ...EMPTY_VIVIER_ENTITIES };
     try {
       // Contexte d'extraction = nom de fichier d'origine (jamais l'id technique
@@ -86,6 +80,18 @@ export async function indexVivierCandidate(
       console.error(`[vivier] entity extraction failed for ${candidateId}`, err);
     }
     await upsertVivierEntities(candidateId, entities);
+
+    // 2. Embedding sémantique (critique) du PROFIL DISTILLÉ — PAS du CV brut
+    // entier. La "forme" d'un CV complet (document long) n'est pas comparable à
+    // la requête courte de présélection ⇒ similarités tassées, peu
+    // discriminantes. Le profil (tête de CV + relevé d'entités) aligne les deux
+    // espaces et rend la similarité pertinente (cf. correctif de pertinence).
+    const embedding = await embedText(buildVivierProfileText(entities, cvText));
+    await upsertVivierEmbedding(candidateId, {
+      vector: embedding.vector,
+      provider: embedding.provider,
+      model: embedding.model,
+    });
 
     // 3. Succès : le dossier devient recherchable.
     await setVivierIndexingStatus(candidateId, 'indexed', null);

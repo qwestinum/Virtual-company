@@ -65,6 +65,23 @@ export const FRESHNESS_FLOOR = 0.5;
 /** Plafond de la short-list (défaut spec §4.2 ; constante en V2). */
 export const SHORTLIST_CAP = 50;
 
+/**
+ * Plancher de similarité cosinus : en-dessous, un candidat est jugé NON
+ * pertinent et exclu de la short-list (mieux vaut 3 pertinents que 50 au
+ * hasard). Évite que le plafond se remplisse de bruit. Valeur calibrée pour des
+ * embeddings de PROFIL DISTILLÉ (cf. profile-text.ts) — à ajuster si l'on change
+ * de modèle/représentation.
+ */
+export const SIMILARITY_FLOOR = 0.25;
+
+/**
+ * Poids de la fraîcheur comme DÉPARTAGE (et non multiplicateur). La fraîcheur ne
+ * peut plus inverser un écart de similarité significatif : elle ne fait que
+ * nudger légèrement (au plus −2,5 pts de score pour un dossier ancien). La
+ * pertinence prime, la récence départage les quasi-ex æquo.
+ */
+const FRESHNESS_TIEBREAK_WEIGHT = 0.05;
+
 const MS_PER_MONTH = 1000 * 60 * 60 * 24 * 30.44;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -217,6 +234,8 @@ export type PreselectionMeta = {
   survivors: number;
   /** Dossiers écartés par les filtres durs. */
   eliminatedByHardFilters: number;
+  /** Dossiers écartés faute de similarité suffisante (sous le plancher). */
+  belowFloor: number;
   /**
    * Repli sémantique : aucun dossier ne passait TOUS les filtres durs, on a
    * classé l'ensemble par similarité seule (signalé au DRH). Évite l'écran vide.
@@ -296,6 +315,7 @@ export async function runVivierPreselection(
     indexedCount: indexed.length,
     survivors: passing.length,
     eliminatedByHardFilters,
+    belowFloor: 0,
     fallbackSemantic,
   };
 
@@ -334,13 +354,22 @@ export async function runVivierPreselection(
     ...rejectedEmails,
   ]);
 
-  // Étape 3 — modulation fraîcheur + assemblage.
+  // Étape 3 — plancher de pertinence + modulation fraîcheur + assemblage.
+  // La PERTINENCE prime : relevanceScore = similarité, la fraîcheur n'intervient
+  // qu'en DÉPARTAGE léger (elle ne peut plus inverser un écart de similarité
+  // significatif). Plancher : sous SIMILARITY_FLOOR, le candidat est jugé non
+  // pertinent et écarté (on ne remplit pas le plafond de bruit).
   const scored: ShortlistEntry[] = [];
+  let belowFloor = 0;
   for (const s of survivors) {
     const email = normalizeEmail(s.cand.email);
     if (excluded.has(email)) continue;
     const similarity = sims.get(s.cand.id);
     if (similarity === undefined) continue;
+    if (similarity < SIMILARITY_FLOOR) {
+      belowFloor++;
+      continue;
+    }
     const freshness = freshnessFactor(s.cand.updatedAt, now);
     scored.push({
       candidateId: s.cand.id,
@@ -348,7 +377,8 @@ export async function runVivierPreselection(
       email: s.cand.email,
       similarity,
       freshnessFactor: freshness,
-      relevanceScore: similarity * freshness,
+      // Pertinence (similarité) + nudge de fraîcheur borné (au plus −0,025).
+      relevanceScore: similarity + FRESHNESS_TIEBREAK_WEIGHT * (freshness - 1),
       updatedAt: s.cand.updatedAt,
       passedFilters: s.matches,
       rank: 0,
@@ -359,6 +389,7 @@ export async function runVivierPreselection(
       appliedAt: null,
     });
   }
+  meta.belowFloor = belowFloor;
 
   scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
   const capped = scored.slice(0, config.shortlistCap);

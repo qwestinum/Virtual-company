@@ -273,3 +273,7 @@ Câblé dans l'étape 4 de la présélection : **contacté ⇒ cooldown GLOBAL**
 ### 13.7. Mention RGPD dans les annonces (§7)
 
 `withVivierRgpdMention` appose la mention (libellé partagé) au corps de l'annonce générée, de façon **déterministe** (jamais soumise au LLM ⇒ toujours présente). Contact = intake/expéditeur des settings, repli générique.
+
+### 13.8. Pertinence de la présélection (correctif structurel)
+
+Deux causes de profils hors-sujet corrigées. **(a) Embedding symétrique.** On n'embedde plus le CV brut entier (document long, dominé par du générique) mais un **profil distillé** (`profile-text.ts`) : tête du CV (titre/résumé) + relevé d'entités structurées — court, centré métier, de « forme » comparable à la requête de présélection. Les entités sont donc extraites AVANT l'embedding à l'indexation. **Un changement de cette représentation impose un `reindex:vivier`.** **(b) Math du ranking.** `relevanceScore = similarité` (la pertinence prime) ; la fraîcheur n'est plus un multiplicateur (qui pouvait inverser un écart de similarité) mais un **départage léger** borné. Et un **plancher de similarité** (`SIMILARITY_FLOOR`) écarte les dossiers non pertinents plutôt que de remplir le plafond de bruit (compteur `belowFloor` exposé).

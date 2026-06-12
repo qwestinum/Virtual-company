@@ -21,6 +21,7 @@ type Meta = {
   indexedCount: number;
   survivors: number;
   eliminatedByHardFilters: number;
+  belowFloor: number;
   fallbackSemantic: boolean;
 };
 
@@ -145,12 +146,15 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
             Voici les profils les <strong>plus proches sémantiquement</strong> —
             assouplissez un critère rédhibitoire/obligatoire pour un vrai filtrage.
           </p>
-        ) : meta.eliminatedByHardFilters > 0 ? (
+        ) : meta.eliminatedByHardFilters > 0 || meta.belowFloor > 0 ? (
           <p className="font-body text-[11px] text-stone-400">
-            {meta.eliminatedByHardFilters} dossier
-            {meta.eliminatedByHardFilters > 1 ? 's' : ''} écarté
-            {meta.eliminatedByHardFilters > 1 ? 's' : ''} par les filtres durs ·{' '}
-            {meta.survivors} retenu{meta.survivors > 1 ? 's' : ''} sur{' '}
+            {meta.eliminatedByHardFilters > 0
+              ? `${meta.eliminatedByHardFilters} écarté${meta.eliminatedByHardFilters > 1 ? 's' : ''} par les filtres durs · `
+              : ''}
+            {meta.belowFloor > 0
+              ? `${meta.belowFloor} sous le seuil de pertinence · `
+              : ''}
+            {meta.survivors} retenu{meta.survivors > 1 ? 's' : ''} aux filtres sur{' '}
             {meta.indexedCount} indexé{meta.indexedCount > 1 ? 's' : ''}.
           </p>
         ) : null

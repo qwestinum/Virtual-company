@@ -52,6 +52,9 @@ beforeEach(() => {
   repo.setVivierIndexingStatus.mockResolvedValue(undefined);
   repo.upsertVivierEmbedding.mockResolvedValue(undefined);
   repo.upsertVivierEntities.mockResolvedValue(undefined);
+  // Les entités sont extraites AVANT l'embedding (elles alimentent le profil
+  // distillé) : un défaut valide évite que buildVivierProfileText reçoive undefined.
+  entity.extractVivierEntities.mockResolvedValue(ENTITIES);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -140,8 +143,10 @@ describe('indexVivierCandidate', () => {
       'failed',
       expect.stringContaining('1536'),
     );
-    // L'écriture des entités n'a pas lieu (court-circuit sur l'échec embedding).
-    expect(repo.upsertVivierEntities).not.toHaveBeenCalled();
+    // Les entités sont écrites AVANT l'embedding (réordonnancement profil
+    // distillé) : elles ont bien été persistées ; c'est l'upsert embedding qui
+    // échoue et fait basculer en failed.
+    expect(repo.upsertVivierEntities).toHaveBeenCalled();
   });
 
   it('échec entités (transport) ⇒ entités vides mais statut indexed (non bloquant)', async () => {

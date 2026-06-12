@@ -108,14 +108,13 @@ describe('runVivierPreselection — cascade', () => {
     expect(res.map((e) => e.rank)).toEqual([1, 2, 3]);
   });
 
-  it('modulation fraîcheur : un dossier ancien est dégradé sous un plus récent', async () => {
+  it('la pertinence prime : un dossier ancien mais plus pertinent reste devant un récent moins pertinent', async () => {
     campaigns.getCampaign.mockResolvedValue(campaign());
     vivierRepo.listIndexedVivierEntities.mockResolvedValue([
       cand('old', { updatedAt: '2020-01-01T00:00:00Z' }),
       cand('recent', { updatedAt: '2027-06-01T00:00:00Z' }),
     ]);
-    // 'old' a une meilleure similarité brute, mais sa fraîcheur (plancher 0.5)
-    // le fait passer derrière 'recent'.
+    // 'old' est nettement plus pertinent ; la fraîcheur ne doit plus l'inverser.
     vivierRepo.matchVivierCandidates.mockResolvedValue(
       new Map([
         ['old', 0.8],
@@ -124,11 +123,52 @@ describe('runVivierPreselection — cascade', () => {
     );
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
 
-    expect(res.map((e) => e.candidateId)).toEqual(['recent', 'old']);
-    expect(res[1].freshnessFactor).toBe(0.5);
-    expect(res[1].relevanceScore).toBeCloseTo(0.4, 5);
+    expect(entries.map((e) => e.candidateId)).toEqual(['old', 'recent']);
+    // relevanceScore ≈ similarité (nudge de fraîcheur borné).
+    expect(entries[0].relevanceScore).toBeCloseTo(0.8 - 0.05 * 0.5, 5);
+  });
+
+  it('la fraîcheur ne fait que départager à similarité égale', async () => {
+    campaigns.getCampaign.mockResolvedValue(campaign());
+    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
+      cand('old', { updatedAt: '2020-01-01T00:00:00Z' }),
+      cand('recent', { updatedAt: '2027-06-01T00:00:00Z' }),
+    ]);
+    vivierRepo.matchVivierCandidates.mockResolvedValue(
+      new Map([
+        ['old', 0.7],
+        ['recent', 0.7],
+      ]),
+    );
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    // Similarité égale ⇒ le plus frais devant (départage).
+    expect(entries.map((e) => e.candidateId)).toEqual(['recent', 'old']);
+    expect(entries[1].freshnessFactor).toBe(0.5);
+  });
+
+  it('plancher de pertinence : un candidat sous le seuil de similarité est écarté', async () => {
+    campaigns.getCampaign.mockResolvedValue(campaign());
+    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
+      cand('good'),
+      cand('weak'),
+    ]);
+    vivierRepo.matchVivierCandidates.mockResolvedValue(
+      new Map([
+        ['good', 0.6],
+        ['weak', 0.1], // sous SIMILARITY_FLOOR
+      ]),
+    );
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    expect(entries.map((e) => e.candidateId)).toEqual(['good']);
+    expect(meta.belowFloor).toBe(1);
   });
 
   it('filtres durs : élimine les non conformes, n’embedde que les survivants', async () => {
@@ -300,8 +340,9 @@ describe('runVivierPreselection — cascade', () => {
     campaigns.getCampaign.mockResolvedValue(campaign());
     const many = Array.from({ length: 55 }, (_, i) => cand(`c${i}`));
     vivierRepo.listIndexedVivierEntities.mockResolvedValue(many);
+    // Tous au-dessus du plancher (sinon le plancher les couperait avant le plafond).
     vivierRepo.matchVivierCandidates.mockResolvedValue(
-      new Map(many.map((c, i) => [c.id, (55 - i) / 55])),
+      new Map(many.map((c) => [c.id, 0.5])),
     );
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
