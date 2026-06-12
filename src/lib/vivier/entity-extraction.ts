@@ -34,6 +34,19 @@ export const VivierEntitiesSchema = z.object({
   localisation: z.string().nullish().catch(null),
 });
 
+/**
+ * Schéma d'extraction = entités + TITRE du candidat (titre déclaré en tête de
+ * CV, repli sur le poste le plus récent). Le titre est extrait dans le MÊME
+ * appel LLM (pas de surcoût) mais routé À PART (vers le dossier, pas vers la
+ * table d'entités qui reste inchangée).
+ */
+export const VivierExtractionSchema = VivierEntitiesSchema.extend({
+  title: z.string().nullish().catch(null),
+});
+
+/** Résultat d'extraction : entités structurées + titre (séparé). */
+export type VivierExtraction = { entities: VivierEntities; title: string | null };
+
 /** Nettoie une liste de chaînes (trim, retrait des vides, déduplication insensible casse). */
 function cleanList(values: string[]): string[] {
   const seen = new Set<string>();
@@ -62,27 +75,27 @@ function normalize(data: z.infer<typeof VivierEntitiesSchema>): VivierEntities {
 }
 
 /**
- * Extrait les entités structurées d'un CV. Renvoie des entités VIDES (jamais
- * d'exception) si l'extraction LLM échoue à produire une sortie valide
- * (`AIValidationError`) — choix documenté : enrichissement non bloquant. Les
- * autres erreurs (transport) remontent.
+ * Extrait les entités structurées + le TITRE d'un CV. Renvoie entités VIDES +
+ * titre null (jamais d'exception) si l'extraction LLM échoue à produire une
+ * sortie valide (`AIValidationError`) — enrichissement non bloquant. Les autres
+ * erreurs (transport) remontent.
  */
 export async function extractVivierEntities(
   cvText: string,
   fileName: string,
-): Promise<VivierEntities> {
+): Promise<VivierExtraction> {
   try {
     const r = await chatCompleteJson(
       [
         { role: 'system', content: buildVivierEntitySystemPrompt() },
         { role: 'user', content: buildVivierEntityUserPrompt(cvText, fileName) },
       ],
-      VivierEntitiesSchema,
+      VivierExtractionSchema,
     );
-    return normalize(r.data);
+    return { entities: normalize(r.data), title: r.data.title?.trim() || null };
   } catch (err) {
     if (err instanceof AIValidationError) {
-      return { ...EMPTY_VIVIER_ENTITIES };
+      return { entities: { ...EMPTY_VIVIER_ENTITIES }, title: null };
     }
     throw err;
   }

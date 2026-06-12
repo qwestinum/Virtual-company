@@ -33,7 +33,7 @@ const ENTITIES_TABLE = 'vivier_entities';
 
 /** Colonnes de résumé (sans le volumineux `cv_text`). */
 const SUMMARY_COLUMNS =
-  'id, email, nom, prenom, telephone, cv_path, cv_file_name, tags, source, indexing_status, indexing_error, entered_at, updated_at';
+  'id, email, nom, prenom, telephone, cv_path, cv_file_name, title, title_variants, tags, source, indexing_status, indexing_error, entered_at, updated_at';
 
 /** Mapping row → domaine (pur, exporté pour test). Tolère l'absence de cv_text (résumés). */
 export function vivierRowToDomain(
@@ -48,6 +48,8 @@ export function vivierRowToDomain(
     cvPath: row.cv_path,
     cvFileName: row.cv_file_name ?? null,
     cvText: row.cv_text ?? null,
+    title: row.title ?? null,
+    titleVariants: row.title_variants ?? [],
     tags: row.tags ?? [],
     source: row.source,
     indexingStatus: row.indexing_status,
@@ -299,11 +301,52 @@ export async function deleteVivierCandidateRow(id: string): Promise<void> {
   if (error) throw new Error(`deleteVivierCandidateRow: ${error.message}`);
 }
 
+/**
+ * Pose le TITRE et ses variantes sur le dossier (extraction d'indexation).
+ * Présélection sur le titre. Variantes vides tolérées.
+ */
+export async function setVivierTitle(
+  id: string,
+  title: string | null,
+  variants: string[],
+): Promise<void> {
+  const supabase = requireServerSupabase();
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ title, title_variants: variants })
+    .eq('id', id);
+  if (error) throw new Error(`setVivierTitle: ${error.message}`);
+}
+
 export type UpsertVivierEmbeddingInput = {
   vector: number[];
   provider: string;
   model: string;
 };
+
+/**
+ * Upsert de l'embedding du TITRE (présélection bloc 2). Ne TOUCHE PAS la colonne
+ * `embedding` (full-CV legacy, préservée) : on ne fournit que les colonnes titre
+ * + provider/model (qui décrivent désormais l'embedding titre, pour le garde-fou
+ * d'espace). `provider`/`model` sont ceux du TITRE.
+ */
+export async function upsertVivierTitleEmbedding(
+  candidateId: string,
+  input: UpsertVivierEmbeddingInput,
+): Promise<void> {
+  const supabase = requireServerSupabase();
+  const { error } = await supabase.from(EMBEDDINGS_TABLE).upsert(
+    {
+      candidate_id: candidateId,
+      title_embedding: toVectorLiteral(input.vector),
+      provider: input.provider,
+      model: input.model,
+      generated_at: new Date().toISOString(),
+    },
+    { onConflict: 'candidate_id' },
+  );
+  if (error) throw new Error(`upsertVivierTitleEmbedding: ${error.message}`);
+}
 
 export async function upsertVivierEmbedding(
   candidateId: string,

@@ -4,15 +4,18 @@ import type { VivierCandidate } from '@/types/vivier';
 
 const embeddings = { embedText: vi.fn() };
 const entity = { extractVivierEntities: vi.fn() };
+const variants = { runKeywordVariantsSuggestion: vi.fn() };
 const repo = {
   getVivierCandidate: vi.fn(),
   setVivierIndexingStatus: vi.fn(),
-  upsertVivierEmbedding: vi.fn(),
+  setVivierTitle: vi.fn(),
+  upsertVivierTitleEmbedding: vi.fn(),
   upsertVivierEntities: vi.fn(),
 };
 
 vi.mock('@/lib/ai/embeddings', () => embeddings);
 vi.mock('@/lib/vivier/entity-extraction', () => entity);
+vi.mock('@/lib/agents/server/keyword-variants-execute', () => variants);
 vi.mock('@/lib/db/repos/vivier', () => repo);
 
 function candidate(overrides: Partial<VivierCandidate> = {}): VivierCandidate {
@@ -25,6 +28,8 @@ function candidate(overrides: Partial<VivierCandidate> = {}): VivierCandidate {
     cvPath: 'vivier/VIV-0001/cv.pdf',
     cvFileName: 'cv-jane.pdf',
     cvText: 'un CV bien rempli',
+    title: null,
+    titleVariants: [],
     tags: [],
     source: 'manual_upload',
     indexingStatus: 'pending',
@@ -46,145 +51,116 @@ const ENTITIES = {
 };
 
 beforeEach(() => {
-  [embeddings, entity, repo].forEach((m) =>
+  [embeddings, entity, variants, repo].forEach((m) =>
     Object.values(m).forEach((f) => f.mockReset()),
   );
   repo.setVivierIndexingStatus.mockResolvedValue(undefined);
-  repo.upsertVivierEmbedding.mockResolvedValue(undefined);
+  repo.setVivierTitle.mockResolvedValue(undefined);
+  repo.upsertVivierTitleEmbedding.mockResolvedValue(undefined);
   repo.upsertVivierEntities.mockResolvedValue(undefined);
-  // Les entités sont extraites AVANT l'embedding (elles alimentent le profil
-  // distillé) : un défaut valide évite que buildVivierProfileText reçoive undefined.
-  entity.extractVivierEntities.mockResolvedValue(ENTITIES);
+  // Défauts : extraction renvoie entités + titre ; variantes + embedding OK.
+  entity.extractVivierEntities.mockResolvedValue({
+    entities: ENTITIES,
+    title: 'Test Manager',
+  });
+  variants.runKeywordVariantsSuggestion.mockResolvedValue({
+    suggestedVariants: ['QA Lead', 'Responsable des tests'],
+  });
+  embeddings.embedText.mockResolvedValue({
+    vector: [0.1, 0.2],
+    provider: 'openai',
+    model: 'text-embedding-3-small',
+  });
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe('indexVivierCandidate', () => {
-  it('chemin nominal : embedding + entités + statut indexed', async () => {
+describe('indexVivierCandidate — refonte titre', () => {
+  it('chemin nominal : entités + titre + variantes + embedding titre ⇒ indexed', async () => {
     repo.getVivierCandidate.mockResolvedValue(candidate());
-    embeddings.embedText.mockResolvedValueOnce({
-      vector: [0.1, 0.2],
-      provider: 'openai',
-      model: 'text-embedding-3-small',
-    });
-    entity.extractVivierEntities.mockResolvedValueOnce(ENTITIES);
 
     const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
     const res = await indexVivierCandidate('VIV-0001');
 
     expect(res).toEqual({ status: 'indexed', error: null });
-    expect(repo.upsertVivierEmbedding).toHaveBeenCalledWith('VIV-0001', {
+    expect(repo.upsertVivierEntities).toHaveBeenCalledWith('VIV-0001', ENTITIES);
+    expect(repo.setVivierTitle).toHaveBeenCalledWith('VIV-0001', 'Test Manager', [
+      'QA Lead',
+      'Responsable des tests',
+    ]);
+    // Variantes générées à partir du titre.
+    expect(variants.runKeywordVariantsSuggestion.mock.calls[0][0].criterionLabel).toBe(
+      'Test Manager',
+    );
+    // Embedding du TITRE (pas du CV).
+    expect(embeddings.embedText).toHaveBeenCalledWith('Test Manager');
+    expect(repo.upsertVivierTitleEmbedding).toHaveBeenCalledWith('VIV-0001', {
       vector: [0.1, 0.2],
       provider: 'openai',
       model: 'text-embedding-3-small',
     });
-    expect(repo.upsertVivierEntities).toHaveBeenCalledWith('VIV-0001', ENTITIES);
-    expect(repo.setVivierIndexingStatus).toHaveBeenCalledWith(
-      'VIV-0001',
-      'indexed',
-      null,
-    );
   });
 
-  it('idempotent : deux exécutions successives ⇒ indexed les deux fois', async () => {
+  it('titre vide ⇒ ni variantes ni embedding titre, mais indexed', async () => {
     repo.getVivierCandidate.mockResolvedValue(candidate());
-    embeddings.embedText.mockResolvedValue({
-      vector: [0.1],
-      provider: 'openai',
-      model: 'text-embedding-3-small',
-    });
-    entity.extractVivierEntities.mockResolvedValue(ENTITIES);
-
-    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
-    const a = await indexVivierCandidate('VIV-0001');
-    const b = await indexVivierCandidate('VIV-0001');
-    expect(a.status).toBe('indexed');
-    expect(b.status).toBe('indexed');
-    expect(repo.upsertVivierEmbedding).toHaveBeenCalledTimes(2);
-  });
-
-  it('échec embedding ⇒ statut failed, pas d’upsert embedding', async () => {
-    repo.getVivierCandidate.mockResolvedValue(candidate());
-    embeddings.embedText.mockRejectedValueOnce(new Error('quota dépassé'));
-
-    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
-    const res = await indexVivierCandidate('VIV-0001');
-
-    expect(res.status).toBe('failed');
-    expect(res.error).toContain('quota dépassé');
-    expect(repo.upsertVivierEmbedding).not.toHaveBeenCalled();
-    expect(repo.setVivierIndexingStatus).toHaveBeenCalledWith(
-      'VIV-0001',
-      'failed',
-      expect.stringContaining('quota'),
-    );
-  });
-
-  it('échec upsert embedding (ex. dimension incompatible) ⇒ failed, jamais pending silencieux', async () => {
-    repo.getVivierCandidate.mockResolvedValue(candidate());
-    embeddings.embedText.mockResolvedValueOnce({
-      vector: [0.1, 0.2, 0.3],
-      provider: 'openai',
-      model: 'text-embedding-3-large',
-    });
-    // L'embedding est produit mais sa persistance échoue (ex. vecteur 3072
-    // dims rejeté par la colonne vector(1536)).
-    repo.upsertVivierEmbedding.mockRejectedValueOnce(
-      new Error('expected 1536 dimensions, not 3072'),
-    );
-
-    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
-    const res = await indexVivierCandidate('VIV-0001');
-
-    expect(res.status).toBe('failed');
-    expect(res.error).toContain('1536');
-    // Le dossier est repositionné failed (re-tentable), pas laissé pending.
-    expect(repo.setVivierIndexingStatus).toHaveBeenCalledWith(
-      'VIV-0001',
-      'failed',
-      expect.stringContaining('1536'),
-    );
-    // Les entités sont écrites AVANT l'embedding (réordonnancement profil
-    // distillé) : elles ont bien été persistées ; c'est l'upsert embedding qui
-    // échoue et fait basculer en failed.
-    expect(repo.upsertVivierEntities).toHaveBeenCalled();
-  });
-
-  it('échec entités (transport) ⇒ entités vides mais statut indexed (non bloquant)', async () => {
-    repo.getVivierCandidate.mockResolvedValue(candidate());
-    embeddings.embedText.mockResolvedValueOnce({
-      vector: [0.1],
-      provider: 'openai',
-      model: 'text-embedding-3-small',
-    });
-    entity.extractVivierEntities.mockRejectedValueOnce(new Error('timeout'));
+    entity.extractVivierEntities.mockResolvedValue({ entities: ENTITIES, title: null });
 
     const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
     const res = await indexVivierCandidate('VIV-0001');
 
     expect(res.status).toBe('indexed');
-    // Entités vides persistées malgré l'échec d'extraction.
-    expect(repo.upsertVivierEntities).toHaveBeenCalledWith('VIV-0001', {
-      technologies: [],
-      certifications: [],
-      diplomes: [],
-      secteurs: [],
-      langues: [],
-      experienceYears: null,
-      localisation: null,
-    });
+    expect(repo.setVivierTitle).toHaveBeenCalledWith('VIV-0001', null, []);
+    expect(variants.runKeywordVariantsSuggestion).not.toHaveBeenCalled();
+    expect(embeddings.embedText).not.toHaveBeenCalled();
+    expect(repo.upsertVivierTitleEmbedding).not.toHaveBeenCalled();
+  });
+
+  it('échec génération variantes ⇒ variantes vides, embedding titre quand même, indexed', async () => {
+    repo.getVivierCandidate.mockResolvedValue(candidate());
+    variants.runKeywordVariantsSuggestion.mockRejectedValueOnce(new Error('LLM down'));
+
+    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
+    const res = await indexVivierCandidate('VIV-0001');
+
+    expect(res.status).toBe('indexed');
+    expect(repo.setVivierTitle).toHaveBeenCalledWith('VIV-0001', 'Test Manager', []);
+    // Rapprochable par l'embedding titre malgré l'échec variantes.
+    expect(repo.upsertVivierTitleEmbedding).toHaveBeenCalled();
+  });
+
+  it('échec embedding titre ⇒ non bloquant, indexed (rapprochable par variantes)', async () => {
+    repo.getVivierCandidate.mockResolvedValue(candidate());
+    embeddings.embedText.mockRejectedValueOnce(new Error('embed timeout'));
+
+    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
+    const res = await indexVivierCandidate('VIV-0001');
+
+    expect(res.status).toBe('indexed');
+    expect(repo.setVivierTitle).toHaveBeenCalled();
+    expect(repo.upsertVivierTitleEmbedding).not.toHaveBeenCalled();
+  });
+
+  it('erreur de transport sur l’extraction ⇒ failed (re-tentable)', async () => {
+    repo.getVivierCandidate.mockResolvedValue(candidate());
+    entity.extractVivierEntities.mockRejectedValueOnce(new Error('boom réseau'));
+
+    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
+    const res = await indexVivierCandidate('VIV-0001');
+
+    expect(res.status).toBe('failed');
+    expect(res.error).toContain('boom réseau');
     expect(repo.setVivierIndexingStatus).toHaveBeenCalledWith(
       'VIV-0001',
-      'indexed',
-      null,
+      'failed',
+      expect.stringContaining('boom'),
     );
   });
 
-  it('CV sans texte ⇒ failed sans appel embedding', async () => {
+  it('CV sans texte ⇒ failed sans extraction', async () => {
     repo.getVivierCandidate.mockResolvedValue(candidate({ cvText: '   ' }));
     const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
     const res = await indexVivierCandidate('VIV-0001');
     expect(res.status).toBe('failed');
-    expect(embeddings.embedText).not.toHaveBeenCalled();
+    expect(entity.extractVivierEntities).not.toHaveBeenCalled();
   });
 
   it('dossier introuvable ⇒ failed sans mutation de statut', async () => {

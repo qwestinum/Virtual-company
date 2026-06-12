@@ -740,3 +740,29 @@ $$;
 -- Défaut applicatif (DEFAULT_VIVIER_CONFIG) appliqué au mapping si null.
 alter table public.app_settings
   add column if not exists vivier_config jsonb;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Refonte de la présélection sur le TITRE (cf. docs/specs/vivier.md §4)
+-- ──────────────────────────────────────────────────────────────────────
+-- Le dossier porte le TITRE du candidat (déclaré en tête de CV, repli sur le
+-- poste le plus récent) + ses VARIANTES générées par LLM. Servent au bloc 1
+-- (matching déterministe titre↔intitulé du poste).
+alter table public.vivier_candidates
+  add column if not exists title          text,
+  add column if not exists title_variants text[] not null default '{}';
+
+-- L'embedding full-CV (`embedding`) n'est PLUS régénéré : la présélection se
+-- fonde désormais sur l'embedding du TITRE seul. Les vecteurs full-CV déjà
+-- stockés sont CONSERVÉS (jamais supprimés, usages futurs) ⇒ la colonne devient
+-- NULLABLE (nouveaux dossiers sans full-CV). `provider`/`model` décrivent
+-- désormais l'embedding TITRE (l'espace vérifié par le garde-fou).
+alter table public.vivier_embeddings
+  alter column embedding drop not null,
+  alter column provider  drop not null,
+  alter column model     drop not null,
+  add column if not exists title_embedding vector(1536);
+
+-- Index HNSW cosinus sur l'embedding TITRE (tri du bloc 2). Les lignes à
+-- title_embedding null ne sont pas indexées (candidats sans titre exploitable).
+create index if not exists vivier_embeddings_title_hnsw_idx
+  on public.vivier_embeddings using hnsw (title_embedding vector_cosine_ops);

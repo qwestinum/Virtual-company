@@ -179,6 +179,8 @@ export type VivierCandidateRow = {
   cv_path: string | null;
   cv_file_name: string | null;
   cv_text: string | null;
+  title: string | null;
+  title_variants: string[];
   tags: string[];
   source: VivierSource;
   indexing_status: VivierIndexingStatus;

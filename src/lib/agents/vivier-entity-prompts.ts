@@ -16,6 +16,7 @@ export function buildVivierEntitySystemPrompt(): string {
     '',
     'Sortie : JSON STRICT, exactement ce schéma (aucun champ supplémentaire) :',
     '{',
+    '  "title": "<TITRE / fonction du candidat : l\'intitulé déclaré en tête de CV (« Ingénieur Qualité Logicielle », « Directeur Commercial »…). À défaut, l\'intitulé du POSTE LE PLUS RÉCENT du parcours. null si rien d\'exploitable. Ne l\'INVENTE pas.>",',
     '  "technologies": [<technologies / outils / frameworks / langages NOMMÉS dans le CV : « Java », « React », « JIRA », « Kubernetes »…>],',
     '  "certifications": [<certifications professionnelles NOMMÉES : « ISTQB », « PMP », « AWS Certified Solutions Architect », « TOEIC 900 »…>],',
     '  "diplomes": [<diplômes / titres académiques : « Master informatique », « BTS comptabilité », « Ingénieur ENSEEIHT »…>],',

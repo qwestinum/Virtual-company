@@ -37,10 +37,11 @@ describe('extractVivierEntities', () => {
   beforeEach(() => chatCompleteJsonMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
-  it('mappe une extraction valide et nettoie les listes', async () => {
+  it('mappe une extraction valide (entités + titre) et nettoie les listes', async () => {
     chatCompleteJsonMock.mockResolvedValueOnce(
       jsonResult({
         ...FULL,
+        title: '  Test Manager  ',
         technologies: ['Java', ' java ', 'React', ''],
         localisation: '  Paris  ',
       }),
@@ -48,19 +49,29 @@ describe('extractVivierEntities', () => {
     const { extractVivierEntities } = await import('@/lib/vivier/entity-extraction');
     const out = await extractVivierEntities('cv text', 'cv.pdf');
     // Déduplication insensible casse + trim + retrait des vides.
-    expect(out.technologies).toEqual(['Java', 'React']);
-    expect(out.certifications).toEqual(['ISTQB']);
-    expect(out.experienceYears).toBe(8);
-    expect(out.localisation).toBe('Paris');
+    expect(out.entities.technologies).toEqual(['Java', 'React']);
+    expect(out.entities.certifications).toEqual(['ISTQB']);
+    expect(out.entities.experienceYears).toBe(8);
+    expect(out.entities.localisation).toBe('Paris');
+    // Titre extrait + trim, routé séparément (pas dans les entités).
+    expect(out.title).toBe('Test Manager');
   });
 
-  it('échec de validation LLM ⇒ entités vides, sans lever (non bloquant)', async () => {
+  it('titre absent ⇒ title null (sans erreur)', async () => {
+    chatCompleteJsonMock.mockResolvedValueOnce(jsonResult({ ...FULL, title: null }));
+    const { extractVivierEntities } = await import('@/lib/vivier/entity-extraction');
+    const out = await extractVivierEntities('cv text', 'cv.pdf');
+    expect(out.title).toBeNull();
+  });
+
+  it('échec de validation LLM ⇒ entités vides + titre null, sans lever (non bloquant)', async () => {
     chatCompleteJsonMock.mockRejectedValueOnce(
       new AIValidationError('invalide', 3, null),
     );
     const { extractVivierEntities } = await import('@/lib/vivier/entity-extraction');
     const out = await extractVivierEntities('cv text', 'cv.pdf');
-    expect(out).toEqual({
+    expect(out.title).toBeNull();
+    expect(out.entities).toEqual({
       technologies: [],
       certifications: [],
       diplomes: [],

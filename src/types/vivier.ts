@@ -52,6 +52,10 @@ export type VivierCandidate = {
   /** Nom du fichier CV d'origine — contexte d'extraction d'entités (jamais l'id technique). */
   cvFileName: string | null;
   cvText: string | null;
+  /** Titre/fonction du candidat (déclaré ou repli sur le poste récent). Présélection sur le titre. */
+  title: string | null;
+  /** Variantes du titre générées par LLM (matching déterministe du bloc 1). */
+  titleVariants: string[];
   tags: string[];
   source: VivierSource;
   indexingStatus: VivierIndexingStatus;

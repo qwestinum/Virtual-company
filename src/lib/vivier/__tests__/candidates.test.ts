@@ -35,6 +35,8 @@ function candidate(overrides: Partial<VivierCandidate> = {}): VivierCandidate {
     cvPath: `vivier/${EXISTING_UUID}/cv.pdf`,
     cvFileName: 'jane.pdf',
     cvText: 'texte cv',
+    title: null,
+    titleVariants: [],
     tags: [],
     source: 'manual_upload',
     indexingStatus: 'indexed',
