@@ -12,6 +12,12 @@ export type InvitationVars = {
   prenom: string;
   jobTitle: string;
   campaignName: string;
+  /**
+   * Référence de la campagne (identifiant CAMP-XXXX) à QUOTER EN OBJET par le
+   * candidat : c'est elle, et non le nom, que le système cherche dans l'objet
+   * pour rattacher la candidature à la campagne. Indispensable.
+   */
+  reference: string;
   /** Adresse où le candidat envoie sa candidature ([adresse de réception]). */
   receptionAddress: string;
   organisation: string;
@@ -28,6 +34,7 @@ export function renderVivierInvitation(
     .replaceAll('[prénom]', vars.prenom)
     .replaceAll('[intitulé du poste]', vars.jobTitle)
     .replaceAll('[nom de la campagne]', vars.campaignName)
+    .replaceAll('[référence]', vars.reference)
     .replaceAll('[adresse de réception]', vars.receptionAddress)
     .replaceAll('[Organisation]', vars.organisation);
   return `${body}\n\n${buildVivierRgpdMention(vars.rgpdContact)}`;

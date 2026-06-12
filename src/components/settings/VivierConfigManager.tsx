@@ -86,9 +86,10 @@ export function VivierConfigManager({
           className="w-full rounded-md border border-stone-200 px-3 py-2 font-mono text-[12px] text-stone-700 outline-none focus:border-emerald-400"
         />
         <span className="text-[11px] text-stone-400">
-          Variables : [prénom], [intitulé du poste], [nom de la campagne],
-          [adresse de réception], [Organisation]. La mention RGPD est ajoutée
-          automatiquement.
+          Variables : [prénom], [intitulé du poste], [référence] (l’ID campagne
+          à quoter en objet — indispensable au rattachement), [nom de la
+          campagne], [adresse de réception], [Organisation]. La mention RGPD est
+          ajoutée automatiquement.
         </span>
       </label>
 

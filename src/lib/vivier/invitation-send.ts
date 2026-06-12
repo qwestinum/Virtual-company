@@ -67,6 +67,8 @@ export async function sendVivierInvitation(
     prenom: candidate.prenom?.trim() || firstName(candidate.nom),
     jobTitle: jobTitleOf(campaign.fdp),
     campaignName: campaign.name,
+    // Référence à quoter en objet = l'ID campagne (ce que le poller matche).
+    reference: campaign.id,
     receptionAddress: intake || '(adresse de réception à configurer)',
     organisation: config.organisationName.trim() || 'L’équipe recrutement',
     rgpdContact,
