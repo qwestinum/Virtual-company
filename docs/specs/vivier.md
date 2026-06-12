@@ -279,3 +279,25 @@ Câblé dans l'étape 4 de la présélection : **contacté ⇒ cooldown GLOBAL**
 Deux causes de profils hors-sujet corrigées. **(a) Embedding symétrique.** On n'embedde plus le CV brut entier (document long, dominé par du générique) mais un **profil distillé** (`profile-text.ts`) : tête du CV (titre/résumé) + relevé d'entités structurées — court, centré métier, de « forme » comparable à la requête de présélection. Les entités sont donc extraites AVANT l'embedding à l'indexation. **Un changement de cette représentation impose un `reindex:vivier`.** **(b) Math du ranking.** `relevanceScore = similarité` (la pertinence prime) ; la fraîcheur n'est plus un multiplicateur (qui pouvait inverser un écart de similarité) mais un **départage léger** borné. Et un **plancher de similarité** (`SIMILARITY_FLOOR`) écarte les dossiers non pertinents plutôt que de remplir le plafond de bruit (compteur `belowFloor` exposé).
 
 **Affinage (itération pertinence).** Quatre leviers actionnés : (1) **modèle** — `embedText` force `dimensions: 1536` pour les modèles `text-embedding-3-*`, ce qui permet `OPENAI_EMBEDDING_MODEL=text-embedding-3-large` (bien plus discriminant) tout en RENTRANT dans la colonne `vector(1536)` ; (2) **requête resserrée** — `QUERY_FIELDS` réduit à `job_title`+`seniority`+`key_skills` (+ libellés de critères) ; on exclut `main_missions` (prose générique) et `location` ; (3) **profil resserré** — tête de CV réduite (`PROFILE_CV_HEAD_CHARS = 500`) et entités placées EN TÊTE pour qu'elles pèsent ; (4) **plancher réglable** — `vivierConfig.similarityFloor` (Settings), à calibrer sur le corpus. Tout changement de modèle/représentation (1) et (3) impose un `reindex:vivier`.
+
+## 14. Refonte de la présélection sur le TITRE
+
+L'approche full-CV (embedding du CV entier ⇄ requête courte) classait des profils hors-domaine en tête (un directeur commercial sur « test manager ») : asymétrie de forme, cosinus non discriminant. On la **remplace** par un rapprochement **titre candidat ⇄ intitulé du poste**.
+
+### 14.1. Indexation (signaux de titre)
+
+Au même appel LLM que les entités, on extrait le **TITRE** du candidat (déclaré en tête de CV, repli sur le poste le plus récent, sinon null). Sur le dossier : `title` + **variantes** générées par LLM (`runKeywordVariantsSuggestion`, non bloquant ⇒ vide à l'échec) + **embedding du titre seul** (`title_embedding`, distinct). On **n'embedde plus le CV entier** : la colonne `embedding` full-CV devient nullable, n'est plus régénérée, mais les vecteurs existants sont **conservés** (usages futurs). Titre vide ⇒ ni variantes ni embedding (candidat absent de la présélection titre, sans erreur).
+
+### 14.2. Cascade en deux blocs, volume piloté par la pertinence
+
+- **Bloc 1 — déterministe** (en tête) : variantes du titre candidat ∩ {intitulé du poste} ∪ {variantes de l'intitulé, générées à la présélection}. Toute intersection ⇒ inclus, **sans limite**. Terme matché = explication (« correspondance de titre · QA Lead »).
+- **Bloc 2 — sémantique titre-à-titre** : pour les non-retenus, cosinus(embedding intitulé, `title_embedding`) via RPC `match_vivier_titles`. **≥ seuil ⇒ inclus** (triés décroissant) ; **< seuil ⇒ exclus**.
+- **Fusion** : bloc 1 puis bloc 2. Rang 1..N, **PAS de plafond**. Fraîcheur en départage léger. Exclusions (§6/§7) sur les deux blocs. **Liste vide = réponse valide** (état vide explicite, pas de remplissage forcé).
+
+### 14.3. Le seuil — paramètre de CALIBRATION
+
+En l'absence de plafond, le seuil du bloc 2 est le **seul critère d'inclusion** : sa valeur conditionne la qualité de la short-list. Porté par `vivierConfig.similarityFloor` (Settings, **réglable sans refactor**). **Valeur de départ 0,55, à affiner empiriquement** — ce n'est PAS une valeur définitive. Calibration : `npm run vivier:title-distribution -- <campaignId>` imprime la distribution des similarités titre-à-titre (meilleur → pire) ; fixer le seuil dans le **creux** entre vrais profils et hors-sujet.
+
+### 14.4. Recherche libre & garde-fou
+
+Recherche libre = bloc 2 sémantique seul (texte embeddé ⇄ titres), éphémère. Le **garde-fou d'espace d'embeddings** s'applique aux `title_embedding` : si le modèle de la requête ≠ celui des titres indexés, on échoue FORT (`embedding_model_mismatch`) au lieu de classer au hasard. Tout changement de modèle ⇒ `reindex:vivier` + redémarrage serveur.
