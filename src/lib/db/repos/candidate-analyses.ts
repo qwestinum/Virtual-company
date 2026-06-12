@@ -82,6 +82,28 @@ export type CandidateAnalysisInsert = {
  * pas configuré, `requireServerSupabase` lève `SupabaseNotConfiguredError`
  * — l'appelant l'attrape silencieusement (démo locale).
  */
+/**
+ * Dernière candidature (la plus récente) d'un email donné — campagne visée +
+ * date. Sert à afficher « dernier poste visé » d'un candidat vivier (dérivé,
+ * non stocké sur le dossier). Renvoie null si l'email n'a jamais postulé.
+ */
+export async function getLatestApplicationByEmail(
+  email: string,
+): Promise<{ campaignId: string | null; receivedAt: string } | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('campaign_id, received_at')
+    .eq('candidate_email', email)
+    .order('received_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getLatestApplicationByEmail: ${error.message}`);
+  if (!data) return null;
+  const row = data as { campaign_id: string | null; received_at: string };
+  return { campaignId: row.campaign_id, receivedAt: row.received_at };
+}
+
 export async function insertCandidateAnalysis(
   input: CandidateAnalysisInsert,
 ): Promise<void> {

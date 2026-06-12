@@ -18,6 +18,7 @@ type Detail = {
   tags: string[];
   cvFileName: string | null;
   cvText: string | null;
+  lastApplication: { jobTitle: string; at: string } | null;
   history: {
     campaignId: string;
     state: 'identified' | 'contacted' | 'rejected';
@@ -69,6 +70,7 @@ export function VivierValidationRow({
             tags: d.candidate?.tags ?? [],
             cvFileName: d.candidate?.cvFileName ?? null,
             cvText: d.candidate?.cvText ?? null,
+            lastApplication: d.lastApplication ?? null,
             history: d.history ?? [],
           });
         }
@@ -143,6 +145,16 @@ export function VivierValidationRow({
 
       {open ? (
         <div className="border-t border-stone-100 px-3 py-3 font-body text-[12px] text-stone-600">
+          {detail?.lastApplication ? (
+            <p className="mb-1">
+              <span className="font-semibold">Dernier poste visé : </span>
+              {detail.lastApplication.jobTitle}
+              <span className="text-stone-400">
+                {' '}
+                (candidature {freshnessLabel(detail.lastApplication.at)})
+              </span>
+            </p>
+          ) : null}
           <p className="mb-1 text-stone-500">
             Similarité {Math.round(entry.similarity * 100)}% · fraîcheur ×
             {entry.freshnessFactor.toFixed(2)}
