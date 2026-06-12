@@ -2,14 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { buildEmptyFDP } from '@/types/field-collection';
-import { buildCriterion, type ScoringSheet } from '@/types/scoring';
-import { EMPTY_VIVIER_ENTITIES, type VivierEntities } from '@/types/vivier';
-import type { IndexedVivierCandidate } from '@/lib/db/repos/vivier';
+import type { IndexedVivierTitle } from '@/lib/db/repos/vivier';
 
 const campaigns = { getCampaign: vi.fn() };
 const vivierRepo = {
-  listIndexedVivierEntities: vi.fn(),
-  matchVivierCandidates: vi.fn(),
+  listIndexedVivierTitles: vi.fn(),
+  matchVivierTitles: vi.fn(),
   listDistinctEmbeddingModels: vi.fn(),
 };
 const analyses = { listCandidateAnalyses: vi.fn() };
@@ -20,6 +18,7 @@ const presel = {
 };
 const settings = { getAppSettings: vi.fn() };
 const ai = { embedText: vi.fn() };
+const variants = { runKeywordVariantsSuggestion: vi.fn() };
 
 vi.mock('@/lib/db/repos/campaigns', () => campaigns);
 vi.mock('@/lib/db/repos/vivier', () => vivierRepo);
@@ -27,20 +26,16 @@ vi.mock('@/lib/db/repos/candidate-analyses', () => analyses);
 vi.mock('@/lib/db/repos/vivier-preselection', () => presel);
 vi.mock('@/lib/db/repos/app-settings', () => settings);
 vi.mock('@/lib/ai/embeddings', () => ai);
+vi.mock('@/lib/agents/server/keyword-variants-execute', () => variants);
 vi.mock('@/lib/vivier/candidates', () => ({
   normalizeEmail: (s: string) => s.trim().toLowerCase(),
 }));
 
 const NOW = Date.parse('2027-06-15T00:00:00Z');
 
-function sheet(criteria: ScoringSheet['criteria'] = []): ScoringSheet {
-  return { campaignId: 'CAMP-1', isValidated: true, criteria };
-}
-
-/** FDP avec un intitulé renseigné (texte de requête sémantique non vide). */
-function fdpWithTitle() {
+function fdpWithTitle(title: string) {
   const fdp = buildEmptyFDP('CAMP-1');
-  fdp.fields.job_title = { ...fdp.fields.job_title, value: 'Développeur' };
+  fdp.fields.job_title = { ...fdp.fields.job_title, value: title };
   return fdp;
 }
 
@@ -49,371 +44,201 @@ function campaign(over: Partial<ActiveCampaign> = {}): ActiveCampaign {
     id: 'CAMP-1',
     name: 'Camp',
     sources: ['vivier'],
-    scoringSheet: sheet(),
-    fdp: fdpWithTitle(),
+    fdp: fdpWithTitle('Test Manager'),
     ...over,
   } as unknown as ActiveCampaign;
 }
 
 function cand(
   id: string,
-  over: Partial<IndexedVivierCandidate> = {},
-): IndexedVivierCandidate {
+  over: Partial<IndexedVivierTitle> = {},
+): IndexedVivierTitle {
   return {
     id,
     nom: id,
     email: `${id}@x.com`,
     updatedAt: '2027-06-01T00:00:00Z',
-    entities: { ...EMPTY_VIVIER_ENTITIES },
+    title: null,
+    titleVariants: [],
     ...over,
   };
 }
 
-function ent(over: Partial<VivierEntities>): VivierEntities {
-  return { ...EMPTY_VIVIER_ENTITIES, ...over };
-}
-
 beforeEach(() => {
-  [campaigns, vivierRepo, analyses, presel, settings, ai].forEach((m) =>
+  [campaigns, vivierRepo, analyses, presel, settings, ai, variants].forEach((m) =>
     Object.values(m).forEach((f) => f.mockReset()),
   );
+  campaigns.getCampaign.mockResolvedValue(campaign());
   analyses.listCandidateAnalyses.mockResolvedValue([]);
   presel.replacePreselection.mockResolvedValue(undefined);
   presel.listContactedEmailsSince.mockResolvedValue([]);
   presel.listRejectedEmailsForCampaign.mockResolvedValue([]);
-  settings.getAppSettings.mockResolvedValue(null); // → DEFAULT_VIVIER_CONFIG
+  settings.getAppSettings.mockResolvedValue(null); // → DEFAULT (similarityFloor 0.55)
   ai.embedText.mockResolvedValue({
     vector: [0.1, 0.2],
     provider: 'openai',
     model: 'text-embedding-3-small',
   });
-  // Par défaut : pas d'embeddings stockés ⇒ garde-fou d'espace inactif.
-  vivierRepo.listDistinctEmbeddingModels.mockResolvedValue([]);
+  vivierRepo.listDistinctEmbeddingModels.mockResolvedValue([]); // garde-fou inactif
+  vivierRepo.matchVivierTitles.mockResolvedValue(new Map());
+  // Variantes de l'intitulé « Test Manager ».
+  variants.runKeywordVariantsSuggestion.mockResolvedValue({
+    suggestedVariants: ['QA Manager', 'QA Lead', 'Responsable des tests'],
+  });
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe('runVivierPreselection — cascade', () => {
-  it('tri sémantique : classement par similarité décroissante + rangs', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
-      cand('c1'),
-      cand('c2'),
-      cand('c3'),
+describe('runVivierPreselection — cascade titre', () => {
+  it('bloc 1 déterministe : variante du titre qui matche ressort, hors-domaine non', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([
+      cand('qaLead', { title: 'QA Lead' }),
+      cand('dirCom', { title: 'Directeur Commercial', titleVariants: ['Sales Director'] }),
     ]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
-      new Map([
-        ['c1', 0.9],
-        ['c2', 0.5],
-        ['c3', 0.8],
-      ]),
-    );
+    vivierRepo.matchVivierTitles.mockResolvedValue(new Map([['dirCom', 0.2]])); // < seuil
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
+    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
 
-    expect(res.map((e) => e.candidateId)).toEqual(['c1', 'c3', 'c2']);
-    expect(res.map((e) => e.rank)).toEqual([1, 2, 3]);
+    expect(entries.map((e) => e.candidateId)).toEqual(['qaLead']);
+    expect(entries[0].matchKind).toBe('title_exact');
+    expect(entries[0].matchTerm).toBe('QA Lead');
+    expect(meta.deterministicCount).toBe(1);
   });
 
-  it('la pertinence prime : un dossier ancien mais plus pertinent reste devant un récent moins pertinent', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
-      cand('old', { updatedAt: '2020-01-01T00:00:00Z' }),
-      cand('recent', { updatedAt: '2027-06-01T00:00:00Z' }),
+  it('non-régression métier : « Directeur Commercial » sort, QA/Test ressortent', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([
+      cand('dirCom', { title: 'Directeur Commercial' }),
+      cand('qaLead', { title: 'QA Lead' }), // bloc 1 (variante)
+      cand('testMgr', { title: 'Test Manager' }), // bloc 1 (exact)
+      cand('qaEng', { title: 'Ingénieur QA' }), // bloc 2 (sémantique)
     ]);
-    // 'old' est nettement plus pertinent ; la fraîcheur ne doit plus l'inverser.
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
+    // Bloc 2 : dirCom loin, qaEng proche.
+    vivierRepo.matchVivierTitles.mockResolvedValue(
       new Map([
-        ['old', 0.8],
-        ['recent', 0.6],
+        ['dirCom', 0.22],
+        ['qaEng', 0.74],
       ]),
     );
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
     const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
 
-    expect(entries.map((e) => e.candidateId)).toEqual(['old', 'recent']);
-    // relevanceScore ≈ similarité (nudge de fraîcheur borné).
-    expect(entries[0].relevanceScore).toBeCloseTo(0.8 - 0.05 * 0.5, 5);
+    const ids = entries.map((e) => e.candidateId);
+    expect(ids).not.toContain('dirCom'); // le directeur commercial disparaît
+    expect(ids).toContain('qaLead');
+    expect(ids).toContain('testMgr');
+    expect(ids).toContain('qaEng');
+    // Déterministes (bloc 1) en tête, sémantique (bloc 2) à la suite.
+    expect(ids.slice(0, 2).sort()).toEqual(['qaLead', 'testMgr']);
+    expect(ids[ids.length - 1]).toBe('qaEng');
   });
 
-  it('la fraîcheur ne fait que départager à similarité égale', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
-      cand('old', { updatedAt: '2020-01-01T00:00:00Z' }),
-      cand('recent', { updatedAt: '2027-06-01T00:00:00Z' }),
+  it('bloc 2 : au-dessus du seuil inclus et classés décroissant ; sous le seuil exclus', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([
+      cand('a'),
+      cand('b'),
+      cand('c'),
     ]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
+    variants.runKeywordVariantsSuggestion.mockResolvedValue({ suggestedVariants: [] }); // pas de bloc 1
+    vivierRepo.matchVivierTitles.mockResolvedValue(
       new Map([
-        ['old', 0.7],
-        ['recent', 0.7],
+        ['a', 0.6],
+        ['b', 0.8],
+        ['c', 0.4], // < 0.55
       ]),
+    );
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    expect(entries.map((e) => e.candidateId)).toEqual(['b', 'a']);
+    expect(entries.every((e) => e.matchKind === 'title_semantic')).toBe(true);
+    expect(meta.belowThreshold).toBe(1);
+  });
+
+  it('pas de doublon entre blocs : un candidat matché au bloc 1 n’est pas re-testé au bloc 2', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([cand('qaLead', { title: 'QA Lead' })]);
+    // Même si la RPC renverrait une similarité, qaLead est déjà au bloc 1.
+    vivierRepo.matchVivierTitles.mockResolvedValue(new Map([['qaLead', 0.9]]));
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    expect(entries.map((e) => e.candidateId)).toEqual(['qaLead']);
+    expect(entries[0].matchKind).toBe('title_exact');
+    // La RPC n'est appelée qu'avec les NON-retenus du bloc 1 (ici aucun).
+    expect(vivierRepo.matchVivierTitles.mock.calls[0][1]).toEqual([]);
+  });
+
+  it('volume piloté par la pertinence : aucune troncature à un plafond', async () => {
+    const many = Array.from({ length: 60 }, (_, i) => cand(`c${i}`));
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue(many);
+    variants.runKeywordVariantsSuggestion.mockResolvedValue({ suggestedVariants: [] });
+    vivierRepo.matchVivierTitles.mockResolvedValue(
+      new Map(many.map((c) => [c.id, 0.7])),
     );
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
     const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
 
-    // Similarité égale ⇒ le plus frais devant (départage).
-    expect(entries.map((e) => e.candidateId)).toEqual(['recent', 'old']);
-    expect(entries[1].freshnessFactor).toBe(0.5);
+    expect(entries).toHaveLength(60); // pas de cap à 50
   });
 
-  it('plancher de pertinence : un candidat sous le seuil de similarité est écarté', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
-      cand('good'),
-      cand('weak'),
+  it('rien de pertinent ⇒ short-list vide (réponse valide)', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([
+      cand('x', { title: 'Boulanger' }),
     ]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
-      new Map([
-        ['good', 0.6],
-        ['weak', 0.1], // sous SIMILARITY_FLOOR
-      ]),
-    );
+    vivierRepo.matchVivierTitles.mockResolvedValue(new Map([['x', 0.1]]));
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
-
-    expect(entries.map((e) => e.candidateId)).toEqual(['good']);
-    expect(meta.belowFloor).toBe(1);
-  });
-
-  it('filtres durs : élimine les non conformes, n’embedde que les survivants', async () => {
-    campaigns.getCampaign.mockResolvedValue(
-      campaign({
-        scoringSheet: sheet([
-          buildCriterion({
-            id: 'k',
-            label: 'Java',
-            level: 'redhibitoire',
-            verificationMethod: 'keywords_exact',
-            keywords: ['Java'],
-          }),
-        ]),
-      }),
-    );
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
-      cand('java', { entities: ent({ technologies: ['Java'] }) }),
-      cand('python', { entities: ent({ technologies: ['Python'] }) }),
-    ]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(new Map([['java', 0.7]]));
-
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
-
-    expect(res.map((e) => e.candidateId)).toEqual(['java']);
-    expect(res[0].passedFilters[0].matchedTerms).toEqual(['Java']);
-    // Seuls les survivants du filtre dur sont passés à la RPC sémantique.
-    expect(vivierRepo.matchVivierCandidates.mock.calls[0][1]).toEqual(['java']);
-  });
-
-  it('repli sémantique : si les filtres durs écartent tout, on classe l’ensemble (signalé)', async () => {
-    campaigns.getCampaign.mockResolvedValue(
-      campaign({
-        scoringSheet: sheet([
-          buildCriterion({
-            id: 'k',
-            label: 'Java',
-            level: 'redhibitoire',
-            verificationMethod: 'keywords_exact',
-            keywords: ['Java'],
-          }),
-        ]),
-      }),
-    );
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
-      cand('python', { entities: ent({ technologies: ['Python'] }) }),
-    ]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(new Map([['python', 0.6]]));
-
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
-
-    // Personne ne passe le filtre dur, mais pas d'écran vide : repli sémantique
-    // sur tout l'indexé (sans filtre dur ⇒ passedFilters vide), signalé.
-    expect(entries.map((e) => e.candidateId)).toEqual(['python']);
-    expect(entries[0].passedFilters).toEqual([]);
-    expect(meta.fallbackSemantic).toBe(true);
-    expect(meta.eliminatedByHardFilters).toBe(1);
-    expect(ai.embedText).toHaveBeenCalled();
-  });
-
-  it('vivier vide ⇒ short-list vide, pas d’embedding ni de repli', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([]);
-
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
-
+    const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
     expect(entries).toEqual([]);
-    expect(meta.fallbackSemantic).toBe(false);
-    expect(ai.embedText).not.toHaveBeenCalled();
   });
 
-  it('exclusion : un candidat déjà candidat sur la campagne (email) est écarté', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([
-      cand('c1'),
-      cand('c2'),
+  it('exclusion : un candidat déjà candidat (email) est écarté des deux blocs', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([
+      cand('qaLead', { title: 'QA Lead' }),
     ]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
-      new Map([
-        ['c1', 0.9],
-        ['c2', 0.8],
-      ]),
-    );
     analyses.listCandidateAnalyses.mockResolvedValue([
-      { candidateEmail: 'C1@x.com' }, // casse différente : normalisé
+      { candidateEmail: 'QALEAD@x.com' },
     ]);
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
-
-    expect(res.map((e) => e.candidateId)).toEqual(['c2']);
+    const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
+    expect(entries).toEqual([]);
   });
 
-  it('cooldown global : un candidat contacté récemment (autre campagne) est exclu', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1'), cand('c2')]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
-      new Map([
-        ['c1', 0.9],
-        ['c2', 0.8],
-      ]),
-    );
-    presel.listContactedEmailsSince.mockResolvedValue(['c1@x.com']);
+  it('recherche libre : bloc 2 sémantique seul (pas de déterministe)', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([cand('a', { title: 'QA Lead' })]);
+    vivierRepo.matchVivierTitles.mockResolvedValue(new Map([['a', 0.7]]));
 
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
-    expect(res.map((e) => e.candidateId)).toEqual(['c2']);
-  });
-
-  it('rejeté pour cette campagne ⇒ exclu de cette campagne', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1'), cand('c2')]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
-      new Map([
-        ['c1', 0.9],
-        ['c2', 0.8],
-      ]),
-    );
-    presel.listRejectedEmailsForCampaign.mockResolvedValue(['c1@x.com']);
-
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
-    expect(res.map((e) => e.candidateId)).toEqual(['c2']);
-  });
-
-  it('échéance cooldown : fenêtre = now − cooldownDays (défaut 90 j)', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1')]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(new Map([['c1', 0.9]]));
-
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    await runVivierPreselection('CAMP-1', { now: NOW });
-
-    const expected = new Date(NOW - 90 * 24 * 60 * 60 * 1000).toISOString();
-    expect(presel.listContactedEmailsSince).toHaveBeenCalledWith(expected);
-  });
-
-  it('plafond appliqué depuis les settings (remplace la constante V2)', async () => {
-    settings.getAppSettings.mockResolvedValue({
-      vivierConfig: {
-        contactMode: 'manual',
-        invitationTemplate: 't',
-        cooldownDays: 90,
-        shortlistCap: 2,
-        similarityFloor: 0.2,
-        organisationName: '',
-      },
-    });
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    const many = [cand('c1'), cand('c2'), cand('c3')];
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue(many);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
-      new Map([
-        ['c1', 0.9],
-        ['c2', 0.8],
-        ['c3', 0.7],
-      ]),
-    );
-
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
-    expect(res).toHaveLength(2);
-    expect(res.map((e) => e.candidateId)).toEqual(['c1', 'c2']);
-  });
-
-  it('plafonne la short-list au défaut (50) sans settings', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    const many = Array.from({ length: 55 }, (_, i) => cand(`c${i}`));
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue(many);
-    // Tous au-dessus du plancher (sinon le plancher les couperait avant le plafond).
-    vivierRepo.matchVivierCandidates.mockResolvedValue(
-      new Map(many.map((c) => [c.id, 0.5])),
-    );
-
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    const { entries: res } = await runVivierPreselection('CAMP-1', { now: NOW });
-
-    expect(res).toHaveLength(50);
-    expect(res[49].rank).toBe(50);
-  });
-
-  it('recherche libre : embedde le texte saisi (cascade identique)', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1')]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(new Map([['c1', 0.9]]));
-
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    await runVivierPreselection('CAMP-1', {
+    const { entries } = await runVivierPreselection('CAMP-1', {
       now: NOW,
-      freeText: 'profil devops senior bancaire',
+      freeText: 'profil QA senior bancaire',
     });
 
-    expect(ai.embedText).toHaveBeenCalledWith('profil devops senior bancaire');
-    // La recherche libre ne persiste rien (l'appelant gère).
-    expect(presel.replacePreselection).not.toHaveBeenCalled();
+    expect(ai.embedText).toHaveBeenCalledWith('profil QA senior bancaire');
+    expect(variants.runKeywordVariantsSuggestion).not.toHaveBeenCalled();
+    expect(entries.map((e) => e.candidateId)).toEqual(['a']);
+    expect(entries[0].matchKind).toBe('title_semantic');
   });
 
-  it('garde : source Vivier non cochée ⇒ PreselectionError', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign({ sources: ['email'] }));
-    const { runVivierPreselection, PreselectionError } = await import(
-      '@/lib/vivier/preselection'
-    );
-    await expect(runVivierPreselection('CAMP-1')).rejects.toBeInstanceOf(
-      PreselectionError,
-    );
-  });
-
-  it('garde : fiche non validée ⇒ PreselectionError', async () => {
-    campaigns.getCampaign.mockResolvedValue(
-      campaign({ scoringSheet: { ...sheet(), isValidated: false } }),
-    );
+  it('garde : intitulé de poste manquant ⇒ no_job_title', async () => {
+    campaigns.getCampaign.mockResolvedValue(campaign({ fdp: buildEmptyFDP('CAMP-1') }));
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
     await expect(runVivierPreselection('CAMP-1')).rejects.toMatchObject({
-      code: 'no_validated_sheet',
+      code: 'no_job_title',
     });
   });
 
-  it('garde : campagne introuvable ⇒ PreselectionError', async () => {
-    campaigns.getCampaign.mockResolvedValue(null);
-    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
-    await expect(runVivierPreselection('CAMP-1')).rejects.toMatchObject({
-      code: 'campaign_not_found',
-    });
-  });
-
-  it('garde : modèle de requête ≠ modèle des dossiers ⇒ embedding_model_mismatch (pas de tri au hasard)', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1')]);
-    // La requête est embeddée en 3-large…
+  it('garde : espace d’embeddings incohérent ⇒ embedding_model_mismatch', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([cand('a', { title: 'QA' })]);
     ai.embedText.mockResolvedValue({
-      vector: [0.1, 0.2],
+      vector: [0.1],
       provider: 'openai',
       model: 'text-embedding-3-large',
     });
-    // …mais les dossiers sont indexés en 3-small ⇒ espaces incomparables.
     vivierRepo.listDistinctEmbeddingModels.mockResolvedValue([
       'openai|text-embedding-3-small',
     ]);
@@ -422,23 +247,17 @@ describe('runVivierPreselection — cascade', () => {
     await expect(runVivierPreselection('CAMP-1', { now: NOW })).rejects.toMatchObject(
       { code: 'embedding_model_mismatch' },
     );
-    // On n'a PAS classé au hasard : la RPC sémantique n'est pas appelée.
-    expect(vivierRepo.matchVivierCandidates).not.toHaveBeenCalled();
   });
 });
 
 describe('runAndPersistPreselection', () => {
-  it('persiste la short-list calculée (relance idempotente déléguée au repo)', async () => {
-    campaigns.getCampaign.mockResolvedValue(campaign());
-    vivierRepo.listIndexedVivierEntities.mockResolvedValue([cand('c1')]);
-    vivierRepo.matchVivierCandidates.mockResolvedValue(new Map([['c1', 0.9]]));
+  it('persiste la short-list calculée', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([cand('qaLead', { title: 'QA Lead' })]);
 
-    const { runAndPersistPreselection } = await import(
-      '@/lib/vivier/preselection'
-    );
+    const { runAndPersistPreselection } = await import('@/lib/vivier/preselection');
     const { entries } = await runAndPersistPreselection('CAMP-1', { now: NOW });
 
     expect(presel.replacePreselection).toHaveBeenCalledWith('CAMP-1', entries);
-    expect(entries.map((e) => e.candidateId)).toEqual(['c1']);
+    expect(entries.map((e) => e.candidateId)).toEqual(['qaLead']);
   });
 });

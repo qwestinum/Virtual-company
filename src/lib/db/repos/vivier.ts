@@ -396,15 +396,83 @@ export async function upsertVivierEntities(
  */
 export async function listDistinctEmbeddingModels(): Promise<string[]> {
   const supabase = requireServerSupabase();
+  // Refonte titre : l'espace vérifié est celui des embeddings de TITRE (le seul
+  // utilisé par la présélection). On ignore les lignes full-CV legacy.
   const { data, error } = await supabase
     .from(EMBEDDINGS_TABLE)
-    .select('provider, model');
+    .select('provider, model')
+    .not('title_embedding', 'is', null);
   if (error) throw new Error(`listDistinctEmbeddingModels: ${error.message}`);
   const set = new Set<string>();
   for (const r of (data ?? []) as { provider: string; model: string }[]) {
     set.add(`${r.provider}|${r.model}`);
   }
   return [...set];
+}
+
+/** Un dossier INDEXÉ avec son TITRE + variantes + fraîcheur (présélection titre). */
+export type IndexedVivierTitle = {
+  id: string;
+  nom: string;
+  email: string;
+  updatedAt: string;
+  title: string | null;
+  titleVariants: string[];
+};
+
+/**
+ * Liste les dossiers INDEXÉS avec titre/variantes/fraîcheur — base de la
+ * présélection titre (bloc 1 déterministe ; le bloc 2 passe les survivants à
+ * `matchVivierTitles`). pending/failed exclus.
+ */
+export async function listIndexedVivierTitles(): Promise<IndexedVivierTitle[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('id, nom, email, updated_at, title, title_variants')
+    .eq('indexing_status', 'indexed');
+  if (error) throw new Error(`listIndexedVivierTitles: ${error.message}`);
+  return ((data ?? []) as {
+    id: string;
+    nom: string;
+    email: string;
+    updated_at: string;
+    title: string | null;
+    title_variants: string[] | null;
+  }[]).map((r) => ({
+    id: r.id,
+    nom: r.nom,
+    email: r.email,
+    updatedAt: r.updated_at,
+    title: r.title ?? null,
+    titleVariants: r.title_variants ?? [],
+  }));
+}
+
+/**
+ * Tri titre-à-titre (bloc 2) : similarité cosinus entre l'embedding de
+ * l'intitulé du poste et les embeddings de TITRE des candidats `candidateIds`.
+ * RPC `match_vivier_titles`. Map candidateId → similarité.
+ */
+export async function matchVivierTitles(
+  queryEmbedding: number[],
+  candidateIds: string[],
+): Promise<Map<string, number>> {
+  if (candidateIds.length === 0) return new Map();
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase.rpc('match_vivier_titles', {
+    query_embedding: toVectorLiteral(queryEmbedding),
+    candidate_ids: candidateIds,
+  });
+  if (error) throw new Error(`matchVivierTitles: ${error.message}`);
+  const map = new Map<string, number>();
+  for (const row of (data ?? []) as {
+    candidate_id: string;
+    similarity: number;
+  }[]) {
+    map.set(row.candidate_id, row.similarity);
+  }
+  return map;
 }
 
 /** Métadonnées (provider/model) de l'embedding — détection d'incohérence au reindex. */

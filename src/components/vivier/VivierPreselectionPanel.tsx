@@ -19,10 +19,9 @@ import { VivierPreselectionRow } from './VivierPreselectionRow';
 type Mode = 'fiche' | 'libre';
 type Meta = {
   indexedCount: number;
-  survivors: number;
-  eliminatedByHardFilters: number;
-  belowFloor: number;
-  fallbackSemantic: boolean;
+  deterministicCount: number;
+  semanticCount: number;
+  belowThreshold: number;
 };
 
 export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) {
@@ -135,29 +134,18 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
         <p className="font-body text-[12px] text-rose-600">{error}</p>
       ) : null}
 
-      {/* Transparence du run : combien écartés par les filtres durs + repli. */}
+      {/* Transparence du run : origine des matchs + écartés sous le seuil. */}
       {meta && mode === 'fiche' ? (
-        meta.fallbackSemantic ? (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12px] text-amber-800">
-            Aucun candidat ne passe <strong>tous</strong> les critères durs
-            ({meta.eliminatedByHardFilters} dossier
-            {meta.eliminatedByHardFilters > 1 ? 's' : ''} écarté
-            {meta.eliminatedByHardFilters > 1 ? 's' : ''} sur {meta.indexedCount}).
-            Voici les profils les <strong>plus proches sémantiquement</strong> —
-            assouplissez un critère rédhibitoire/obligatoire pour un vrai filtrage.
-          </p>
-        ) : meta.eliminatedByHardFilters > 0 || meta.belowFloor > 0 ? (
-          <p className="font-body text-[11px] text-stone-400">
-            {meta.eliminatedByHardFilters > 0
-              ? `${meta.eliminatedByHardFilters} écarté${meta.eliminatedByHardFilters > 1 ? 's' : ''} par les filtres durs · `
-              : ''}
-            {meta.belowFloor > 0
-              ? `${meta.belowFloor} sous le seuil de pertinence · `
-              : ''}
-            {meta.survivors} retenu{meta.survivors > 1 ? 's' : ''} aux filtres sur{' '}
-            {meta.indexedCount} indexé{meta.indexedCount > 1 ? 's' : ''}.
-          </p>
-        ) : null
+        <p className="font-body text-[11px] text-stone-400">
+          {meta.deterministicCount} correspondance
+          {meta.deterministicCount > 1 ? 's' : ''} de titre ·{' '}
+          {meta.semanticCount} titre{meta.semanticCount > 1 ? 's' : ''} proche
+          {meta.semanticCount > 1 ? 's' : ''}
+          {meta.belowThreshold > 0
+            ? ` · ${meta.belowThreshold} sous le seuil`
+            : ''}{' '}
+          (sur {meta.indexedCount} indexé{meta.indexedCount > 1 ? 's' : ''}).
+        </p>
       ) : null}
 
       {entries.length === 0 ? (
@@ -181,7 +169,7 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
                   Pertinence
                 </th>
                 <th className="px-2 py-2 font-body text-[11px] font-semibold text-stone-500">
-                  Filtres durs passés
+                  Origine
                 </th>
                 <th className="px-2 py-2 font-body text-[11px] font-semibold text-stone-500">
                   Fraîcheur

@@ -11,6 +11,8 @@ function entry(candidateId: string): ShortlistEntry {
     candidateId,
     nom: candidateId,
     email: `${candidateId}@x.com`,
+    matchKind: 'title_semantic',
+    matchTerm: null,
     similarity: 0.5,
     freshnessFactor: 1,
     relevanceScore: 0.5,

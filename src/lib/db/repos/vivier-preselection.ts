@@ -66,6 +66,8 @@ export async function replacePreselection(
       relevance_score: e.relevanceScore,
       passed_filters: e.passedFilters,
       rank: e.rank,
+      match_kind: e.matchKind,
+      match_term: e.matchTerm,
       generated_at: generatedAt,
     }));
     const { error: upErr } = await supabase
@@ -96,6 +98,8 @@ export async function listPreselection(
     candidateId: row.candidate_id,
     nom: row.vivier_candidates?.nom ?? '',
     email: row.vivier_candidates?.email ?? '',
+    matchKind: (row.match_kind ?? 'title_semantic') as ShortlistEntry['matchKind'],
+    matchTerm: row.match_term,
     similarity: row.similarity,
     freshnessFactor: row.freshness_factor,
     relevanceScore: row.relevance_score,

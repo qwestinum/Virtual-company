@@ -53,6 +53,9 @@ export const DEFAULT_VIVIER_CONFIG: VivierConfig = {
   invitationTemplate: DEFAULT_VIVIER_INVITATION_TEMPLATE,
   cooldownDays: 90,
   shortlistCap: 50,
-  similarityFloor: 0.2,
+  // Seuil de similarité TITRE-À-TITRE (bloc 2). Valeur de DÉPART, à calibrer
+  // empiriquement (cf. script vivier:title-distribution) : les similarités
+  // titre-à-titre sont plus concentrées/hautes qu'en full-CV.
+  similarityFloor: 0.55,
   organisationName: '',
 };

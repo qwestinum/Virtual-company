@@ -1,101 +1,60 @@
 /**
- * Traitement de présélection vivier (Session V2, docs/specs/vivier.md §4).
+ * Présélection vivier — REFONTE SUR LE TITRE (docs/specs/vivier.md §4).
  *
- * Cascade déterministe en quatre étapes, déclenchée à l'activation d'une
- * campagne dont la source Vivier est cochée (et relançable manuellement) :
+ * On abandonne l'embedding full-CV (document long ⇄ requête courte ⇒ similarités
+ * tassées, profils hors-domaine en tête). On rapproche le TITRE du candidat de
+ * l'INTITULÉ du poste, en deux blocs fusionnés en une liste unique :
  *
- *   1. FILTRES DURS — les critères de criticité dure (redhibitoire/obligatoire)
- *      QUI portent des mots-clés exploitables sont appliqués comme filtres sur
- *      les entités structurées du dossier. Mapping : pas de champ « type » de
- *      critère ⇒ on cherche la présence d'au moins un mot-clé du critère dans le
- *      POOL des entités (technologies ∪ certifications ∪ diplômes ∪ langues),
- *      par frontière de mot (réutilise `findMatchedKeywords`). Un critère dur
- *      SANS mots-clés (méthode `llm_with_quote`) est NON MAPPABLE : ignoré ici,
- *      évalué au scoring réel si le candidat postule. Un candidat survit ssi il
- *      passe TOUS les filtres durs mappables.
+ *   Bloc 1 — DÉTERMINISTE (en tête). Les variantes du titre candidat
+ *     confrontées à {intitulé du poste} ∪ {variantes de l'intitulé}. Toute
+ *     intersection ⇒ inclus, sans limite. Le plus sûr.
+ *   Bloc 2 — SÉMANTIQUE titre-à-titre (à la suite). Pour les non-retenus,
+ *     similarité cosinus entre embedding du titre candidat et embedding de
+ *     l'intitulé. ≥ seuil ⇒ inclus, triés décroissant. < seuil ⇒ exclus.
  *
- *   2. TRI SÉMANTIQUE — embedding de requête construit depuis la fiche (intitulé,
- *      missions, compétences, libellés des critères triés par poids) ; similarité
- *      cosinus (RPC pgvector) contre les survivants ; classement décroissant.
- *
- *   3. MODULATION FRAÎCHEUR — pertinence pondérée par l'ancienneté de la dernière
- *      mise à jour du dossier (dégressif au-delà de 12 mois ; cf. constantes).
- *
- *   4. EXCLUSIONS — pending/failed (déjà exclus : seuls les `indexed` entrent),
- *      candidats déjà candidats sur la campagne (rapprochement par email), et
- *      cooldown (point d'extension V3, vide en V2).
- *
- * Sortie : short-list ordonnée, plafonnée (`SHORTLIST_CAP`), chaque entrée
- * portant son explication de pertinence (similarité, filtres durs satisfaits,
- * fraîcheur). Server-only.
+ * VOLUME PILOTÉ PAR LA PERTINENCE : pas de plafond. Liste vide = réponse valide.
+ * La fraîcheur n'intervient qu'en départage léger. Server-only.
  */
 
 import { embedText } from '@/lib/ai/embeddings';
+import { runKeywordVariantsSuggestion } from '@/lib/agents/server/keyword-variants-execute';
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
   listDistinctEmbeddingModels,
-  listIndexedVivierEntities,
-  matchVivierCandidates,
+  listIndexedVivierTitles,
+  matchVivierTitles,
+  type IndexedVivierTitle,
 } from '@/lib/db/repos/vivier';
 import {
   listContactedEmailsSince,
   listRejectedEmailsForCampaign,
   replacePreselection,
 } from '@/lib/db/repos/vivier-preselection';
-import { findMatchedKeywords } from '@/lib/scoring/keyword-matcher';
 import { normalizeEmail } from '@/lib/vivier/candidates';
-import type { FDPInProgress, FieldKey } from '@/types/field-collection';
-import { criterionBehavior, type ScoringSheet } from '@/types/scoring';
+import type { FDPInProgress } from '@/types/field-collection';
 import { DEFAULT_VIVIER_CONFIG } from '@/types/vivier-settings';
-import type { VivierEntities } from '@/types/vivier';
 import type {
-  HardFilter,
   HardFilterMatch,
+  PreselectionMatchKind,
   ShortlistEntry,
 } from '@/types/vivier-preselection';
 
-// ── Constantes documentées (paramétrables en V3) ────────────────────────────
-/** Au-delà de ce seuil d'ancienneté (mois), la fraîcheur devient dégressive. */
+// ── Constantes (fraîcheur en départage léger) ────────────────────────────────
 export const FRESHNESS_FULL_MONTHS = 12;
-/** Décote de fraîcheur par mois au-delà du seuil. */
 export const FRESHNESS_DECAY_PER_MONTH = 0.05;
-/** Plancher de fraîcheur : un vieux dossier n'est jamais totalement annulé. */
 export const FRESHNESS_FLOOR = 0.5;
-/** Plafond de la short-list (défaut spec §4.2 ; constante en V2). */
-export const SHORTLIST_CAP = 50;
-
-/**
- * Plancher de similarité cosinus (en-dessous ⇒ non pertinent, écarté) :
- * désormais RÉGLABLE en settings (`vivierConfig.similarityFloor`) car la valeur
- * dépend du modèle/représentation et se calibre à l'œil sur le corpus. Mieux
- * vaut 3 pertinents que 50 au hasard.
- *
- * Poids de la fraîcheur comme DÉPARTAGE (et non multiplicateur). La fraîcheur ne
- * peut plus inverser un écart de similarité significatif : elle ne fait que
- * nudger légèrement (au plus −2,5 pts de score pour un dossier ancien). La
- * pertinence prime, la récence départage les quasi-ex æquo.
- */
+/** Fraîcheur en DÉPARTAGE (jamais d'inversion d'un écart de similarité réel). */
 const FRESHNESS_TIEBREAK_WEIGHT = 0.05;
 
 const MS_PER_MONTH = 1000 * 60 * 60 * 24 * 30.44;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-/**
- * Champs FDP injectés dans le texte de requête sémantique. Volontairement
- * RESSERRÉS sur le vocabulaire métier discriminant (intitulé, séniorité,
- * compétences clés) : on exclut `main_missions` (prose de verbes génériques qui
- * tasse les similarités) et `location` (qui relève du filtrage, pas du fit
- * sémantique). Les libellés de critères (ci-dessous) complètent le signal.
- */
-const QUERY_FIELDS: FieldKey[] = ['job_title', 'seniority', 'key_skills'];
-
-/** Codes d'échec métier de la présélection (mappés en HTTP côté route). */
 export type PreselectionErrorCode =
   | 'campaign_not_found'
   | 'vivier_not_enabled'
-  | 'no_validated_sheet'
+  | 'no_job_title'
   | 'embedding_model_mismatch';
 
 export class PreselectionError extends Error {
@@ -110,96 +69,43 @@ export class PreselectionError extends Error {
 
 // ── Helpers purs (exportés pour test) ────────────────────────────────────────
 
+/** Normalise un terme de titre pour le matching déterministe (trim, casse, espaces). */
+export function normalizeTitleTerm(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Ensemble normalisé des termes côté campagne : intitulé + variantes. */
+export function campaignTitleTermSet(
+  jobTitle: string,
+  variants: string[],
+): Set<string> {
+  const set = new Set<string>();
+  for (const t of [jobTitle, ...variants]) {
+    const n = normalizeTitleTerm(t);
+    if (n) set.add(n);
+  }
+  return set;
+}
+
 /**
- * Sélectionne les filtres durs MAPPABLES d'une fiche : critères de criticité
- * dure (HARD_KNOCKOUT/HARD_CAP) portant au moins un mot-clé non vide. Les
- * critères durs sans mots-clés sont ignorés (non mappables sur les entités).
+ * Premier terme candidat (titre ou variante) dont la forme normalisée appartient
+ * à l'ensemble campagne — l'explication du bloc 1. null si aucun.
  */
-export function selectHardFilters(sheet: ScoringSheet): HardFilter[] {
-  const filters: HardFilter[] = [];
-  for (const c of sheet.criteria) {
-    const behavior = criterionBehavior(c.level);
-    if (behavior !== 'HARD_KNOCKOUT' && behavior !== 'HARD_CAP') continue;
-    const keywords = (c.keywords ?? [])
-      .map((k) => k.trim())
-      .filter((k) => k.length > 0);
-    if (keywords.length === 0) continue;
-    filters.push({ criterionId: c.id, label: c.label, keywords });
+export function firstDeterministicMatch(
+  candidateTitle: string | null,
+  candidateVariants: string[],
+  campaignSet: Set<string>,
+): string | null {
+  for (const term of [candidateTitle ?? '', ...candidateVariants]) {
+    const t = term.trim();
+    if (t && campaignSet.has(normalizeTitleTerm(t))) return t;
   }
-  return filters;
-}
-
-/** Texte poolé des entités « dures » d'un dossier (base du matching mots-clés). */
-export function pooledEntityText(entities: VivierEntities): string {
-  return [
-    ...entities.technologies,
-    ...entities.certifications,
-    ...entities.diplomes,
-    ...entities.langues,
-  ].join('\n');
+  return null;
 }
 
 /**
- * Un candidat passe-t-il TOUS les filtres durs ? Un seul filtre non satisfait
- * (aucun mot-clé trouvé dans le pool d'entités) ⇒ éliminé. Sans filtre dur
- * mappable, tout le monde passe.
- */
-export function candidatePassesHardFilters(
-  entities: VivierEntities,
-  filters: HardFilter[],
-): { passed: boolean; matches: HardFilterMatch[] } {
-  if (filters.length === 0) return { passed: true, matches: [] };
-  const text = pooledEntityText(entities);
-  const matches: HardFilterMatch[] = [];
-  for (const f of filters) {
-    const { matched } = findMatchedKeywords(text, f.keywords);
-    if (matched.length === 0) return { passed: false, matches: [] };
-    matches.push({
-      criterionId: f.criterionId,
-      label: f.label,
-      matchedTerms: matched,
-    });
-  }
-  return { passed: true, matches };
-}
-
-/** Valeur textuelle d'un champ FDP (string, ou liste jointe), sinon ''. */
-function fieldText(fdp: FDPInProgress, key: FieldKey): string {
-  const v = fdp.fields[key]?.value;
-  if (typeof v === 'string') return v.trim();
-  if (Array.isArray(v)) {
-    return v.filter((x): x is string => typeof x === 'string').join(', ');
-  }
-  return '';
-}
-
-/**
- * Construit le texte de requête sémantique depuis la fiche : champs FDP
- * signifiants + libellés des critères TRIÉS PAR POIDS décroissant (les critères
- * pondérés portent l'intention). Pas de répétition (artefact peu fiable pour un
- * embedding) — la pondération vit dans la présence des critères, pas leur
- * duplication. Pur.
- */
-export function buildVivierQueryText(
-  fdp: FDPInProgress,
-  sheet: ScoringSheet,
-): string {
-  const parts: string[] = [];
-  for (const key of QUERY_FIELDS) {
-    const t = fieldText(fdp, key);
-    if (t) parts.push(t);
-  }
-  const labels = [...sheet.criteria]
-    .sort((a, b) => b.weight - a.weight)
-    .map((c) => c.label);
-  parts.push(...labels);
-  return parts.join('\n').trim();
-}
-
-/**
- * Facteur de fraîcheur 0..1 d'un dossier. 1 jusqu'à `FRESHNESS_FULL_MONTHS`,
- * puis dégressif (`FRESHNESS_DECAY_PER_MONTH`/mois) jusqu'au plancher
- * `FRESHNESS_FLOOR`. `now` injecté (pureté). Date illisible ⇒ pas de pénalité.
+ * Facteur de fraîcheur 0..1. 1 jusqu'à `FRESHNESS_FULL_MONTHS`, puis dégressif
+ * jusqu'au plancher. `now` injecté (pureté). Date illisible ⇒ pas de pénalité.
  */
 export function freshnessFactor(updatedAt: string, now: number): number {
   const updated = Date.parse(updatedAt);
@@ -211,34 +117,59 @@ export function freshnessFactor(updatedAt: string, now: number): number {
   return Math.max(FRESHNESS_FLOOR, decayed);
 }
 
+/** Intitulé de poste d'une campagne (FDP), vide si non renseigné. */
+function jobTitleOf(fdp: FDPInProgress): string {
+  const v = fdp.fields.job_title?.value;
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function makeEntry(
+  c: IndexedVivierTitle,
+  matchKind: PreselectionMatchKind,
+  matchTerm: string | null,
+  similarity: number,
+  now: number,
+): ShortlistEntry {
+  const freshness = freshnessFactor(c.updatedAt, now);
+  return {
+    candidateId: c.id,
+    nom: c.nom,
+    email: c.email,
+    matchKind,
+    matchTerm,
+    similarity,
+    freshnessFactor: freshness,
+    // Pertinence (similarité) + nudge de fraîcheur borné (départage des ex æquo).
+    relevanceScore: similarity + FRESHNESS_TIEBREAK_WEIGHT * (freshness - 1),
+    updatedAt: c.updatedAt,
+    passedFilters: [] as HardFilterMatch[],
+    rank: 0,
+    state: 'identified',
+    contactedAt: null,
+    rejectedAt: null,
+    decidedBy: null,
+    appliedAt: null,
+  };
+}
+
 // ── Orchestrateur ────────────────────────────────────────────────────────────
 
 export type PreselectionOptions = {
   /** Horloge injectée (pureté de la fraîcheur en test). Défaut Date.now(). */
   now?: number;
-  /**
-   * Recherche libre : remplace le texte de requête fiche par ce texte (même
-   * cascade, même format de short-list). La short-list issue d'une recherche
-   * libre est ÉPHÉMÈRE (l'appelant ne la persiste pas).
-   */
+  /** Recherche libre : texte embeddé en requête (bloc 2 sémantique seul). Éphémère. */
   freeText?: string;
 };
 
-/** Métadonnées de transparence d'un run de présélection (affichées au DRH). */
 export type PreselectionMeta = {
-  /** Dossiers indexés évalués (univers de départ). */
+  /** Dossiers indexés évalués. */
   indexedCount: number;
-  /** Survivants des filtres durs (avant repli éventuel). */
-  survivors: number;
-  /** Dossiers écartés par les filtres durs. */
-  eliminatedByHardFilters: number;
-  /** Dossiers écartés faute de similarité suffisante (sous le plancher). */
-  belowFloor: number;
-  /**
-   * Repli sémantique : aucun dossier ne passait TOUS les filtres durs, on a
-   * classé l'ensemble par similarité seule (signalé au DRH). Évite l'écran vide.
-   */
-  fallbackSemantic: boolean;
+  /** Retenus au bloc 1 (déterministe). */
+  deterministicCount: number;
+  /** Retenus au bloc 2 (sémantique titre). */
+  semanticCount: number;
+  /** Écartés faute de similarité suffisante (bloc 2 sous le seuil). */
+  belowThreshold: number;
 };
 
 export type PreselectionResult = {
@@ -246,7 +177,7 @@ export type PreselectionResult = {
   meta: PreselectionMeta;
 };
 
-/** Emails déjà candidats sur la campagne (rapprochement exact, §6.3 préparé). */
+/** Emails déjà candidats sur la campagne (rapprochement exact, §6.3). */
 async function loadExcludedEmails(campaignId: string): Promise<Set<string>> {
   const analyses = await listCandidateAnalyses({ campaignId });
   const set = new Set<string>();
@@ -257,9 +188,9 @@ async function loadExcludedEmails(campaignId: string): Promise<Set<string>> {
 }
 
 /**
- * Exécute la cascade de présélection et renvoie la short-list ordonnée (NON
- * persistée). Lève `PreselectionError` si la campagne est introuvable, la source
- * Vivier non cochée, ou la fiche non validée.
+ * Cascade titre. Renvoie la short-list ordonnée (NON persistée) + méta. Lève
+ * `PreselectionError` (campagne, source, intitulé manquant, espace d'embeddings
+ * incohérent).
  */
 export async function runVivierPreselection(
   campaignId: string,
@@ -277,88 +208,34 @@ export async function runVivierPreselection(
       'La source Vivier n’est pas activée pour cette campagne.',
     );
   }
-  const sheet = campaign.scoringSheet;
-  if (!sheet || !sheet.isValidated) {
+  const jobTitle = jobTitleOf(campaign.fdp);
+  if (!jobTitle) {
     throw new PreselectionError(
-      'no_validated_sheet',
-      'Aucune fiche de scoring validée — la présélection s’appuie dessus.',
+      'no_job_title',
+      'L’intitulé du poste (fiche) est requis pour la présélection sur le titre.',
     );
   }
 
-  // Étape 1 — filtres durs sur entités.
-  const hardFilters = selectHardFilters(sheet);
-  const indexed = await listIndexedVivierEntities();
-  const passing = indexed
-    .map((cand) => ({
-      cand,
-      ...candidatePassesHardFilters(cand.entities, hardFilters),
-    }))
-    .filter((s) => s.passed);
-  const eliminatedByHardFilters = indexed.length - passing.length;
-
-  // REPLI SÉMANTIQUE : si des filtres durs ont tout écarté alors que le vivier
-  // n'est pas vide, on ne laisse pas un écran vide — on classe l'ensemble des
-  // indexés par similarité seule (sans filtre dur), et on le signale au DRH.
-  const fallbackSemantic =
-    passing.length === 0 && hardFilters.length > 0 && indexed.length > 0;
-  const survivors = fallbackSemantic
-    ? indexed.map((cand) => ({
-        cand,
-        passed: true,
-        matches: [] as HardFilterMatch[],
-      }))
-    : passing;
-
-  const meta: PreselectionMeta = {
-    indexedCount: indexed.length,
-    survivors: passing.length,
-    eliminatedByHardFilters,
-    belowFloor: 0,
-    fallbackSemantic,
-  };
-
-  if (survivors.length === 0) return { entries: [], meta };
-
-  // Étape 2 — tri sémantique (fiche, ou requête libre si fournie).
-  const queryText = opts.freeText?.trim()
-    ? opts.freeText.trim()
-    : buildVivierQueryText(campaign.fdp, sheet);
-  if (!queryText) return { entries: [], meta };
+  // Embedding de requête (intitulé, ou texte libre) + garde-fou d'espace.
+  const queryText = opts.freeText?.trim() || jobTitle;
   const { vector, provider, model } = await embedText(queryText);
-
-  // GARDE-FOU espace vectoriel : la requête DOIT être dans le même espace que
-  // les dossiers (même provider+model). Sinon le cosinus est dénué de sens
-  // (résultats au hasard) — typiquement après un changement de
-  // OPENAI_EMBEDDING_MODEL sans réindexation, ou un serveur non redémarré
-  // (env figé) face à un vivier réindexé avec un autre modèle. On échoue FORT.
   const queryKey = `${provider}|${model}`;
   const storedKeys = await listDistinctEmbeddingModels();
   if (storedKeys.length > 0 && !(storedKeys.length === 1 && storedKeys[0] === queryKey)) {
     throw new PreselectionError(
       'embedding_model_mismatch',
       `Incohérence d'espace d'embeddings : la requête utilise « ${queryKey} » ` +
-        `mais les dossiers sont indexés avec « ${storedKeys.join(', ')} ». ` +
-        `Le tri sémantique serait au hasard. Réindexez (npm run reindex:vivier) ` +
-        `avec le modèle voulu ET redémarrez le serveur pour qu'il utilise le même.`,
+        `mais les titres sont indexés avec « ${storedKeys.join(', ')} ». ` +
+        `Réindexez (npm run reindex:vivier) avec le bon modèle ET redémarrez le serveur.`,
     );
   }
 
-  const sims = await matchVivierCandidates(
-    vector,
-    survivors.map((s) => s.cand.id),
-  );
+  const candidates = await listIndexedVivierTitles();
+  const config = (await getAppSettings())?.vivierConfig ?? DEFAULT_VIVIER_CONFIG;
+  const threshold = config.similarityFloor;
 
-  // Étape 4 — exclusions. Réglages vivier (cooldown, plafond) depuis les
-  // settings (repli défauts). Trois exclusions combinées :
-  //   - déjà candidat sur la campagne (rapprochement email) ;
-  //   - cooldown GLOBAL : contacté il y a moins de `cooldownDays` (toutes
-  //     campagnes) — échéance = contacted_at + cooldownDays ;
-  //   - rejeté POUR cette campagne (éligible ailleurs).
-  const settings = await getAppSettings();
-  const config = settings?.vivierConfig ?? DEFAULT_VIVIER_CONFIG;
-  const cooldownSince = new Date(
-    now - config.cooldownDays * MS_PER_DAY,
-  ).toISOString();
+  // Exclusions (§6/§7) appliquées aux deux blocs.
+  const cooldownSince = new Date(now - config.cooldownDays * MS_PER_DAY).toISOString();
   const [appliedEmails, cooldownEmails, rejectedEmails] = await Promise.all([
     loadExcludedEmails(campaignId),
     listContactedEmailsSince(cooldownSince),
@@ -369,57 +246,94 @@ export async function runVivierPreselection(
     ...cooldownEmails,
     ...rejectedEmails,
   ]);
+  const isExcluded = (email: string) => excluded.has(normalizeEmail(email));
+  const eligible = candidates.filter((c) => !isExcluded(c.email));
 
-  // Étape 3 — plancher de pertinence + modulation fraîcheur + assemblage.
-  // La PERTINENCE prime : relevanceScore = similarité, la fraîcheur n'intervient
-  // qu'en DÉPARTAGE léger (elle ne peut plus inverser un écart de similarité
-  // significatif). Plancher : sous SIMILARITY_FLOOR, le candidat est jugé non
-  // pertinent et écarté (on ne remplit pas le plafond de bruit).
-  const scored: ShortlistEntry[] = [];
-  let belowFloor = 0;
-  for (const s of survivors) {
-    const email = normalizeEmail(s.cand.email);
-    if (excluded.has(email)) continue;
-    const similarity = sims.get(s.cand.id);
-    if (similarity === undefined) continue;
-    if (similarity < config.similarityFloor) {
-      belowFloor++;
-      continue;
-    }
-    const freshness = freshnessFactor(s.cand.updatedAt, now);
-    scored.push({
-      candidateId: s.cand.id,
-      nom: s.cand.nom,
-      email: s.cand.email,
-      similarity,
-      freshnessFactor: freshness,
-      // Pertinence (similarité) + nudge de fraîcheur borné (au plus −0,025).
-      relevanceScore: similarity + FRESHNESS_TIEBREAK_WEIGHT * (freshness - 1),
-      updatedAt: s.cand.updatedAt,
-      passedFilters: s.matches,
-      rank: 0,
-      state: 'identified',
-      contactedAt: null,
-      rejectedAt: null,
-      decidedBy: null,
-      appliedAt: null,
-    });
+  // RECHERCHE LIBRE : bloc 2 sémantique seul (pas de déterministe).
+  if (opts.freeText?.trim()) {
+    const sims = await matchVivierTitles(vector, eligible.map((c) => c.id));
+    let below = 0;
+    const entries = eligible
+      .map((c) => ({ c, sim: sims.get(c.id) }))
+      .filter((x): x is { c: IndexedVivierTitle; sim: number } => {
+        if (x.sim === undefined) return false;
+        if (x.sim < threshold) { below++; return false; }
+        return true;
+      })
+      .map((x) => makeEntry(x.c, 'title_semantic', null, x.sim, now))
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
+    entries.forEach((e, i) => { e.rank = i + 1; });
+    return {
+      entries,
+      meta: {
+        indexedCount: candidates.length,
+        deterministicCount: 0,
+        semanticCount: entries.length,
+        belowThreshold: below,
+      },
+    };
   }
-  meta.belowFloor = belowFloor;
 
-  scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
-  const capped = scored.slice(0, config.shortlistCap);
-  capped.forEach((e, i) => {
-    e.rank = i + 1;
-  });
-  return { entries: capped, meta };
+  // Variantes de l'intitulé (bloc 1 symétrique), NON bloquant.
+  let jobVariants: string[] = [];
+  try {
+    jobVariants = (
+      await runKeywordVariantsSuggestion({
+        criterionLabel: jobTitle,
+        existingKeywords: [],
+        targetMethod: 'keywords_with_variants',
+      })
+    ).suggestedVariants;
+  } catch (err) {
+    console.error('[vivier] variantes intitulé poste échouées', err);
+  }
+  const campaignSet = campaignTitleTermSet(jobTitle, jobVariants);
+
+  // Bloc 1 — déterministe.
+  const bloc1: ShortlistEntry[] = [];
+  const bloc1Ids = new Set<string>();
+  for (const c of eligible) {
+    const term = firstDeterministicMatch(c.title, c.titleVariants, campaignSet);
+    if (term) {
+      bloc1.push(makeEntry(c, 'title_exact', term, 1, now));
+      bloc1Ids.add(c.id);
+    }
+  }
+  bloc1.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+  // Bloc 2 — sémantique titre-à-titre, sur les non-retenus au bloc 1.
+  const remaining = eligible.filter((c) => !bloc1Ids.has(c.id));
+  const sims = await matchVivierTitles(vector, remaining.map((c) => c.id));
+  let belowThreshold = 0;
+  const bloc2 = remaining
+    .map((c) => ({ c, sim: sims.get(c.id) }))
+    .filter((x): x is { c: IndexedVivierTitle; sim: number } => {
+      if (x.sim === undefined) return false; // pas d'embedding titre
+      if (x.sim < threshold) { belowThreshold++; return false; }
+      return true;
+    })
+    .map((x) => makeEntry(x.c, 'title_semantic', null, x.sim, now))
+    .sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+  // Fusion : déterministes d'abord, puis sémantiques. Rang 1..N, PAS de plafond.
+  const merged = [...bloc1, ...bloc2];
+  merged.forEach((e, i) => { e.rank = i + 1; });
+
+  return {
+    entries: merged,
+    meta: {
+      indexedCount: candidates.length,
+      deterministicCount: bloc1.length,
+      semanticCount: bloc2.length,
+      belowThreshold,
+    },
+  };
 }
 
 /**
- * Exécute la présélection FICHE et la persiste (idempotent, préserve les
- * décisions V3). Renvoie la short-list. À utiliser pour l'activation et la
- * relance manuelle. La recherche libre passe par `runVivierPreselection` seul
- * (éphémère, non persistée).
+ * Exécute la présélection (intitulé) et la persiste (idempotent, préserve les
+ * décisions V3). Renvoie short-list + méta. La recherche libre passe par
+ * `runVivierPreselection` seul (éphémère).
  */
 export async function runAndPersistPreselection(
   campaignId: string,

@@ -232,6 +232,10 @@ export type VivierPreselectionRow = {
   passed_filters: unknown;
   rank: number;
   generated_at: string;
+  /** Origine du match (refonte titre) : 'title_exact' | 'title_semantic'. */
+  match_kind: string | null;
+  /** Terme/variante matché (bloc 1 déterministe). */
+  match_term: string | null;
   /** Faits datés du cycle (Session V3, §6) — nullable tant qu'ils ne sont pas posés. */
   contacted_at: string | null;
   rejected_at: string | null;

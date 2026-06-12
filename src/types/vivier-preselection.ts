@@ -35,12 +35,23 @@ export type HardFilter = {
   keywords: string[];
 };
 
+/**
+ * Origine d'un candidat dans la short-list (présélection titre) :
+ *   - `title_exact` : bloc 1, correspondance déterministe de titre (variante) ;
+ *   - `title_semantic` : bloc 2, titre proche par similarité d'embedding.
+ */
+export type PreselectionMatchKind = 'title_exact' | 'title_semantic';
+
 /** Une entrée de la short-list (affichage + persistance). */
 export type ShortlistEntry = {
   candidateId: string;
   nom: string;
   email: string;
-  /** Similarité cosinus 0..1 (fiche ou requête libre) contre l'embedding du dossier. */
+  /** Origine du match (bloc 1 déterministe / bloc 2 sémantique). */
+  matchKind: PreselectionMatchKind;
+  /** Terme (titre/variante) qui a matché — bloc 1 ; null en bloc 2. */
+  matchTerm: string | null;
+  /** Similarité titre-à-titre 0..1 (bloc 2 ; 1.0 pour un match exact bloc 1). */
   similarity: number;
   /** Facteur de fraîcheur 0..1 (dégressif au-delà de 12 mois). */
   freshnessFactor: number;

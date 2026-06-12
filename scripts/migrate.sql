@@ -766,3 +766,31 @@ alter table public.vivier_embeddings
 -- title_embedding null ne sont pas indexées (candidats sans titre exploitable).
 create index if not exists vivier_embeddings_title_hnsw_idx
   on public.vivier_embeddings using hnsw (title_embedding vector_cosine_ops);
+
+-- RPC de tri TITRE-À-TITRE (bloc 2 de la présélection refondue) : similarité
+-- cosinus entre l'embedding de l'intitulé du poste et les embeddings de TITRE
+-- des candidats (sous-ensemble `candidate_ids` non retenus au bloc 1). Seuls les
+-- dossiers `indexed` AVEC un title_embedding participent.
+create or replace function public.match_vivier_titles(
+  query_embedding vector(1536),
+  candidate_ids   uuid[]
+)
+returns table (candidate_id uuid, similarity double precision)
+language sql
+stable
+as $$
+  select ve.candidate_id,
+         1 - (ve.title_embedding <=> query_embedding) as similarity
+  from public.vivier_embeddings ve
+  join public.vivier_candidates vc on vc.id = ve.candidate_id
+  where vc.indexing_status = 'indexed'
+    and ve.title_embedding is not null
+    and ve.candidate_id = any(candidate_ids)
+  order by similarity desc
+$$;
+
+-- Origine + justification d'une proposition (présélection refondue) : bloc 1
+-- (déterministe, terme matché) ou bloc 2 (similarité titre). Affichage §7.
+alter table public.vivier_preselections
+  add column if not exists match_kind text,   -- 'title_exact' | 'title_semantic'
+  add column if not exists match_term text;   -- variante matchée (bloc 1)

@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * Une ligne de la short-list de présélection vivier (V2, affichage préparatoire).
- * Colonnes : rang, identité, score de pertinence, filtres durs passés, fraîcheur.
- * La section Validation vivier complète (décisions) arrive en V3.
+ * Une ligne de la short-list de présélection vivier (affichage préparatoire).
+ * Colonnes : rang, identité, score, ORIGINE du match (correspondance de titre /
+ * titre proche), fraîcheur.
  */
 
 import { freshnessLabel } from '@/lib/vivier/freshness-label';
@@ -28,20 +28,18 @@ export function VivierPreselectionRow({ entry }: { entry: ShortlistEntry }) {
         </span>
       </td>
       <td className="px-2 py-2">
-        {entry.passedFilters.length === 0 ? (
-          <span className="font-body text-[11px] text-stone-400">—</span>
+        {entry.matchKind === 'title_exact' ? (
+          <span
+            title={entry.matchTerm ? `Correspondance de titre : ${entry.matchTerm}` : undefined}
+            className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 font-body text-[11px] font-semibold text-emerald-800"
+          >
+            Correspondance de titre
+            {entry.matchTerm ? ` · ${entry.matchTerm}` : ''}
+          </span>
         ) : (
-          <div className="flex flex-wrap gap-1">
-            {entry.passedFilters.map((f) => (
-              <span
-                key={f.criterionId}
-                title={`${f.label} : ${f.matchedTerms.join(', ')}`}
-                className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 font-body text-[11px] text-stone-600"
-              >
-                {f.label}
-              </span>
-            ))}
-          </div>
+          <span className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 font-body text-[11px] text-stone-600">
+            Titre proche
+          </span>
         )}
       </td>
       <td className="px-2 py-2 font-body text-[11px] text-stone-500">

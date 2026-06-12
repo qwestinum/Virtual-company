@@ -119,9 +119,21 @@ export function VivierValidationRow({
             {entry.lastJobTitle}
           </span>
         ) : null}
-        <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 font-body text-[12px] font-semibold text-emerald-700">
-          {score}%
-        </span>
+        {entry.matchKind === 'title_exact' ? (
+          <span
+            title={entry.matchTerm ? `Correspondance de titre : ${entry.matchTerm}` : 'Correspondance de titre'}
+            className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 font-body text-[11px] font-semibold text-white"
+          >
+            titre
+          </span>
+        ) : (
+          <span
+            title="Titre proche (similarité)"
+            className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 font-body text-[12px] font-semibold text-emerald-700"
+          >
+            {Math.round(entry.similarity * 100)}%
+          </span>
+        )}
         <span className="hidden shrink-0 font-body text-[11px] text-stone-500 sm:inline">
           {freshnessLabel(entry.updatedAt)}
         </span>
@@ -164,17 +176,10 @@ export function VivierValidationRow({
             </p>
           ) : null}
           <p className="mb-1 text-stone-500">
-            Similarité {Math.round(entry.similarity * 100)}% · fraîcheur ×
-            {entry.freshnessFactor.toFixed(2)}
+            {entry.matchKind === 'title_exact'
+              ? `Correspondance de titre${entry.matchTerm ? ` · ${entry.matchTerm}` : ''}`
+              : `Titre proche · ${Math.round(entry.similarity * 100)}%`}
           </p>
-          {entry.passedFilters.length > 0 ? (
-            <p className="mb-1">
-              <span className="font-semibold">Filtres durs : </span>
-              {entry.passedFilters
-                .map((f) => `${f.label} (${f.matchedTerms.join(', ')})`)
-                .join(' · ')}
-            </p>
-          ) : null}
           {detail?.tags.length ? (
             <p className="mb-1">
               <span className="font-semibold">Tags : </span>
