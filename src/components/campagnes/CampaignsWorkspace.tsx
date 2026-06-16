@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { useDashboardData } from '@/hooks/useDashboardData';
 
 import { CampaignsList } from './CampaignsList';
+import { UnsavedChangesBanner } from './UnsavedChangesBanner';
 import { CampaignCreateSheet } from './edit/CampaignCreateSheet';
 import { CampaignEditSheet } from './edit/CampaignEditSheet';
 
@@ -56,6 +57,7 @@ export function CampaignsWorkspace() {
             cycle de vie (suspendre, arrêter, reprendre).
           </p>
         </header>
+        <UnsavedChangesBanner />
         <CampaignsList
           candidates={candidates}
           onEditCampaign={setEditingCampaignId}

@@ -21,6 +21,7 @@
 
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
+import { useSyncStatusStore } from '@/stores/sync-status-store';
 
 const PUSH_DEBOUNCE_MS = 300;
 
@@ -183,13 +184,42 @@ export async function persistCampaign(
 }
 
 /**
- * Push best-effort de fond (subscriber) pour les éditions ultérieures. Délègue
- * à `persistCampaign` pour partager la logique `res.ok`, mais reste
- * fire-and-forget : son résultat n'est pas encore remonté à l'UI (durcissement
- * « modifications non enregistrées » prévu séparément).
+ * Applique l'issue d'un push de FOND au registre de synchro : un échec dur
+ * marque la campagne « non enregistrée » (la bannière l'affichera) ; un succès
+ * (ou 503 démo) lève le drapeau. Centralisé pour être partagé par le push
+ * debouncé et le retry.
+ */
+function applyBackgroundPushOutcome(
+  snapshot: ActiveCampaign,
+  outcome: PersistOutcome,
+): void {
+  const sync = useSyncStatusStore.getState();
+  if (outcome.ok) sync.clearCampaignFailed(snapshot.id);
+  else sync.markCampaignFailed(snapshot);
+}
+
+/**
+ * Push best-effort de fond (subscriber) pour les éditions en AUTOSAVE. Délègue
+ * à `persistCampaign` (logique `res.ok` partagée) ET remonte désormais l'échec :
+ * une édition qui ne s'enregistre pas marque la campagne « non enregistrée »
+ * plutôt que de se perdre en silence.
  */
 async function pushCampaign(snapshot: ActiveCampaign): Promise<void> {
-  await persistCampaign(snapshot);
+  const outcome = await persistCampaign(snapshot);
+  applyBackgroundPushOutcome(snapshot, outcome);
+}
+
+/**
+ * Rejoue les push de fond en échec (déclenché par la bannière « réessayer »).
+ * Séquentiel, doux pour le réseau. Chaque snapshot rejoué est le plus récent
+ * connu pour cet id. Met à jour le registre au fur et à mesure.
+ */
+export async function retryFailedCampaignPushes(): Promise<void> {
+  const failed = useSyncStatusStore.getState().failedList();
+  for (const snapshot of failed) {
+    const outcome = await persistCampaign(snapshot);
+    applyBackgroundPushOutcome(snapshot, outcome);
+  }
 }
 
 // Exposé pour les tests : permet de remettre l'état du module à zéro.

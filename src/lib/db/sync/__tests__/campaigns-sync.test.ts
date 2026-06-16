@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cancelScheduledCampaignPush,
   persistCampaign,
+  retryFailedCampaignPushes,
 } from '@/lib/db/sync/campaigns-sync';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
+import { useSyncStatusStore } from '@/stores/sync-status-store';
 
 // Snapshot minimal — le contenu n'influence pas la logique d'issue de
 // persistCampaign (elle ne dépend que de la réponse HTTP).
@@ -93,5 +95,43 @@ describe('persistCampaign — issue de persistance remontée (pas d’avalage)',
 
   it('cancelScheduledCampaignPush sur un id inconnu ne lève pas', () => {
     expect(() => cancelScheduledCampaignPush('CAMP-INCONNU')).not.toThrow();
+  });
+});
+
+describe('retryFailedCampaignPushes — rejoue le sync de fond en échec', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    useSyncStatusStore.getState().reset();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useSyncStatusStore.getState().reset();
+  });
+
+  it('retry réussi → lève le drapeau « non enregistrée »', async () => {
+    useSyncStatusStore.getState().markCampaignFailed(SNAPSHOT);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeRes(200, {})));
+
+    await retryFailedCampaignPushes();
+
+    expect(useSyncStatusStore.getState().failedList()).toHaveLength(0);
+  });
+
+  it('retry encore en échec → garde le drapeau (pas de perte silencieuse)', async () => {
+    useSyncStatusStore.getState().markCampaignFailed(SNAPSHOT);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeRes(500, {})));
+
+    await retryFailedCampaignPushes();
+
+    expect(useSyncStatusStore.getState().failedList()).toHaveLength(1);
+  });
+
+  it('503 (démo) au retry → considéré OK, drapeau levé', async () => {
+    useSyncStatusStore.getState().markCampaignFailed(SNAPSHOT);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeRes(503)));
+
+    await retryFailedCampaignPushes();
+
+    expect(useSyncStatusStore.getState().failedList()).toHaveLength(0);
   });
 });
