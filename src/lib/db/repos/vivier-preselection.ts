@@ -123,13 +123,16 @@ export type PendingCampaignSummary = {
   campaignId: string;
   campaignName: string;
   pendingCount: number;
+  /** Présélection la plus récente (max generated_at) — clé de tri par récence. */
+  lastGeneratedAt: string | null;
 };
 
 /**
  * Liste les campagnes ayant au moins une proposition `identified` en attente,
- * avec le compteur, triées par charge décroissante. Agrégation en base (RPC)
- * puis résolution des noms en une requête. Une campagne sans attente n'apparaît
- * pas (rien à traiter → rien à montrer).
+ * avec le compteur, triées par RÉCENCE de présélection décroissante (une
+ * campagne qu'on vient de relancer remonte EN TÊTE), charge en départage.
+ * Agrégation en base (RPC) puis résolution des noms + récence en deux requêtes.
+ * Une campagne sans attente n'apparaît pas (rien à traiter → rien à montrer).
  */
 export async function listPendingByCampaign(): Promise<PendingCampaignSummary[]> {
   const supabase = requireServerSupabase();
@@ -151,13 +154,34 @@ export async function listPendingByCampaign(): Promise<PendingCampaignSummary[]>
     ((camps ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]),
   );
 
+  // Récence : max(generated_at) par campagne (sur les `identified`), calculée en
+  // JS pour ne pas dépendre d'une nouvelle RPC (pas de migration à appliquer).
+  const { data: gen, error: genErr } = await supabase
+    .from(TABLE)
+    .select('campaign_id, generated_at')
+    .eq('state', 'identified')
+    .in('campaign_id', ids);
+  if (genErr) throw new Error(`listPendingByCampaign(récence): ${genErr.message}`);
+  const lastGen = new Map<string, string>();
+  for (const r of (gen ?? []) as { campaign_id: string; generated_at: string }[]) {
+    const cur = lastGen.get(r.campaign_id);
+    if (!cur || r.generated_at > cur) lastGen.set(r.campaign_id, r.generated_at);
+  }
+
   return counts
     .map((c) => ({
       campaignId: c.campaignId,
       campaignName: names.get(c.campaignId) ?? c.campaignId,
       pendingCount: c.pendingCount,
+      lastGeneratedAt: lastGen.get(c.campaignId) ?? null,
     }))
-    .sort((a, b) => b.pendingCount - a.pendingCount);
+    .sort((a, b) => {
+      // Récence décroissante (la plus récemment relancée en tête), charge en départage.
+      const ra = a.lastGeneratedAt ?? '';
+      const rb = b.lastGeneratedAt ?? '';
+      if (ra !== rb) return rb.localeCompare(ra);
+      return b.pendingCount - a.pendingCount;
+    });
 }
 
 /** Une entrée de l'historique de sollicitation d'un candidat (vue détaillée §5.2). */

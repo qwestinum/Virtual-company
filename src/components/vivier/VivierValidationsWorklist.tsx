@@ -102,7 +102,10 @@ export function VivierValidationsWorklist() {
           ← Toutes les campagnes
         </button>
         <h2 className="font-display text-lg font-bold text-stone-900">
-          {selected.campaignName}
+          <span className="font-data text-[13px] font-semibold text-stone-400">
+            {selected.campaignId}
+          </span>{' '}
+          — {selected.campaignName}
         </h2>
         {entries.length === 0 ? (
           <p className="font-body text-[13px] text-stone-400">
@@ -136,10 +139,15 @@ export function VivierValidationsWorklist() {
             onClick={() => open(c)}
             className="flex w-full items-center justify-between rounded-lg border border-stone-200 bg-white px-4 py-3 text-left hover:border-emerald-300 hover:bg-emerald-50/30"
           >
-            <span className="font-body text-[14px] font-semibold text-stone-800">
-              {c.campaignName}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="font-data text-[11px] font-semibold text-stone-400">
+                {c.campaignId}
+              </span>
+              <span className="truncate font-body text-[14px] font-semibold text-stone-800">
+                {c.campaignName}
+              </span>
             </span>
-            <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 font-body text-[12px] font-semibold text-white">
+            <span className="ml-2 shrink-0 rounded-full bg-emerald-600 px-2.5 py-0.5 font-body text-[12px] font-semibold text-white">
               {c.pendingCount} à valider
             </span>
           </button>
