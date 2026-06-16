@@ -7,6 +7,7 @@ const entity = { extractVivierEntities: vi.fn() };
 const variants = { runKeywordVariantsSuggestion: vi.fn() };
 const repo = {
   getVivierCandidate: vi.fn(),
+  listDistinctEmbeddingModels: vi.fn(),
   setVivierIndexingStatus: vi.fn(),
   setVivierTitle: vi.fn(),
   upsertVivierTitleEmbedding: vi.fn(),
@@ -58,6 +59,8 @@ beforeEach(() => {
   repo.setVivierTitle.mockResolvedValue(undefined);
   repo.upsertVivierTitleEmbedding.mockResolvedValue(undefined);
   repo.upsertVivierEntities.mockResolvedValue(undefined);
+  // Défaut : index homogène, aligné sur le modèle de l'embedding mocké.
+  repo.listDistinctEmbeddingModels.mockResolvedValue(['openai|text-embedding-3-small']);
   // Défauts : extraction renvoie entités + titre ; variantes + embedding OK.
   entity.extractVivierEntities.mockResolvedValue({
     entities: ENTITIES,
@@ -98,6 +101,45 @@ describe('indexVivierCandidate — refonte titre', () => {
       provider: 'openai',
       model: 'text-embedding-3-small',
     });
+  });
+
+  it('espace d’embeddings mélangé ⇒ avertit fort mais reste indexed', async () => {
+    repo.getVivierCandidate.mockResolvedValue(candidate());
+    // L'index contient déjà du large alors qu'on vient d'écrire du small.
+    repo.listDistinctEmbeddingModels.mockResolvedValue([
+      'openai|text-embedding-3-small',
+      'openai|text-embedding-3-large',
+    ]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
+    const res = await indexVivierCandidate('VIV-0001');
+
+    expect(res.status).toBe('indexed');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('text-embedding-3-large');
+    expect(warn.mock.calls[0][0]).toContain('embedding_model_mismatch');
+  });
+
+  it('index homogène ⇒ aucun avertissement', async () => {
+    repo.getVivierCandidate.mockResolvedValue(candidate());
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
+    await indexVivierCandidate('VIV-0001');
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('contrôle d’espace indisponible ⇒ n’altère pas l’indexation', async () => {
+    repo.getVivierCandidate.mockResolvedValue(candidate());
+    repo.listDistinctEmbeddingModels.mockRejectedValueOnce(new Error('base injoignable'));
+
+    const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
+    const res = await indexVivierCandidate('VIV-0001');
+
+    expect(res.status).toBe('indexed');
+    expect(repo.upsertVivierTitleEmbedding).toHaveBeenCalled();
   });
 
   it('titre vide ⇒ ni variantes ni embedding titre, mais indexed', async () => {

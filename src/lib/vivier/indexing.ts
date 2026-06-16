@@ -26,6 +26,7 @@ import { extractVivierEntities } from '@/lib/vivier/entity-extraction';
 import { embedText } from '@/lib/ai/embeddings';
 import {
   getVivierCandidate,
+  listDistinctEmbeddingModels,
   setVivierIndexingStatus,
   setVivierTitle,
   upsertVivierTitleEmbedding,
@@ -41,6 +42,43 @@ export type IndexVivierResult = {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Garde-fou d'espace d'embeddings CÔTÉ PRODUCTEUR. La présélection (chemin de
+ * REQUÊTE) refuse déjà un index incohérent (`embedding_model_mismatch`), mais ce
+ * refus n'arrive qu'au moment d'une recherche : l'indexation, elle, peut écrire
+ * un vecteur dans un espace incompatible (env figé au boot d'un processus pendant
+ * qu'un autre a changé de modèle — cf. reindex vs serveur dev) SANS rien signaler.
+ * Le mélange s'accumule alors en silence jusqu'à la première présélection.
+ *
+ * On transforme ce silence en alerte AU MOMENT où le mélange se crée : juste
+ * après l'écriture, si un AUTRE couple (provider|model) coexiste déjà dans l'index,
+ * on émet un avertissement fort. NON bloquant et tolérant aux pannes (un échec de
+ * lecture ne doit jamais compromettre l'indexation) : c'est un signal, pas un
+ * verrou. La correction reste un reindex COMPLET + redémarrage de tous les
+ * producteurs avec le même `OPENAI_EMBEDDING_MODEL`.
+ */
+async function warnIfEmbeddingSpaceMixed(
+  candidateId: string,
+  writtenKey: string,
+): Promise<void> {
+  try {
+    const keys = await listDistinctEmbeddingModels();
+    const others = keys.filter((k) => k !== writtenKey);
+    if (others.length > 0) {
+      console.warn(
+        `[vivier] ESPACE D'EMBEDDINGS INCOHÉRENT après indexation de ${candidateId} : ` +
+          `ce dossier a été indexé avec « ${writtenKey} » alors que l'index contient ` +
+          `aussi « ${others.join(', ')} ». La présélection refusera ce vivier ` +
+          `(embedding_model_mismatch). Réindexez COMPLÈTEMENT (npm run reindex:vivier) ` +
+          `et redémarrez TOUS les producteurs (serveur + poller) avec le même OPENAI_EMBEDDING_MODEL.`,
+      );
+    }
+  } catch (err) {
+    // Lecture best-effort : ne jamais faire échouer l'indexation pour un diagnostic.
+    console.error(`[vivier] contrôle d'espace d'embeddings indisponible pour ${candidateId}`, err);
+  }
 }
 
 /**
@@ -103,6 +141,8 @@ export async function indexVivierCandidate(
           provider: emb.provider,
           model: emb.model,
         });
+        // Détecte un mélange d'espaces dès qu'il est créé (côté producteur).
+        await warnIfEmbeddingSpaceMixed(candidateId, `${emb.provider}|${emb.model}`);
       } catch (err) {
         console.error(`[vivier] title embedding failed for ${candidateId}`, err);
       }
