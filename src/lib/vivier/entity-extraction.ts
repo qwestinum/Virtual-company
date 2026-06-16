@@ -42,10 +42,16 @@ export const VivierEntitiesSchema = z.object({
  */
 export const VivierExtractionSchema = VivierEntitiesSchema.extend({
   title: z.string().nullish().catch(null),
+  /** Compétences atomiques (hard + soft), routées à part (matching set-to-set). */
+  skills: z.array(z.string()).catch([]),
 });
 
-/** Résultat d'extraction : entités structurées + titre (séparé). */
-export type VivierExtraction = { entities: VivierEntities; title: string | null };
+/** Résultat d'extraction : entités structurées + titre + compétences (séparés). */
+export type VivierExtraction = {
+  entities: VivierEntities;
+  title: string | null;
+  skills: string[];
+};
 
 /** Nettoie une liste de chaînes (trim, retrait des vides, déduplication insensible casse). */
 function cleanList(values: string[]): string[] {
@@ -92,10 +98,14 @@ export async function extractVivierEntities(
       ],
       VivierExtractionSchema,
     );
-    return { entities: normalize(r.data), title: r.data.title?.trim() || null };
+    return {
+      entities: normalize(r.data),
+      title: r.data.title?.trim() || null,
+      skills: cleanList(r.data.skills ?? []),
+    };
   } catch (err) {
     if (err instanceof AIValidationError) {
-      return { entities: { ...EMPTY_VIVIER_ENTITIES }, title: null };
+      return { entities: { ...EMPTY_VIVIER_ENTITIES }, title: null, skills: [] };
     }
     throw err;
   }

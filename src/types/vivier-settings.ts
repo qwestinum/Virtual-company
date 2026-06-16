@@ -20,12 +20,30 @@ export const VivierConfigSchema = z.object({
   /** Plafond de la short-list (remplace la constante V2). */
   shortlistCap: z.number().int().min(1).max(500),
   /**
-   * Plancher de similarité cosinus (0..1) : sous ce seuil, un candidat est jugé
-   * non pertinent et écarté de la short-list. À calibrer sur le corpus.
+   * Plancher de similarité cosinus TITRE (0..1) : SEUIL D'ENTRÉE de la
+   * short-list (bloc 2). Sous ce seuil, écarté. À calibrer sur le corpus.
    */
   similarityFloor: z.number().min(0).max(1),
   /** Nom de l'organisation, injecté dans [Organisation]. Vide ⇒ repli. */
   organisationName: z.string().max(200),
+  /**
+   * Combinaison du score final (présélection — Chantier 4) : le TITRE domine
+   * (porte d'entrée + 70%), les compétences réordonnent (30%) sans qualifier ni
+   * éliminer personne. Défauts avec `.default` ⇒ rétro-compat des configs
+   * stockées sans ces champs.
+   */
+  titleWeight: z.number().min(0).max(1).default(0.7),
+  skillWeight: z.number().min(0).max(1).default(0.3),
+  /**
+   * Seuil cosinus PAR compétence (set-to-set) : au-dessus, l'attente de la fiche
+   * est jugée couverte par une compétence du candidat. À calibrer.
+   */
+  skillPerSkillFloor: z.number().min(0).max(1).default(0.6),
+  /**
+   * Séparateurs de découpe des titres composés (Chantier 1). ` et `/` - `/` – `
+   * portent leurs espaces (le tiret ne sépare QUE entouré d'espaces).
+   */
+  titleSeparators: z.array(z.string()).default(['/', '|', '&', ' et ', ' - ', ' – ']),
 });
 
 export type VivierConfig = z.infer<typeof VivierConfigSchema>;
@@ -58,4 +76,8 @@ export const DEFAULT_VIVIER_CONFIG: VivierConfig = {
   // titre-à-titre sont plus concentrées/hautes qu'en full-CV.
   similarityFloor: 0.55,
   organisationName: '',
+  titleWeight: 0.7,
+  skillWeight: 0.3,
+  skillPerSkillFloor: 0.6,
+  titleSeparators: ['/', '|', '&', ' et ', ' - ', ' – '],
 };

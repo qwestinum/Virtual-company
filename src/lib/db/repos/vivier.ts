@@ -30,6 +30,7 @@ import {
 const TABLE = 'vivier_candidates';
 const EMBEDDINGS_TABLE = 'vivier_embeddings';
 const ENTITIES_TABLE = 'vivier_entities';
+const SKILL_EMBEDDINGS_TABLE = 'vivier_skill_embeddings';
 
 /** Colonnes de résumé (sans le volumineux `cv_text`). */
 const SUMMARY_COLUMNS =
@@ -346,6 +347,112 @@ export async function upsertVivierTitleEmbedding(
     { onConflict: 'candidate_id' },
   );
   if (error) throw new Error(`upsertVivierTitleEmbedding: ${error.message}`);
+}
+
+// ── Compétences (set-to-set, Chantier 3) ─────────────────────────────────────
+
+/** Parse un littéral pgvector (« [0.1,0.2] » ou déjà number[]) en number[]. */
+function parseVectorLiteral(raw: unknown): number[] {
+  if (Array.isArray(raw)) return raw as number[];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as number[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** Pose la liste atomique des compétences sur le dossier (régénérée à l'indexation). */
+export async function setVivierSkills(
+  id: string,
+  skills: string[],
+): Promise<void> {
+  const supabase = requireServerSupabase();
+  const { error } = await supabase.from(TABLE).update({ skills }).eq('id', id);
+  if (error) throw new Error(`setVivierSkills: ${error.message}`);
+}
+
+export type SkillEmbeddingInput = {
+  skill: string;
+  vector: number[];
+  provider: string;
+  model: string;
+};
+
+/**
+ * Remplace l'ensemble des embeddings de compétences d'un candidat (idempotent :
+ * delete + insert, pour refléter une liste de compétences qui a changé au
+ * reindex sans laisser de compétences fantômes). Liste vide ⇒ purge seule.
+ */
+export async function replaceSkillEmbeddings(
+  candidateId: string,
+  items: SkillEmbeddingInput[],
+): Promise<void> {
+  const supabase = requireServerSupabase();
+  const del = await supabase
+    .from(SKILL_EMBEDDINGS_TABLE)
+    .delete()
+    .eq('candidate_id', candidateId);
+  if (del.error) throw new Error(`replaceSkillEmbeddings(delete): ${del.error.message}`);
+  if (items.length === 0) return;
+  const rows = items.map((it) => ({
+    candidate_id: candidateId,
+    skill: it.skill,
+    embedding: toVectorLiteral(it.vector),
+    provider: it.provider,
+    model: it.model,
+  }));
+  const ins = await supabase.from(SKILL_EMBEDDINGS_TABLE).insert(rows);
+  if (ins.error) throw new Error(`replaceSkillEmbeddings(insert): ${ins.error.message}`);
+}
+
+export type CandidateSkillVector = { term: string; vector: number[] };
+
+/**
+ * Embeddings de compétences pour un ensemble de candidats (matching set-to-set
+ * en JS). Renvoie une Map candidateId → [{term, vector}]. Les candidats sans
+ * compétences indexées sont absents de la Map (couverture 0 = dégradation douce).
+ */
+export async function listSkillEmbeddingsByCandidateIds(
+  candidateIds: string[],
+): Promise<Map<string, CandidateSkillVector[]>> {
+  const map = new Map<string, CandidateSkillVector[]>();
+  if (candidateIds.length === 0) return map;
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(SKILL_EMBEDDINGS_TABLE)
+    .select('candidate_id, skill, embedding')
+    .in('candidate_id', candidateIds);
+  if (error) throw new Error(`listSkillEmbeddingsByCandidateIds: ${error.message}`);
+  for (const row of (data ?? []) as {
+    candidate_id: string;
+    skill: string;
+    embedding: unknown;
+  }[]) {
+    const vec = parseVectorLiteral(row.embedding);
+    if (vec.length === 0) continue;
+    const list = map.get(row.candidate_id) ?? [];
+    list.push({ term: row.skill, vector: vec });
+    map.set(row.candidate_id, list);
+  }
+  return map;
+}
+
+/** Couples (provider|model) DISTINCTS des embeddings de COMPÉTENCES (garde-fou d'espace). */
+export async function listDistinctSkillEmbeddingModels(): Promise<string[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(SKILL_EMBEDDINGS_TABLE)
+    .select('provider, model');
+  if (error) throw new Error(`listDistinctSkillEmbeddingModels: ${error.message}`);
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { provider: string; model: string }[]) {
+    set.add(`${r.provider}|${r.model}`);
+  }
+  return [...set];
 }
 
 export async function upsertVivierEmbedding(

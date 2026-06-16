@@ -43,6 +43,7 @@ describe('extractVivierEntities', () => {
         ...FULL,
         title: '  Test Manager  ',
         technologies: ['Java', ' java ', 'React', ''],
+        skills: ['gestion d’équipe', ' gestion d’équipe ', 'Selenium'],
         localisation: '  Paris  ',
       }),
     );
@@ -55,6 +56,8 @@ describe('extractVivierEntities', () => {
     expect(out.entities.localisation).toBe('Paris');
     // Titre extrait + trim, routé séparément (pas dans les entités).
     expect(out.title).toBe('Test Manager');
+    // Compétences atomiques nettoyées + dédupliquées.
+    expect(out.skills).toEqual(['gestion d’équipe', 'Selenium']);
   });
 
   it('titre absent ⇒ title null (sans erreur)', async () => {

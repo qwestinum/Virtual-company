@@ -4,7 +4,7 @@ import type { VivierCandidate } from '@/types/vivier';
 
 const embeddings = { embedText: vi.fn() };
 const entity = { extractVivierEntities: vi.fn() };
-const variants = { runKeywordVariantsSuggestion: vi.fn() };
+const variants = { runTitleVariantsSuggestion: vi.fn() };
 const repo = {
   getVivierCandidate: vi.fn(),
   listDistinctEmbeddingModels: vi.fn(),
@@ -12,11 +12,13 @@ const repo = {
   setVivierTitle: vi.fn(),
   upsertVivierTitleEmbedding: vi.fn(),
   upsertVivierEntities: vi.fn(),
+  setVivierSkills: vi.fn(),
+  replaceSkillEmbeddings: vi.fn(),
 };
 
 vi.mock('@/lib/ai/embeddings', () => embeddings);
 vi.mock('@/lib/vivier/entity-extraction', () => entity);
-vi.mock('@/lib/agents/server/keyword-variants-execute', () => variants);
+vi.mock('@/lib/agents/server/title-variants-execute', () => variants);
 vi.mock('@/lib/db/repos/vivier', () => repo);
 
 function candidate(overrides: Partial<VivierCandidate> = {}): VivierCandidate {
@@ -59,15 +61,18 @@ beforeEach(() => {
   repo.setVivierTitle.mockResolvedValue(undefined);
   repo.upsertVivierTitleEmbedding.mockResolvedValue(undefined);
   repo.upsertVivierEntities.mockResolvedValue(undefined);
+  repo.setVivierSkills.mockResolvedValue(undefined);
+  repo.replaceSkillEmbeddings.mockResolvedValue(undefined);
   // Défaut : index homogène, aligné sur le modèle de l'embedding mocké.
   repo.listDistinctEmbeddingModels.mockResolvedValue(['openai|text-embedding-3-small']);
-  // Défauts : extraction renvoie entités + titre ; variantes + embedding OK.
+  // Défauts : extraction renvoie entités + titre + compétences ; variantes OK.
   entity.extractVivierEntities.mockResolvedValue({
     entities: ENTITIES,
     title: 'Test Manager',
+    skills: ['Java', 'gestion d’équipe'],
   });
-  variants.runKeywordVariantsSuggestion.mockResolvedValue({
-    suggestedVariants: ['QA Lead', 'Responsable des tests'],
+  variants.runTitleVariantsSuggestion.mockResolvedValue({
+    variants: ['QA Lead', 'Responsable des tests'],
   });
   embeddings.embedText.mockResolvedValue({
     vector: [0.1, 0.2],
@@ -90,10 +95,8 @@ describe('indexVivierCandidate — refonte titre', () => {
       'QA Lead',
       'Responsable des tests',
     ]);
-    // Variantes générées à partir du titre.
-    expect(variants.runKeywordVariantsSuggestion.mock.calls[0][0].criterionLabel).toBe(
-      'Test Manager',
-    );
+    // Variantes ISO-RÔLE générées à partir des blocs du titre (ici 1 bloc).
+    expect(variants.runTitleVariantsSuggestion).toHaveBeenCalledWith(['Test Manager']);
     // Embedding du TITRE (pas du CV).
     expect(embeddings.embedText).toHaveBeenCalledWith('Test Manager');
     expect(repo.upsertVivierTitleEmbedding).toHaveBeenCalledWith('VIV-0001', {
@@ -101,6 +104,14 @@ describe('indexVivierCandidate — refonte titre', () => {
       provider: 'openai',
       model: 'text-embedding-3-small',
     });
+    // Compétences : liste posée + un embedding par compétence.
+    expect(repo.setVivierSkills).toHaveBeenCalledWith('VIV-0001', [
+      'Java',
+      'gestion d’équipe',
+    ]);
+    expect(embeddings.embedText).toHaveBeenCalledWith('Java');
+    expect(embeddings.embedText).toHaveBeenCalledWith('gestion d’équipe');
+    expect(repo.replaceSkillEmbeddings).toHaveBeenCalledTimes(1);
   });
 
   it('espace d’embeddings mélangé ⇒ avertit fort mais reste indexed', async () => {
@@ -144,21 +155,25 @@ describe('indexVivierCandidate — refonte titre', () => {
 
   it('titre vide ⇒ ni variantes ni embedding titre, mais indexed', async () => {
     repo.getVivierCandidate.mockResolvedValue(candidate());
-    entity.extractVivierEntities.mockResolvedValue({ entities: ENTITIES, title: null });
+    entity.extractVivierEntities.mockResolvedValue({
+      entities: ENTITIES,
+      title: null,
+      skills: [],
+    });
 
     const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
     const res = await indexVivierCandidate('VIV-0001');
 
     expect(res.status).toBe('indexed');
     expect(repo.setVivierTitle).toHaveBeenCalledWith('VIV-0001', null, []);
-    expect(variants.runKeywordVariantsSuggestion).not.toHaveBeenCalled();
+    expect(variants.runTitleVariantsSuggestion).not.toHaveBeenCalled();
     expect(embeddings.embedText).not.toHaveBeenCalled();
     expect(repo.upsertVivierTitleEmbedding).not.toHaveBeenCalled();
   });
 
   it('échec génération variantes ⇒ variantes vides, embedding titre quand même, indexed', async () => {
     repo.getVivierCandidate.mockResolvedValue(candidate());
-    variants.runKeywordVariantsSuggestion.mockRejectedValueOnce(new Error('LLM down'));
+    variants.runTitleVariantsSuggestion.mockRejectedValueOnce(new Error('LLM down'));
 
     const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
     const res = await indexVivierCandidate('VIV-0001');

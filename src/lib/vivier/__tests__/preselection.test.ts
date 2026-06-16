@@ -9,6 +9,7 @@ const vivierRepo = {
   listIndexedVivierTitles: vi.fn(),
   matchVivierTitles: vi.fn(),
   listDistinctEmbeddingModels: vi.fn(),
+  listSkillEmbeddingsByCandidateIds: vi.fn(),
 };
 const analyses = { listCandidateAnalyses: vi.fn() };
 const presel = {
@@ -18,7 +19,7 @@ const presel = {
 };
 const settings = { getAppSettings: vi.fn() };
 const ai = { embedText: vi.fn() };
-const variants = { runKeywordVariantsSuggestion: vi.fn() };
+const variants = { runTitleVariantsSuggestion: vi.fn() };
 
 vi.mock('@/lib/db/repos/campaigns', () => campaigns);
 vi.mock('@/lib/db/repos/vivier', () => vivierRepo);
@@ -26,7 +27,7 @@ vi.mock('@/lib/db/repos/candidate-analyses', () => analyses);
 vi.mock('@/lib/db/repos/vivier-preselection', () => presel);
 vi.mock('@/lib/db/repos/app-settings', () => settings);
 vi.mock('@/lib/ai/embeddings', () => ai);
-vi.mock('@/lib/agents/server/keyword-variants-execute', () => variants);
+vi.mock('@/lib/agents/server/title-variants-execute', () => variants);
 vi.mock('@/lib/vivier/candidates', () => ({
   normalizeEmail: (s: string) => s.trim().toLowerCase(),
 }));
@@ -81,9 +82,10 @@ beforeEach(() => {
   });
   vivierRepo.listDistinctEmbeddingModels.mockResolvedValue([]); // garde-fou inactif
   vivierRepo.matchVivierTitles.mockResolvedValue(new Map());
-  // Variantes de l'intitulé « Test Manager ».
-  variants.runKeywordVariantsSuggestion.mockResolvedValue({
-    suggestedVariants: ['QA Manager', 'QA Lead', 'Responsable des tests'],
+  vivierRepo.listSkillEmbeddingsByCandidateIds.mockResolvedValue(new Map());
+  // Variantes ISO-RÔLE de l'intitulé « Test Manager ».
+  variants.runTitleVariantsSuggestion.mockResolvedValue({
+    variants: ['QA Manager', 'QA Lead', 'Responsable des tests'],
   });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -139,7 +141,7 @@ describe('runVivierPreselection — cascade titre', () => {
       cand('b'),
       cand('c'),
     ]);
-    variants.runKeywordVariantsSuggestion.mockResolvedValue({ suggestedVariants: [] }); // pas de bloc 1
+    variants.runTitleVariantsSuggestion.mockResolvedValue({ variants: [] }); // pas de bloc 1
     vivierRepo.matchVivierTitles.mockResolvedValue(
       new Map([
         ['a', 0.6],
@@ -173,7 +175,7 @@ describe('runVivierPreselection — cascade titre', () => {
   it('volume piloté par la pertinence : aucune troncature à un plafond', async () => {
     const many = Array.from({ length: 60 }, (_, i) => cand(`c${i}`));
     vivierRepo.listIndexedVivierTitles.mockResolvedValue(many);
-    variants.runKeywordVariantsSuggestion.mockResolvedValue({ suggestedVariants: [] });
+    variants.runTitleVariantsSuggestion.mockResolvedValue({ variants: [] });
     vivierRepo.matchVivierTitles.mockResolvedValue(
       new Map(many.map((c) => [c.id, 0.7])),
     );
@@ -182,6 +184,41 @@ describe('runVivierPreselection — cascade titre', () => {
     const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
 
     expect(entries).toHaveLength(60); // pas de cap à 50
+  });
+
+  it('combinaison 70/30 : les compétences RÉORDONNENT les qualifiés (sans en éliminer)', async () => {
+    // Deux candidats à ÉGALITÉ de titre (bloc 2, sim 0.7). La fiche attend
+    // « Python » : 'a' la couvre, 'b' non. 'a' doit passer devant 'b', mais 'b'
+    // reste présent (les compétences ne ferment pas la porte).
+    const camp = campaign();
+    camp.fdp.fields.key_skills = { ...camp.fdp.fields.key_skills, value: 'Python' };
+    campaigns.getCampaign.mockResolvedValue(camp);
+    variants.runTitleVariantsSuggestion.mockResolvedValue({ variants: [] }); // pas de bloc 1
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([cand('a'), cand('b')]);
+    vivierRepo.matchVivierTitles.mockResolvedValue(
+      new Map([['a', 0.7], ['b', 0.7]]),
+    );
+    // Embeddings orthonormés : la requête skill « Python » = axe 0.
+    ai.embedText.mockImplementation(async (text: string) => ({
+      vector: text === 'Python' ? [1, 0, 0] : [0.1, 0.2, 0.3],
+      provider: 'openai',
+      model: 'text-embedding-3-small',
+    }));
+    vivierRepo.listSkillEmbeddingsByCandidateIds.mockResolvedValue(
+      new Map([
+        ['a', [{ term: 'Python', vector: [1, 0, 0] }]], // couvre
+        ['b', [{ term: 'Java', vector: [0, 1, 0] }]], // ne couvre pas
+      ]),
+    );
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    expect(entries.map((e) => e.candidateId)).toEqual(['a', 'b']); // 'a' devant
+    expect(entries.find((e) => e.candidateId === 'a')!.skillCoverage).toBeCloseTo(1);
+    expect(entries.find((e) => e.candidateId === 'b')!.skillCoverage).toBe(0);
+    // 'b' (couverture 0) RESTE qualifié — la porte d'entrée est le titre.
+    expect(entries).toHaveLength(2);
   });
 
   it('rien de pertinent ⇒ short-list vide (réponse valide)', async () => {
@@ -219,7 +256,7 @@ describe('runVivierPreselection — cascade titre', () => {
     });
 
     expect(ai.embedText).toHaveBeenCalledWith('profil QA senior bancaire');
-    expect(variants.runKeywordVariantsSuggestion).not.toHaveBeenCalled();
+    expect(variants.runTitleVariantsSuggestion).not.toHaveBeenCalled();
     expect(entries.map((e) => e.candidateId)).toEqual(['a']);
     expect(entries[0].matchKind).toBe('title_semantic');
   });

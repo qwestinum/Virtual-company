@@ -14,6 +14,8 @@ function entry(candidateId: string): ShortlistEntry {
     matchKind: 'title_semantic',
     matchTerm: null,
     similarity: 0.5,
+    skillCoverage: 0,
+    skillMatches: [],
     freshnessFactor: 1,
     relevanceScore: 0.5,
     updatedAt: '2026-06-01T00:00:00Z',

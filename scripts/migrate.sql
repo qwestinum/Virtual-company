@@ -802,3 +802,35 @@ $$;
 alter table public.vivier_preselections
   add column if not exists match_kind text,   -- 'title_exact' | 'title_semantic'
   add column if not exists match_term text;   -- variante matchée (bloc 1)
+
+-- ──────────────────────────────────────────────────────────────────────
+-- COMPÉTENCES set-to-set (présélection — Chantier 3)
+-- Un embedding PAR compétence (jamais un vecteur moyenné : le barycentre dilue
+-- et l'asymétrie N vs M pénalise les spécialistes). Le matching set-to-set se
+-- fait en JS pur (cosinus par paire) ; cette table fournit les vecteurs.
+-- Spec : docs/specs/vivier.md (Chantier 3).
+-- ──────────────────────────────────────────────────────────────────────
+
+-- Liste atomique lisible des compétences du candidat (affichage + accès sans
+-- vecteurs). Régénérée à l'indexation, comme title_variants.
+alter table public.vivier_candidates
+  add column if not exists skills text[] not null default '{}';
+
+create table if not exists public.vivier_skill_embeddings (
+  id            uuid primary key default gen_random_uuid(),
+  candidate_id  uuid not null
+                  references public.vivier_candidates(id) on delete cascade,
+  skill         text not null,              -- compétence atomique (normalisée)
+  embedding     vector(1536) not null,
+  provider      text not null,              -- garde-fou d'espace (= modèle indexé)
+  model         text not null,
+  generated_at  timestamptz not null default now(),
+  unique (candidate_id, skill)
+);
+
+create index if not exists vivier_skill_emb_candidate_idx
+  on public.vivier_skill_embeddings (candidate_id);
+-- Index HNSW cosinus (au cas où un tri SQL serait ajouté en V2 ; le matching V1
+-- est en JS, mais l'index ne coûte rien à poser dès maintenant).
+create index if not exists vivier_skill_emb_hnsw_idx
+  on public.vivier_skill_embeddings using hnsw (embedding vector_cosine_ops);

@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     console.error('[warn] variantes intitulé indisponibles :', err);
   }
   console.log(`Variantes de l’intitulé : ${variants.join(', ') || '(aucune)'}`);
-  const campaignSet = campaignTitleTermSet(jobTitle, variants);
+  const campaignSet = campaignTitleTermSet([jobTitle], variants);
 
   const { vector, provider, model } = await embedText(jobTitle);
   console.log(`Modèle d’embedding requête : ${provider}|${model}`);

@@ -15,13 +15,13 @@ describe('normalizeTitleTerm', () => {
 
 describe('campaignTitleTermSet', () => {
   it('réunit intitulé + variantes, normalisés, sans vides', () => {
-    const set = campaignTitleTermSet('Test Manager', ['QA Lead', '', '  ']);
+    const set = campaignTitleTermSet(['Test Manager'], ['QA Lead', '', '  ']);
     expect([...set].sort()).toEqual(['qa lead', 'test manager']);
   });
 });
 
 describe('firstDeterministicMatch', () => {
-  const campaign = campaignTitleTermSet('Test Manager', ['QA Lead', 'QA Manager']);
+  const campaign = campaignTitleTermSet(['Test Manager'], ['QA Lead', 'QA Manager']);
 
   it('matche via le titre candidat (casse/espaces ignorés), renvoie le terme original', () => {
     expect(firstDeterministicMatch('test manager', [], campaign)).toBe('test manager');

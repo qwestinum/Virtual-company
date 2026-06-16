@@ -43,9 +43,20 @@ export type ShortlistEntry = {
   matchTerm: string | null;
   /** Similarité titre-à-titre 0..1 (bloc 2 ; 1.0 pour un match exact bloc 1). */
   similarity: number;
+  /**
+   * Couverture des compétences attendues 0..1 (set-to-set, Chantier 3).
+   * RÉORDONNE seulement (n'ouvre ni ne ferme la porte). 0 si la fiche n'a pas de
+   * compétences clés ou le candidat n'est pas encore réindexé.
+   */
+  skillCoverage: number;
+  /** Mapping interprétable attente fiche → compétence CV retenue (explicabilité). */
+  skillMatches: { jobSkill: string; candidateSkill: string | null; covered: boolean }[];
   /** Facteur de fraîcheur 0..1 (dégressif au-delà de 12 mois). */
   freshnessFactor: number;
-  /** Score de pertinence = similarity × freshnessFactor (clé de tri). */
+  /**
+   * Score final = clé de tri. titleWeight·similarité + skillWeight·couverture
+   * (+ nudge fraîcheur). Le titre domine ; les compétences réordonnent.
+   */
   relevanceScore: number;
   /** Date de dernière mise à jour du dossier (source de la fraîcheur). */
   updatedAt: string;

@@ -101,6 +101,10 @@ export async function listPreselection(
     matchKind: (row.match_kind ?? 'title_semantic') as ShortlistEntry['matchKind'],
     matchTerm: row.match_term,
     similarity: row.similarity,
+    // Couverture compétences = signal d'affichage dérivé, non persisté : repli
+    // neutre à la relecture (recalculé à la prochaine présélection).
+    skillCoverage: 0,
+    skillMatches: [],
     freshnessFactor: row.freshness_factor,
     relevanceScore: row.relevance_score,
     updatedAt: row.vivier_candidates?.updated_at ?? row.generated_at,

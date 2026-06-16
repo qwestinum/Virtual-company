@@ -17,13 +17,14 @@
  */
 
 import { embedText } from '@/lib/ai/embeddings';
-import { runKeywordVariantsSuggestion } from '@/lib/agents/server/keyword-variants-execute';
+import { runTitleVariantsSuggestion } from '@/lib/agents/server/title-variants-execute';
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
   listDistinctEmbeddingModels,
   listIndexedVivierTitles,
+  listSkillEmbeddingsByCandidateIds,
   matchVivierTitles,
   type IndexedVivierTitle,
 } from '@/lib/db/repos/vivier';
@@ -33,8 +34,14 @@ import {
   replacePreselection,
 } from '@/lib/db/repos/vivier-preselection';
 import { normalizeEmail } from '@/lib/vivier/candidates';
+import { atomizeJobSkills } from '@/lib/vivier/job-skills';
+import {
+  computeSkillCoverage,
+  type SkillVector,
+} from '@/lib/vivier/skill-coverage';
+import { splitTitleIntoBlocks } from '@/lib/vivier/title-splitting';
 import type { FDPInProgress } from '@/types/field-collection';
-import { DEFAULT_VIVIER_CONFIG } from '@/types/vivier-settings';
+import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 import type {
   HardFilterMatch,
   PreselectionMatchKind,
@@ -69,18 +76,30 @@ export class PreselectionError extends Error {
 
 // ── Helpers purs (exportés pour test) ────────────────────────────────────────
 
-/** Normalise un terme de titre pour le matching déterministe (trim, casse, espaces). */
+/**
+ * Normalise un terme de titre pour le matching déterministe : trim, minuscules,
+ * SUPPRESSION DES ACCENTS (comparaison insensible casse + accents), espaces
+ * multiples réduits.
+ */
 export function normalizeTitleTerm(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ');
 }
 
-/** Ensemble normalisé des termes côté campagne : intitulé + variantes. */
+/**
+ * Ensemble normalisé des termes côté campagne : BLOCS de l'intitulé (titres
+ * composés) + variantes. `titleForms` = `splitTitleIntoBlocks(intitulé)`.
+ */
 export function campaignTitleTermSet(
-  jobTitle: string,
+  titleForms: string[],
   variants: string[],
 ): Set<string> {
   const set = new Set<string>();
-  for (const t of [jobTitle, ...variants]) {
+  for (const t of [...titleForms, ...variants]) {
     const n = normalizeTitleTerm(t);
     if (n) set.add(n);
   }
@@ -138,8 +157,11 @@ function makeEntry(
     matchKind,
     matchTerm,
     similarity,
+    // Couverture compétences posée par le post-pass set-to-set (0 par défaut).
+    skillCoverage: 0,
+    skillMatches: [],
     freshnessFactor: freshness,
-    // Pertinence (similarité) + nudge de fraîcheur borné (départage des ex æquo).
+    // Provisoire (titre seul) — recalculé par finalizeScores avec le poids skills.
     relevanceScore: similarity + FRESHNESS_TIEBREAK_WEIGHT * (freshness - 1),
     updatedAt: c.updatedAt,
     passedFilters: [] as HardFilterMatch[],
@@ -150,6 +172,74 @@ function makeEntry(
     decidedBy: null,
     appliedAt: null,
   };
+}
+
+/** Score final = titre (70%) + compétences (30%) + nudge fraîcheur borné. */
+function finalScore(
+  similarity: number,
+  coverage: number,
+  freshness: number,
+  cfg: VivierConfig,
+): number {
+  return (
+    cfg.titleWeight * similarity +
+    cfg.skillWeight * coverage +
+    FRESHNESS_TIEBREAK_WEIGHT * (freshness - 1)
+  );
+}
+
+/**
+ * Post-pass set-to-set : pose `skillCoverage` + `skillMatches` sur chaque entrée
+ * (couverture des compétences attendues par celles du candidat), recalcule le
+ * score final (titre + compétences) puis trie GLOBALEMENT décroissant et range.
+ * Les compétences RÉORDONNENT les qualifiés — elles ne qualifient personne (la
+ * porte d'entrée reste le titre). `jobSkillVectors` vide ⇒ couverture 0 partout
+ * (ordre = titre seul, inchangé).
+ */
+function finalizeScores(
+  entries: ShortlistEntry[],
+  jobSkillVectors: SkillVector[],
+  candidateSkills: Map<string, SkillVector[]>,
+  cfg: VivierConfig,
+): ShortlistEntry[] {
+  for (const e of entries) {
+    const cov = computeSkillCoverage({
+      jobSkills: jobSkillVectors,
+      candidateSkills: candidateSkills.get(e.candidateId) ?? [],
+      perSkillFloor: cfg.skillPerSkillFloor,
+    });
+    e.skillCoverage = cov.coverage;
+    e.skillMatches = cov.matches.map((m) => ({
+      jobSkill: m.jobSkill,
+      candidateSkill: m.candidateSkill,
+      covered: m.covered,
+    }));
+    e.relevanceScore = finalScore(e.similarity, cov.coverage, e.freshnessFactor, cfg);
+  }
+  entries.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  entries.forEach((e, i) => {
+    e.rank = i + 1;
+  });
+  return entries;
+}
+
+/**
+ * Embeddings des compétences ATTENDUES de la fiche (atomisées depuis key_skills),
+ * calculés à la volée (V1 ; cache par campagne = réserve V2). Best-effort : un
+ * échec d'embed ⇒ liste vide ⇒ couverture 0 (dégradation vers le titre seul).
+ * L'espace d'embeddings est déjà vérifié == requête titre (garde-fou amont).
+ */
+async function embedJobSkills(fdp: FDPInProgress): Promise<SkillVector[]> {
+  const terms = atomizeJobSkills(fdp.fields.key_skills?.value);
+  if (terms.length === 0) return [];
+  try {
+    return await Promise.all(
+      terms.map(async (term) => ({ term, vector: (await embedText(term)).vector })),
+    );
+  } catch (err) {
+    console.error('[vivier] embed compétences poste échoué', err);
+    return [];
+  }
 }
 
 // ── Orchestrateur ────────────────────────────────────────────────────────────
@@ -231,7 +321,12 @@ export async function runVivierPreselection(
   }
 
   const candidates = await listIndexedVivierTitles();
-  const config = (await getAppSettings())?.vivierConfig ?? DEFAULT_VIVIER_CONFIG;
+  // Fusion avec les défauts : une config stockée avant le Chantier 4 n'a pas les
+  // nouveaux champs (poids, seuil skills, séparateurs) → on les comble.
+  const config: VivierConfig = {
+    ...DEFAULT_VIVIER_CONFIG,
+    ...(await getAppSettings())?.vivierConfig,
+  };
   const threshold = config.similarityFloor;
 
   // Exclusions (§6/§7) appliquées aux deux blocs.
@@ -249,7 +344,8 @@ export async function runVivierPreselection(
   const isExcluded = (email: string) => excluded.has(normalizeEmail(email));
   const eligible = candidates.filter((c) => !isExcluded(c.email));
 
-  // RECHERCHE LIBRE : bloc 2 sémantique seul (pas de déterministe).
+  // RECHERCHE LIBRE : bloc 2 sémantique seul (pas de déterministe, pas de skills
+  // — la requête libre n'a pas de fiche). Le tri reste piloté par le titre.
   if (opts.freeText?.trim()) {
     const sims = await matchVivierTitles(vector, eligible.map((c) => c.id));
     let below = 0;
@@ -260,9 +356,8 @@ export async function runVivierPreselection(
         if (x.sim < threshold) { below++; return false; }
         return true;
       })
-      .map((x) => makeEntry(x.c, 'title_semantic', null, x.sim, now))
-      .sort((a, b) => b.relevanceScore - a.relevanceScore);
-    entries.forEach((e, i) => { e.rank = i + 1; });
+      .map((x) => makeEntry(x.c, 'title_semantic', null, x.sim, now));
+    finalizeScores(entries, [], new Map(), config);
     return {
       entries,
       meta: {
@@ -274,32 +369,30 @@ export async function runVivierPreselection(
     };
   }
 
-  // Variantes de l'intitulé (bloc 1 symétrique), NON bloquant.
+  // Variantes ISO-RÔLE de l'intitulé (par bloc + complet), NON bloquant.
+  const jobTitleForms = splitTitleIntoBlocks(jobTitle, config.titleSeparators);
   let jobVariants: string[] = [];
   try {
-    jobVariants = (
-      await runKeywordVariantsSuggestion({
-        criterionLabel: jobTitle,
-        existingKeywords: [],
-        targetMethod: 'keywords_with_variants',
-      })
-    ).suggestedVariants;
+    jobVariants = (await runTitleVariantsSuggestion(jobTitleForms)).variants;
   } catch (err) {
     console.error('[vivier] variantes intitulé poste échouées', err);
   }
-  const campaignSet = campaignTitleTermSet(jobTitle, jobVariants);
+  const campaignSet = campaignTitleTermSet(jobTitleForms, jobVariants);
 
-  // Bloc 1 — déterministe.
+  // Bloc 1 — déterministe : blocs du titre candidat (titres composés) + variantes.
   const bloc1: ShortlistEntry[] = [];
   const bloc1Ids = new Set<string>();
   for (const c of eligible) {
-    const term = firstDeterministicMatch(c.title, c.titleVariants, campaignSet);
+    const candTerms = [
+      ...splitTitleIntoBlocks(c.title ?? '', config.titleSeparators),
+      ...c.titleVariants,
+    ];
+    const term = firstDeterministicMatch(null, candTerms, campaignSet);
     if (term) {
       bloc1.push(makeEntry(c, 'title_exact', term, 1, now));
       bloc1Ids.add(c.id);
     }
   }
-  bloc1.sort((a, b) => b.relevanceScore - a.relevanceScore);
 
   // Bloc 2 — sémantique titre-à-titre, sur les non-retenus au bloc 1.
   const remaining = eligible.filter((c) => !bloc1Ids.has(c.id));
@@ -312,12 +405,16 @@ export async function runVivierPreselection(
       if (x.sim < threshold) { belowThreshold++; return false; }
       return true;
     })
-    .map((x) => makeEntry(x.c, 'title_semantic', null, x.sim, now))
-    .sort((a, b) => b.relevanceScore - a.relevanceScore);
+    .map((x) => makeEntry(x.c, 'title_semantic', null, x.sim, now));
 
-  // Fusion : déterministes d'abord, puis sémantiques. Rang 1..N, PAS de plafond.
+  // Qualifiés (porte d'entrée = titre). Les COMPÉTENCES réordonnent, ne
+  // qualifient personne : post-pass set-to-set puis tri GLOBAL par score final.
   const merged = [...bloc1, ...bloc2];
-  merged.forEach((e, i) => { e.rank = i + 1; });
+  const jobSkillVectors = await embedJobSkills(campaign.fdp);
+  const candidateSkills = await listSkillEmbeddingsByCandidateIds(
+    merged.map((e) => e.candidateId),
+  );
+  finalizeScores(merged, jobSkillVectors, candidateSkills, config);
 
   return {
     entries: merged,

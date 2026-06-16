@@ -21,13 +21,16 @@
  * Server-only. Déclenché en tâche de fond — ne bloque jamais l'appelant.
  */
 
-import { runKeywordVariantsSuggestion } from '@/lib/agents/server/keyword-variants-execute';
+import { runTitleVariantsSuggestion } from '@/lib/agents/server/title-variants-execute';
 import { extractVivierEntities } from '@/lib/vivier/entity-extraction';
+import { splitTitleIntoBlocks } from '@/lib/vivier/title-splitting';
 import { embedText } from '@/lib/ai/embeddings';
 import {
   getVivierCandidate,
   listDistinctEmbeddingModels,
+  replaceSkillEmbeddings,
   setVivierIndexingStatus,
+  setVivierSkills,
   setVivierTitle,
   upsertVivierTitleEmbedding,
   upsertVivierEntities,
@@ -109,23 +112,20 @@ export async function indexVivierCandidate(
     // 1. Entités + TITRE (un seul appel LLM). AIValidationError ⇒ entités vides
     // + titre null (déjà géré dans extractVivierEntities) ; AIProviderError
     // (transport) ⇒ remonte au catch global (failed, re-tentable).
-    const { entities, title } = await extractVivierEntities(
+    const { entities, title, skills } = await extractVivierEntities(
       cvText,
       candidate.cvFileName ?? '',
     );
     await upsertVivierEntities(candidateId, entities);
 
-    // 2. Variantes du titre (LLM, NON bloquant : échec ⇒ variantes vides, le
-    // candidat reste rapprochable par l'embedding titre-à-titre).
+    // 2. Variantes du titre — ISO-RÔLE anglais, par BLOC + titre complet (titres
+    // composés), NON bloquant : échec ⇒ variantes vides, le candidat reste
+    // rapprochable par l'embedding titre-à-titre.
     let variants: string[] = [];
     if (title) {
       try {
-        const r = await runKeywordVariantsSuggestion({
-          criterionLabel: title,
-          existingKeywords: [],
-          targetMethod: 'keywords_with_variants',
-        });
-        variants = r.suggestedVariants;
+        const r = await runTitleVariantsSuggestion(splitTitleIntoBlocks(title));
+        variants = r.variants;
       } catch (err) {
         console.error(`[vivier] title variants failed for ${candidateId}`, err);
       }
@@ -148,7 +148,32 @@ export async function indexVivierCandidate(
       }
     }
 
-    // 4. Succès : le dossier devient recherchable.
+    // 4. Compétences : liste atomique + UN embedding par compétence (set-to-set).
+    // NON bloquant : un échec laisse skills/embeddings vides ⇒ couverture 0 en
+    // présélection (dégradation douce, le titre porte seul le rapprochement).
+    try {
+      await setVivierSkills(candidateId, skills);
+      if (skills.length > 0) {
+        const embedded = await Promise.all(
+          skills.map(async (skill) => {
+            const emb = await embedText(skill);
+            return {
+              skill,
+              vector: emb.vector,
+              provider: emb.provider,
+              model: emb.model,
+            };
+          }),
+        );
+        await replaceSkillEmbeddings(candidateId, embedded);
+      } else {
+        await replaceSkillEmbeddings(candidateId, []);
+      }
+    } catch (err) {
+      console.error(`[vivier] skill embeddings failed for ${candidateId}`, err);
+    }
+
+    // 5. Succès : le dossier devient recherchable.
     await setVivierIndexingStatus(candidateId, 'indexed', null);
     return { status: 'indexed', error: null };
   } catch (err) {
