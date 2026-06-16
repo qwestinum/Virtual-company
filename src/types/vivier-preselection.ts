@@ -41,6 +41,11 @@ export type ShortlistEntry = {
   matchKind: PreselectionMatchKind;
   /** Terme (titre/variante) qui a matché — bloc 1 ; null en bloc 2. */
   matchTerm: string | null;
+  /**
+   * Ancre qui a matché au bloc 1 (explicabilité) : « Titre déclaré » / « Dernier
+   * poste » / « Poste précédent ». null/undefined en bloc 2 (sémantique).
+   */
+  matchAnchorLabel?: string | null;
   /** Similarité titre-à-titre 0..1 (bloc 2 ; 1.0 pour un match exact bloc 1). */
   similarity: number;
   /**

@@ -23,6 +23,7 @@
 
 import { runTitleVariantsSuggestion } from '@/lib/agents/server/title-variants-execute';
 import { extractVivierEntities } from '@/lib/vivier/entity-extraction';
+import { buildAnchorSkeletons } from '@/lib/vivier/title-anchors';
 import { splitTitleIntoBlocks } from '@/lib/vivier/title-splitting';
 import { embedText } from '@/lib/ai/embeddings';
 import {
@@ -32,6 +33,7 @@ import {
   setVivierIndexingStatus,
   setVivierSkills,
   setVivierTitle,
+  setVivierTitleAnchors,
   upsertVivierTitleEmbedding,
   upsertVivierEntities,
 } from '@/lib/db/repos/vivier';
@@ -112,14 +114,12 @@ export async function indexVivierCandidate(
     // 1. Entités + TITRE (un seul appel LLM). AIValidationError ⇒ entités vides
     // + titre null (déjà géré dans extractVivierEntities) ; AIProviderError
     // (transport) ⇒ remonte au catch global (failed, re-tentable).
-    const { entities, title, skills } = await extractVivierEntities(
-      cvText,
-      candidate.cvFileName ?? '',
-    );
+    const { entities, title, skills, recentPositions } =
+      await extractVivierEntities(cvText, candidate.cvFileName ?? '');
     await upsertVivierEntities(candidateId, entities);
 
-    // 2. Variantes du titre — ISO-RÔLE anglais, par BLOC + titre complet (titres
-    // composés), NON bloquant : échec ⇒ variantes vides, le candidat reste
+    // 2. Variantes du titre déclaré — ISO-RÔLE anglais, par BLOC + titre complet
+    // (titres composés), NON bloquant : échec ⇒ variantes vides, le candidat reste
     // rapprochable par l'embedding titre-à-titre.
     let variants: string[] = [];
     if (title) {
@@ -131,6 +131,38 @@ export async function indexVivierCandidate(
       }
     }
     await setVivierTitle(candidateId, title, variants);
+
+    // 2b. ANCRES de titre (Bloc 1 multi-ancres) : titre déclaré (depth 0, réutilise
+    // `variants`) + 2 derniers postes (depth 1/2, variantes générées). NON bloquant :
+    // échec ⇒ ancres vides ⇒ repli sur le titre déclaré en présélection.
+    try {
+      const skeletons = buildAnchorSkeletons(title, recentPositions);
+      const anchors = [];
+      for (const sk of skeletons) {
+        let anchorVariants = variants; // depth 0 : déjà calculées
+        if (sk.depth !== 0) {
+          try {
+            anchorVariants = (await runTitleVariantsSuggestion(sk.blocks)).variants;
+          } catch (err) {
+            console.error(`[vivier] anchor variants failed for ${candidateId}`, err);
+            anchorVariants = [];
+          }
+        }
+        const seen = new Set<string>();
+        const terms: string[] = [];
+        for (const t of [...sk.blocks, ...anchorVariants]) {
+          const k = t.trim().toLowerCase();
+          if (k && !seen.has(k)) {
+            seen.add(k);
+            terms.push(t.trim());
+          }
+        }
+        anchors.push({ text: sk.text, depth: sk.depth, terms });
+      }
+      await setVivierTitleAnchors(candidateId, anchors);
+    } catch (err) {
+      console.error(`[vivier] title anchors failed for ${candidateId}`, err);
+    }
 
     // 3. Embedding du TITRE seul (NON bloquant). PAS d'embedding full-CV.
     if (title) {

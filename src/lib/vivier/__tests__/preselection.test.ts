@@ -61,6 +61,7 @@ function cand(
     updatedAt: '2027-06-01T00:00:00Z',
     title: null,
     titleVariants: [],
+    titleAnchors: [],
     ...over,
   };
 }
@@ -219,6 +220,55 @@ describe('runVivierPreselection — cascade titre', () => {
     expect(entries.find((e) => e.candidateId === 'b')!.skillCoverage).toBe(0);
     // 'b' (couverture 0) RESTE qualifié — la porte d'entrée est le titre.
     expect(entries).toHaveLength(2);
+  });
+
+  it('ancres : titre déclaré bruité KO, repêché via un POSTE (décote + label)', async () => {
+    // Job « Test Manager » → variantes incluent « QA Lead ». Le candidat a un
+    // titre déclaré bruité (aucun match) mais un dernier poste dont une variante
+    // est « QA Lead » ⇒ match Bloc 1 via l'ancre depth 1.
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([
+      cand('reco', {
+        title: 'Ingénieur QL en reconversion vers le DevOps',
+        titleAnchors: [
+          { text: 'Ingénieur QL en reconversion vers le DevOps', depth: 0, terms: ['ingénieur ql en reconversion vers le devops'] },
+          { text: 'Ingénieur Qualité Logicielle', depth: 1, terms: ['Ingénieur Qualité Logicielle', 'QA Lead'] },
+        ],
+      }),
+    ]);
+    vivierRepo.matchVivierTitles.mockResolvedValue(new Map());
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    expect(entries.map((e) => e.candidateId)).toEqual(['reco']);
+    expect(entries[0].matchKind).toBe('title_exact');
+    expect(entries[0].matchTerm).toBe('QA Lead');
+    expect(entries[0].matchAnchorLabel).toBe('Dernier poste');
+    // Décote d'ancienneté : similarité = poids du dernier poste (0,95), pas 1.
+    expect(entries[0].similarity).toBe(0.95);
+    expect(meta.deterministicCount).toBe(1);
+  });
+
+  it('décote : à variantes égales, le match TITRE prime sur le match POSTE', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([
+      cand('parTitre', {
+        titleAnchors: [{ text: 'QA Lead', depth: 0, terms: ['QA Lead'] }],
+      }),
+      cand('parPoste', {
+        titleAnchors: [
+          { text: 'Autre chose', depth: 0, terms: ['autre chose'] },
+          { text: 'QA Lead', depth: 1, terms: ['QA Lead'] },
+        ],
+      }),
+    ]);
+    vivierRepo.matchVivierTitles.mockResolvedValue(new Map());
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    // Même terme « QA Lead », mais le match sur le titre (1.0) passe devant le
+    // match sur le poste (0.95).
+    expect(entries.map((e) => e.candidateId)).toEqual(['parTitre', 'parPoste']);
   });
 
   it('rien de pertinent ⇒ short-list vide (réponse valide)', async () => {

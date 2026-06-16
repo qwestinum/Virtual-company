@@ -18,6 +18,7 @@ export function buildVivierEntitySystemPrompt(): string {
     '{',
     '  "title": "<TITRE / fonction du candidat : l\'intitulé déclaré en tête de CV (« Ingénieur Qualité Logicielle », « Directeur Commercial »…). À défaut, l\'intitulé du POSTE LE PLUS RÉCENT du parcours. null si rien d\'exploitable. Ne l\'INVENTE pas.>",',
     '  "skills": [<COMPÉTENCES du candidat en UNITÉS ATOMIQUES, techniques ET transverses (soft / méthodo) : « Python », « Selenium », « gestion d\'équipe », « gestion de projet », « ISTQB », « communication », « anglais »… Une compétence = un item court (mot ou courte locution), JAMAIS une phrase ni un bloc. Découpe les énumérations en items distincts. Même registre qu\'une rubrique « Compétences clés » de fiche de poste.>],',
+    '  "recentPositions": [<INTITULÉS SEULS des 2 DERNIERS POSTES occupés (expériences professionnelles), du PLUS RÉCENT au plus ancien : « Ingénieur Qualité Logicielle », « Testeur QA »… UNIQUEMENT l\'intitulé du poste — PAS l\'employeur, PAS les dates, PAS de description. Au plus 2. [] si le parcours n\'en montre pas. N\'invente rien.>],',
     '  "technologies": [<technologies / outils / frameworks / langages NOMMÉS dans le CV : « Java », « React », « JIRA », « Kubernetes »…>],',
     '  "certifications": [<certifications professionnelles NOMMÉES : « ISTQB », « PMP », « AWS Certified Solutions Architect », « TOEIC 900 »…>],',
     '  "diplomes": [<diplômes / titres académiques : « Master informatique », « BTS comptabilité », « Ingénieur ENSEEIHT »…>],',

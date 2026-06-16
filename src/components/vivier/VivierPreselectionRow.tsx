@@ -33,7 +33,8 @@ export function VivierPreselectionRow({ entry }: { entry: ShortlistEntry }) {
             title={entry.matchTerm ? `Correspondance de titre : ${entry.matchTerm}` : undefined}
             className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 font-body text-[11px] font-semibold text-emerald-800"
           >
-            Correspondance de titre
+            {/* Ancre qui a matché (titre déclaré / dernier poste / poste précédent). */}
+            {entry.matchAnchorLabel ?? 'Correspondance de titre'}
             {entry.matchTerm ? ` · ${entry.matchTerm}` : ''}
           </span>
         ) : (

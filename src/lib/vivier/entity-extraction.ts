@@ -44,13 +44,16 @@ export const VivierExtractionSchema = VivierEntitiesSchema.extend({
   title: z.string().nullish().catch(null),
   /** Compétences atomiques (hard + soft), routées à part (matching set-to-set). */
   skills: z.array(z.string()).catch([]),
+  /** Intitulés des 2 derniers postes (ancres de titre du Bloc 1, du + récent au + ancien). */
+  recentPositions: z.array(z.string()).catch([]),
 });
 
-/** Résultat d'extraction : entités structurées + titre + compétences (séparés). */
+/** Résultat d'extraction : entités + titre + compétences + derniers postes (séparés). */
 export type VivierExtraction = {
   entities: VivierEntities;
   title: string | null;
   skills: string[];
+  recentPositions: string[];
 };
 
 /** Nettoie une liste de chaînes (trim, retrait des vides, déduplication insensible casse). */
@@ -102,10 +105,17 @@ export async function extractVivierEntities(
       entities: normalize(r.data),
       title: r.data.title?.trim() || null,
       skills: cleanList(r.data.skills ?? []),
+      // Cap à 2 derniers postes (ancres de titre du Bloc 1).
+      recentPositions: cleanList(r.data.recentPositions ?? []).slice(0, 2),
     };
   } catch (err) {
     if (err instanceof AIValidationError) {
-      return { entities: { ...EMPTY_VIVIER_ENTITIES }, title: null, skills: [] };
+      return {
+        entities: { ...EMPTY_VIVIER_ENTITIES },
+        title: null,
+        skills: [],
+        recentPositions: [],
+      };
     }
     throw err;
   }

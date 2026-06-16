@@ -2,8 +2,9 @@
  * Réindexation batch du vivier (docs/specs/vivier.md §3.4 / §4).
  *
  * Régénère, pour chaque dossier (via `indexVivierCandidate`) : entités, TITRE
- * (+ repli), VARIANTES du titre (iso-rôle anglais), EMBEDDING DU TITRE, ET les
- * COMPÉTENCES atomiques + UN EMBEDDING PAR COMPÉTENCE (matching set-to-set) —
+ * (+ repli), VARIANTES du titre (iso-rôle anglais), EMBEDDING DU TITRE, les
+ * ANCRES de titre (titre déclaré + 2 derniers postes, variantes par ancre), ET
+ * les COMPÉTENCES atomiques + UN EMBEDDING PAR COMPÉTENCE (matching set-to-set) —
  * les signaux de la présélection. (L'embedding full-CV n'est plus régénéré.)
  *
  * Reindex COMPLET obligatoire après l'ajout des compétences (Chantier 3) : les

@@ -44,6 +44,7 @@ describe('extractVivierEntities', () => {
         title: '  Test Manager  ',
         technologies: ['Java', ' java ', 'React', ''],
         skills: ['gestion d’équipe', ' gestion d’équipe ', 'Selenium'],
+        recentPositions: ['Ingénieur Qualité Logicielle', 'Testeur QA', 'Stagiaire'],
         localisation: '  Paris  ',
       }),
     );
@@ -58,6 +59,8 @@ describe('extractVivierEntities', () => {
     expect(out.title).toBe('Test Manager');
     // Compétences atomiques nettoyées + dédupliquées.
     expect(out.skills).toEqual(['gestion d’équipe', 'Selenium']);
+    // 2 derniers postes seulement (cap), nettoyés.
+    expect(out.recentPositions).toEqual(['Ingénieur Qualité Logicielle', 'Testeur QA']);
   });
 
   it('titre absent ⇒ title null (sans erreur)', async () => {

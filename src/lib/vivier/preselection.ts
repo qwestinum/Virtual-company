@@ -39,6 +39,11 @@ import {
   computeSkillCoverage,
   type SkillVector,
 } from '@/lib/vivier/skill-coverage';
+import {
+  anchorLabel,
+  anchorWeight,
+  matchAnchors,
+} from '@/lib/vivier/title-anchors';
 import { splitTitleIntoBlocks } from '@/lib/vivier/title-splitting';
 import type { FDPInProgress } from '@/types/field-collection';
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
@@ -156,6 +161,7 @@ function makeEntry(
     email: c.email,
     matchKind,
     matchTerm,
+    matchAnchorLabel: null,
     similarity,
     // Couverture compétences posée par le post-pass set-to-set (0 par défaut).
     skillCoverage: 0,
@@ -379,17 +385,30 @@ export async function runVivierPreselection(
   }
   const campaignSet = campaignTitleTermSet(jobTitleForms, jobVariants);
 
-  // Bloc 1 — déterministe : blocs du titre candidat (titres composés) + variantes.
+  // Bloc 1 — déterministe MULTI-ANCRES : titre déclaré + 2 derniers postes.
+  // On retient l'ancre la plus récente qui matche (décote d'ancienneté au score)
+  // pour repêcher les titres déclarés bruités via un poste passé propre.
   const bloc1: ShortlistEntry[] = [];
   const bloc1Ids = new Set<string>();
   for (const c of eligible) {
-    const candTerms = [
-      ...splitTitleIntoBlocks(c.title ?? '', config.titleSeparators),
-      ...c.titleVariants,
-    ];
-    const term = firstDeterministicMatch(null, candTerms, campaignSet);
-    if (term) {
-      bloc1.push(makeEntry(c, 'title_exact', term, 1, now));
+    let match: { term: string; depth: number } | null = null;
+    if (c.titleAnchors.length > 0) {
+      const m = matchAnchors(c.titleAnchors, campaignSet, normalizeTitleTerm);
+      if (m) match = { term: m.term, depth: m.depth };
+    } else {
+      // Repli (dossier pas encore réindexé) : titre déclaré + variantes, depth 0.
+      const candTerms = [
+        ...splitTitleIntoBlocks(c.title ?? '', config.titleSeparators),
+        ...c.titleVariants,
+      ];
+      const term = firstDeterministicMatch(null, candTerms, campaignSet);
+      if (term) match = { term, depth: 0 };
+    }
+    if (match) {
+      const weight = anchorWeight(match.depth, config.titleAnchorWeights);
+      const entry = makeEntry(c, 'title_exact', match.term, weight, now);
+      entry.matchAnchorLabel = anchorLabel(match.depth);
+      bloc1.push(entry);
       bloc1Ids.add(c.id);
     }
   }

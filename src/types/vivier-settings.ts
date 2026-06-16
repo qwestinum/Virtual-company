@@ -44,6 +44,12 @@ export const VivierConfigSchema = z.object({
    * portent leurs espaces (le tiret ne sépare QUE entouré d'espaces).
    */
   titleSeparators: z.array(z.string()).default(['/', '|', '&', ' et ', ' - ', ' – ']),
+  /**
+   * Décote d'ancienneté des ANCRES de titre (Phase 1) par depth : titre déclaré
+   * (0), dernier poste (1), poste précédent (2). Le rôle COURANT prime sans
+   * exclure les rôles passés (repêchage). Repli sur le dernier poids.
+   */
+  titleAnchorWeights: z.array(z.number().min(0).max(1)).default([1, 0.95, 0.9]),
 });
 
 export type VivierConfig = z.infer<typeof VivierConfigSchema>;
@@ -80,4 +86,5 @@ export const DEFAULT_VIVIER_CONFIG: VivierConfig = {
   skillWeight: 0.3,
   skillPerSkillFloor: 0.6,
   titleSeparators: ['/', '|', '&', ' et ', ' - ', ' – '],
+  titleAnchorWeights: [1, 0.95, 0.9],
 };

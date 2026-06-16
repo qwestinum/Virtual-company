@@ -14,6 +14,7 @@
 
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import { sanitizePostgrestSearch } from '@/lib/db/sanitize-search';
+import type { TitleAnchor } from '@/lib/vivier/title-anchors';
 import type {
   VivierCandidateRow,
   VivierEmbeddingRow,
@@ -517,7 +518,7 @@ export async function listDistinctEmbeddingModels(): Promise<string[]> {
   return [...set];
 }
 
-/** Un dossier INDEXÉ avec son TITRE + variantes + fraîcheur (présélection titre). */
+/** Un dossier INDEXÉ avec son TITRE + variantes + ancres + fraîcheur (présélection titre). */
 export type IndexedVivierTitle = {
   id: string;
   nom: string;
@@ -525,6 +526,8 @@ export type IndexedVivierTitle = {
   updatedAt: string;
   title: string | null;
   titleVariants: string[];
+  /** Ancres de titre (déclaré + 2 derniers postes) du Bloc 1. Vide ⇒ repli déclaré. */
+  titleAnchors: TitleAnchor[];
 };
 
 /**
@@ -536,7 +539,7 @@ export async function listIndexedVivierTitles(): Promise<IndexedVivierTitle[]> {
   const supabase = requireServerSupabase();
   const { data, error } = await supabase
     .from(TABLE)
-    .select('id, nom, email, updated_at, title, title_variants')
+    .select('id, nom, email, updated_at, title, title_variants, title_anchors')
     .eq('indexing_status', 'indexed');
   if (error) throw new Error(`listIndexedVivierTitles: ${error.message}`);
   return ((data ?? []) as {
@@ -546,6 +549,7 @@ export async function listIndexedVivierTitles(): Promise<IndexedVivierTitle[]> {
     updated_at: string;
     title: string | null;
     title_variants: string[] | null;
+    title_anchors: unknown;
   }[]).map((r) => ({
     id: r.id,
     nom: r.nom,
@@ -553,7 +557,23 @@ export async function listIndexedVivierTitles(): Promise<IndexedVivierTitle[]> {
     updatedAt: r.updated_at,
     title: r.title ?? null,
     titleVariants: r.title_variants ?? [],
+    titleAnchors: Array.isArray(r.title_anchors)
+      ? (r.title_anchors as TitleAnchor[])
+      : [],
   }));
+}
+
+/** Pose les ANCRES de titre (Bloc 1 multi-ancres) sur le dossier — JSONB. */
+export async function setVivierTitleAnchors(
+  id: string,
+  anchors: TitleAnchor[],
+): Promise<void> {
+  const supabase = requireServerSupabase();
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ title_anchors: anchors })
+    .eq('id', id);
+  if (error) throw new Error(`setVivierTitleAnchors: ${error.message}`);
 }
 
 /**

@@ -14,6 +14,7 @@ const repo = {
   upsertVivierEntities: vi.fn(),
   setVivierSkills: vi.fn(),
   replaceSkillEmbeddings: vi.fn(),
+  setVivierTitleAnchors: vi.fn(),
 };
 
 vi.mock('@/lib/ai/embeddings', () => embeddings);
@@ -63,13 +64,15 @@ beforeEach(() => {
   repo.upsertVivierEntities.mockResolvedValue(undefined);
   repo.setVivierSkills.mockResolvedValue(undefined);
   repo.replaceSkillEmbeddings.mockResolvedValue(undefined);
+  repo.setVivierTitleAnchors.mockResolvedValue(undefined);
   // Défaut : index homogène, aligné sur le modèle de l'embedding mocké.
   repo.listDistinctEmbeddingModels.mockResolvedValue(['openai|text-embedding-3-small']);
-  // Défauts : extraction renvoie entités + titre + compétences ; variantes OK.
+  // Défauts : extraction renvoie entités + titre + compétences + 2 derniers postes.
   entity.extractVivierEntities.mockResolvedValue({
     entities: ENTITIES,
     title: 'Test Manager',
     skills: ['Java', 'gestion d’équipe'],
+    recentPositions: ['QA Lead', 'Testeur'],
   });
   variants.runTitleVariantsSuggestion.mockResolvedValue({
     variants: ['QA Lead', 'Responsable des tests'],
@@ -112,6 +115,20 @@ describe('indexVivierCandidate — refonte titre', () => {
     expect(embeddings.embedText).toHaveBeenCalledWith('Java');
     expect(embeddings.embedText).toHaveBeenCalledWith('gestion d’équipe');
     expect(repo.replaceSkillEmbeddings).toHaveBeenCalledTimes(1);
+    // Ancres : titre déclaré (depth 0) + 2 derniers postes (depth 1, 2).
+    expect(repo.setVivierTitleAnchors).toHaveBeenCalledTimes(1);
+    const anchors = repo.setVivierTitleAnchors.mock.calls[0][1] as {
+      text: string;
+      depth: number;
+      terms: string[];
+    }[];
+    expect(anchors.map((a) => ({ text: a.text, depth: a.depth }))).toEqual([
+      { text: 'Test Manager', depth: 0 },
+      { text: 'QA Lead', depth: 1 },
+      { text: 'Testeur', depth: 2 },
+    ]);
+    // depth 0 réutilise les variantes du déclaré (pas de re-génération).
+    expect(anchors[0].terms).toContain('QA Lead');
   });
 
   it('espace d’embeddings mélangé ⇒ avertit fort mais reste indexed', async () => {
@@ -159,6 +176,7 @@ describe('indexVivierCandidate — refonte titre', () => {
       entities: ENTITIES,
       title: null,
       skills: [],
+      recentPositions: [],
     });
 
     const { indexVivierCandidate } = await import('@/lib/vivier/indexing');

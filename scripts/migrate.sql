@@ -759,6 +759,12 @@ alter table public.vivier_candidates
   add column if not exists title          text,
   add column if not exists title_variants text[] not null default '{}';
 
+-- Ancres de titre (Bloc 1 multi-ancres, Phase 1) : titre déclaré + 2 derniers
+-- postes, chacun avec ses blocs + variantes iso-rôle et son depth (0/1/2). JSONB
+-- (régénéré au reindex). Vide ⇒ repli sur title/title_variants (pas de régression).
+alter table public.vivier_candidates
+  add column if not exists title_anchors jsonb not null default '[]'::jsonb;
+
 -- L'embedding full-CV (`embedding`) n'est PLUS régénéré : la présélection se
 -- fonde désormais sur l'embedding du TITRE seul. Les vecteurs full-CV déjà
 -- stockés sont CONSERVÉS (jamais supprimés, usages futurs) ⇒ la colonne devient
