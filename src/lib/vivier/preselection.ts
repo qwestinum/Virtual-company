@@ -410,10 +410,19 @@ export async function runVivierPreselection(
   // Qualifiés (porte d'entrée = titre). Les COMPÉTENCES réordonnent, ne
   // qualifient personne : post-pass set-to-set puis tri GLOBAL par score final.
   const merged = [...bloc1, ...bloc2];
-  const jobSkillVectors = await embedJobSkills(campaign.fdp);
-  const candidateSkills = await listSkillEmbeddingsByCandidateIds(
-    merged.map((e) => e.candidateId),
-  );
+  // BEST-EFFORT : le scoring compétences est un APPOINT. Un échec d'infra
+  // (table compétences, embed, cache) ne doit JAMAIS faire échouer la cascade
+  // titre — sinon rien ne se persiste et la worklist reste vide. Repli titre seul.
+  let jobSkillVectors: SkillVector[] = [];
+  let candidateSkills = new Map<string, SkillVector[]>();
+  try {
+    jobSkillVectors = await embedJobSkills(campaign.fdp);
+    candidateSkills = await listSkillEmbeddingsByCandidateIds(
+      merged.map((e) => e.candidateId),
+    );
+  } catch (err) {
+    console.error('[vivier] scoring compétences indisponible — repli titre seul', err);
+  }
   finalizeScores(merged, jobSkillVectors, candidateSkills, config);
 
   return {

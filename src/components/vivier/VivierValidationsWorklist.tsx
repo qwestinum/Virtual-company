@@ -7,7 +7,7 @@
  * (réutilise VivierValidationList). Lecture + décision, rien à configurer.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { PendingCampaignSummary } from '@/lib/db/repos/vivier-preselection';
 import type { ShortlistEntry } from '@/types/vivier-preselection';
@@ -19,6 +19,11 @@ export function VivierValidationsWorklist() {
   const [selected, setSelected] = useState<PendingCampaignSummary | null>(null);
   const [entries, setEntries] = useState<ShortlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // Miroir de `selected` pour le handler de visibilité (évite une closure périmée).
+  const selectedRef = useRef<PendingCampaignSummary | null>(null);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
 
   const loadCampaigns = useCallback(async () => {
     try {
@@ -45,8 +50,26 @@ export function VivierValidationsWorklist() {
   }, []);
 
   useEffect(() => {
+    // loadCampaigns est async : ses setState sont planifiés après `await`, jamais
+    // synchrones dans le corps de l'effet (faux positif de la règle, cf.
+    // useDashboardData).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadCampaigns();
-  }, [loadCampaigns]);
+    // Refetch quand la page redevient visible : une présélection lancée ailleurs
+    // (activation/relance dans une campagne) doit se refléter au retour ici, sans
+    // recharger l'app. Rafraîchit aussi la campagne ouverte le cas échéant.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadCampaigns();
+      if (selectedRef.current) void loadEntries(selectedRef.current.campaignId);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [loadCampaigns, loadEntries]);
 
   async function open(camp: PendingCampaignSummary) {
     setSelected(camp);
