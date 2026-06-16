@@ -78,6 +78,25 @@ describe('campaigns-store', () => {
     expect(Object.keys(useCampaignsStore.getState().byId)).toHaveLength(0);
   });
 
+  it('removeCampaign retire l’entrée de byId ET de order (rollback création)', () => {
+    const fdp = makeFDP('CAMP-2026-090', true);
+    useCampaignsStore.getState().addCampaign({ fdp });
+    expect(useCampaignsStore.getState().getById('CAMP-2026-090')).toBeDefined();
+    expect(useCampaignsStore.getState().order).toContain('CAMP-2026-090');
+
+    useCampaignsStore.getState().removeCampaign('CAMP-2026-090');
+
+    expect(useCampaignsStore.getState().getById('CAMP-2026-090')).toBeUndefined();
+    expect(useCampaignsStore.getState().order).not.toContain('CAMP-2026-090');
+  });
+
+  it('removeCampaign est un no-op sur un id inconnu', () => {
+    const fdp = makeFDP('CAMP-2026-091', true);
+    useCampaignsStore.getState().addCampaign({ fdp });
+    useCampaignsStore.getState().removeCampaign('CAMP-INCONNU');
+    expect(useCampaignsStore.getState().order).toEqual(['CAMP-2026-091']);
+  });
+
   it('addCampaign stores the optional scoringSheet snapshot', () => {
     const fdp = makeFDP('CAMP-2026-006', true);
     const sheet: ScoringSheet = {

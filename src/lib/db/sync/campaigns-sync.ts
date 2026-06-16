@@ -115,17 +115,81 @@ function schedulePush(id: string, snapshot: ActiveCampaign): void {
   pushTimers.set(id, timer);
 }
 
-async function pushCampaign(snapshot: ActiveCampaign): Promise<void> {
+/**
+ * Annule un push debouncé en attente pour cette campagne. Appelé par le chemin
+ * de création CONFIRMÉE (`persistCampaign` awaité) qui prend la main sur la
+ * persistance : sans ça, le timer de fond rejouerait le PUT après coup et
+ * pourrait ré-enregistrer une campagne dont la création a été annulée pour
+ * échec. Idempotent.
+ */
+export function cancelScheduledCampaignPush(id: string): void {
+  const existing = pushTimers.get(id);
+  if (existing) {
+    clearTimeout(existing);
+    pushTimers.delete(id);
+  }
+}
+
+/**
+ * Résultat d'une tentative de persistance d'une campagne.
+ *   - `{ ok: true, demo: false }` : confirmé écrit en base (200).
+ *   - `{ ok: true, demo: true }`  : Supabase non configuré (503) — mode démo
+ *     volatile assumé, rien à enregistrer côté serveur. PAS un échec.
+ *   - `{ ok: false, ... }`        : échec DUR (réseau, 4xx/5xx) — la campagne
+ *     n'est PAS en base. L'appelant doit le signaler et NE PAS déclarer le
+ *     succès.
+ */
+export type PersistOutcome =
+  | { ok: true; demo: boolean }
+  | { ok: false; status?: number; error: string };
+
+/**
+ * Persiste une campagne et REND le résultat (contrairement à `pushCampaign`,
+ * fire-and-forget). C'est la voie autoritaire d'une création/édition qui doit
+ * confirmer l'enregistrement avant de l'annoncer à l'utilisateur. Vérifie
+ * `res.ok` (un 4xx/5xx renvoie une réponse — `fetch` ne rejette PAS dessus) et
+ * extrait le message d'erreur serveur quand il existe.
+ */
+export async function persistCampaign(
+  snapshot: ActiveCampaign,
+): Promise<PersistOutcome> {
+  let res: Response;
   try {
-    await fetch('/api/campaigns', {
+    res = await fetch('/api/campaigns', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(snapshot),
       cache: 'no-store',
     });
-  } catch {
-    // silencieux — la prochaine mutation rattrapera (cf. JSDoc).
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Erreur réseau.',
+    };
   }
+  // 503 = Supabase non configuré : démo volatile assumée, pas un échec.
+  if (res.status === 503) return { ok: true, demo: true };
+  if (!res.ok) {
+    let error = `HTTP ${res.status}`;
+    try {
+      const data = (await res.json()) as { message?: string; error?: string };
+      error = data.message ?? data.error ?? error;
+    } catch {
+      // Réponse non-JSON : on garde le code HTTP comme message.
+    }
+    return { ok: false, status: res.status, error };
+  }
+  return { ok: true, demo: false };
+}
+
+/**
+ * Push best-effort de fond (subscriber) pour les éditions ultérieures. Délègue
+ * à `persistCampaign` pour partager la logique `res.ok`, mais reste
+ * fire-and-forget : son résultat n'est pas encore remonté à l'UI (durcissement
+ * « modifications non enregistrées » prévu séparément).
+ */
+async function pushCampaign(snapshot: ActiveCampaign): Promise<void> {
+  await persistCampaign(snapshot);
 }
 
 // Exposé pour les tests : permet de remettre l'état du module à zéro.

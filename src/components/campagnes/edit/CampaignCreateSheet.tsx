@@ -26,6 +26,10 @@ import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import { postFdpProposal, postManagerScoring } from '@/lib/chat/api-client';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import { generateCampaignId } from '@/lib/dashboard/campaign-id';
+import {
+  cancelScheduledCampaignPush,
+  persistCampaign,
+} from '@/lib/db/sync/campaigns-sync';
 import type { JobDescription } from '@/lib/storage/job-descriptions';
 import {
   useCampaignsStore,
@@ -65,6 +69,7 @@ type Stage = 'job_title' | 'editing';
 
 export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   const addCampaign = useCampaignsStore((s) => s.addCampaign);
+  const removeCampaign = useCampaignsStore((s) => s.removeCampaign);
   const activateCampaign = useCampaignsStore((s) => s.activateCampaign);
   const existingIds = useCampaignsStore((s) => s.order);
   const getCampaignById = useCampaignsStore((s) => s.getById);
@@ -96,6 +101,9 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
   const [threshold, setThreshold] = useState(75);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Persistance en cours : verrouille le bouton et affiche « Enregistrement… ».
+  // La création n'est déclarée réussie qu'APRÈS confirmation serveur.
+  const [submitting, setSubmitting] = useState(false);
   // Étape post-création : la campagne est enregistrée (en brouillon) et on
   // propose de l'activer. `created` porte le snapshot renvoyé par addCampaign.
   const [created, setCreated] = useState<ActiveCampaign | null>(null);
@@ -331,6 +339,30 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       threshold,
       status: isComplete ? 'in_progress' : 'draft',
     });
+
+    // PERSISTANCE CONFIRMÉE (zéro perte silencieuse). On a écrit la campagne
+    // dans le store local (optimiste, pour la réactivité), mais on ne déclare
+    // PAS le succès tant que Supabase n'a pas confirmé. On reprend la main sur
+    // la persistance : on annule le push de fond debouncé (sinon il rejouerait
+    // le PUT après un éventuel rollback) et on attend la confirmation.
+    cancelScheduledCampaignPush(campaign.id);
+    setSubmitting(true);
+    const outcome = await persistCampaign(campaign);
+    setSubmitting(false);
+    if (!outcome.ok) {
+      // Échec DUR : on annule l'entrée locale (pas de fantôme qui paraît
+      // sauvegardé et disparaît au reload) et on laisse l'utilisateur réessayer
+      // sans rien ressaisir (l'état du formulaire est intact).
+      removeCampaign(campaign.id);
+      setSubmitError(
+        `La campagne n'a pas pu être enregistrée (${outcome.error}). ` +
+          `Rien n'a été perdu : vos saisies sont conservées, réessayez.`,
+      );
+      return;
+    }
+
+    // Confirmé (persisté, ou 503 démo volatile assumée) : on peut prendre acte
+    // et enchaîner les effets de bord best-effort.
     if (!createdOnceRef.current) {
       createdOnceRef.current = true;
       pushManagerAcknowledgment({
@@ -453,6 +485,7 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
             threshold={threshold}
             setThreshold={setThreshold}
             submitError={submitError}
+            submitting={submitting}
             onCancel={onClose}
             onSubmit={onSubmit}
           />
@@ -837,6 +870,7 @@ function EditingStage({
   threshold,
   setThreshold,
   submitError,
+  submitting,
   onCancel,
   onSubmit,
 }: {
@@ -860,6 +894,7 @@ function EditingStage({
   threshold: number;
   setThreshold: (next: number) => void;
   submitError: string | null;
+  submitting: boolean;
   onCancel: () => void;
   onSubmit: () => void;
 }) {
@@ -963,6 +998,7 @@ function EditingStage({
             <button
               type="button"
               onClick={onCancel}
+              disabled={submitting}
               className="font-body"
               style={{
                 padding: '9px 16px',
@@ -972,7 +1008,8 @@ function EditingStage({
                 color: 'var(--dash-text-secondary)',
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                opacity: submitting ? 0.6 : 1,
               }}
             >
               Annuler
@@ -980,21 +1017,25 @@ function EditingStage({
             <button
               type="button"
               onClick={onSubmit}
+              disabled={submitting}
               className="font-display"
               style={{
                 padding: '9px 18px',
                 borderRadius: 8,
                 border: 'none',
-                background:
-                  'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
-                color: '#fff',
+                background: submitting
+                  ? 'var(--dash-hover)'
+                  : 'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
+                color: submitting ? 'var(--dash-text-tertiary)' : '#fff',
                 fontSize: 13,
                 fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 2px 10px rgba(47,110,235,0.3)',
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                boxShadow: submitting
+                  ? undefined
+                  : '0 2px 10px rgba(47,110,235,0.3)',
               }}
             >
-              Créer la campagne
+              {submitting ? 'Enregistrement…' : 'Créer la campagne'}
             </button>
           </div>
         </div>

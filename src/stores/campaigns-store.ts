@@ -187,6 +187,13 @@ export type CampaignsState = {
    * des artefacts correspondants dans le snapshot campagne. No-op si illégal.
    */
   reopenPhase: (id: string, phaseId: PhaseId) => void;
+  /**
+   * Retire une campagne du store (byId + order). Utilisé pour ANNULER une
+   * création optimiste dont la persistance serveur a échoué : on ne laisse
+   * jamais un « fantôme » non sauvegardé qui paraît enregistré et disparaît
+   * au reload (perte silencieuse). No-op si l'id est inconnu.
+   */
+  removeCampaign: (id: string) => void;
   getById: (id: string) => ActiveCampaign | undefined;
   list: () => ActiveCampaign[];
   reset: () => void;
@@ -609,6 +616,18 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
             updatedAt: new Date().toISOString(),
           },
         },
+      };
+    }),
+
+  removeCampaign: (id) =>
+    set((state) => {
+      if (!state.byId[id]) return state;
+      const byId = { ...state.byId };
+      delete byId[id];
+      return {
+        ...state,
+        byId,
+        order: state.order.filter((x) => x !== id),
       };
     }),
 
