@@ -50,6 +50,7 @@ import {
   type ScoringSheet,
 } from '@/types/scoring';
 
+import { CollapsibleSection } from './CollapsibleSection';
 import { ChannelsDraftEditor } from './draft/ChannelsDraftEditor';
 import { FluxDraftEditor } from './draft/FluxDraftEditor';
 import { ScoringDraftEditor } from './draft/ScoringDraftEditor';
@@ -931,6 +932,16 @@ function EditingStage({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  // Sections pliables : une ouverte à la fois, la fiche par défaut. Donne de la
+  // visibilité quand une fiche récupérée préremplit plusieurs blocs (au lieu
+  // d'un mur de blocs à plat).
+  const [openSection, setOpenSection] = useState<EditSectionKey | null>('fdp');
+  const toggle = (key: EditSectionKey) =>
+    setOpenSection((cur) => (cur === key ? null : key));
+
+  const filledCount = Object.keys(collectKnown(fdp)).length;
+  const plural = (n: number, s = 's') => (n > 1 ? s : '');
+
   return (
     <>
       <div
@@ -940,45 +951,88 @@ function EditingStage({
           padding: '14px 22px 18px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 14,
+          gap: 10,
         }}
       >
         {matchHint ? <MatchBanner hint={matchHint} /> : <NoMatchHint />}
         {proposeError ? <ProposeError message={proposeError} /> : null}
 
-        <SectionRow>
-          <SectionTitle icon="📄">Fiche de poste</SectionTitle>
-          <ProposeButton
-            label="Proposer la fiche"
-            loading={proposingFdp}
-            onClick={onProposeFdp}
+        <CollapsibleSection
+          title="Fiche de poste"
+          icon="📄"
+          subtitle={`${filledCount} champ${plural(filledCount)} renseigné${plural(filledCount)}`}
+          open={openSection === 'fdp'}
+          onToggle={() => toggle('fdp')}
+          action={
+            <ProposeButton
+              label="Proposer la fiche"
+              loading={proposingFdp}
+              onClick={onProposeFdp}
+            />
+          }
+        >
+          <FDPInlineEditor fdp={fdp} onPatch={patchField} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Fiche de scoring"
+          icon="⚖️"
+          subtitle={`${criteria.length} critère${plural(criteria.length)}`}
+          open={openSection === 'scoring'}
+          onToggle={() => toggle('scoring')}
+          action={
+            <ProposeButton
+              label="Proposer la grille"
+              loading={proposingScoring}
+              onClick={onProposeScoring}
+            />
+          }
+        >
+          <ScoringDraftEditor criteria={criteria} onChange={setCriteria} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Canaux de diffusion"
+          icon="📢"
+          subtitle={
+            channels.length === 0
+              ? 'Aucun canal'
+              : `${channels.length} canal${channels.length > 1 ? 'aux' : ''} actif${plural(channels.length)}`
+          }
+          open={openSection === 'channels'}
+          onToggle={() => toggle('channels')}
+        >
+          <ChannelsDraftEditor selected={channels} onChange={setChannels} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Flux de réception"
+          icon="📥"
+          subtitle={
+            sources.length === 0
+              ? 'Aucun flux'
+              : `${sources.length} flux actif${plural(sources.length)}`
+          }
+          open={openSection === 'flux'}
+          onToggle={() => toggle('flux')}
+        >
+          <FluxDraftEditor
+            selected={sources}
+            onChange={setSources}
+            mailboxIds={mailboxIds}
+            onMailboxesChange={setMailboxIds}
           />
-        </SectionRow>
-        <FDPInlineEditor fdp={fdp} onPatch={patchField} />
+        </CollapsibleSection>
 
-        <SectionRow>
-          <SectionTitle icon="⚖️">Fiche de scoring</SectionTitle>
-          <ProposeButton
-            label="Proposer la grille"
-            loading={proposingScoring}
-            onClick={onProposeScoring}
-          />
-        </SectionRow>
-        <ScoringDraftEditor criteria={criteria} onChange={setCriteria} />
-
-        <SectionTitle icon="📢">Canaux de diffusion</SectionTitle>
-        <ChannelsDraftEditor selected={channels} onChange={setChannels} />
-
-        <SectionTitle icon="📥">Flux de réception</SectionTitle>
-        <FluxDraftEditor
-          selected={sources}
-          onChange={setSources}
-          mailboxIds={mailboxIds}
-          onMailboxesChange={setMailboxIds}
-        />
-
-        <SectionTitle icon="🎚️">Seuil d&apos;acceptation</SectionTitle>
-        <ThresholdDraftEditor value={threshold} onChange={setThreshold} />
+        <CollapsibleSection
+          title="Seuil d'acceptation"
+          icon="🎚️"
+          subtitle={`${threshold}%`}
+          open={openSection === 'threshold'}
+          onToggle={() => toggle('threshold')}
+        >
+          <ThresholdDraftEditor value={threshold} onChange={setThreshold} />
+        </CollapsibleSection>
       </div>
       <footer
         style={{
@@ -1085,6 +1139,9 @@ type MatchHint = {
   copiedFlux: boolean;
 };
 
+/** Clés des sections pliables de l'étape d'édition à la création. */
+type EditSectionKey = 'fdp' | 'scoring' | 'channels' | 'flux' | 'threshold';
+
 function MatchBanner({ hint }: { hint: MatchHint }) {
   const pieces: string[] = ['la fiche'];
   if (hint.copiedScoring) pieces.push('la grille de scoring');
@@ -1151,23 +1208,6 @@ function SectionTitle({
       </span>
       {children}
     </h3>
-  );
-}
-
-/** Ligne titre de section + action à droite (bouton « Proposer »). */
-function SectionRow({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 8,
-        flexWrap: 'wrap',
-      }}
-    >
-      {children}
-    </div>
   );
 }
 
