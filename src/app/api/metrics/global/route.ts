@@ -25,11 +25,18 @@ import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { fetchMetricsRows } from '@/lib/db/repos/metrics';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { ensureSchedulerStarted } from '@/lib/imap/scheduler';
 import { getAgentOrder } from '@/lib/agents/registry';
 
 export const runtime = 'nodejs';
 
 export async function GET(): Promise<NextResponse> {
+  // Filet de sécurité : le scheduler IMAP démarre au boot (instrumentation),
+  // mais on le re-garantit ici — cette route est pollée toutes les 5 s tant que
+  // l'app est ouverte, donc la relève des candidatures par mail ne peut pas
+  // rester en panne silencieuse. Idempotent (garde sur globalThis).
+  ensureSchedulerStarted();
+
   const agentIds = getAgentOrder();
 
   const result = await fetchMetricsRows();
