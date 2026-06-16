@@ -25,6 +25,7 @@ import { canActivate } from '@/lib/campaign/lifecycle';
 import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import { postFdpProposal, postManagerScoring } from '@/lib/chat/api-client';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
+import { associateMailbox } from '@/lib/campaign/mailbox-association';
 import { generateCampaignId } from '@/lib/dashboard/campaign-id';
 import {
   cancelScheduledCampaignPush,
@@ -107,6 +108,9 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   // Étape post-création : la campagne est enregistrée (en brouillon) et on
   // propose de l'activer. `created` porte le snapshot renvoyé par addCampaign.
   const [created, setCreated] = useState<ActiveCampaign | null>(null);
+  // Nombre de boîtes mail dont le rattachement a échoué (avertit dans l'écran
+  // de succès : la campagne est enregistrée, mais le flux email serait muet).
+  const [mailboxFailures, setMailboxFailures] = useState(0);
   const [activateError, setActivateError] = useState<string | null>(null);
   const createdOnceRef = useRef(false);
   // Proposition par l'IA (parité avec le chat Manager) — opt-in par bouton.
@@ -371,17 +375,16 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
         campaignName: inferredName,
       });
     }
-    // Associe les mailboxes en parallèle après la création — best-effort.
+    // Associe les mailboxes après la création — issue REMONTÉE (plus de
+    // `.catch(() => null)` muet). La campagne est déjà enregistrée : un échec
+    // de rattachement ne l'annule pas, mais on AVERTIT (sinon flux email muet).
     if (mailboxIds.length > 0) {
-      await Promise.all(
-        mailboxIds.map((mid) =>
-          fetch(`/api/mailboxes/${encodeURIComponent(mid)}/associate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ campaignId }),
-          }).catch(() => null),
-        ),
+      const results = await Promise.all(
+        mailboxIds.map((mid) => associateMailbox(mid, campaignId)),
       );
+      setMailboxFailures(results.filter((r) => !r.ok).length);
+    } else {
+      setMailboxFailures(0);
     }
     setActivateError(null);
     setCreated(campaign);
@@ -448,6 +451,7 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
         {created ? (
           <CreatedStep
             campaign={created}
+            mailboxFailures={mailboxFailures}
             activateError={activateError}
             onActivate={onActivate}
             onEdit={() => {
@@ -672,12 +676,14 @@ function JobTitleStep({
  */
 function CreatedStep({
   campaign,
+  mailboxFailures,
   activateError,
   onActivate,
   onEdit,
   onClose,
 }: {
   campaign: ActiveCampaign;
+  mailboxFailures: number;
   activateError: string | null;
   onActivate: () => void;
   onEdit: () => void;
@@ -722,6 +728,33 @@ function CreatedStep({
           </p>
         </div>
       </div>
+
+      {mailboxFailures > 0 ? (
+        <div
+          role="alert"
+          className="font-body"
+          style={{
+            padding: '12px 14px',
+            borderRadius: 10,
+            background: 'var(--dash-red-light)',
+            border: '1px solid var(--dash-red)',
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: 'var(--dash-text-secondary)',
+          }}
+        >
+          ⚠️{' '}
+          <strong style={{ color: 'var(--dash-red)' }}>
+            {mailboxFailures === 1
+              ? 'Une boîte mail n’a pas pu être rattachée'
+              : `${mailboxFailures} boîtes mail n’ont pas pu être rattachées`}
+          </strong>
+          . La campagne est bien enregistrée, mais le flux email ne recevra
+          aucun CV tant que le rattachement n’est pas refait — depuis le bloc{' '}
+          <strong style={{ color: 'var(--dash-text)' }}>Flux de réception</strong>{' '}
+          de l’édition.
+        </div>
+      ) : null}
 
       {gate.ok ? (
         <p

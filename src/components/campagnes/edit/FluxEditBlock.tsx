@@ -18,6 +18,10 @@
 
 import { useEffect, useState } from 'react';
 
+import {
+  associateMailbox,
+  dissociateMailbox,
+} from '@/lib/campaign/mailbox-association';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
@@ -100,38 +104,33 @@ export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
     setMailboxIds(next); // optimiste
     const toAdd = next.filter((id) => !previous.includes(id));
     const toRemove = previous.filter((id) => !next.includes(id));
-    try {
-      await Promise.all([
-        ...toAdd.map((id) =>
-          fetch(`/api/mailboxes/${encodeURIComponent(id)}/associate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ campaignId: campaign.id }),
-          }),
-        ),
-        ...toRemove.map((id) =>
-          fetch(
-            `/api/mailboxes/${encodeURIComponent(id)}/associate?campaign_id=${encodeURIComponent(campaign.id)}`,
-            { method: 'DELETE' },
-          ),
-        ),
-      ]);
-      const added = toAdd.length;
-      const removed = toRemove.length;
-      if (added > 0 || removed > 0) {
-        const parts: string[] = [];
-        if (added > 0)
-          parts.push(`${added} boîte${added > 1 ? 's' : ''} associée${added > 1 ? 's' : ''}`);
-        if (removed > 0)
-          parts.push(
-            `${removed} boîte${removed > 1 ? 's' : ''} retirée${removed > 1 ? 's' : ''}`,
-          );
-        setFlash(`Mailboxes mises à jour : ${parts.join(', ')}.`);
-        window.setTimeout(() => setFlash(null), FLASH_MS);
-      }
-    } catch {
-      // En cas d'échec, on revient à l'état précédent côté UI.
+    // Issues remontées (associateMailbox/dissociateMailbox vérifient res.ok).
+    const results = await Promise.all([
+      ...toAdd.map((id) => associateMailbox(id, campaign.id)),
+      ...toRemove.map((id) => dissociateMailbox(id, campaign.id)),
+    ]);
+    if (results.some((r) => !r.ok)) {
+      // Au moins une opération a échoué : on revient à l'état serveur réel
+      // (pas de divergence muette « coché mais non associé ») et on le DIT.
       setMailboxIds(previous);
+      setFlash(
+        'Échec de la mise à jour des boîtes mail — rien n’a été modifié, réessayez.',
+      );
+      window.setTimeout(() => setFlash(null), FLASH_MS);
+      return;
+    }
+    const added = toAdd.length;
+    const removed = toRemove.length;
+    if (added > 0 || removed > 0) {
+      const parts: string[] = [];
+      if (added > 0)
+        parts.push(`${added} boîte${added > 1 ? 's' : ''} associée${added > 1 ? 's' : ''}`);
+      if (removed > 0)
+        parts.push(
+          `${removed} boîte${removed > 1 ? 's' : ''} retirée${removed > 1 ? 's' : ''}`,
+        );
+      setFlash(`Mailboxes mises à jour : ${parts.join(', ')}.`);
+      window.setTimeout(() => setFlash(null), FLASH_MS);
     }
   };
 
