@@ -42,7 +42,32 @@ function buildSystemPrompt(): string {
     "- de seuil d'acceptation de campagne ;",
     '- de critère « rédhibitoire » ou « obligatoire » (flags éliminatoires) : ces leviers sont réservés à la saisie humaine. Même si le document dit « impératif », classe au plus haut en « critique », jamais en éliminatoire.',
     '',
-    "Réponds STRICTEMENT par un objet JSON conforme au schéma demandé, sans texte autour.",
+    'FORMAT DE SORTIE — réponds par un objet JSON avec EXACTEMENT ces clés (mêmes',
+    'noms, même structure). Pour chaque champ factuel : un objet { "value", "extraitSource" }',
+    'où value est la valeur trouvée (ou null) et extraitSource le passage exact (ou null).',
+    'mainMissions et keySkills ont une value de type tableau de chaînes (ou null).',
+    'Aucune autre clé, aucun texte autour du JSON :',
+    JSON.stringify(
+      {
+        jobTitle: { value: 'string|null', extraitSource: 'string|null' },
+        contractType: { value: 'string|null', extraitSource: 'string|null' },
+        location: { value: 'string|null', extraitSource: 'string|null' },
+        salaryRange: { value: 'string|null', extraitSource: 'string|null' },
+        seniority: { value: 'junior|confirmé|senior|null', extraitSource: 'string|null' },
+        startDate: { value: 'string|null', extraitSource: 'string|null' },
+        mainMissions: { value: ['string'], extraitSource: 'string|null' },
+        keySkills: { value: ['string'], extraitSource: 'string|null' },
+        suggestedCriteria: [
+          {
+            label: 'string',
+            level: SUGGESTABLE_LEVELS.join('|'),
+            extraitSource: 'string|null',
+          },
+        ],
+      },
+      null,
+      2,
+    ),
   ].join('\n');
 }
 
@@ -67,7 +92,7 @@ function buildUserPrompt(documentText: string): string {
 export async function extractCampaignPrefill(
   documentText: string,
 ): Promise<CampaignPrefill> {
-  const { data } = await chatCompleteJson(
+  const { data, raw } = await chatCompleteJson(
     [
       { role: 'system', content: buildSystemPrompt() },
       { role: 'user', content: buildUserPrompt(documentText) },
@@ -76,5 +101,31 @@ export async function extractCampaignPrefill(
     // champ omis ; on normalise ensuite vers le schéma strict.
     RawCampaignPrefillSchema,
   );
-  return normalizeRawPrefill(data);
+  const prefill = normalizeRawPrefill(data);
+  // Diagnostic : si RIEN n'a été extrait, c'est presque toujours un décalage de
+  // FORME (le modèle a renvoyé d'autres clés). On logge les clés réellement
+  // reçues (pas les valeurs — pas de PII) pour diagnostiquer sans deviner.
+  const anyFactual =
+    prefill.jobTitle.value != null ||
+    prefill.contractType.value != null ||
+    prefill.location.value != null ||
+    prefill.salaryRange.value != null ||
+    prefill.seniority.value != null ||
+    prefill.startDate.value != null ||
+    prefill.mainMissions.value != null ||
+    prefill.keySkills.value != null;
+  const nothing = prefill.suggestedCriteria.length === 0 && !anyFactual;
+  if (nothing) {
+    let receivedKeys: string[] = [];
+    try {
+      const parsed = JSON.parse(raw.content) as Record<string, unknown>;
+      receivedKeys = Object.keys(parsed);
+    } catch {
+      /* contenu non parsable — ignoré */
+    }
+    console.warn(
+      `[campaign-prefill] extraction vide. textLen=${documentText.length} clésReçues=${JSON.stringify(receivedKeys)}`,
+    );
+  }
+  return prefill;
 }
