@@ -8,7 +8,10 @@ const {
   appendJournalEntryMock,
 } = vi.hoisted(() => ({
   buildInterviewMailMock: vi.fn(),
-  sendEmailMock: vi.fn(async () => ({ ok: true as const })),
+  sendEmailMock: vi.fn(async () => ({
+    ok: true as const,
+    messageId: 'rs_msg_abc123',
+  })),
   uploadArtifactMock: vi.fn(async () => ({
     bucket: 'artifacts',
     path: 'p',
@@ -173,6 +176,34 @@ describe('POST /api/mail-composer — gating lien d’agenda', () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
     expect(uploadArtifactMock).not.toHaveBeenCalled();
     expect(insertArtifactMetaMock).not.toHaveBeenCalled();
+  });
+
+  it('envoi AUTO : persiste le message-id Resend (réponse + journal imap_outreach_mail)', async () => {
+    const res = await POST(
+      request({
+        artifactId: 'art_obs',
+        campaignId: 'CAMP-2026-001',
+        jobTitle: 'Comptable',
+        mode: 'reject',
+        candidate: { ...CANDIDATE, aboveThreshold: false, score: 40 },
+        uid: 'task_42', // envoi AUTO (hors HITL) → journalise imap_outreach_mail
+      }),
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      status: string;
+      providerMessageId: string | null;
+    };
+    expect(data.status).toBe('sent');
+    // 1. La réponse porte le message-id (threading HITL + UI).
+    expect(data.providerMessageId).toBe('rs_msg_abc123');
+    // 2. Le journal `imap_outreach_mail` le persiste (clé pour /api/email/status).
+    const calls = appendJournalEntryMock.mock.calls as unknown as Array<
+      [{ action: string; payload: { providerMessageId: string | null } }]
+    >;
+    const outreachCall = calls.find((c) => c[0].action === 'imap_outreach_mail');
+    expect(outreachCall).toBeDefined();
+    expect(outreachCall![0].payload.providerMessageId).toBe('rs_msg_abc123');
   });
 
   it('override HITL (mail édité) : envoyé tel quel sans recomposer', async () => {

@@ -131,6 +131,10 @@ export async function sendValidation(
   //    informe juste de l'issue d'envoi. Sinon le HITL serait indémoable sans
   //    Resend et le candidat resterait éternellement « à valider ».
   let mailStatus = 'unknown';
+  // Message-id Resend de l'envoi candidat — propagé au journal `hitl_validation_sent`
+  // pour rendre la livraison vérifiable via /api/email/status (le HITL ne passe
+  // pas par `imap_outreach_mail`, seul porteur de l'id côté envoi auto).
+  let providerMessageId: string | null = null;
   try {
     const res = await fetch('/api/mail-composer', {
       method: 'POST',
@@ -144,8 +148,12 @@ export async function sendValidation(
         mail: edited,
       }),
     });
-    const data = (await res.json()) as { status?: string };
+    const data = (await res.json()) as {
+      status?: string;
+      providerMessageId?: string | null;
+    };
     mailStatus = res.ok ? (data.status ?? 'unknown') : `http_${res.status}`;
+    if (res.ok) providerMessageId = data.providerMessageId ?? null;
   } catch {
     mailStatus = 'network_error';
   }
@@ -173,7 +181,11 @@ export async function sendValidation(
   try {
     const res = await fetch(
       `/api/validations/${encodeURIComponent(v.id)}/send`,
-      { method: 'POST' },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerMessageId }),
+      },
     );
     if (!res.ok) {
       return {

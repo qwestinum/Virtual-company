@@ -71,6 +71,7 @@ function buildMarkdownTrace(
   sentTo: string | null,
   status: ComposeStatus,
   error?: string,
+  providerMessageId?: string | null,
 ): string {
   const statusLabel = {
     sent: 'envoyé',
@@ -84,6 +85,11 @@ function buildMarkdownTrace(
     '',
     `Statut : **${statusLabel}**`,
     sentTo ? `Destinataire effectif : ${sentTo}` : '',
+    // Message-id Resend : permet de vérifier la LIVRAISON réelle (≠ « accepté »)
+    // via GET /api/email/status?id=… — distingue livré / bounce / spam.
+    providerMessageId
+      ? `Resend message-id : ${providerMessageId} (statut livraison : GET /api/email/status?id=${providerMessageId})`
+      : '',
     `Campagne : ${body.campaignId}`,
     body.jobTitle ? `Poste : ${body.jobTitle}` : '',
     `Score CV : ${body.candidate.score}/100`,
@@ -187,6 +193,7 @@ async function finalizeSend(
   composed: { subject: string; html: string },
 ): Promise<NextResponse> {
   let sentTo: string | null = null;
+  let providerMessageId: string | null = null;
   let status: ComposeStatus = 'skipped_no_config';
   let sendError: string | undefined;
 
@@ -205,6 +212,9 @@ async function finalizeSend(
     if (sendResult.ok) {
       status = 'sent';
       sentTo = parsed.candidate.email;
+      // Message-id Resend — clé d'interrogation de la livraison réelle. Persisté
+      // (trace + journal + réponse) pour rendre /api/email/status exploitable.
+      providerMessageId = sendResult.messageId;
     } else if (sendResult.error === 'email_not_configured') {
       status = 'skipped_no_config';
     } else {
@@ -221,6 +231,7 @@ async function finalizeSend(
     sentTo,
     status,
     sendError,
+    providerMessageId,
   );
 
   let publicUrl: string | null = null;
@@ -261,6 +272,7 @@ async function finalizeSend(
         candidate: parsed.candidate.candidateName,
         candidateEmail: parsed.candidate.email,
         status,
+        providerMessageId,
       },
     });
   } catch (err) {
@@ -281,7 +293,7 @@ async function finalizeSend(
         campaignId: parsed.campaignId.startsWith('TASK-')
           ? null
           : parsed.campaignId,
-        payload: { uid: parsed.uid, mode: parsed.mode, status },
+        payload: { uid: parsed.uid, mode: parsed.mode, status, providerMessageId },
       });
     } catch (err) {
       if (!(err instanceof SupabaseNotConfiguredError)) {
@@ -293,6 +305,7 @@ async function finalizeSend(
   return NextResponse.json({
     status,
     sentTo,
+    providerMessageId,
     subject: composed.subject,
     html: composed.html,
     fileName,

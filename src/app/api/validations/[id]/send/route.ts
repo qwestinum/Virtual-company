@@ -18,10 +18,22 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 export const runtime = 'nodejs';
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await context.params;
+  // Message-id Resend de l'envoi candidat (optionnel) — propagé par le client
+  // pour rendre la livraison vérifiable via /api/email/status. Corps tolérant
+  // au vide : un POST sans corps (rétro-compat) reste valide.
+  let providerMessageId: string | null = null;
+  try {
+    const body = (await request.json()) as { providerMessageId?: unknown };
+    if (typeof body?.providerMessageId === 'string') {
+      providerMessageId = body.providerMessageId;
+    }
+  } catch {
+    // pas de corps / JSON invalide → on ignore, l'id reste null.
+  }
   try {
     const validation = await getPendingValidation(id);
     if (!validation) {
@@ -47,6 +59,9 @@ export async function POST(
         candidateName: validation.candidateName,
         candidateEmail: validation.candidateEmail,
         score: validation.score,
+        // Livraison vérifiable via GET /api/email/status?id=… (null si l'envoi
+        // a échoué/été sauté — la décision reste enregistrée).
+        providerMessageId,
       },
     });
 
