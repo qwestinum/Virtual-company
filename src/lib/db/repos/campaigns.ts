@@ -6,7 +6,7 @@
  * pas `CampaignRow`.
  */
 
-import { reconcileLifecycle } from '@/lib/campaign/lifecycle';
+import { parseLifecycle, reconcileLifecycle } from '@/lib/campaign/lifecycle';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { CampaignRow } from '@/lib/db/types';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
@@ -20,21 +20,26 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
   const scoringSheet = row.scoring_sheet ?? null;
   const publishedChannels = row.published_channels ?? [];
   const sourcesConfirmed = row.sources_confirmed;
-  // Inc. 2a — lifecycle non persisté : re-dérivé des artefacts au chargement.
-  const lifecycle = reconcileLifecycle(null, {
+  // Inc. 2b — cycle de vie PERSISTÉ : la machine stockée (si présente) est la
+  // source de vérité, réconciliée avec les artefacts (les phases obligatoires
+  // suivent toujours leur artefact ; les optionnelles + `in_progress` sont
+  // préservés depuis le stockage). `null` si colonne absente/corrompue.
+  const persisted = parseLifecycle(row.lifecycle);
+  const lifecycle = reconcileLifecycle(persisted, {
     fdpValidated: row.fdp.isValidated,
     scoringValidated: scoringSheet?.isValidated === true,
     scoringStarted: scoringSheet != null,
     sourcesConfirmed,
     hasPublishedChannel: publishedChannels.length > 0,
   });
-  // Les phases OPTIONNELLES (annonce, publication) « reportées » (postponed) ne
-  // laissent aucun artefact : au reload elles retombent en `pending`. Or une
-  // campagne STOCKÉE `active` n'a PU l'être que si ces phases étaient réglées
-  // (cf. deriveActiveStatus). On reconstitue le `postponed` perdu, sinon le
-  // premier recomputeStatus (déclenché par la moindre édition) rétrograderait à
-  // tort la campagne active en `in_progress`.
-  if (row.status === 'active') {
+  // Repli LEGACY (lifecycle jamais persisté) : les phases OPTIONNELLES
+  // « reportées » (postponed) ne laissent aucun artefact et retombent en
+  // `pending`. Or une campagne STOCKÉE `active` n'a PU l'être que si elles
+  // étaient réglées (cf. deriveActiveStatus). On reconstitue le `postponed`
+  // perdu, sinon le premier recomputeStatus la rétrograderait en `in_progress`.
+  // Dès que la campagne est re-sauvée, `persisted` porte le `postponed` et ce
+  // repli ne s'applique plus.
+  if (persisted == null && row.status === 'active') {
     for (const id of OPTIONAL_PHASE_IDS) {
       if (lifecycle.phases[id]!.status === 'pending') {
         lifecycle.phases[id] = { ...lifecycle.phases[id]!, status: 'postponed' };
@@ -79,6 +84,8 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     donneur_ordre_id: campaign.donneurOrdreId,
     launched_at: campaign.launchedAt,
     closed_at: campaign.closedAt,
+    // Inc. 2b — la machine d'états est désormais persistée (source de vérité).
+    lifecycle: campaign.lifecycle,
     created_at: campaign.createdAt,
     updated_at: campaign.updatedAt,
   };

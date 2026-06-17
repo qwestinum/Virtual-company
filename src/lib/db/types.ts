@@ -7,6 +7,7 @@
  * dans chaque repo (`src/lib/db/repos/*.ts`).
  */
 
+import type { CampaignLifecycle } from '@/types/campaign-lifecycle';
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
@@ -49,6 +50,12 @@ export type CampaignRow = {
    */
   launched_at: string | null;
   closed_at: string | null;
+  /**
+   * Inc. 2b — machine d'états du cycle de vie PERSISTÉE (source de vérité
+   * unique). Nullable : campagnes historiques sans colonne → re-dérivation
+   * applicative des artefacts au chargement (`rowToCampaign`).
+   */
+  lifecycle: CampaignLifecycle | null;
   created_at: string;
   updated_at: string;
 };

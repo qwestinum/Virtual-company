@@ -19,6 +19,7 @@ import { listCampaigns, upsertCampaign } from '@/lib/db/repos/campaigns';
 import { archiveFdp } from '@/lib/db/repos/fdps-archived';
 import { archiveScoringSheet } from '@/lib/db/repos/scoring-sheets';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { CampaignLifecycleSchema } from '@/types/campaign-lifecycle';
 import { CampaignStatusSchema } from '@/types/campaign-status';
 import { CVSourceSchema } from '@/types/cv-source';
 import { FDPInProgressSchema } from '@/types/field-collection';
@@ -42,6 +43,9 @@ const CampaignSchema = z.object({
   // Reporting (préparation) — liens nullable site / donneur d'ordre.
   siteId: z.string().nullable().optional(),
   donneurOrdreId: z.string().nullable().optional(),
+  // Inc. 2b — machine d'états du cycle de vie. Optionnelle : un client antérieur
+  // ne l'enverrait pas → repli sur la re-dérivation des artefacts (prev null).
+  lifecycle: CampaignLifecycleSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -107,9 +111,12 @@ export async function PUT(request: Request): Promise<NextResponse> {
       // — upsertCampaign retire les clés nulles pour ne pas écraser l'existant.
       launchedAt: null,
       closedAt: null,
-      // lifecycle non persisté (campaignToRow le drop) — fourni pour
-      // satisfaire le type ActiveCampaign ; re-dérivé au chargement.
-      lifecycle: reconcileLifecycle(null, {
+      // Inc. 2b — lifecycle PERSISTÉ (campaignToRow l'écrit). On réconcilie la
+      // machine envoyée par le client (qui porte les `postponed`/`in_progress`)
+      // avec les artefacts : les phases obligatoires suivent leur artefact, les
+      // optionnelles + états explicites sont préservés. Client sans champ →
+      // prev null → projection pure des booléens (= comportement antérieur).
+      lifecycle: reconcileLifecycle(parsed.lifecycle ?? null, {
         fdpValidated: parsed.fdp.isValidated,
         scoringValidated: parsed.scoringSheet?.isValidated === true,
         scoringStarted: parsed.scoringSheet != null,

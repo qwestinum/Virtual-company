@@ -453,6 +453,15 @@ alter table public.campaigns
 alter table public.campaigns
   add column if not exists closed_at timestamptz;
 
+-- Inc. 2b — cycle de vie PERSISTÉ (machine d'états, source de vérité unique).
+-- Jusqu'ici re-dérivé des artefacts au chargement, ce qui PERDAIT tout état
+-- sans artefact — notamment les phases optionnelles « à remettre à plus tard »
+-- (`postponed`) et les `in_progress` de configuration. Nullable : les campagnes
+-- historiques sans colonne retombent sur la re-dérivation (repli applicatif
+-- dans rowToCampaign, qui reconstitue le `postponed` des actives sans canal).
+alter table public.campaigns
+  add column if not exists lifecycle jsonb;
+
 -- Site « par défaut » pour les organisations mono-site (rattachement sans
 -- friction). Idempotent.
 insert into public.sites (id, name, type)

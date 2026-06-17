@@ -179,10 +179,11 @@ describe('campaigns repo', () => {
     expect(result).toBeNull();
   });
 
-  it('réhydrate une campagne `active` sans canal avec annonce/publication `postponed`', async () => {
-    // Le lifecycle n'est pas persisté : une campagne stockée `active` mais sans
-    // canal de diffusion a forcément eu ses phases optionnelles REPORTÉES. On
-    // reconstitue ce `postponed` pour qu'un recompute ne la rétrograde pas.
+  it('LEGACY (sans colonne lifecycle) — réhydrate une `active` sans canal avec annonce/publication `postponed`', async () => {
+    // Repli pour les campagnes antérieures à la colonne `lifecycle` : la machine
+    // n'a pas été persistée, une campagne stockée `active` sans canal de
+    // diffusion a forcément eu ses phases optionnelles REPORTÉES. On reconstitue
+    // ce `postponed` pour qu'un recompute ne la rétrograde pas.
     const order = vi.fn().mockResolvedValue({
       data: [
         {
@@ -217,6 +218,77 @@ describe('campaigns repo', () => {
     expect(camp.lifecycle.phases.publication.status).toBe('postponed');
     // deriveActiveStatus doit re-confirmer `active` (et non `in_progress`).
     expect(deriveActiveStatus(camp.lifecycle)).toBe('active');
+  });
+
+  it('Inc. 2b — lit le lifecycle PERSISTÉ (préserve un `postponed`/`in_progress` sans artefact)', async () => {
+    // La colonne `lifecycle` est la source de vérité : un `postponed` sur une
+    // campagne NON active (que le repli legacy ne reconstituerait jamais) et un
+    // `in_progress` de scoring (sans fiche validée) survivent au rechargement.
+    const order = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'CAMP-PERSIST',
+          name: 'Testeur',
+          status: 'in_progress',
+          fdp: {
+            campaignId: 'CAMP-PERSIST',
+            fields: {},
+            isComplete: true,
+            isValidated: true,
+          },
+          scoring_sheet: null,
+          published_channels: [],
+          sources_confirmed: false,
+          sources: ['manual'],
+          lifecycle: buildLifecycle({
+            scoring: 'in_progress',
+            announcement: 'postponed',
+          }),
+          created_at: '2026-05-01T00:00:00Z',
+          updated_at: '2026-05-01T00:00:00Z',
+        },
+      ],
+      error: null,
+    });
+    const select = vi.fn().mockReturnValue({ order });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({ select }),
+    } as never);
+
+    const camp = (await listCampaigns())[0]!;
+    expect(camp.lifecycle.phases.scoring.status).toBe('in_progress');
+    expect(camp.lifecycle.phases.announcement.status).toBe('postponed');
+    // L'artefact reste prioritaire sur les phases obligatoires : FDP validée
+    // ⇒ `done` quoi qu'en dise le stockage.
+    expect(camp.lifecycle.phases.fdp.status).toBe('done');
+  });
+
+  it('Inc. 2b — upsert PERSISTE la colonne lifecycle', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'CAMP-0001',
+        name: 'Comptable senior',
+        status: 'in_progress',
+        fdp: { campaignId: 'CAMP-0001', fields: {}, isComplete: true, isValidated: true },
+        scoring_sheet: null,
+        published_channels: [],
+        sources_confirmed: false,
+        created_at: '2026-05-01T00:00:00Z',
+        updated_at: '2026-05-01T00:00:00Z',
+      },
+      error: null,
+    });
+    const upsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({ single }),
+    });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({ upsert }),
+    } as never);
+
+    const lifecycle = buildLifecycle({ announcement: 'postponed' });
+    await upsertCampaign(buildCampaign({ lifecycle }));
+    const sentRow = upsert.mock.calls[0]![0] as { lifecycle: unknown };
+    expect(sentRow.lifecycle).toEqual(lifecycle);
   });
 
   it('listCampaigns throws on supabase error', async () => {
