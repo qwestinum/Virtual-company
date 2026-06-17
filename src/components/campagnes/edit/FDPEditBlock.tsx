@@ -15,6 +15,7 @@
 
 import { useState } from 'react';
 
+import { resolveFdpEditSave } from '@/lib/campaign/fdp-edit';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
@@ -73,16 +74,16 @@ function FDPEditInner({ campaign }: FDPEditBlockProps) {
   };
 
   const onSave = () => {
-    const isComplete = computeIsComplete(draft.fields);
     const wasValidated = campaign.fdp.isValidated;
-    const finalFdp: FDPInProgress = {
-      ...draft,
-      isComplete,
-      isValidated: isComplete,
-    };
+    const { finalFdp, name } = resolveFdpEditSave(
+      campaign.fdp,
+      draft,
+      campaign.name,
+    );
+    const isValidated = finalFdp.isValidated;
     addCampaign({
       fdp: finalFdp,
-      name: campaign.name,
+      name,
       status: campaign.status,
       scoringSheet: campaign.scoringSheet,
       publishedChannels: campaign.publishedChannels,
@@ -90,13 +91,13 @@ function FDPEditInner({ campaign }: FDPEditBlockProps) {
       threshold: campaign.threshold,
     });
     // Cohérence statut/machine : addCampaign préserve le statut passé, donc une
-    // FDP redevenue incomplète laisserait une campagne « active » incohérente.
+    // FDP réellement régressée laisserait une campagne « active » incohérente.
     // recomputeStatus re-dérive depuis la machine (et préserve paused/closed).
     recomputeStatus(campaign.id);
     const impact =
-      isComplete && !wasValidated
+      isValidated && !wasValidated
         ? 'La fiche est complète et revalidée — la diffusion peut redémarrer.'
-        : !isComplete && wasValidated
+        : !isValidated && wasValidated
           ? "La fiche redevient incomplète — la campagne repasse en cadrage tant qu'il manque des champs."
           : 'Les nouveaux champs s’appliquent immédiatement.';
     setFlash(`Fiche enregistrée. ${impact}`);

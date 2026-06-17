@@ -10,6 +10,7 @@ import { reconcileLifecycle } from '@/lib/campaign/lifecycle';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { CampaignRow } from '@/lib/db/types';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
+import { OPTIONAL_PHASE_IDS } from '@/types/campaign-lifecycle';
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { PublicationChannel } from '@/types/publication-channel';
 
@@ -19,6 +20,27 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
   const scoringSheet = row.scoring_sheet ?? null;
   const publishedChannels = row.published_channels ?? [];
   const sourcesConfirmed = row.sources_confirmed;
+  // Inc. 2a — lifecycle non persisté : re-dérivé des artefacts au chargement.
+  const lifecycle = reconcileLifecycle(null, {
+    fdpValidated: row.fdp.isValidated,
+    scoringValidated: scoringSheet?.isValidated === true,
+    scoringStarted: scoringSheet != null,
+    sourcesConfirmed,
+    hasPublishedChannel: publishedChannels.length > 0,
+  });
+  // Les phases OPTIONNELLES (annonce, publication) « reportées » (postponed) ne
+  // laissent aucun artefact : au reload elles retombent en `pending`. Or une
+  // campagne STOCKÉE `active` n'a PU l'être que si ces phases étaient réglées
+  // (cf. deriveActiveStatus). On reconstitue le `postponed` perdu, sinon le
+  // premier recomputeStatus (déclenché par la moindre édition) rétrograderait à
+  // tort la campagne active en `in_progress`.
+  if (row.status === 'active') {
+    for (const id of OPTIONAL_PHASE_IDS) {
+      if (lifecycle.phases[id]!.status === 'pending') {
+        lifecycle.phases[id] = { ...lifecycle.phases[id]!, status: 'postponed' };
+      }
+    }
+  }
   return {
     id: row.id,
     name: row.name,
@@ -36,16 +58,7 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     launchedAt: row.launched_at ?? null,
     closedAt: row.closed_at ?? null,
     status: row.status,
-    // Inc. 2a — lifecycle non persisté : re-dérivé des artefacts au
-    // chargement (les `postponed` ne survivent pas encore au reload ;
-    // persistance prévue à un incrément ultérieur).
-    lifecycle: reconcileLifecycle(null, {
-      fdpValidated: row.fdp.isValidated,
-      scoringValidated: scoringSheet?.isValidated === true,
-      scoringStarted: scoringSheet != null,
-      sourcesConfirmed,
-      hasPublishedChannel: publishedChannels.length > 0,
-    }),
+    lifecycle,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

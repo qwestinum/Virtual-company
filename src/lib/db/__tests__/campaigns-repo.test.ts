@@ -11,7 +11,7 @@ vi.mock('@/lib/db/supabase-server', async () => {
   };
 });
 
-import { buildLifecycle } from '@/lib/campaign/lifecycle';
+import { buildLifecycle, deriveActiveStatus } from '@/lib/campaign/lifecycle';
 import {
   listCampaigns,
   patchCampaign,
@@ -177,6 +177,46 @@ describe('campaigns repo', () => {
     requireServerSupabaseMock.mockReturnValue({ from: vi.fn() } as never);
     const result = await patchCampaign('CAMP-0001', {});
     expect(result).toBeNull();
+  });
+
+  it('réhydrate une campagne `active` sans canal avec annonce/publication `postponed`', async () => {
+    // Le lifecycle n'est pas persisté : une campagne stockée `active` mais sans
+    // canal de diffusion a forcément eu ses phases optionnelles REPORTÉES. On
+    // reconstitue ce `postponed` pour qu'un recompute ne la rétrograde pas.
+    const order = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'CAMP-ACT',
+          name: 'Testeur',
+          status: 'active',
+          fdp: {
+            campaignId: 'CAMP-ACT',
+            fields: {},
+            isComplete: true,
+            isValidated: true,
+          },
+          scoring_sheet: { campaignId: 'CAMP-ACT', criteria: [], isValidated: true },
+          published_channels: [],
+          sources_confirmed: true,
+          sources: ['vivier'],
+          created_at: '2026-05-01T00:00:00Z',
+          updated_at: '2026-05-01T00:00:00Z',
+        },
+      ],
+      error: null,
+    });
+    const select = vi.fn().mockReturnValue({ order });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({ select }),
+    } as never);
+
+    const result = await listCampaigns();
+    const camp = result[0]!;
+    expect(camp.status).toBe('active');
+    expect(camp.lifecycle.phases.announcement.status).toBe('postponed');
+    expect(camp.lifecycle.phases.publication.status).toBe('postponed');
+    // deriveActiveStatus doit re-confirmer `active` (et non `in_progress`).
+    expect(deriveActiveStatus(camp.lifecycle)).toBe('active');
   });
 
   it('listCampaigns throws on supabase error', async () => {
