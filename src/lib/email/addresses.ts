@@ -11,11 +11,15 @@
  * minute suivante au pire — acceptable pour un MVP démo.
  */
 
-import { getAppSettings } from '@/lib/db/repos/app-settings';
+import {
+  getAppSettings,
+  getResendApiKeyFromSettings,
+} from '@/lib/db/repos/app-settings';
 
 type Cache = {
   synthesis: string | null;
   sender: string | null;
+  resendApiKey: string | null;
   expiresAt: number;
 };
 
@@ -26,18 +30,22 @@ async function loadOnce(): Promise<Cache> {
   if (cached && cached.expiresAt > Date.now()) return cached;
   let synthesisDb: string | null = null;
   let senderDb: string | null = null;
+  let resendKeyDb: string | null = null;
   try {
     const settings = await getAppSettings();
     if (settings) {
       synthesisDb = settings.synthesisEmail;
       senderDb = settings.senderEmail;
     }
+    // Lecture dédiée (la clé brute n'est PAS dans l'objet settings — write-only).
+    resendKeyDb = await getResendApiKeyFromSettings();
   } catch {
     // En cas d'erreur DB, on tombe sur les env vars.
   }
   cached = {
     synthesis: synthesisDb ?? process.env.EMAIL_DRH ?? null,
     sender: senderDb ?? process.env.EMAIL_FROM ?? null,
+    resendApiKey: resendKeyDb ?? process.env.RESEND_API_KEY ?? null,
     expiresAt: Date.now() + TTL_MS,
   };
   return cached;
@@ -49,6 +57,14 @@ export async function getSynthesisEmail(): Promise<string | null> {
 
 export async function getSenderEmail(): Promise<string | null> {
   return (await loadOnce()).sender;
+}
+
+/**
+ * Clé API Resend effective (settings DB en priorité, repli env). Lue côté
+ * serveur uniquement par le client email. Cache 60s comme les adresses.
+ */
+export async function getResendApiKey(): Promise<string | null> {
+  return (await loadOnce()).resendApiKey;
 }
 
 /**

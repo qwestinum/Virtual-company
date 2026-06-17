@@ -83,22 +83,30 @@ export type SendEmailResult = {
 };
 
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
-  const client = getEmailClient();
-  if (!client) {
-    return { ok: false, messageId: null, error: 'email_not_configured' };
-  }
-  // Session 6 v4 — l'expéditeur dynamique vient de /settings s'il y est
-  // configuré, sinon on retombe sur la valeur instance par défaut.
+  // Clé + expéditeur résolus dynamiquement depuis /settings (repli env). La clé
+  // n'est plus figée au boot : une modif dans /settings est prise en compte
+  // (cache 60s) sans redémarrage du serveur.
+  let apiKey: string | null = null;
   let fromOverride: string | null = null;
   try {
-    const { getSenderEmail } = await import('@/lib/email/addresses');
+    const { getResendApiKey, getSenderEmail } = await import(
+      '@/lib/email/addresses'
+    );
+    apiKey = await getResendApiKey();
     fromOverride = await getSenderEmail();
   } catch {
-    // ignore — on garde le default Resend
+    // ignore — repli env ci-dessous
   }
+  apiKey = apiKey ?? process.env.RESEND_API_KEY ?? null;
+  if (!apiKey) {
+    return { ok: false, messageId: null, error: 'email_not_configured' };
+  }
+  const from =
+    fromOverride ?? process.env.EMAIL_FROM ?? 'onboarding@resend.dev';
+  const resend = new Resend(apiKey);
   try {
-    const { data, error } = await client.resend.emails.send({
-      from: fromOverride ?? client.from,
+    const { data, error } = await resend.emails.send({
+      from,
       to: input.to,
       subject: input.subject,
       html: input.html,
@@ -143,12 +151,20 @@ export type EmailDeliveryStatus = {
 export async function getEmailDeliveryStatus(
   id: string,
 ): Promise<EmailDeliveryStatus> {
-  const client = getEmailClient();
-  if (!client) {
+  let apiKey: string | null = null;
+  try {
+    const { getResendApiKey } = await import('@/lib/email/addresses');
+    apiKey = await getResendApiKey();
+  } catch {
+    // repli env ci-dessous
+  }
+  apiKey = apiKey ?? process.env.RESEND_API_KEY ?? null;
+  if (!apiKey) {
     return { ok: false, id, lastEvent: null, error: 'email_not_configured' };
   }
+  const resend = new Resend(apiKey);
   try {
-    const { data, error } = await client.resend.emails.get(id);
+    const { data, error } = await resend.emails.get(id);
     if (error) {
       return { ok: false, id, lastEvent: null, error: error.message };
     }

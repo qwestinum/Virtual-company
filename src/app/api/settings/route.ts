@@ -42,6 +42,9 @@ const PatchSchema = z.object({
   hitlConfig: HitlConfigSchema.optional(),
   vivierConfig: VivierConfigSchema.optional(),
   interviewConfig: InterviewConfigSchema.optional(),
+  // Write-only : `''` efface la clé, une valeur non vide la pose. Jamais
+  // renvoyée par le GET (seul `resendApiKeyConfigured` l'est).
+  resendApiKey: z.string().max(2048).optional(),
 });
 
 /**
@@ -73,6 +76,7 @@ function emptyPayload() {
       hitlConfig: DEFAULT_HITL_CONFIG,
       vivierConfig: DEFAULT_VIVIER_CONFIG,
       interviewConfig: DEFAULT_INTERVIEW_CONFIG,
+      resendApiKeyConfigured: false,
       updatedAt: new Date(0).toISOString(),
     },
   };

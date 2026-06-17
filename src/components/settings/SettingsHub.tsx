@@ -41,6 +41,7 @@ import { EmailListField } from './EmailListField';
 import { IntegrationCard } from './IntegrationCard';
 import { InterviewConfigManager } from './InterviewConfigManager';
 import { MailboxesManager } from './MailboxesManager';
+import { ResendKeyManager } from './ResendKeyManager';
 import { SettingsSection } from './SettingsSection';
 import { SitesManager } from './SitesManager';
 import { VivierConfigManager } from './VivierConfigManager';
@@ -62,6 +63,8 @@ type Settings = {
   hitlConfig: HitlConfig;
   vivierConfig: VivierConfig;
   interviewConfig: InterviewConfig;
+  /** Clé Resend : statut seulement (la valeur n'est jamais renvoyée). */
+  resendApiKeyConfigured: boolean;
   updatedAt: string;
 };
 
@@ -175,6 +178,8 @@ export function SettingsHub() {
               hitlConfig: json.settings.hitlConfig ?? DEFAULT_HITL_CONFIG,
               interviewConfig:
                 json.settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG,
+              resendApiKeyConfigured:
+                json.settings.resendApiKeyConfigured ?? false,
             },
             offline: json.offline,
             fallbacks: json.fallbacks ?? {
@@ -213,17 +218,18 @@ export function SettingsHub() {
 
   const { settings, offline, fallbacks } = state;
 
-  const patchAndSave = async (
-    patch: Partial<Settings>,
+  // PUT partagé : le CORPS envoyé peut différer de la mise à jour locale (ex.
+  // clé Resend write-only — on PUT { resendApiKey } mais on ne reflète qu'un
+  // booléen côté UI, jamais la valeur).
+  const putSettings = async (
+    body: Record<string, unknown>,
     flashMessage: string,
   ) => {
-    const next: Settings = { ...settings, ...patch };
-    setState({ kind: 'ready', settings: next, offline, fallbacks });
     try {
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
+        body: JSON.stringify(body),
       });
       if (res.status === 503) {
         setFlash(
@@ -240,6 +246,31 @@ export function SettingsHub() {
       );
     }
     window.setTimeout(() => setFlash(null), 3500);
+  };
+
+  const patchAndSave = async (
+    patch: Partial<Settings>,
+    flashMessage: string,
+  ) => {
+    const next: Settings = { ...settings, ...patch };
+    setState({ kind: 'ready', settings: next, offline, fallbacks });
+    await putSettings(patch, flashMessage);
+  };
+
+  // Clé Resend (write-only) : on PUT la valeur brute mais on ne reflète QUE le
+  // statut `resendApiKeyConfigured` côté UI (la valeur n'est jamais stockée
+  // dans l'état client ni réaffichée). `''` retire la clé.
+  const saveResendKey = async (key: string) => {
+    setState({
+      kind: 'ready',
+      settings: { ...settings, resendApiKeyConfigured: key.length > 0 },
+      offline,
+      fallbacks,
+    });
+    await putSettings(
+      { resendApiKey: key },
+      key.length > 0 ? 'Clé Resend enregistrée.' : 'Clé Resend retirée.',
+    );
   };
 
   return (
@@ -436,6 +467,17 @@ export function SettingsHub() {
                 : 'Liste des adresses expéditeur mise à jour.',
             )
           }
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        icon="📧"
+        title="Service email (Resend)"
+        description="Clé API Resend utilisée pour l'envoi des mails (invitations, refus, briefs). Pilotable ici — plus besoin de toucher au .env.local ni de redémarrer le serveur. La clé est stockée côté serveur et n'est jamais réaffichée."
+      >
+        <ResendKeyManager
+          configured={settings.resendApiKeyConfigured}
+          onSave={saveResendKey}
         />
       </SettingsSection>
 

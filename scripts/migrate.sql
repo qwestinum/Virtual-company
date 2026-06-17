@@ -333,6 +333,13 @@ alter table public.app_settings
   add column if not exists synthesis_emails text[] not null default '{}'::text[],
   add column if not exists sender_emails text[] not null default '{}'::text[];
 
+-- Clé API Resend pilotable depuis /settings. Write-only côté UI : la valeur
+-- n'est JAMAIS renvoyée en clair par GET /api/settings (seul un booléen
+-- « configurée » l'est). Le client email la lit côté serveur, avec repli sur
+-- la variable d'env RESEND_API_KEY si la colonne est nulle.
+alter table public.app_settings
+  add column if not exists resend_api_key text;
+
 -- Migration de données (v6) — rapatrie les adresses singulières
 -- préexistantes dans les listes pour qu'elles soient visibles dans
 -- l'UI. Idempotent — re-exécutable sans casse.

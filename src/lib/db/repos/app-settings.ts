@@ -45,6 +45,12 @@ export type AppSettings = {
   vivierConfig: VivierConfig;
   /** Réglages entretien (templates acceptation/refus, lien d'agenda org-level). */
   interviewConfig: InterviewConfig;
+  /**
+   * Clé API Resend : write-only. On n'expose JAMAIS la valeur en clair (ni au
+   * client, ni dans cet objet de domaine) — seulement un booléen « configurée ».
+   * Le client email lit la valeur brute via `getResendApiKey()` (serveur).
+   */
+  resendApiKeyConfigured: boolean;
   updatedAt: string;
 };
 
@@ -68,6 +74,7 @@ type AppSettingsRow = {
   hitl_config: HitlConfig | null;
   vivier_config: VivierConfig | null;
   interview_config: InterviewConfig | null;
+  resend_api_key: string | null;
   updated_at: string;
 };
 
@@ -105,6 +112,8 @@ function rowToDomain(row: AppSettingsRow): AppSettings {
       ...DEFAULT_INTERVIEW_CONFIG,
       ...(row.interview_config ?? {}),
     },
+    // Jamais la valeur : seulement la présence (write-only côté UI).
+    resendApiKeyConfigured: (row.resend_api_key ?? '').length > 0,
     updatedAt: row.updated_at,
   };
 }
@@ -170,6 +179,8 @@ export type AppSettingsPatch = {
   hitlConfig?: HitlConfig;
   vivierConfig?: VivierConfig;
   interviewConfig?: InterviewConfig;
+  /** Write-only : `''` (ou null) efface la clé, une valeur non vide la pose. */
+  resendApiKey?: string | null;
 };
 
 export async function patchAppSettings(
@@ -192,6 +203,9 @@ export async function patchAppSettings(
   if (patch.vivierConfig !== undefined) row.vivier_config = patch.vivierConfig;
   if (patch.interviewConfig !== undefined)
     row.interview_config = patch.interviewConfig;
+  // Write-only : `''` efface (null), valeur non vide pose la clé.
+  if (patch.resendApiKey !== undefined)
+    row.resend_api_key = patch.resendApiKey ? patch.resendApiKey : null;
   const { data, error } = await supabase
     .from(TABLE)
     .update(row)
@@ -200,4 +214,30 @@ export async function patchAppSettings(
     .single();
   if (error) throw new Error(`patchAppSettings: ${error.message}`);
   return rowToDomain(data as AppSettingsRow);
+}
+
+/**
+ * Lecture SERVEUR de la clé API Resend brute (jamais exposée au client). Lit
+ * uniquement la colonne `resend_api_key`. `null` si absente, table manquante,
+ * ou Supabase non configuré — l'appelant (client email) retombe alors sur la
+ * variable d'env `RESEND_API_KEY`.
+ */
+export async function getResendApiKeyFromSettings(): Promise<string | null> {
+  try {
+    const supabase = requireServerSupabase();
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('resend_api_key')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) {
+      if (isTableMissing(error)) return null;
+      throw new Error(`getResendApiKeyFromSettings: ${error.message}`);
+    }
+    const key = (data as { resend_api_key: string | null } | null)?.resend_api_key;
+    return key && key.length > 0 ? key : null;
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return null;
+    throw err;
+  }
 }
