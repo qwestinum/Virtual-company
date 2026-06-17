@@ -36,6 +36,11 @@ import {
   useCampaignsStore,
   type ActiveCampaign,
 } from '@/stores/campaigns-store';
+import {
+  type CampaignPrefill,
+  prefillToFDP,
+  prefillToSuggestedCriteria,
+} from '@/types/campaign-prefill';
 import type { CVSource } from '@/types/cv-source';
 import {
   buildEmptyFDP,
@@ -46,6 +51,7 @@ import {
 import type { PublicationChannel } from '@/types/publication-channel';
 import {
   buildCriterion,
+  countUntreatedSuggestions,
   type ScoringCriterion,
   type ScoringSheet,
 } from '@/types/scoring';
@@ -121,6 +127,16 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   const [proposingFdp, setProposingFdp] = useState(false);
   const [proposingScoring, setProposingScoring] = useState(false);
   const [proposeError, setProposeError] = useState<string | null>(null);
+  // Démarrage à partir d'un document (appel d'offres / notes). Pré-remplit un
+  // brouillon ; rien n'est persisté tant que « Créer la campagne » n'est pas
+  // cliqué. `prefillExtraction` = archive de traçabilité ; `sourceById` =
+  // extraits sources des pondérations suggérées (id critère → extrait).
+  const [documentBusy, setDocumentBusy] = useState(false);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const [documentHint, setDocumentHint] = useState<DocumentHint | null>(null);
+  const [prefillExtraction, setPrefillExtraction] =
+    useState<CampaignPrefill | null>(null);
+  const [sourceById, setSourceById] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -247,6 +263,81 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
     setSearching(false);
   };
 
+  // Démarrage à partir d'un document : extraction commune (même couche que le
+  // chat Manager), puis PRÉ-REMPLISSAGE d'un brouillon. Le LLM extrait, l'humain
+  // valide — aucune persistance ici. Les pondérations arrivent `suggere:true`
+  // (à traiter avant lancement) ; les seuils/flags éliminatoires ne sont jamais
+  // extraits (saisie humaine).
+  const onDocument = async (file: File) => {
+    setDocumentBusy(true);
+    setDocumentError(null);
+    try {
+      const form = new FormData();
+      form.append('document', file);
+      const res = await fetch('/api/campaigns/prefill', {
+        method: 'POST',
+        body: form,
+      });
+      const json = (await res.json()) as {
+        prefill?: CampaignPrefill;
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok || !json.prefill) {
+        setDocumentError(
+          json.message ??
+            "Le document n'a pas pu être analysé. Réessayez ou saisissez la campagne manuellement.",
+        );
+        return;
+      }
+      const prefill = json.prefill;
+      // FDP factuelle (champs absents laissés vides).
+      const nextFdp = prefillToFDP(prefill, campaignId);
+      setFdp(nextFdp);
+      const title =
+        typeof nextFdp.fields.job_title?.value === 'string'
+          ? (nextFdp.fields.job_title.value as string)
+          : '';
+      setJobTitle(title);
+      // Pondérations suggérées (suggere:true). Aucune → on garde la grille par
+      // défaut pour ne pas laisser le scoring vide.
+      const suggested = prefillToSuggestedCriteria(prefill);
+      setCriteria(
+        suggested.length > 0
+          ? suggested
+          : DEFAULT_SCORING_TEMPLATE.map((c, i) =>
+              buildCriterion({ id: `crit_${i}`, ...c }),
+            ),
+      );
+      // Extraits sources des suggestions (id `sugg-N` ⇄ index prefill).
+      const srcMap: Record<string, string> = {};
+      prefill.suggestedCriteria.forEach((c, i) => {
+        if (c.extraitSource && c.extraitSource.trim()) {
+          srcMap[`sugg-${i + 1}`] = c.extraitSource.trim();
+        }
+      });
+      setSourceById(srcMap);
+      setPrefillExtraction(prefill);
+      setChannels([]);
+      setSources([]);
+      setMailboxIds([]);
+      setThreshold(75);
+      setMatchHint(null);
+      setDocumentHint({
+        fileName: file.name,
+        fieldCount: Object.keys(collectKnown(nextFdp)).length,
+        suggestionCount: suggested.length,
+      });
+      setStage('editing');
+    } catch {
+      setDocumentError(
+        "Le document n'a pas pu être envoyé. Vérifiez le fichier (PDF ou DOCX) et réessayez.",
+      );
+    } finally {
+      setDocumentBusy(false);
+    }
+  };
+
   // Propose une fiche de poste de départ via l'IA et l'applique aux SEULS champs
   // vides (préserve ce que le DRH a déjà saisi). Dégradation douce en cas d'échec.
   const onProposeFdp = async () => {
@@ -344,6 +435,8 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       sources,
       threshold,
       status: isComplete ? 'in_progress' : 'draft',
+      // Archive de traçabilité du pré-remplissage (null si création de zéro).
+      prefillExtraction,
     });
 
     // PERSISTANCE CONFIRMÉE (zéro perte silencieuse). On a écrit la campagne
@@ -442,6 +535,10 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
     setMailboxIds([]);
     setThreshold(75);
     setMatchHint(null);
+    // Repart vierge : on abandonne aussi le pré-remplissage par document.
+    setDocumentHint(null);
+    setPrefillExtraction(null);
+    setSourceById({});
     setEditKey((k) => k + 1);
   };
 
@@ -501,12 +598,17 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
             onChange={setJobTitle}
             onContinue={onContinue}
             searching={searching}
+            onDocument={onDocument}
+            documentBusy={documentBusy}
+            documentError={documentError}
           />
         ) : (
           <EditingStage
             key={editKey}
             jobTitle={jobTitle}
             matchHint={matchHint}
+            documentHint={documentHint}
+            sourceById={sourceById}
             fdp={fdp}
             patchField={patchField}
             onProposeFdp={onProposeFdp}
@@ -620,13 +722,20 @@ function JobTitleStep({
   onChange,
   onContinue,
   searching,
+  onDocument,
+  documentBusy,
+  documentError,
 }: {
   title: string;
   onChange: (v: string) => void;
   onContinue: () => void;
   searching: boolean;
+  onDocument: (file: File) => void;
+  documentBusy: boolean;
+  documentError: string | null;
 }) {
-  const canContinue = title.trim().length > 0 && !searching;
+  const canContinue = title.trim().length > 0 && !searching && !documentBusy;
+  const fileRef = useRef<HTMLInputElement>(null);
   return (
     <div
       style={{
@@ -672,9 +781,84 @@ function JobTitleStep({
       </p>
       <div
         style={{
+          marginTop: 'auto',
+          paddingTop: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          borderTop: '1px solid var(--dash-border)',
+        }}
+      >
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.currentTarget.files?.[0];
+            e.currentTarget.value = '';
+            if (f) onDocument(f);
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={documentBusy || searching}
+          className="font-body"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            padding: '10px 16px',
+            borderRadius: 10,
+            border: '1px dashed var(--dash-purple)',
+            background: 'var(--dash-purple-light)',
+            color: 'var(--dash-purple)',
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: documentBusy ? 'default' : 'pointer',
+          }}
+        >
+          <span aria-hidden>📄</span>
+          {documentBusy
+            ? 'Analyse du document…'
+            : 'Démarrer à partir d’un document (appel d’offres, notes)'}
+        </button>
+        <p
+          className="font-body"
+          style={{
+            fontSize: 11,
+            color: 'var(--dash-text-tertiary)',
+            margin: 0,
+            textAlign: 'center',
+          }}
+        >
+          PDF ou DOCX. On en pré-remplit un brouillon que vous relisez et validez
+          — rien n’est créé sans votre accord.
+        </p>
+        {documentError ? (
+          <div
+            role="alert"
+            className="font-body"
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              background: 'var(--dash-red-light)',
+              color: 'var(--dash-red)',
+              fontSize: 12,
+              fontWeight: 600,
+              border: '1px solid var(--dash-red)',
+            }}
+          >
+            {documentError}
+          </div>
+        ) : null}
+      </div>
+      <div
+        style={{
           display: 'flex',
           justifyContent: 'flex-end',
-          marginTop: 'auto',
           paddingTop: 16,
         }}
       >
@@ -726,7 +910,11 @@ function CreatedStep({
   onEdit: () => void;
   onClose: () => void;
 }) {
-  const gate = canActivate(campaign.lifecycle);
+  const phaseGate = canActivate(campaign.lifecycle);
+  const untreated = countUntreatedSuggestions(campaign.scoringSheet);
+  // Lancement autorisé seulement si les phases obligatoires sont faites ET
+  // qu'aucune pondération suggérée ne reste à traiter (même verrou que le store).
+  const gate = { ok: phaseGate.ok && untreated === 0, missing: phaseGate.missing };
   return (
     <div
       style={{
@@ -819,9 +1007,18 @@ function CreatedStep({
             color: 'var(--dash-text-secondary)',
           }}
         >
-          Pour activer cette campagne, il reste à compléter :{' '}
+          Pour activer cette campagne, il reste à traiter :{' '}
           <strong style={{ color: 'var(--dash-text)' }}>
-            {formatMissingPhases(gate.missing)}
+            {[
+              phaseGate.missing.length > 0
+                ? formatMissingPhases(phaseGate.missing)
+                : null,
+              untreated > 0
+                ? `${untreated} pondération${untreated > 1 ? 's' : ''} suggérée${untreated > 1 ? 's' : ''} par l’IA`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' et ')}
           </strong>
           . Vous pouvez la garder en brouillon et la compléter plus tard.
         </div>
@@ -922,6 +1119,8 @@ function CreatedStep({
 function EditingStage({
   jobTitle,
   matchHint,
+  documentHint,
+  sourceById,
   fdp,
   patchField,
   onProposeFdp,
@@ -947,6 +1146,8 @@ function EditingStage({
 }: {
   jobTitle: string;
   matchHint: MatchHint | null;
+  documentHint: DocumentHint | null;
+  sourceById: Record<string, string>;
   fdp: FDPInProgress;
   patchField: (key: FieldKey, value: unknown) => void;
   onProposeFdp: () => void;
@@ -1007,6 +1208,8 @@ function EditingStage({
       >
         {matchHint ? (
           <MatchBanner hint={matchHint} onReset={onReset} />
+        ) : documentHint ? (
+          <DocumentBanner hint={documentHint} onReset={onReset} />
         ) : (
           <NoMatchHint />
         )}
@@ -1047,7 +1250,11 @@ function EditingStage({
             />
           }
         >
-          <ScoringDraftEditor criteria={criteria} onChange={setCriteria} />
+          <ScoringDraftEditor
+            criteria={criteria}
+            onChange={setCriteria}
+            sourceById={sourceById}
+          />
         </CollapsibleSection>
 
         <CollapsibleSection
@@ -1204,6 +1411,13 @@ type MatchHint = {
   copiedFlux: boolean;
 };
 
+/** Récap d'un pré-remplissage à partir d'un document (appel d'offres / notes). */
+type DocumentHint = {
+  fileName: string;
+  fieldCount: number;
+  suggestionCount: number;
+};
+
 /**
  * Nom de la campagne à la création. Le champ `job_title` de la FDP est la SOURCE
  * DE VÉRITÉ (il a pu être édité en étape 2) ; on retombe sur l'intitulé saisi à
@@ -1302,6 +1516,67 @@ function MatchBanner({
               border: '1px solid var(--dash-blue)',
               background: 'var(--dash-surface)',
               color: 'var(--dash-blue)',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <span aria-hidden>↺</span> Repartir à zéro
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocumentBanner({
+  hint,
+  onReset,
+}: {
+  hint: DocumentHint;
+  onReset: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 10,
+        padding: '12px 14px',
+        borderRadius: 10,
+        background: 'var(--dash-purple-light)',
+        color: 'var(--dash-purple)',
+        border: '1px solid var(--dash-purple)',
+      }}
+    >
+      <span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>
+        📄
+      </span>
+      <div
+        className="font-body"
+        style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--dash-purple)' }}
+      >
+        <strong style={{ fontWeight: 700 }}>Pré-rempli depuis « {hint.fileName} ».</strong>{' '}
+        {hint.fieldCount} champ{hint.fieldCount > 1 ? 's' : ''} relevé
+        {hint.fieldCount > 1 ? 's' : ''}
+        {hint.suggestionCount > 0
+          ? ` et ${hint.suggestionCount} pondération${hint.suggestionCount > 1 ? 's' : ''} proposée${hint.suggestionCount > 1 ? 's' : ''} (à confirmer ou rejeter dans la fiche de scoring avant le lancement)`
+          : ''}
+        . Relisez, corrigez, validez — rien n’est figé.
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            onClick={onReset}
+            className="font-body"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--dash-purple)',
+              background: 'var(--dash-surface)',
+              color: 'var(--dash-purple)',
               fontSize: 12,
               fontWeight: 700,
               cursor: 'pointer',
