@@ -840,3 +840,42 @@ create index if not exists vivier_skill_emb_candidate_idx
 -- est en JS, mais l'index ne coûte rien à poser dès maintenant).
 create index if not exists vivier_skill_emb_hnsw_idx
   on public.vivier_skill_embeddings using hnsw (embedding vector_cosine_ops);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Bloc 2 sémantique MULTI-ANCRES (présélection — Phase 2)
+-- Un embedding par ANCRE (titre déclaré + 2 derniers postes). Le Bloc 2 compare
+-- l'intitulé du poste à TOUTES les ancres (max cosinus décoté), pour repêcher un
+-- titre déclaré bruité via un poste propre. Cosinus en SQL ; décote/seuil en JS.
+-- ──────────────────────────────────────────────────────────────────────
+
+create table if not exists public.vivier_anchor_embeddings (
+  candidate_id  uuid not null
+                  references public.vivier_candidates(id) on delete cascade,
+  depth         smallint not null,           -- 0 déclaré · 1 dernier poste · 2 précédent
+  anchor_text   text not null,
+  embedding     vector(1536) not null,
+  provider      text not null,               -- garde-fou d'espace (= modèle indexé)
+  model         text not null,
+  generated_at  timestamptz not null default now(),
+  primary key (candidate_id, depth)
+);
+
+create index if not exists vivier_anchor_emb_hnsw_idx
+  on public.vivier_anchor_embeddings using hnsw (embedding vector_cosine_ops);
+
+-- Cosinus par ancre (candidats indexés). La DÉCOTE d'ancienneté est appliquée en
+-- JS (`pickBestAnchor`) car le poids vit dans la config, pas en SQL.
+create or replace function public.match_vivier_anchors(
+  query_embedding vector(1536),
+  candidate_ids   uuid[]
+)
+returns table (candidate_id uuid, depth smallint, similarity double precision)
+language sql
+stable
+as $$
+  select ae.candidate_id, ae.depth, 1 - (ae.embedding <=> query_embedding) as similarity
+  from public.vivier_anchor_embeddings ae
+  join public.vivier_candidates vc on vc.id = ae.candidate_id
+  where vc.indexing_status = 'indexed'
+    and ae.candidate_id = any(candidate_ids)
+$$;

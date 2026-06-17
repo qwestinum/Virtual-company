@@ -4,8 +4,9 @@
  * Régénère, pour chaque dossier (via `indexVivierCandidate`) : entités, TITRE
  * (+ repli), VARIANTES du titre (iso-rôle anglais), EMBEDDING DU TITRE, les
  * ANCRES de titre (titre déclaré + 2 derniers postes, variantes par ancre), ET
- * les COMPÉTENCES atomiques + UN EMBEDDING PAR COMPÉTENCE (matching set-to-set) —
- * les signaux de la présélection. (L'embedding full-CV n'est plus régénéré.)
+ * UN EMBEDDING PAR ANCRE (Bloc 2 sémantique multi-ancres ; depth 0 réutilise le
+ * vecteur du titre), ET les COMPÉTENCES atomiques + UN EMBEDDING PAR COMPÉTENCE
+ * (set-to-set) — les signaux de la présélection. (Full-CV plus régénéré.)
  *
  * Reindex COMPLET obligatoire après l'ajout des compétences (Chantier 3) : les
  * dossiers non réindexés ont skills=∅ ⇒ couverture 0 (dégradation douce vers le

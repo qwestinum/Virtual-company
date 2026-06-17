@@ -8,6 +8,7 @@ const campaigns = { getCampaign: vi.fn() };
 const vivierRepo = {
   listIndexedVivierTitles: vi.fn(),
   matchVivierTitles: vi.fn(),
+  matchVivierAnchors: vi.fn(),
   listDistinctEmbeddingModels: vi.fn(),
   listSkillEmbeddingsByCandidateIds: vi.fn(),
 };
@@ -83,6 +84,9 @@ beforeEach(() => {
   });
   vivierRepo.listDistinctEmbeddingModels.mockResolvedValue([]); // garde-fou inactif
   vivierRepo.matchVivierTitles.mockResolvedValue(new Map());
+  // Défaut : pas d'ancre-embedding ⇒ le Bloc 2 passe par le repli déclaré
+  // (matchVivierTitles). Les tests Phase 2 surchargent matchVivierAnchors.
+  vivierRepo.matchVivierAnchors.mockResolvedValue(new Map());
   vivierRepo.listSkillEmbeddingsByCandidateIds.mockResolvedValue(new Map());
   // Variantes ISO-RÔLE de l'intitulé « Test Manager ».
   variants.runTitleVariantsSuggestion.mockResolvedValue({
@@ -169,8 +173,8 @@ describe('runVivierPreselection — cascade titre', () => {
 
     expect(entries.map((e) => e.candidateId)).toEqual(['qaLead']);
     expect(entries[0].matchKind).toBe('title_exact');
-    // La RPC n'est appelée qu'avec les NON-retenus du bloc 1 (ici aucun).
-    expect(vivierRepo.matchVivierTitles.mock.calls[0][1]).toEqual([]);
+    // Le Bloc 2 (ancres) n'est sollicité qu'avec les NON-retenus du bloc 1 (ici aucun).
+    expect(vivierRepo.matchVivierAnchors.mock.calls[0][1]).toEqual([]);
   });
 
   it('volume piloté par la pertinence : aucune troncature à un plafond', async () => {
@@ -269,6 +273,38 @@ describe('runVivierPreselection — cascade titre', () => {
     // Même terme « QA Lead », mais le match sur le titre (1.0) passe devant le
     // match sur le poste (0.95).
     expect(entries.map((e) => e.candidateId)).toEqual(['parTitre', 'parPoste']);
+  });
+
+  it('Bloc 2 ancres : titre déclaré sous le seuil, repêché via un POSTE (décote + label)', async () => {
+    // Pas de match Bloc 1 (ancres vides). Cosinus par ancre : déclaré 0.43 (< seuil),
+    // dernier poste 0.70 (≥ seuil) ⇒ repêché en Bloc 2 via depth 1, score décoté.
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([cand('reco')]);
+    vivierRepo.matchVivierAnchors.mockResolvedValue(
+      new Map([['reco', [{ depth: 0, similarity: 0.43 }, { depth: 1, similarity: 0.7 }]]]),
+    );
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    expect(entries.map((e) => e.candidateId)).toEqual(['reco']);
+    expect(entries[0].matchKind).toBe('title_semantic');
+    expect(entries[0].matchAnchorLabel).toBe('Dernier poste');
+    // Similarité = cosinus brut (0,70) × décote dernier poste (0,95).
+    expect(entries[0].similarity).toBeCloseTo(0.665);
+    expect(meta.semanticCount).toBe(1);
+  });
+
+  it('Bloc 2 ancres : aucune ancre ≥ seuil ⇒ écarté (belowThreshold)', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([cand('faible')]);
+    vivierRepo.matchVivierAnchors.mockResolvedValue(
+      new Map([['faible', [{ depth: 0, similarity: 0.4 }, { depth: 1, similarity: 0.5 }]]]),
+    );
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries, meta } = await runVivierPreselection('CAMP-1', { now: NOW });
+
+    expect(entries).toEqual([]);
+    expect(meta.belowThreshold).toBe(1);
   });
 
   it('rien de pertinent ⇒ short-list vide (réponse valide)', async () => {

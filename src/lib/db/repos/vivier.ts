@@ -32,6 +32,7 @@ const TABLE = 'vivier_candidates';
 const EMBEDDINGS_TABLE = 'vivier_embeddings';
 const ENTITIES_TABLE = 'vivier_entities';
 const SKILL_EMBEDDINGS_TABLE = 'vivier_skill_embeddings';
+const ANCHOR_EMBEDDINGS_TABLE = 'vivier_anchor_embeddings';
 
 /** Colonnes de résumé (sans le volumineux `cv_text`). */
 const SUMMARY_COLUMNS =
@@ -440,6 +441,86 @@ export async function listSkillEmbeddingsByCandidateIds(
     map.set(row.candidate_id, list);
   }
   return map;
+}
+
+// ── Ancres sémantiques (Bloc 2 multi-ancres, Phase 2) ────────────────────────
+
+export type AnchorEmbeddingInput = {
+  depth: number;
+  anchorText: string;
+  vector: number[];
+  provider: string;
+  model: string;
+};
+
+/**
+ * Remplace les embeddings d'ANCRES d'un candidat (delete + insert, idempotent :
+ * reflète une liste d'ancres qui a changé au reindex). Liste vide ⇒ purge seule.
+ */
+export async function replaceAnchorEmbeddings(
+  candidateId: string,
+  items: AnchorEmbeddingInput[],
+): Promise<void> {
+  const supabase = requireServerSupabase();
+  const del = await supabase
+    .from(ANCHOR_EMBEDDINGS_TABLE)
+    .delete()
+    .eq('candidate_id', candidateId);
+  if (del.error) throw new Error(`replaceAnchorEmbeddings(delete): ${del.error.message}`);
+  if (items.length === 0) return;
+  const rows = items.map((it) => ({
+    candidate_id: candidateId,
+    depth: it.depth,
+    anchor_text: it.anchorText,
+    embedding: toVectorLiteral(it.vector),
+    provider: it.provider,
+    model: it.model,
+  }));
+  const ins = await supabase.from(ANCHOR_EMBEDDINGS_TABLE).insert(rows);
+  if (ins.error) throw new Error(`replaceAnchorEmbeddings(insert): ${ins.error.message}`);
+}
+
+/**
+ * Cosinus par ANCRE entre l'intitulé du poste et les ancres des candidats
+ * `candidateIds` (RPC `match_vivier_anchors`). Map candidateId → [{depth, similarity}].
+ * La décote + le seuil sont appliqués en JS (`pickBestAnchor`).
+ */
+export async function matchVivierAnchors(
+  queryEmbedding: number[],
+  candidateIds: string[],
+): Promise<Map<string, { depth: number; similarity: number }[]>> {
+  const map = new Map<string, { depth: number; similarity: number }[]>();
+  if (candidateIds.length === 0) return map;
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase.rpc('match_vivier_anchors', {
+    query_embedding: toVectorLiteral(queryEmbedding),
+    candidate_ids: candidateIds,
+  });
+  if (error) throw new Error(`matchVivierAnchors: ${error.message}`);
+  for (const row of (data ?? []) as {
+    candidate_id: string;
+    depth: number;
+    similarity: number;
+  }[]) {
+    const list = map.get(row.candidate_id) ?? [];
+    list.push({ depth: row.depth, similarity: row.similarity });
+    map.set(row.candidate_id, list);
+  }
+  return map;
+}
+
+/** Couples (provider|model) DISTINCTS des embeddings d'ANCRES (garde-fou d'espace). */
+export async function listDistinctAnchorEmbeddingModels(): Promise<string[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(ANCHOR_EMBEDDINGS_TABLE)
+    .select('provider, model');
+  if (error) throw new Error(`listDistinctAnchorEmbeddingModels: ${error.message}`);
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { provider: string; model: string }[]) {
+    set.add(`${r.provider}|${r.model}`);
+  }
+  return [...set];
 }
 
 /** Couples (provider|model) DISTINCTS des embeddings de COMPÉTENCES (garde-fou d'espace). */

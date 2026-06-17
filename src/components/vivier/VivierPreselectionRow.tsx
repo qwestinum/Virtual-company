@@ -39,7 +39,9 @@ export function VivierPreselectionRow({ entry }: { entry: ShortlistEntry }) {
           </span>
         ) : (
           <span className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 font-body text-[11px] text-stone-600">
+            {/* Bloc 2 : titre proche, + l'ancre qui a matché (déclaré / poste). */}
             Titre proche
+            {entry.matchAnchorLabel ? ` · ${entry.matchAnchorLabel}` : ''}
           </span>
         )}
       </td>

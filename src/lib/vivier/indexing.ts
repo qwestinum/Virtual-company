@@ -29,6 +29,7 @@ import { embedText } from '@/lib/ai/embeddings';
 import {
   getVivierCandidate,
   listDistinctEmbeddingModels,
+  replaceAnchorEmbeddings,
   replaceSkillEmbeddings,
   setVivierIndexingStatus,
   setVivierSkills,
@@ -135,8 +136,8 @@ export async function indexVivierCandidate(
     // 2b. ANCRES de titre (Bloc 1 multi-ancres) : titre déclaré (depth 0, réutilise
     // `variants`) + 2 derniers postes (depth 1/2, variantes générées). NON bloquant :
     // échec ⇒ ancres vides ⇒ repli sur le titre déclaré en présélection.
+    const skeletons = buildAnchorSkeletons(title, recentPositions);
     try {
-      const skeletons = buildAnchorSkeletons(title, recentPositions);
       const anchors = [];
       for (const sk of skeletons) {
         let anchorVariants = variants; // depth 0 : déjà calculées
@@ -164,20 +165,44 @@ export async function indexVivierCandidate(
       console.error(`[vivier] title anchors failed for ${candidateId}`, err);
     }
 
-    // 3. Embedding du TITRE seul (NON bloquant). PAS d'embedding full-CV.
+    // 3. Embedding du TITRE seul (NON bloquant). PAS d'embedding full-CV. On retient
+    // le vecteur pour le réutiliser comme embedding de l'ancre déclarée (depth 0).
+    let declaredEmbedding: { vector: number[]; provider: string; model: string } | null =
+      null;
     if (title) {
       try {
         const emb = await embedText(title);
-        await upsertVivierTitleEmbedding(candidateId, {
-          vector: emb.vector,
-          provider: emb.provider,
-          model: emb.model,
-        });
+        declaredEmbedding = { vector: emb.vector, provider: emb.provider, model: emb.model };
+        await upsertVivierTitleEmbedding(candidateId, declaredEmbedding);
         // Détecte un mélange d'espaces dès qu'il est créé (côté producteur).
         await warnIfEmbeddingSpaceMixed(candidateId, `${emb.provider}|${emb.model}`);
       } catch (err) {
         console.error(`[vivier] title embedding failed for ${candidateId}`, err);
       }
+    }
+
+    // 3b. Embeddings d'ANCRES (Bloc 2 multi-ancres) : un vecteur par ancre. depth 0
+    // RÉUTILISE l'embedding du titre (pas de double appel) ; postes embeddés. NON
+    // bloquant : échec ⇒ pas d'ancre-embedding ⇒ repli sur le titre déclaré.
+    try {
+      const anchorEmbeddings = [];
+      for (const sk of skeletons) {
+        if (sk.depth === 0 && declaredEmbedding) {
+          anchorEmbeddings.push({ depth: 0, anchorText: sk.text, ...declaredEmbedding });
+          continue;
+        }
+        const emb = await embedText(sk.text);
+        anchorEmbeddings.push({
+          depth: sk.depth,
+          anchorText: sk.text,
+          vector: emb.vector,
+          provider: emb.provider,
+          model: emb.model,
+        });
+      }
+      await replaceAnchorEmbeddings(candidateId, anchorEmbeddings);
+    } catch (err) {
+      console.error(`[vivier] anchor embeddings failed for ${candidateId}`, err);
     }
 
     // 4. Compétences : liste atomique + UN embedding par compétence (set-to-set).

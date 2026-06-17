@@ -25,6 +25,7 @@ import {
   listDistinctEmbeddingModels,
   listIndexedVivierTitles,
   listSkillEmbeddingsByCandidateIds,
+  matchVivierAnchors,
   matchVivierTitles,
   type IndexedVivierTitle,
 } from '@/lib/db/repos/vivier';
@@ -39,6 +40,7 @@ import {
   computeSkillCoverage,
   type SkillVector,
 } from '@/lib/vivier/skill-coverage';
+import { pickBestAnchor } from '@/lib/vivier/anchor-semantic';
 import {
   anchorLabel,
   anchorWeight,
@@ -248,6 +250,48 @@ async function embedJobSkills(fdp: FDPInProgress): Promise<SkillVector[]> {
   }
 }
 
+/**
+ * Bloc 2 SÉMANTIQUE MULTI-ANCRES : cosinus par ancre (RPC) puis meilleure ancre
+ * décotée (`pickBestAnchor`, porte sur le brut ≥ seuil). Repli déclaré
+ * (`matchVivierTitles`, depth 0) pour les candidats sans ancre-embedding (pas
+ * encore réindexés) — zéro régression. Mutualisé fiche + recherche libre.
+ */
+async function semanticAnchorEntries(
+  cands: IndexedVivierTitle[],
+  vector: number[],
+  threshold: number,
+  weights: number[],
+  now: number,
+): Promise<{ entries: ShortlistEntry[]; belowThreshold: number }> {
+  const ids = cands.map((c) => c.id);
+  const anchorSims = await matchVivierAnchors(vector, ids);
+  const missing = ids.filter((id) => !anchorSims.has(id));
+  const declaredSims =
+    missing.length > 0 ? await matchVivierTitles(vector, missing) : new Map<string, number>();
+
+  let belowThreshold = 0;
+  const entries: ShortlistEntry[] = [];
+  for (const c of cands) {
+    const perAnchor = anchorSims.get(c.id);
+    let match: { similarity: number; depth: number } | null = null;
+    if (perAnchor) {
+      match = pickBestAnchor(perAnchor, weights, threshold);
+    } else {
+      const sim = declaredSims.get(c.id);
+      if (sim !== undefined && sim >= threshold) match = { similarity: sim, depth: 0 };
+    }
+    if (!match) {
+      // « Sous le seuil » seulement si un signal existait (ancre ou titre déclaré).
+      if (perAnchor || declaredSims.has(c.id)) belowThreshold++;
+      continue;
+    }
+    const e = makeEntry(c, 'title_semantic', null, match.similarity, now);
+    e.matchAnchorLabel = anchorLabel(match.depth);
+    entries.push(e);
+  }
+  return { entries, belowThreshold };
+}
+
 // ── Orchestrateur ────────────────────────────────────────────────────────────
 
 export type PreselectionOptions = {
@@ -353,16 +397,13 @@ export async function runVivierPreselection(
   // RECHERCHE LIBRE : bloc 2 sémantique seul (pas de déterministe, pas de skills
   // — la requête libre n'a pas de fiche). Le tri reste piloté par le titre.
   if (opts.freeText?.trim()) {
-    const sims = await matchVivierTitles(vector, eligible.map((c) => c.id));
-    let below = 0;
-    const entries = eligible
-      .map((c) => ({ c, sim: sims.get(c.id) }))
-      .filter((x): x is { c: IndexedVivierTitle; sim: number } => {
-        if (x.sim === undefined) return false;
-        if (x.sim < threshold) { below++; return false; }
-        return true;
-      })
-      .map((x) => makeEntry(x.c, 'title_semantic', null, x.sim, now));
+    const { entries, belowThreshold: below } = await semanticAnchorEntries(
+      eligible,
+      vector,
+      threshold,
+      config.titleAnchorWeights,
+      now,
+    );
     finalizeScores(entries, [], new Map(), config);
     return {
       entries,
@@ -413,18 +454,17 @@ export async function runVivierPreselection(
     }
   }
 
-  // Bloc 2 — sémantique titre-à-titre, sur les non-retenus au bloc 1.
+  // Bloc 2 — sémantique MULTI-ANCRES, sur les non-retenus au bloc 1 : le meilleur
+  // anchor (déclaré OU poste) décide, ce qui repêche un titre déclaré bruité via
+  // un poste propre. Repli déclaré pour les dossiers pas encore réindexés.
   const remaining = eligible.filter((c) => !bloc1Ids.has(c.id));
-  const sims = await matchVivierTitles(vector, remaining.map((c) => c.id));
-  let belowThreshold = 0;
-  const bloc2 = remaining
-    .map((c) => ({ c, sim: sims.get(c.id) }))
-    .filter((x): x is { c: IndexedVivierTitle; sim: number } => {
-      if (x.sim === undefined) return false; // pas d'embedding titre
-      if (x.sim < threshold) { belowThreshold++; return false; }
-      return true;
-    })
-    .map((x) => makeEntry(x.c, 'title_semantic', null, x.sim, now));
+  const { entries: bloc2, belowThreshold } = await semanticAnchorEntries(
+    remaining,
+    vector,
+    threshold,
+    config.titleAnchorWeights,
+    now,
+  );
 
   // Qualifiés (porte d'entrée = titre). Les COMPÉTENCES réordonnent, ne
   // qualifient personne : post-pass set-to-set puis tri GLOBAL par score final.

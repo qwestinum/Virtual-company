@@ -15,6 +15,7 @@ const repo = {
   setVivierSkills: vi.fn(),
   replaceSkillEmbeddings: vi.fn(),
   setVivierTitleAnchors: vi.fn(),
+  replaceAnchorEmbeddings: vi.fn(),
 };
 
 vi.mock('@/lib/ai/embeddings', () => embeddings);
@@ -65,6 +66,7 @@ beforeEach(() => {
   repo.setVivierSkills.mockResolvedValue(undefined);
   repo.replaceSkillEmbeddings.mockResolvedValue(undefined);
   repo.setVivierTitleAnchors.mockResolvedValue(undefined);
+  repo.replaceAnchorEmbeddings.mockResolvedValue(undefined);
   // Défaut : index homogène, aligné sur le modèle de l'embedding mocké.
   repo.listDistinctEmbeddingModels.mockResolvedValue(['openai|text-embedding-3-small']);
   // Défauts : extraction renvoie entités + titre + compétences + 2 derniers postes.
@@ -129,6 +131,16 @@ describe('indexVivierCandidate — refonte titre', () => {
     ]);
     // depth 0 réutilise les variantes du déclaré (pas de re-génération).
     expect(anchors[0].terms).toContain('QA Lead');
+    // Embeddings d'ancres : un par ancre, depth 0 réutilise le vecteur du titre.
+    expect(repo.replaceAnchorEmbeddings).toHaveBeenCalledTimes(1);
+    const anchorEmb = repo.replaceAnchorEmbeddings.mock.calls[0][1] as {
+      depth: number;
+      anchorText: string;
+      vector: number[];
+    }[];
+    expect(anchorEmb.map((a) => a.depth)).toEqual([0, 1, 2]);
+    expect(anchorEmb[0].vector).toEqual([0.1, 0.2]); // = vecteur du titre (réutilisé)
+    expect(anchorEmb[0].anchorText).toBe('Test Manager');
   });
 
   it('espace d’embeddings mélangé ⇒ avertit fort mais reste indexed', async () => {
