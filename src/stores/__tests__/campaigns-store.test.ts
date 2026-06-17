@@ -246,6 +246,40 @@ describe('campaigns-store', () => {
     expect(after?.lifecycle.phases.publication.status).toBe('postponed');
   });
 
+  it('activateCampaign REFUSE tant qu\'une pondération suggérée n\'est pas traitée', () => {
+    const fdp = makeFDP('CAMP-2026-SUGG', true);
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-2026-SUGG',
+      isValidated: true,
+      criteria: [
+        buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+        // Pondération PROPOSÉE par l'IA, non encore traitée → bloque le lancement.
+        buildCriterion({
+          id: 'sugg-1',
+          label: 'Management',
+          level: 'critique',
+          suggere: true,
+        }),
+      ],
+    };
+    const store = useCampaignsStore.getState();
+    store.addCampaign({ fdp, scoringSheet: sheet });
+    store.setSources('CAMP-2026-SUGG', ['manual']); // obligatoires faites
+    // Obligatoires OK mais suggestion non traitée → activation refusée.
+    expect(store.activateCampaign('CAMP-2026-SUGG')).toBe(false);
+    expect(store.getById('CAMP-2026-SUGG')?.status).toBe('in_progress');
+    // Traiter la suggestion (confirmer → suggere:false) débloque.
+    const treated: ScoringSheet = {
+      ...sheet,
+      criteria: sheet.criteria.map((c) =>
+        c.id === 'sugg-1' ? { ...c, suggere: false } : c,
+      ),
+    };
+    store.addCampaign({ fdp, scoringSheet: treated });
+    expect(store.activateCampaign('CAMP-2026-SUGG')).toBe(true);
+    expect(store.getById('CAMP-2026-SUGG')?.status).toBe('active');
+  });
+
   it('activateCampaign no-op si la campagne est paused/closed (pas draft/in_progress)', () => {
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp: makeFDP('CAMP-2026-ACT3', true) });

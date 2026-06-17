@@ -42,6 +42,18 @@ vi.mock('@napi-rs/canvas', () => ({
   },
 }));
 
+/**
+ * On mocke `mammoth` pour piloter l'extraction DOCX sans dépendre d'un
+ * binaire OOXML réel. `extractRawTextImpl` est réassigné par chaque test.
+ */
+let extractRawTextImpl: () => Promise<{ value: string }>;
+vi.mock('mammoth', () => ({
+  default: {
+    extractRawText: (_opts: { buffer: Buffer }) => extractRawTextImpl(),
+  },
+  extractRawText: (_opts: { buffer: Buffer }) => extractRawTextImpl(),
+}));
+
 function makeFile(name: string, content: string, type = ''): File {
   return new File([content], name, { type });
 }
@@ -82,8 +94,47 @@ describe('extractCVText — formats texte', () => {
 
   it('rejette un type non supporté (unsupported_type)', async () => {
     await expect(
-      extractCVText(makeFile('cv.docx', 'x'.repeat(50), 'application/zip')),
+      extractCVText(makeFile('cv.rtf', 'x'.repeat(50), 'application/rtf')),
     ).rejects.toMatchObject({ code: 'unsupported_type' });
+  });
+});
+
+describe('extractCVText — DOCX', () => {
+  const DOCX_MIME =
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  beforeEach(() => {
+    extractRawTextImpl = () =>
+      Promise.resolve({
+        value: 'Imad BELFAQIR — Expert test management, 20 ans d’expérience.',
+      });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('extrait le texte brut d’un .docx via mammoth', async () => {
+    const out = await extractCVText(
+      makeFile('CV.docx', 'PK binaire factice', DOCX_MIME),
+    );
+    expect(out.mime).toBe(DOCX_MIME);
+    expect(out.text).toContain('Imad BELFAQIR');
+  });
+
+  it('reconnaît le .docx par extension même sans mime', async () => {
+    const out = await extractCVText(makeFile('CV.docx', 'PK binaire factice'));
+    expect(out.mime).toBe(DOCX_MIME);
+    expect(out.text).toContain('Imad BELFAQIR');
+  });
+
+  it('mappe une erreur d’extraction DOCX en parse_failed', async () => {
+    extractRawTextImpl = () => Promise.reject(new Error('corrupted zip'));
+    const err = await extractCVText(
+      makeFile('CV.docx', 'PK binaire factice', DOCX_MIME),
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(CVExtractError);
+    expect((err as CVExtractError).code).toBe('parse_failed');
   });
 });
 

@@ -62,6 +62,7 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     donneurOrdreId: row.donneur_ordre_id ?? null,
     launchedAt: row.launched_at ?? null,
     closedAt: row.closed_at ?? null,
+    prefillExtraction: row.prefill_extraction ?? null,
     status: row.status,
     lifecycle,
     createdAt: row.created_at,
@@ -86,6 +87,7 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     closed_at: campaign.closedAt,
     // Inc. 2b — la machine d'états est désormais persistée (source de vérité).
     lifecycle: campaign.lifecycle,
+    prefill_extraction: campaign.prefillExtraction,
     created_at: campaign.createdAt,
     updated_at: campaign.updatedAt,
   };

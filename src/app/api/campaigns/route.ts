@@ -20,6 +20,7 @@ import { archiveFdp } from '@/lib/db/repos/fdps-archived';
 import { archiveScoringSheet } from '@/lib/db/repos/scoring-sheets';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { CampaignLifecycleSchema } from '@/types/campaign-lifecycle';
+import { CampaignPrefillSchema } from '@/types/campaign-prefill';
 import { CampaignStatusSchema } from '@/types/campaign-status';
 import { CVSourceSchema } from '@/types/cv-source';
 import { FDPInProgressSchema } from '@/types/field-collection';
@@ -46,6 +47,9 @@ const CampaignSchema = z.object({
   // Inc. 2b — machine d'états du cycle de vie. Optionnelle : un client antérieur
   // ne l'enverrait pas → repli sur la re-dérivation des artefacts (prev null).
   lifecycle: CampaignLifecycleSchema.optional(),
+  // Pré-remplissage par document — archive d'extraction (traçabilité). Nullable
+  // & optionnelle : null/absente pour les campagnes créées de zéro.
+  prefillExtraction: CampaignPrefillSchema.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -107,6 +111,7 @@ export async function PUT(request: Request): Promise<NextResponse> {
       sources,
       siteId: parsed.siteId ?? null,
       donneurOrdreId: parsed.donneurOrdreId ?? null,
+      prefillExtraction: parsed.prefillExtraction ?? null,
       // Dates de cycle de vie gérées par patchCampaign (transitions de statut)
       // — upsertCampaign retire les clés nulles pour ne pas écraser l'existant.
       launchedAt: null,

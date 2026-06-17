@@ -143,8 +143,31 @@ export const ScoringCriterionSchema = z.object({
    * méthode de `KEYWORD_BASED_METHODS` (cf. `validateScoringSheet`).
    */
   keywords: z.array(z.string()).optional(),
+  /**
+   * Pondération PROPOSÉE par l'IA et NON ENCORE TRAITÉE par l'humain
+   * (pré-remplissage de campagne à partir d'un document — chantier
+   * pondérations suggérées). Tant que `suggere === true`, la pondération
+   * n'est pas acquise : le lancement de campagne est BLOQUÉ (cf.
+   * `countUntreatedSuggestions`). « Traiter » = confirmer (suggere → false)
+   * ou rejeter (retrait du critère). OPTIONNEL : `undefined`/`false` = saisie
+   * humaine ordinaire (aucun blocage), exactement comme avant cette feature.
+   */
+  suggere: z.boolean().optional(),
 });
 export type ScoringCriterion = z.infer<typeof ScoringCriterionSchema>;
+
+/**
+ * Nombre de pondérations encore SUGGÉRÉES (non traitées) dans une fiche.
+ * PUR. Source unique du garde-fou « blocage au lancement » — partagé par
+ * les deux chemins de création (formulaire + chat Manager). > 0 ⇒ activation
+ * refusée tant que l'humain n'a pas confirmé/rejeté chaque suggestion.
+ */
+export function countUntreatedSuggestions(
+  sheet: ScoringSheet | null | undefined,
+): number {
+  if (!sheet) return 0;
+  return sheet.criteria.filter((c) => c.suggere === true).length;
+}
 
 export const ScoringSheetSchema = z.object({
   campaignId: z.string().min(1),
@@ -171,6 +194,7 @@ export function buildCriterion(input: {
   weight?: number;
   verificationMethod?: VerificationMethod;
   keywords?: string[];
+  suggere?: boolean;
 }): ScoringCriterion {
   return {
     id: input.id,
@@ -183,6 +207,7 @@ export function buildCriterion(input: {
       ? { verificationMethod: input.verificationMethod }
       : {}),
     ...(input.keywords !== undefined ? { keywords: input.keywords } : {}),
+    ...(input.suggere ? { suggere: true } : {}),
   };
 }
 

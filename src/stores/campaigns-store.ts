@@ -24,11 +24,12 @@ import {
   type CampaignLifecycle,
   type PhaseId,
 } from '@/types/campaign-lifecycle';
+import type { CampaignPrefill } from '@/types/campaign-prefill';
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { PublicationChannel } from '@/types/publication-channel';
-import type { ScoringSheet } from '@/types/scoring';
+import { countUntreatedSuggestions, type ScoringSheet } from '@/types/scoring';
 
 export type ActiveCampaign = {
   id: string; // CAMP-XXXX
@@ -94,6 +95,14 @@ export type ActiveCampaign = {
    */
   launchedAt: string | null;
   closedAt: string | null;
+  /**
+   * Pré-remplissage à partir d'un document (appel d'offres / notes) — résultat
+   * d'extraction CAPTÉ tel quel pour la traçabilité (extraits sources par
+   * champ + pondérations proposées). Nullable : null pour les campagnes créées
+   * « de zéro ». Stocké pour éviter toute réextraction (cf. chantier
+   * traçabilité). N'a AUCUN effet sur le scoring — c'est une archive.
+   */
+  prefillExtraction: CampaignPrefill | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -113,6 +122,7 @@ export type CampaignsState = {
     threshold?: number;
     siteId?: string | null;
     donneurOrdreId?: string | null;
+    prefillExtraction?: CampaignPrefill | null;
   }) => ActiveCampaign;
   /**
    * Session 6 — ajuste le seuil d'acceptation d'une campagne. Le
@@ -320,6 +330,10 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
     const siteId = input.siteId ?? existing?.siteId ?? null;
     const donneurOrdreId =
       input.donneurOrdreId ?? existing?.donneurOrdreId ?? null;
+    const prefillExtraction =
+      input.prefillExtraction !== undefined
+        ? input.prefillExtraction
+        : (existing?.prefillExtraction ?? null);
     const lifecycle = syncLifecycle({
       fdp: input.fdp,
       scoringSheet,
@@ -346,6 +360,7 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       lifecycle,
       launchedAt: existing?.launchedAt ?? null,
       closedAt: existing?.closedAt ?? null,
+      prefillExtraction,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -387,6 +402,11 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       return false;
     }
     if (!canActivate(current.lifecycle).ok) return false;
+    // Garde-fou pondérations suggérées (pré-remplissage par document) : une
+    // pondération PROPOSÉE par l'IA et non encore traitée (confirmée/rejetée)
+    // n'est jamais acquise → on REFUSE le lancement tant qu'il en reste. « Le
+    // code verrouille » : même verrou pour les deux chemins de création.
+    if (countUntreatedSuggestions(current.scoringSheet) > 0) return false;
     // Les optionnelles non réglées (annonce/publication encore `pending`) sont
     // REPORTÉES : activer = « je lance maintenant, l'annonce attendra ». Après
     // ça, deriveActiveStatus rend 'active' (cohérence machine ↔ statut).

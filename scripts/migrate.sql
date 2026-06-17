@@ -469,6 +469,14 @@ alter table public.campaigns
 alter table public.campaigns
   add column if not exists lifecycle jsonb;
 
+-- Pré-remplissage à partir d'un document (appel d'offres / notes) — archive de
+-- l'extraction LLM (extraits sources par champ + pondérations proposées). Captée
+-- systématiquement pour éviter toute réextraction (traçabilité). Nullable : null
+-- pour les campagnes créées « de zéro » ou antérieures à la colonne. N'a aucun
+-- effet sur le scoring — c'est une archive de cadrage.
+alter table public.campaigns
+  add column if not exists prefill_extraction jsonb;
+
 -- Site « par défaut » pour les organisations mono-site (rattachement sans
 -- friction). Idempotent.
 insert into public.sites (id, name, type)

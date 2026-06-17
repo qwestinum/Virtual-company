@@ -8,6 +8,7 @@
  */
 
 import type { CampaignLifecycle } from '@/types/campaign-lifecycle';
+import type { CampaignPrefill } from '@/types/campaign-prefill';
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
@@ -56,6 +57,12 @@ export type CampaignRow = {
    * applicative des artefacts au chargement (`rowToCampaign`).
    */
   lifecycle: CampaignLifecycle | null;
+  /**
+   * Pré-remplissage à partir d'un document — résultat d'extraction capté tel
+   * quel (traçabilité, évite la réextraction en V2). Nullable : null pour les
+   * campagnes créées de zéro ou antérieures à la colonne.
+   */
+  prefill_extraction: CampaignPrefill | null;
   created_at: string;
   updated_at: string;
 };

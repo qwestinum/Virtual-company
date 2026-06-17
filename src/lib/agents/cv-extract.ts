@@ -5,6 +5,9 @@
  * - .txt / .md → string brute (utf-8).
  * - .pdf → texte extrait via `pdf-parse`. Le décodage est fait sur un
  *   Buffer Node.js ; ce module est strictement server-side.
+ * - .docx → texte brut via `mammoth` (OOXML uniquement ; le format legacy
+ *   `.doc` n'est PAS supporté). Réutilisé par l'analyse CV ET le cadrage
+ *   de campagne à partir d'un document (extracteur de pré-remplissage).
  *
  * Si le PDF est uniquement composé d'images scannées, l'extraction
  * renvoie une chaîne vide ou quasi vide. L'appelant doit alors
@@ -163,9 +166,44 @@ export async function extractCVText(file: File): Promise<ExtractedCV> {
     });
   }
 
+  if (
+    mime ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    lower.endsWith('.docx')
+  ) {
+    let text: string;
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const mod = (await import('mammoth')) as unknown as {
+        extractRawText?: (opts: { buffer: Buffer }) => Promise<{ value: string }>;
+        default?: {
+          extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }>;
+        };
+      };
+      // Interop CJS/ESM : selon le bundler, `extractRawText` est exposé
+      // directement ou sous `.default`.
+      const extractRawText = mod.extractRawText ?? mod.default?.extractRawText;
+      if (!extractRawText) {
+        throw new Error('mammoth.extractRawText indisponible.');
+      }
+      const result = await extractRawText({ buffer });
+      text = result.value ?? '';
+    } catch (err) {
+      throw new CVExtractError(
+        'parse_failed',
+        err instanceof Error ? err.message : 'Échec parsing DOCX.',
+      );
+    }
+    return ensureNonEmpty({
+      fileName,
+      text,
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+  }
+
   throw new CVExtractError(
     'unsupported_type',
-    `Type non supporté : ${mime || fileName}. Utilise .pdf, .txt ou .md.`,
+    `Type non supporté : ${mime || fileName}. Utilise .pdf, .docx, .txt ou .md.`,
   );
 }
 
@@ -183,6 +221,8 @@ function ensureNonEmpty(extracted: ExtractedCV): ExtractedCV {
 function guessMimeFromName(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx'))
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   if (lower.endsWith('.md')) return 'text/markdown';
   if (lower.endsWith('.txt')) return 'text/plain';
   return '';
