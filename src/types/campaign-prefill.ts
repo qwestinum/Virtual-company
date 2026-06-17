@@ -97,6 +97,126 @@ export const CampaignPrefillSchema = z.object({
 export type CampaignPrefill = z.infer<typeof CampaignPrefillSchema>;
 
 // ───────────────────────────────────────────────────────────────────────────
+// Schéma LLM TOLÉRANT + normalisation. Le mode JSON garantit un objet, pas sa
+// conformité : un modèle peut omettre un champ, renvoyer une valeur du mauvais
+// type, ou écrire un niveau hors enum (« très important », « obligatoire »,
+// « élevé »…). Plutôt que d'échouer en bloc (et perdre toute l'extraction), on
+// VALIDE en permissif (chaque champ retombe sur un défaut) puis on NORMALISE
+// vers le schéma strict. Le `.catch` couvre aussi la clé absente.
+// ───────────────────────────────────────────────────────────────────────────
+
+const EMPTY_FIELD = { value: null, extraitSource: null } as const;
+
+const LooseTextFieldSchema = z
+  .object({
+    value: z.string().nullable().catch(null),
+    extraitSource: z.string().nullable().catch(null),
+  })
+  .catch({ ...EMPTY_FIELD })
+  .default({ ...EMPTY_FIELD });
+
+const LooseListFieldSchema = z
+  .object({
+    value: z.array(z.string()).nullable().catch(null),
+    extraitSource: z.string().nullable().catch(null),
+  })
+  .catch({ ...EMPTY_FIELD })
+  .default({ ...EMPTY_FIELD });
+
+const LooseSuggestedSchema = z
+  .object({
+    label: z.string().catch(''),
+    // Niveau libre — normalisé ensuite (jamais d'enum stricte ici, sinon un
+    // « très important » ferait échouer toute la fiche).
+    level: z.string().catch(''),
+    extraitSource: z.string().nullable().catch(null),
+    conflit: z.string().nullable().optional().catch(null),
+  })
+  .catch({ label: '', level: '', extraitSource: null });
+
+/** Schéma permissif passé à `chatCompleteJson` (ne hard-fail jamais sur le contenu). */
+export const RawCampaignPrefillSchema = z.object({
+  jobTitle: LooseTextFieldSchema,
+  contractType: LooseTextFieldSchema,
+  location: LooseTextFieldSchema,
+  salaryRange: LooseTextFieldSchema,
+  seniority: LooseTextFieldSchema,
+  startDate: LooseTextFieldSchema,
+  mainMissions: LooseListFieldSchema,
+  keySkills: LooseListFieldSchema,
+  suggestedCriteria: z.array(LooseSuggestedSchema).catch([]).default([]),
+});
+export type RawCampaignPrefill = z.infer<typeof RawCampaignPrefillSchema>;
+
+function stripAccentsLower(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Ramène un niveau libre vers un niveau SUGGÉRABLE (non éliminatoire). Les
+ * formulations éliminatoires (« obligatoire », « rédhibitoire », « impératif »,
+ * « must »…) sont HISSÉES au plus haut autorisé (`critique`) plutôt que
+ * produites en flag éliminatoire — saisie humaine (cf. brief). Inconnu → null
+ * (la suggestion est alors écartée, jamais inventée). PUR & testé.
+ */
+export function normalizeSuggestableLevel(raw: string): SuggestableLevel | null {
+  const v = stripAccentsLower(raw);
+  if (v.length === 0) return null;
+  const exact = SUGGESTABLE_LEVELS.find((l) => stripAccentsLower(l) === v);
+  if (exact) return exact;
+  if (/(souhait|nice|bonus|plus\b|atout|optionn|secondaire|faible|bas)/.test(v)) {
+    return 'souhaitable';
+  }
+  if (/(tres import|tres_import|hautement|fort|eleve|haut|cle\b|essentiel|cruci)/.test(v)) {
+    return 'tres_important';
+  }
+  if (/(critique|critical|determinant|majeur)/.test(v)) return 'critique';
+  // Éliminatoires → on plafonne à « critique » (jamais d'éliminatoire suggéré).
+  if (/(obligat|redhibit|imperat|indispens|requis|exig|must|incontournable)/.test(v)) {
+    return 'critique';
+  }
+  if (/(import|moyen|medium|standard|normal)/.test(v)) return 'important';
+  return null;
+}
+
+/**
+ * Convertit la sortie LLM permissive vers le `CampaignPrefill` STRICT : nettoie
+ * les champs, normalise et FILTRE les pondérations suggérées (label vide ou
+ * niveau inconnu → écartées). Garantit une sortie valide pour le schéma strict.
+ * PUR & testé.
+ */
+export function normalizeRawPrefill(raw: RawCampaignPrefill): CampaignPrefill {
+  const suggestedCriteria: SuggestedCriterion[] = [];
+  for (const c of raw.suggestedCriteria) {
+    const label = c.label.trim();
+    if (label.length === 0) continue;
+    const level = normalizeSuggestableLevel(c.level);
+    if (!level) continue;
+    suggestedCriteria.push({
+      label,
+      level,
+      extraitSource: c.extraitSource,
+      ...(c.conflit ? { conflit: c.conflit } : {}),
+    });
+  }
+  return {
+    jobTitle: raw.jobTitle,
+    contractType: raw.contractType,
+    location: raw.location,
+    salaryRange: raw.salaryRange,
+    seniority: raw.seniority,
+    startDate: raw.startDate,
+    mainMissions: raw.mainMissions,
+    keySkills: raw.keySkills,
+    suggestedCriteria,
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Normalisation des champs à valeurs contraintes (séniorité / contrat). Le LLM
 // peut écrire « temps plein », « CDI 39h », « expérimenté »… On ramène vers les
 // options EXACTES des selects FDP (sinon le select afficherait un blanc tout en

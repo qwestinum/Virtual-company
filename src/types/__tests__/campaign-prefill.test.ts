@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   type CampaignPrefill,
+  CampaignPrefillSchema,
   normalizeContractType,
+  normalizeRawPrefill,
   normalizeSeniority,
+  normalizeSuggestableLevel,
   prefillSourceByField,
   prefillToFDP,
   prefillToSuggestedCriteria,
+  RawCampaignPrefillSchema,
   SUGGESTABLE_LEVELS,
 } from '@/types/campaign-prefill';
 import {
@@ -146,6 +150,67 @@ describe('prefillToSuggestedCriteria', () => {
 
   it('liste vide → aucun critère, aucun blocage', () => {
     expect(prefillToSuggestedCriteria(makePrefill())).toEqual([]);
+  });
+});
+
+describe('normalizeSuggestableLevel', () => {
+  it('mappe les formulations libres vers les niveaux suggérables', () => {
+    expect(normalizeSuggestableLevel('critique')).toBe('critique');
+    expect(normalizeSuggestableLevel('Très important')).toBe('tres_important');
+    expect(normalizeSuggestableLevel('tres important')).toBe('tres_important');
+    expect(normalizeSuggestableLevel('élevé')).toBe('tres_important');
+    expect(normalizeSuggestableLevel('Important')).toBe('important');
+    expect(normalizeSuggestableLevel('moyen')).toBe('important');
+    expect(normalizeSuggestableLevel('souhaitable')).toBe('souhaitable');
+    expect(normalizeSuggestableLevel('nice to have')).toBe('souhaitable');
+  });
+  it('hisse les formulations éliminatoires au plus haut suggérable (jamais éliminatoire)', () => {
+    expect(normalizeSuggestableLevel('obligatoire')).toBe('critique');
+    expect(normalizeSuggestableLevel('rédhibitoire')).toBe('critique');
+    expect(normalizeSuggestableLevel('impératif')).toBe('critique');
+    expect(normalizeSuggestableLevel('must have')).toBe('critique');
+  });
+  it('inconnu / vide → null (écarté, jamais inventé)', () => {
+    expect(normalizeSuggestableLevel('')).toBeNull();
+    expect(normalizeSuggestableLevel('bleu')).toBeNull();
+  });
+});
+
+describe('normalizeRawPrefill (tolérance LLM)', () => {
+  it('accepte une sortie partielle / niveaux hors enum et produit un CampaignPrefill valide', () => {
+    // Champs omis, niveaux en langage libre, un critère sans label → filtré.
+    const raw = RawCampaignPrefillSchema.parse({
+      jobTitle: { value: 'Comptable', extraitSource: 'Poste : Comptable' },
+      // contractType, location, etc. OMIS → défauts vides
+      suggestedCriteria: [
+        { label: 'Management', level: 'très important', extraitSource: 'encadre 5' },
+        { label: 'Rigueur', level: 'obligatoire', extraitSource: null }, // → critique
+        { label: '', level: 'critique', extraitSource: null }, // label vide → écarté
+        { label: 'X', level: 'bleu', extraitSource: null }, // niveau inconnu → écarté
+      ],
+    });
+    const prefill = normalizeRawPrefill(raw);
+    // Sortie conforme au schéma STRICT.
+    expect(CampaignPrefillSchema.safeParse(prefill).success).toBe(true);
+    expect(prefill.jobTitle.value).toBe('Comptable');
+    expect(prefill.contractType.value).toBeNull();
+    expect(prefill.suggestedCriteria).toHaveLength(2);
+    expect(prefill.suggestedCriteria[0]).toMatchObject({
+      label: 'Management',
+      level: 'tres_important',
+    });
+    expect(prefill.suggestedCriteria[1]).toMatchObject({
+      label: 'Rigueur',
+      level: 'critique',
+    });
+  });
+
+  it('objet quasi vide → tous champs nuls, aucune suggestion', () => {
+    const raw = RawCampaignPrefillSchema.parse({});
+    const prefill = normalizeRawPrefill(raw);
+    expect(CampaignPrefillSchema.safeParse(prefill).success).toBe(true);
+    expect(prefill.jobTitle.value).toBeNull();
+    expect(prefill.suggestedCriteria).toEqual([]);
   });
 });
 

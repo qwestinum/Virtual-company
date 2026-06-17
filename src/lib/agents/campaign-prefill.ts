@@ -14,8 +14,9 @@
  */
 
 import {
-  CampaignPrefillSchema,
   type CampaignPrefill,
+  normalizeRawPrefill,
+  RawCampaignPrefillSchema,
   SUGGESTABLE_LEVELS,
 } from '@/types/campaign-prefill';
 import { chatCompleteJson } from '@/lib/ai/provider';
@@ -71,7 +72,9 @@ export async function extractCampaignPrefill(
       { role: 'system', content: buildSystemPrompt() },
       { role: 'user', content: buildUserPrompt(documentText) },
     ],
-    CampaignPrefillSchema,
+    // Schéma TOLÉRANT : le LLM ne hard-fail jamais sur un niveau hors enum ou un
+    // champ omis ; on normalise ensuite vers le schéma strict.
+    RawCampaignPrefillSchema,
   );
-  return data;
+  return normalizeRawPrefill(data);
 }
