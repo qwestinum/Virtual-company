@@ -15,7 +15,7 @@
  * `FDPInProgress` et reçoit chaque patch via `onPatch`.
  */
 
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, FocusEvent } from 'react';
 
 import {
   ContractTypeSchema,
@@ -26,6 +26,33 @@ import {
   type FieldKey,
   type FieldStatus,
 } from '@/types/field-collection';
+
+/** Valeur d'un champ liste (missions/compétences) → texte du textarea. */
+export function listValueToText(value: unknown): string {
+  return Array.isArray(value)
+    ? value.join('\n')
+    : typeof value === 'string'
+      ? value
+      : '';
+}
+
+/**
+ * Frappe : conserve le texte BRUT (lignes non trimées, vides incluses). Garantit
+ * `listValueToText(parseListInputRaw(t)) === t` pour tout `t` non vide — c'est ce
+ * round-trip exact qui empêche le curseur de sauter en fin de paragraphe.
+ */
+export function parseListInputRaw(text: string): string[] | undefined {
+  return text.trim().length === 0 ? undefined : text.split('\n');
+}
+
+/** Blur : normalise (trim de chaque ligne + suppression des lignes vides). */
+export function normalizeListInput(text: string): string[] | undefined {
+  const lines = text
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return lines.length === 0 ? undefined : lines;
+}
 
 export type FDPInlineEditorProps = {
   fdp: FDPInProgress;
@@ -153,24 +180,22 @@ function renderInput(
     }
     case 'main_missions':
     case 'key_skills': {
-      const v = Array.isArray(value)
-        ? value.join('\n')
-        : typeof value === 'string'
-          ? value
-          : '';
+      const v = listValueToText(value);
       return (
         <textarea
           rows={key === 'main_missions' ? 4 : 3}
           value={v}
           disabled={disabled}
           placeholder="Une entrée par ligne"
-          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
-            const lines = e.currentTarget.value
-              .split('\n')
-              .map((s) => s.trim())
-              .filter(Boolean);
-            onChange(lines.length === 0 ? undefined : lines);
-          }}
+          // Pendant la frappe on conserve le texte TEL QUEL (round-trip exact)
+          // pour que le curseur ne saute plus en fin de paragraphe ; la
+          // normalisation se fait au blur.
+          onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+            onChange(parseListInputRaw(e.currentTarget.value))
+          }
+          onBlur={(e: FocusEvent<HTMLTextAreaElement>) =>
+            onChange(normalizeListInput(e.currentTarget.value))
+          }
           style={{ ...baseStyle, resize: 'vertical' }}
         />
       );

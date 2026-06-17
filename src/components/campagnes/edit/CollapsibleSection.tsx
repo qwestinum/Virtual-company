@@ -46,6 +46,12 @@ export function CollapsibleSection({
   return (
     <section
       style={{
+        // flexShrink:0 — dans le conteneur flex-column scrollable de l'étape
+        // d'édition, sans ça flexbox rétrécit les sections pour les faire tenir
+        // (déforme les aperçus repliés) et `overflow:hidden` coupe le contenu
+        // débordant — dont le bouton « Enregistrer » — au lieu de laisser le
+        // conteneur scroller. On garde la hauteur naturelle, le conteneur scrolle.
+        flexShrink: 0,
         border: `1px solid ${open ? 'var(--dash-border-strong)' : 'var(--dash-border)'}`,
         borderRadius: 12,
         overflow: 'hidden',
