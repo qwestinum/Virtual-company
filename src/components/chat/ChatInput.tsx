@@ -21,7 +21,8 @@ export type ChatInputProps = {
   onFilesSelected?: (files: File[]) => void;
 };
 
-const ACCEPTED_FILE_TYPES = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
+const ACCEPTED_FILE_TYPES =
+  '.pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown';
 
 type VoiceMode = 'idle' | 'recording' | 'transcribing';
 

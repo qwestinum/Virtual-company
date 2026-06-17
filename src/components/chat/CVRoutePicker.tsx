@@ -1,6 +1,6 @@
 'use client';
 
-import { Briefcase, FilePlus2, Sparkles } from 'lucide-react';
+import { Briefcase, FilePlus2, FileText, Sparkles } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { CampaignPickerEntry } from '@/stores/chat-store';
@@ -9,16 +9,16 @@ export type CVRoutePickerProps = {
   pendingId: string;
   fileCount: number;
   activeCampaigns: CampaignPickerEntry[];
-  selected: 'new' | 'existing' | 'isolated' | null;
+  selected: 'new' | 'existing' | 'isolated' | 'brief' | null;
   disabled?: boolean;
   onPick: (
     pendingId: string,
-    route: 'new' | 'existing' | 'isolated',
+    route: 'new' | 'existing' | 'isolated' | 'brief',
   ) => void;
 };
 
 type Option = {
-  id: 'new' | 'existing' | 'isolated';
+  id: 'new' | 'existing' | 'isolated' | 'brief';
   label: string;
   hint: string;
   icon: typeof Briefcase;
@@ -68,6 +68,19 @@ export function CVRoutePicker({
           },
         ]
       : []),
+    // Désambiguïsation : le document déposé n'est peut-être pas un CV mais un
+    // brief (appel d'offres / notes) à partir duquel cadrer une campagne. Ne
+    // proposé que pour un fichier unique (un cadrage = un document).
+    ...(fileCount === 1
+      ? [
+          {
+            id: 'brief' as const,
+            label: 'Appel d’offres / notes',
+            hint: 'Pré-remplir une campagne à partir de ce document',
+            icon: FileText,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -75,7 +88,7 @@ export function CVRoutePicker({
       <p className="font-body text-[11px] text-stone-500 mb-1">
         {fileCount > 1
           ? `${fileCount} CV à rattacher`
-          : '1 CV à rattacher'}
+          : '1 document reçu'}
       </p>
       {options.map((opt) => {
         const Icon = opt.icon;

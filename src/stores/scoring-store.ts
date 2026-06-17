@@ -57,6 +57,15 @@ export type ScoringState = {
     >,
   ) => void;
   removeCriterion: (id: string) => void;
+  /**
+   * Pré-remplissage par document — traitement EN MASSE des pondérations
+   * suggérées (chantier garde-fou). `confirmAllSuggestions` acquitte toutes
+   * les suggestions (suggere → false) ; `rejectAllSuggestions` les retire.
+   * « Traiter » débloque le lancement (cf. countUntreatedSuggestions). No-op
+   * si aucune fiche. Symétriques des actions de masse du formulaire.
+   */
+  confirmAllSuggestions: () => void;
+  rejectAllSuggestions: () => void;
   validate: () => void;
   /**
    * Phase 6.2 — dévalide la fiche courante sans perdre les critères.
@@ -152,6 +161,34 @@ export const useScoringStore = create<ScoringState>()((set) => ({
         sheet: {
           ...state.sheet,
           criteria: state.sheet.criteria.filter((c) => c.id !== id),
+        },
+      };
+    }),
+
+  confirmAllSuggestions: () =>
+    set((state) => {
+      if (!state.sheet) return state;
+      if (!state.sheet.criteria.some((c) => c.suggere)) return state;
+      return {
+        ...state,
+        sheet: {
+          ...state.sheet,
+          criteria: state.sheet.criteria.map((c) =>
+            c.suggere ? { ...c, suggere: false } : c,
+          ),
+        },
+      };
+    }),
+
+  rejectAllSuggestions: () =>
+    set((state) => {
+      if (!state.sheet) return state;
+      if (!state.sheet.criteria.some((c) => c.suggere)) return state;
+      return {
+        ...state,
+        sheet: {
+          ...state.sheet,
+          criteria: state.sheet.criteria.filter((c) => !c.suggere),
         },
       };
     }),

@@ -51,11 +51,20 @@ import {
 } from '@/stores/chat-store';
 import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
 import {
+  type CampaignPrefill,
+  prefillToFDP,
+  prefillToSuggestedCriteria,
+} from '@/types/campaign-prefill';
+import {
   DEFAULT_CV_THRESHOLD,
   type CVApplication,
   type CVBatchSummary,
 } from '@/types/cv-analysis';
-import type { FDPInProgress } from '@/types/field-collection';
+import {
+  FIELD_LABELS,
+  type FDPInProgress,
+  type FieldKey,
+} from '@/types/field-collection';
 
 const JOB_WRITER_ID = 'agent.job-writer';
 const CV_ANALYZER_ID = 'agent.cv-analyzer';
@@ -1200,6 +1209,153 @@ export function chooseRouteNewCampaign(pendingId: string): string | null {
   return campaignId;
 }
 
+// ── Pré-remplissage à partir d'un document (appel d'offres / notes) ──────────
+
+/** Chips de traitement des pondérations suggérées dans le chat (acte léger). */
+export const PREFILL_CONFIRM_WEIGHTS_LABEL = 'Je valide ces pondérations';
+export const PREFILL_REJECT_WEIGHTS_LABEL = 'Écarter ces pondérations';
+
+/** Champs factuels relevés (status 'filled') → libellés lisibles. PUR (testé). */
+function filledFieldLabels(fdp: FDPInProgress): string[] {
+  const out: string[] = [];
+  for (const key of Object.keys(fdp.fields) as FieldKey[]) {
+    const f = fdp.fields[key];
+    if (f && f.status === 'filled') out.push(FIELD_LABELS[key]);
+  }
+  return out;
+}
+
+/**
+ * Récapitulatif conversationnel du pré-remplissage par document. Rend EXPLICITE
+ * la distinction proposer / décider (cf. brief chantier 4) : les factuels sont
+ * « relevés », les pondérations « proposées » et soumises à validation. PUR —
+ * testé. Cite brièvement l'extrait source des pondérations.
+ */
+export function buildBriefRecap(
+  fileName: string,
+  fdp: FDPInProgress,
+  prefill: CampaignPrefill,
+): string {
+  const lines: string[] = [];
+  const fields = filledFieldLabels(fdp);
+  lines.push(
+    `J'ai lu « ${fileName} ». Voici ce que j'en ai relevé — vous validez ou ajustez, rien n'est figé.`,
+  );
+  if (fields.length > 0) {
+    lines.push('', `**Relevé dans le document** : ${fields.join(', ')}.`);
+  } else {
+    lines.push('', "Je n'ai pas pu en tirer de champ factuel exploitable.");
+  }
+  const suggestions = prefill.suggestedCriteria;
+  if (suggestions.length > 0) {
+    lines.push(
+      '',
+      `**Je vous propose ces pondérations** (à confirmer ou ajuster — elles ne pèsent rien tant que vous ne les avez pas validées) :`,
+    );
+    for (const s of suggestions) {
+      const src = s.extraitSource?.trim();
+      lines.push(
+        `- ${s.label} — importance « ${s.level} »${src ? ` _(d'après : « ${src} »)_` : ''}`,
+      );
+    }
+    lines.push(
+      '',
+      'Pour rappel, le seuil d’acceptation et les critères éliminatoires restent à votre main — je ne les déduis jamais d’un document.',
+    );
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Appelé quand le DRH indique, dans le route-picker, que le document déposé est
+ * un APPEL D'OFFRES / des NOTES (et non un CV). Couche commune : on extrait via
+ * la MÊME route que le formulaire, puis on PRÉ-REMPLIT un brouillon
+ * conversationnel (FDP + grille avec pondérations `suggere`). Rien n'est
+ * persisté ; le Manager restitue un récap proposer/décider. Les pondérations
+ * restent `suggere:true` jusqu'à confirmation/rejet EXPLICITE dans le dialogue
+ * (chips), ce qui bloque le lancement (verrou commun du store).
+ */
+export async function chooseRouteBrief(pendingId: string): Promise<void> {
+  const pending = pendingRoutings.get(pendingId);
+  if (!pending) return;
+  const file = pending.files[0];
+  if (!file) return;
+  pendingRoutings.delete(pendingId);
+  markRoutePickerSelected(pendingId, 'brief');
+
+  const chat = useChatStore.getState();
+  chat.appendMessage({
+    role: 'user',
+    source: 'text',
+    content: `Ce n'est pas un CV : ${file.name} est un document de cadrage (appel d'offres / notes).`,
+  });
+
+  let prefill: CampaignPrefill;
+  try {
+    const form = new FormData();
+    form.append('document', file);
+    const res = await fetch('/api/campaigns/prefill', {
+      method: 'POST',
+      body: form,
+    });
+    const json = (await res.json()) as {
+      prefill?: CampaignPrefill;
+      message?: string;
+    };
+    if (!res.ok || !json.prefill) {
+      chat.appendMessage({
+        role: 'manager',
+        source: 'text',
+        content:
+          json.message ??
+          "Je n'ai pas réussi à lire ce document. On peut repartir sur une campagne à cadrer ensemble, étape par étape — pour quel poste ?",
+      });
+      return;
+    }
+    prefill = json.prefill;
+  } catch {
+    chat.appendMessage({
+      role: 'manager',
+      source: 'text',
+      content:
+        "Le document n'a pas pu être traité (PDF ou DOCX attendu). On peut aussi cadrer la campagne ensemble — pour quel poste recrutez-vous ?",
+    });
+    return;
+  }
+
+  // Bascule sur un brouillon propre, puis seed FDP + grille (suggestions).
+  wipeForFreshStart();
+  const campaignId = `CAMP-${new Date().getFullYear()}-${String(
+    Math.floor(Math.random() * 999) + 1,
+  ).padStart(3, '0')}`;
+  const fdp = prefillToFDP(prefill, campaignId);
+  useFdpStore.getState().restoreFDP(fdp);
+  const suggested = prefillToSuggestedCriteria(prefill);
+  if (suggested.length > 0) {
+    useScoringStore.getState().proposeSheet(campaignId, suggested);
+  }
+
+  const chat2 = useChatStore.getState();
+  chat2.appendMessage({
+    role: 'manager',
+    source: 'text',
+    content: buildBriefRecap(file.name, fdp, prefill),
+    chips:
+      suggested.length > 0
+        ? {
+            placement: 'below_bubble',
+            options: [
+              PREFILL_CONFIRM_WEIGHTS_LABEL,
+              PREFILL_REJECT_WEIGHTS_LABEL,
+            ],
+          }
+        : {
+            placement: 'below_bubble',
+            options: ['Compléter la fiche de poste', 'Repartir à zéro'],
+          },
+  });
+}
+
 /**
  * Helper interne : marque le route-picker comme sélectionné dans la
  * dernière bulle correspondante (pour griser visuellement les autres
@@ -1207,7 +1363,7 @@ export function chooseRouteNewCampaign(pendingId: string): string | null {
  */
 function markRoutePickerSelected(
   pendingId: string,
-  selected: 'new' | 'existing' | 'isolated',
+  selected: 'new' | 'existing' | 'isolated' | 'brief',
 ): void {
   const messages = useChatStore.getState().messages;
   for (let i = messages.length - 1; i >= 0; i--) {
