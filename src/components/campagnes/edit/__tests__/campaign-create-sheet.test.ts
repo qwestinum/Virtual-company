@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { nextOpenSection } from '@/components/campagnes/edit/CampaignCreateSheet';
+import {
+  deriveCampaignName,
+  nextOpenSection,
+} from '@/components/campagnes/edit/CampaignCreateSheet';
+import { buildEmptyFDP, type FDPInProgress } from '@/types/field-collection';
+
+/** FDP avec un job_title donné (vide = champ effacé). */
+function fdpWithTitle(title: string): FDPInProgress {
+  const fdp = buildEmptyFDP('CAMP-1');
+  fdp.fields.job_title = {
+    ...fdp.fields.job_title!,
+    value: title,
+    status: title ? 'filled' : 'empty',
+  };
+  return fdp;
+}
 
 describe('nextOpenSection — flux « Enregistrer → section suivante »', () => {
   it('ouvre la section juste après celle enregistrée', () => {
@@ -29,5 +44,28 @@ describe('nextOpenSection — flux « Enregistrer → section suivante »', () =
     expect(
       nextOpenSection(['scoring', 'channels', 'flux', 'threshold', 'fdp'], 'fdp'),
     ).toBeNull();
+  });
+});
+
+describe('deriveCampaignName — le nom suit le job_title édité', () => {
+  it("l'intitulé ÉDITÉ en étape 2 prime sur celui de l'étape 1", () => {
+    // Le bug : l'étape 1 était prioritaire et écrasait la modification.
+    expect(deriveCampaignName(fdpWithTitle('Comptable senior'), 'Comptable')).toBe(
+      'Comptable senior',
+    );
+  });
+
+  it("repli sur l'intitulé d'étape 1 si le champ FDP est vidé", () => {
+    expect(deriveCampaignName(fdpWithTitle(''), 'Comptable')).toBe('Comptable');
+  });
+
+  it('défaut quand tout est vide', () => {
+    expect(deriveCampaignName(fdpWithTitle(''), '   ')).toBe('Nouvelle campagne');
+  });
+
+  it('trim de la valeur éditée', () => {
+    expect(deriveCampaignName(fdpWithTitle('  Data Engineer  '), 'X')).toBe(
+      'Data Engineer',
+    );
   });
 });

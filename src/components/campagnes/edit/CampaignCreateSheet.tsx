@@ -315,12 +315,10 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       return;
     }
     setSubmitError(null);
-    const inferredName =
-      jobTitle.trim() ||
-      (typeof fdp.fields.job_title?.value === 'string'
-        ? (fdp.fields.job_title.value as string).trim()
-        : '') ||
-      'Nouvelle campagne';
+    // Source de vérité unique : le nom SUIT le champ job_title de la FDP (qui a
+    // pu être édité en étape 2), pas l'intitulé figé de l'étape 1. Repli sur
+    // l'intitulé d'étape 1 puis un défaut si le champ a été vidé.
+    const inferredName = deriveCampaignName(fdp, jobTitle);
     const isComplete = computeIsComplete(fdp.fields);
     const finalFdp: FDPInProgress = {
       ...fdp,
@@ -1205,6 +1203,22 @@ type MatchHint = {
   copiedChannels: boolean;
   copiedFlux: boolean;
 };
+
+/**
+ * Nom de la campagne à la création. Le champ `job_title` de la FDP est la SOURCE
+ * DE VÉRITÉ (il a pu être édité en étape 2) ; on retombe sur l'intitulé saisi à
+ * l'étape 1 s'il a été vidé, puis sur un défaut. Pur — testé.
+ */
+export function deriveCampaignName(
+  fdp: FDPInProgress,
+  step1Title: string,
+): string {
+  const editedTitle =
+    typeof fdp.fields.job_title?.value === 'string'
+      ? fdp.fields.job_title.value.trim()
+      : '';
+  return editedTitle || step1Title.trim() || 'Nouvelle campagne';
+}
 
 /** Clés des sections pliables de l'étape d'édition à la création. */
 type EditSectionKey = 'fdp' | 'scoring' | 'channels' | 'flux' | 'threshold';
