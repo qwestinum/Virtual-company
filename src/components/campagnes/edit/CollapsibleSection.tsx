@@ -22,6 +22,14 @@ export type CollapsibleSectionProps = {
   open: boolean;
   onToggle: () => void;
   children: ReactNode;
+  /**
+   * Confirmation par section : si fourni, un bouton « Enregistrer » est rendu
+   * en pied de la section ouverte. Il ne persiste rien en base (la création
+   * écrit tout au bouton final) — il valide le bloc, le replie et passe au
+   * suivant. `saved` affiche un badge ✓ dans l'en-tête.
+   */
+  onSave?: () => void;
+  saved?: boolean;
 };
 
 export function CollapsibleSection({
@@ -32,6 +40,8 @@ export function CollapsibleSection({
   open,
   onToggle,
   children,
+  onSave,
+  saved = false,
 }: CollapsibleSectionProps) {
   return (
     <section
@@ -103,6 +113,26 @@ export function CollapsibleSection({
             ) : null}
           </span>
         </button>
+        {saved ? (
+          <span
+            className="font-body"
+            aria-label="Section enregistrée"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 8px',
+              borderRadius: 999,
+              background: 'var(--dash-green-light)',
+              color: 'var(--dash-green)',
+              fontSize: 11,
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span aria-hidden>✓</span> Enregistré
+          </span>
+        ) : null}
         {action}
         <button
           type="button"
@@ -123,7 +153,44 @@ export function CollapsibleSection({
         </button>
       </div>
       {open ? (
-        <div style={{ padding: '12px 14px 16px' }}>{children}</div>
+        <div style={{ padding: '12px 14px 16px' }}>
+          {children}
+          {onSave ? (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                marginTop: 14,
+                paddingTop: 12,
+                borderTop: '1px solid var(--dash-border)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={onSave}
+                className="font-display"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: `1px solid var(--dash-green)`,
+                  background: saved
+                    ? 'var(--dash-green-light)'
+                    : 'var(--dash-green)',
+                  color: saved ? 'var(--dash-green)' : '#fff',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <span aria-hidden>✓</span>
+                {saved ? 'Enregistré' : 'Enregistrer'}
+              </button>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

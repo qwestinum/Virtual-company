@@ -113,6 +113,9 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   // de succès : la campagne est enregistrée, mais le flux email serait muet).
   const [mailboxFailures, setMailboxFailures] = useState(0);
   const [activateError, setActivateError] = useState<string | null>(null);
+  // Clé de remount d'EditingStage : incrémentée par « Repartir à zéro » pour
+  // remettre l'état interne (section ouverte, sections enregistrées) à neuf.
+  const [editKey, setEditKey] = useState(0);
   const createdOnceRef = useRef(false);
   // Proposition par l'IA (parité avec le chat Manager) — opt-in par bouton.
   const [proposingFdp, setProposingFdp] = useState(false);
@@ -411,6 +414,39 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
     }
   };
 
+  // « Repartir à zéro » sur un préremplissage (parité chat Manager) : on
+  // CONSERVE l'intitulé du poste (l'intention déjà exprimée) et on remet tout
+  // le reste à neuf — FDP vierge, grille de scoring par défaut, ni canaux ni
+  // flux, seuil par défaut. La bannière de correspondance disparaît et
+  // EditingStage est remonté (sections « enregistré » effacées).
+  const onResetPrefill = () => {
+    const title =
+      typeof fdp.fields.job_title?.value === 'string'
+        ? (fdp.fields.job_title.value as string).trim()
+        : jobTitle.trim();
+    const base = buildEmptyFDP(campaignId);
+    const fields = {
+      ...base.fields,
+      job_title: {
+        ...base.fields.job_title!,
+        value: title,
+        status: (title ? 'filled' : 'empty') as 'filled' | 'empty',
+      },
+    };
+    setFdp({ ...base, fields, isComplete: computeIsComplete(fields) });
+    setCriteria(
+      DEFAULT_SCORING_TEMPLATE.map((c, i) =>
+        buildCriterion({ id: `crit_${i}`, ...c }),
+      ),
+    );
+    setChannels([]);
+    setSources([]);
+    setMailboxIds([]);
+    setThreshold(75);
+    setMatchHint(null);
+    setEditKey((k) => k + 1);
+  };
+
   return (
     <div
       role="dialog"
@@ -470,6 +506,7 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
           />
         ) : (
           <EditingStage
+            key={editKey}
             jobTitle={jobTitle}
             matchHint={matchHint}
             fdp={fdp}
@@ -493,6 +530,7 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
             submitting={submitting}
             onCancel={onClose}
             onSubmit={onSubmit}
+            onReset={onResetPrefill}
           />
         )}
       </aside>
@@ -907,6 +945,7 @@ function EditingStage({
   submitting,
   onCancel,
   onSubmit,
+  onReset,
 }: {
   jobTitle: string;
   matchHint: MatchHint | null;
@@ -931,6 +970,7 @@ function EditingStage({
   submitting: boolean;
   onCancel: () => void;
   onSubmit: () => void;
+  onReset: () => void;
 }) {
   // Sections pliables : une ouverte à la fois, la fiche par défaut. Donne de la
   // visibilité quand une fiche récupérée préremplit plusieurs blocs (au lieu
@@ -938,6 +978,19 @@ function EditingStage({
   const [openSection, setOpenSection] = useState<EditSectionKey | null>('fdp');
   const toggle = (key: EditSectionKey) =>
     setOpenSection((cur) => (cur === key ? null : key));
+
+  // Confirmation par section (cf. UX retenue) : « Enregistrer » ne persiste
+  // rien — la création écrit tout au bouton final. Il valide le bloc (badge ✓),
+  // le replie et ouvre le suivant non encore enregistré pour guider le DRH.
+  const [savedSections, setSavedSections] = useState<EditSectionKey[]>([]);
+  const isSaved = (key: EditSectionKey) => savedSections.includes(key);
+  const saveSection = (key: EditSectionKey) => {
+    const nextSaved = savedSections.includes(key)
+      ? savedSections
+      : [...savedSections, key];
+    setSavedSections(nextSaved);
+    setOpenSection(nextOpenSection(nextSaved, key));
+  };
 
   const filledCount = Object.keys(collectKnown(fdp)).length;
   const plural = (n: number, s = 's') => (n > 1 ? s : '');
@@ -954,7 +1007,11 @@ function EditingStage({
           gap: 10,
         }}
       >
-        {matchHint ? <MatchBanner hint={matchHint} /> : <NoMatchHint />}
+        {matchHint ? (
+          <MatchBanner hint={matchHint} onReset={onReset} />
+        ) : (
+          <NoMatchHint />
+        )}
         {proposeError ? <ProposeError message={proposeError} /> : null}
 
         <CollapsibleSection
@@ -963,6 +1020,8 @@ function EditingStage({
           subtitle={`${filledCount} champ${plural(filledCount)} renseigné${plural(filledCount)}`}
           open={openSection === 'fdp'}
           onToggle={() => toggle('fdp')}
+          saved={isSaved('fdp')}
+          onSave={() => saveSection('fdp')}
           action={
             <ProposeButton
               label="Proposer la fiche"
@@ -980,6 +1039,8 @@ function EditingStage({
           subtitle={`${criteria.length} critère${plural(criteria.length)}`}
           open={openSection === 'scoring'}
           onToggle={() => toggle('scoring')}
+          saved={isSaved('scoring')}
+          onSave={() => saveSection('scoring')}
           action={
             <ProposeButton
               label="Proposer la grille"
@@ -1001,6 +1062,8 @@ function EditingStage({
           }
           open={openSection === 'channels'}
           onToggle={() => toggle('channels')}
+          saved={isSaved('channels')}
+          onSave={() => saveSection('channels')}
         >
           <ChannelsDraftEditor selected={channels} onChange={setChannels} />
         </CollapsibleSection>
@@ -1015,6 +1078,8 @@ function EditingStage({
           }
           open={openSection === 'flux'}
           onToggle={() => toggle('flux')}
+          saved={isSaved('flux')}
+          onSave={() => saveSection('flux')}
         >
           <FluxDraftEditor
             selected={sources}
@@ -1030,6 +1095,8 @@ function EditingStage({
           subtitle={`${threshold}%`}
           open={openSection === 'threshold'}
           onToggle={() => toggle('threshold')}
+          saved={isSaved('threshold')}
+          onSave={() => saveSection('threshold')}
         >
           <ThresholdDraftEditor value={threshold} onChange={setThreshold} />
         </CollapsibleSection>
@@ -1142,7 +1209,35 @@ type MatchHint = {
 /** Clés des sections pliables de l'étape d'édition à la création. */
 type EditSectionKey = 'fdp' | 'scoring' | 'channels' | 'flux' | 'threshold';
 
-function MatchBanner({ hint }: { hint: MatchHint }) {
+/** Ordre de parcours des sections (sert au « Enregistrer → section suivante »). */
+const SECTION_ORDER: EditSectionKey[] = [
+  'fdp',
+  'scoring',
+  'channels',
+  'flux',
+  'threshold',
+];
+
+/**
+ * Section à ouvrir après l'enregistrement de `justSaved` : la première qui la
+ * SUIT dans l'ordre et n'est pas encore enregistrée, ou `null` si la dernière
+ * (on replie tout). `saved` doit déjà inclure `justSaved`. Pur — testé.
+ */
+export function nextOpenSection(
+  saved: readonly EditSectionKey[],
+  justSaved: EditSectionKey,
+): EditSectionKey | null {
+  const idx = SECTION_ORDER.indexOf(justSaved);
+  return SECTION_ORDER.slice(idx + 1).find((k) => !saved.includes(k)) ?? null;
+}
+
+function MatchBanner({
+  hint,
+  onReset,
+}: {
+  hint: MatchHint;
+  onReset: () => void;
+}) {
   const pieces: string[] = ['la fiche'];
   if (hint.copiedScoring) pieces.push('la grille de scoring');
   if (hint.copiedChannels) pieces.push('les canaux');
@@ -1176,6 +1271,31 @@ function MatchBanner({ hint }: { hint: MatchHint }) {
         </strong>{' '}
         {hint.sourceId} — « {hint.sourceName} ». On a préremplit {summary}
         {' '}— vous pouvez tout modifier avant de valider.
+        {/* Parité avec le chat Manager (« Repartir à zéro ») : une fiche
+            préremplie doit TOUJOURS offrir une sortie pour repartir vierge.
+            On conserve l'intitulé du poste, on réinitialise tout le reste. */}
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            onClick={onReset}
+            className="font-body"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--dash-blue)',
+              background: 'var(--dash-surface)',
+              color: 'var(--dash-blue)',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <span aria-hidden>↺</span> Repartir à zéro
+          </button>
+        </div>
       </div>
     </div>
   );
