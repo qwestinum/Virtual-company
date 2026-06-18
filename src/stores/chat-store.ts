@@ -60,7 +60,7 @@ export type ChatBlock =
       pendingId: string;
       fileCount: number;
       activeCampaigns: CampaignPickerEntry[];
-      selected: 'new' | 'existing' | 'isolated' | 'brief' | null;
+      selected: 'new' | 'existing' | 'isolated' | null;
     }
   | {
       kind: 'campaign-picker';

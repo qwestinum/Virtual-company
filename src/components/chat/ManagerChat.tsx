@@ -58,7 +58,6 @@ import {
 } from '@/lib/chat/api-client';
 import {
   chooseExistingCampaign,
-  chooseRouteBrief,
   chooseRouteExisting,
   chooseRouteIsolated,
   chooseRouteNewCampaign,
@@ -66,8 +65,6 @@ import {
   dispatchJobWriter,
   dispatchPublisher,
   findPendingByResolvedId,
-  PREFILL_CONFIRM_WEIGHTS_LABEL,
-  PREFILL_REJECT_WEIGHTS_LABEL,
   wipeForFreshStart,
 } from '@/lib/chat/manager-flow';
 import { pushArtifact } from '@/lib/db/sync/artifacts-sync';
@@ -1184,7 +1181,7 @@ export function ManagerChat() {
 
   function handleRoutePick(
     pendingId: string,
-    route: 'new' | 'existing' | 'isolated' | 'brief',
+    route: 'new' | 'existing' | 'isolated',
   ) {
     if (isAgentBusy || isSending || isTranscribing) return;
     // Manager LECTURE SEULE : seule l'analyse de CV contre une campagne
@@ -1374,31 +1371,6 @@ export function ManagerChat() {
 
   function handleChipSelect(option: string) {
     if (isSending || isTranscribing) return;
-    // Pré-remplissage par document — traitement EXPLICITE des pondérations
-    // suggérées dans le dialogue (chantier 4 : énoncer ≠ acquérir). Confirmer
-    // → suggere:false ; écarter → retrait. Tant que des suggestions restent,
-    // le lancement est bloqué (verrou commun du store). Acte léger, un clic.
-    if (
-      option === PREFILL_CONFIRM_WEIGHTS_LABEL ||
-      option === PREFILL_REJECT_WEIGHTS_LABEL
-    ) {
-      const confirm = option === PREFILL_CONFIRM_WEIGHTS_LABEL;
-      dismissLastManagerChips();
-      appendMessage({ role: 'user', source: 'text', content: option });
-      if (confirm) {
-        useScoringStore.getState().confirmAllSuggestions();
-      } else {
-        useScoringStore.getState().rejectAllSuggestions();
-      }
-      appendMessage({
-        role: 'manager',
-        source: 'text',
-        content: confirm
-          ? "C'est noté — ces pondérations sont validées. On peut compléter la fiche puis la valider quand vous voulez."
-          : "Entendu, j'écarte ces pondérations proposées. On repart de la grille de base — on l'ajustera ensemble.",
-      });
-      return;
-    }
     // Phase 7.4.1 / 7.5 — chips "Rouvrir" (closed) ou "Reprendre"
     // (paused) posés sur la bulle de reprise. Le clic rouvre la
     // campagne puis re-pose la bulle Manager avec les chips de

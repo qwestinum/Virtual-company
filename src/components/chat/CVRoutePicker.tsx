@@ -9,16 +9,16 @@ export type CVRoutePickerProps = {
   pendingId: string;
   fileCount: number;
   activeCampaigns: CampaignPickerEntry[];
-  selected: 'new' | 'existing' | 'isolated' | 'brief' | null;
+  selected: 'new' | 'existing' | 'isolated' | null;
   disabled?: boolean;
   onPick: (
     pendingId: string,
-    route: 'new' | 'existing' | 'isolated' | 'brief',
+    route: 'new' | 'existing' | 'isolated',
   ) => void;
 };
 
 type Option = {
-  id: 'new' | 'existing' | 'isolated' | 'brief';
+  id: 'new' | 'existing' | 'isolated';
   label: string;
   hint: string;
   icon: typeof Briefcase;

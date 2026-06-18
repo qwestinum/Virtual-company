@@ -50,7 +50,7 @@ export type ChatBubbleProps = {
   chipsDisabled?: boolean;
   onRoutePick?: (
     pendingId: string,
-    route: 'new' | 'existing' | 'isolated' | 'brief',
+    route: 'new' | 'existing' | 'isolated',
   ) => void;
   onCampaignPick?: (pendingId: string, campaignId: string) => void;
   onChannelToggle?: (messageId: string, channel: PublicationChannel) => void;
