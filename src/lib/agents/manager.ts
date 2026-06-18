@@ -23,10 +23,7 @@ import {
   type ReportingSnapshot,
 } from '@/lib/agents/manager-reporting';
 import { chatComplete } from '@/lib/ai/provider';
-import {
-  searchExistingJobDescriptions,
-  type JobDescription,
-} from '@/lib/storage/job-descriptions';
+import type { JobDescription } from '@/lib/storage/job-descriptions';
 import {
   ContractTypeSchema,
   FIELD_KEYS,
@@ -39,10 +36,7 @@ import {
   type Intent,
   type IntentClassification,
 } from '@/types/intent';
-import {
-  ManagerResponseSchema,
-  type ManagerResponse,
-} from '@/types/manager-response';
+import type { ManagerResponse } from '@/types/manager-response';
 import {
   SWITCH_CHIP_KEEP,
   SWITCH_CHIP_NEW,
@@ -57,10 +51,7 @@ export {
   type PendingSwitch,
 } from '@/types/switch-dialog';
 
-import {
-  buildConversationalPrompt,
-  buildIntentClassificationPrompt,
-} from './manager-prompts';
+import { buildIntentClassificationPrompt } from './manager-prompts';
 
 export const MANAGER_AGENT_ID = 'agent.manager-rh';
 
@@ -606,92 +597,15 @@ export async function runManagerTurn(
   }
 
   // VERROU « Manager lecture seule » — l'intention `new_campaign` ne déclenche
-  // PLUS aucun cadrage write (collecte FDP, création, scoring, flux, annonce).
-  // On ORIENTE vers l'UI déterministe, seul endroit où une campagne se crée.
-  // Tout le flux de collecte/proposition en aval (switch dialog, cold-start,
-  // pré-recherche, tour conversationnel) devient inatteignable — CONSERVÉ pour
-  // l'instant (nettoyage Phase 3), non-destructif. Le drapeau `: boolean`
-  // (et non `true` littéral) est VOLONTAIRE : il empêche TypeScript de réduire
-  // `intent` à `never` dans la suite, ce qui permet de garder le tail mort mais
-  // compilable jusqu'à sa suppression en Phase 3.
-  const MANAGER_READ_ONLY: boolean = true;
-  if (MANAGER_READ_ONLY && classification.intent === 'new_campaign') {
+  // aucun cadrage write (collecte FDP, création, scoring, flux, annonce) : on
+  // ORIENTE vers l'UI déterministe, seul endroit où une campagne se crée.
+  if (classification.intent === 'new_campaign') {
     return {
       classification,
       response: buildCreationRedirectResponse(),
       preSearchHits: [],
       campaignId: null,
       pendingSwitch: null,
-      metrics: {
-        durationMs: intentCompletion.durationMs,
-        tokensUsed: intentCompletion.usage.totalTokens,
-        costEstimate: intentCompletion.costEstimate,
-      },
-    };
-  }
-
-  // Détection déterministe du switch de campagne. On court-circuite le
-  // tour conversationnel LLM si :
-  //   - une FDP existe avec au moins job_title rempli,
-  //   - le DRH formule une nouvelle intention (new_campaign ou
-  //     out_of_campaign_task) avec une confidence haute,
-  //   - aucune clarification n'est en attente,
-  //   - le classifier a marqué isDistinctNewCampaign=true,
-  //   - ET un signal concret de bascule existe, sous une des deux
-  //     formes admises :
-  //       a) candidateNewJobTitle nommé et différent du courant
-  //          (case-insensitive) — chemin nominal,
-  //       b) candidate absent mais le message contient un mot-clé
-  //          explicite de bascule (« en fait je veux lancer une
-  //          campagne », « ouvre une nouvelle tâche ») — chemin
-  //          fallback pour ne pas bloquer une intention claire
-  //          formulée sans poste cible.
-  //     Sans ces signaux, on bloque (garde-fou anti-hallucination :
-  //     sur « ok » ou « senior », le LLM peut mettre le booléen à
-  //     true à tort mais ni le candidate ni le keyword ne seraient là).
-  const isCandidateMeaningful =
-    typeof classification.candidateNewJobTitle === 'string' &&
-    classification.candidateNewJobTitle.trim().length > 0 &&
-    (currentJobTitleForClassifier === undefined ||
-      classification.candidateNewJobTitle
-        .trim()
-        .toLowerCase() !==
-        currentJobTitleForClassifier.trim().toLowerCase());
-
-  const hasExplicitKeyword = hasSwitchIntentKeyword(lastUserMessage);
-
-  // Deux chemins admis pour déclencher le switch (avec les pré-requis
-  // communs : FDP non vide + intent campagne/tâche à confidence haute) :
-  //   a) le LLM signale isDistinctNewCampaign=true ET un candidate
-  //      concret existe (chemin nominal, le plus précis),
-  //   b) le dernier message contient un MOT-CLÉ explicite de bascule
-  //      (« lancer une nouvelle campagne », « en fait », « plutôt »…) ;
-  //      ce signal est définitif et n'a pas besoin de l'approbation du
-  //      LLM — il est volontairement spécifique pour ne pas matcher
-  //      les réponses courantes de collecte.
-  const shouldShowSwitchDialog =
-    input.fdp !== null &&
-    fdpHasJobTitle(input.fdp) &&
-    !classification.needsClarification &&
-    classification.confidence >= SWITCH_DIALOG_THRESHOLD &&
-    classification.intent === 'new_campaign' &&
-    (hasExplicitKeyword ||
-      (classification.isDistinctNewCampaign === true &&
-        isCandidateMeaningful));
-
-  if (shouldShowSwitchDialog && input.fdp) {
-    const pendingSwitch: PendingSwitch = {
-      proposedCampaignId: generateCampaignId(classification.intent),
-      currentCampaignId: input.fdp.campaignId,
-      currentJobTitle: getFdpJobTitle(input.fdp),
-      currentStatus: input.fdp.isValidated ? 'validated' : 'draft',
-    };
-    return {
-      classification,
-      response: buildSwitchDialogResponse(pendingSwitch),
-      preSearchHits: [],
-      campaignId: input.fdp.campaignId,
-      pendingSwitch,
       metrics: {
         durationMs: intentCompletion.durationMs,
         tokensUsed: intentCompletion.usage.totalTokens,
@@ -747,142 +661,19 @@ export async function runManagerTurn(
     };
   }
 
-  // VERROU DÉTERMINISTE — démarrage de recrutement SANS poste précisé.
-  // On ne lance NI la pré-recherche NI le tour conversationnel : on
-  // demande d'abord l'intitulé, par une réponse fixe. Sans ce garde, le
-  // LLM annonçait « je n'ai pas trouvé de fiche de poste » sur « je veux
-  // un recrutement » — absurde puisqu'aucun poste n'est encore nommé.
-  const isColdStartNoFdp =
-    input.fdp === null || !fdpHasJobTitle(input.fdp);
-  if (
-    classification.intent === 'new_campaign' &&
-    !classification.needsClarification &&
-    isColdStartNoFdp &&
-    !classification.specifiedRole
-  ) {
-    return {
-      classification,
-      response: buildAskRoleResponse(),
-      preSearchHits: [],
-      campaignId: input.fdp?.campaignId ?? null,
-      pendingSwitch: null,
-      metrics: {
-        durationMs: intentCompletion.durationMs,
-        tokensUsed: intentCompletion.usage.totalTokens,
-        costEstimate: intentCompletion.costEstimate,
-      },
-    };
-  }
-
-  let preSearchHits: JobDescription[] = [];
-  if (
-    classification.intent === 'new_campaign' &&
-    !classification.needsClarification &&
-    lastUserMessage.length > 0
-  ) {
-    const rawHits = await searchExistingJobDescriptions(lastUserMessage);
-    // Dédup par intitulé normalisé : si la base contient 3 FDPs
-    // « Comptable » archivées sur la même période, le Manager n'a aucun
-    // intérêt à en lister 3 — il en mentionne UNE (la plus récente,
-    // donc la première de la liste retournée triée par archived_at desc).
-    // En round 1 on n'a pas d'UX L2 multi-fiches, donc la dédup
-    // simplifie aussi le wording côté prompt.
-    const seenTitles = new Set<string>();
-    preSearchHits = [];
-    for (const hit of rawHits) {
-      const key = hit.title.trim().toLowerCase();
-      if (seenTitles.has(key)) continue;
-      seenTitles.add(key);
-      preSearchHits.push(hit);
-    }
-  }
-
-  const conversationalSystem = buildConversationalPrompt({
-    intent: classification.intent,
-    confidence: classification.confidence,
-    needsClarification: classification.needsClarification,
-    fdp: input.fdp,
-    preSearchHits,
-  });
-
-  // Le tour conversationnel passe sur gpt-4o (vs gpt-4o-mini pour la
-  // classification) car il doit suivre un prompt à instructions denses
-  // (mode proposition, double écriture fieldExtractions/message, chips
-  // selon nature du champ). gpt-4o-mini omettait des extractions
-  // critiques en démo. Coût ≈ 5-15× supérieur — acceptable pour le MVP
-  // démo, à reconsidérer en Session 5+ si volume.
-  const responseCompletion = await chatComplete({
-    model: 'gpt-4o',
-    jsonMode: true,
-    temperature: 0.4,
-    messages: [
-      { role: 'system', content: conversationalSystem },
-      ...conversation,
-    ],
-  });
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(responseCompletion.content);
-  } catch (err) {
-    throw new ManagerError(
-      'invalid_response_json',
-      err instanceof Error ? err.message : 'Unparseable response JSON.',
-    );
-  }
-  if (raw && typeof raw === 'object') {
-    const r = raw as Record<string, unknown>;
-    if (r.chips === null) delete r.chips;
-    if (r.fieldExtractions === null) delete r.fieldExtractions;
-  }
-  let response: ManagerResponse;
-  try {
-    response = ManagerResponseSchema.parse(raw);
-  } catch (err) {
-    throw new ManagerError(
-      'invalid_response_shape',
-      err instanceof Error ? err.message : 'Manager response shape invalid.',
-    );
-  }
-
-  // Garde-fou Phase 2 : si le LLM a oublié ses chips alors qu'on est
-  // en MODE PROPOSITION, on injecte une paire fallback. Exception :
-  // demande explicite d'éclaircissement par le DRH (le Manager peut
-  // alors répondre en prose libre).
-  response = ensureChipsPresent(response, lastUserMessage);
-  // Garde-fou déterministe : toute proposition de champ (valeur libre
-  // "inline" OU champ canonique "below_bubble") DOIT toujours offrir
-  // « Ajuster », même si le LLM l'oublie.
-  response = ensureAdjustChip(response);
-  // Garde-fou déterministe : « Ajuster » a besoin d'un champ cible. Si le LLM
-  // a oublié `proposalField` (typiquement missions / compétences, qui retombent
-  // alors sur le fallback above_input), on l'ancre sur le champ proposé / en
-  // cours de collecte — sinon le clic « Ajuster » ne fait rien d'utile.
-  response = ensureProposalAnchor(response, input.fdp);
-  // Filet universel : jamais de bulle vide (message d'espaces).
-  response = ensureNonEmptyMessage(response);
-
-  const campaignId =
-    !input.fdp &&
-    !classification.needsClarification &&
-    classification.intent === 'new_campaign'
-      ? generateCampaignId(classification.intent)
-      : (input.fdp?.campaignId ?? null);
-
+  // Exhaustif : les 5 intentions canoniques retournent toutes ci-dessus
+  // (lecture seule). Filet défensif au cas où une évolution du classifier
+  // introduirait une intention inconnue → on ORIENTE, jamais d'écriture.
   return {
     classification,
-    response,
-    preSearchHits,
-    campaignId,
+    response: buildOtherIntentResponse(),
+    preSearchHits: [],
+    campaignId: input.fdp?.campaignId ?? null,
     pendingSwitch: null,
     metrics: {
-      durationMs:
-        intentCompletion.durationMs + responseCompletion.durationMs,
-      tokensUsed:
-        intentCompletion.usage.totalTokens +
-        responseCompletion.usage.totalTokens,
-      costEstimate:
-        intentCompletion.costEstimate + responseCompletion.costEstimate,
+      durationMs: intentCompletion.durationMs,
+      tokensUsed: intentCompletion.usage.totalTokens,
+      costEstimate: intentCompletion.costEstimate,
     },
   };
 }
