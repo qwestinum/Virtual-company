@@ -25,7 +25,8 @@ const TABS: { key: SubTab; label: string }[] = [
 ];
 
 export function ReportingHub() {
-  const [tab, setTab] = useState<SubTab>('audit');
+  // Sous-onglet ouvert par défaut : « Rapport de campagne ».
+  const [tab, setTab] = useState<SubTab>('campaign');
   // Sous-vue de l'onglet Audit : accueil (3 cartes) ou audit candidat.
   const [auditView, setAuditView] = useState<'home' | 'candidat'>('home');
 
