@@ -22,6 +22,7 @@ function row(overrides: Record<string, unknown> = {}) {
     id: 1,
     synthesis_email: null,
     synthesis_emails: [],
+    synthesis_emails_active: null,
     sender_email: null,
     sender_emails: [],
     intake_email: null,
@@ -90,5 +91,74 @@ describe('app-settings — clé Resend write-only', () => {
       from: () => ({ select: () => ({ eq: () => ({ maybeSingle }) }) }),
     } as never);
     expect(await getResendApiKeyFromSettings()).toBe('re_secret_xyz');
+  });
+});
+
+describe('app-settings — adresses de synthèse cochées (choix multiple)', () => {
+  function loadRow(overrides: Record<string, unknown>) {
+    const maybeSingle = vi
+      .fn()
+      .mockResolvedValue({ data: row(overrides), error: null });
+    mock.mockReturnValue({
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle }) }) }),
+    } as never);
+    return getAppSettings();
+  }
+
+  it('colonne absente + ancienne adresse par défaut → SEULE la défaut est cochée (jamais toute la liste)', async () => {
+    const s = await loadRow({
+      synthesis_emails: ['a@x.fr', 'b@x.fr', 'c@x.fr'],
+      synthesis_email: 'b@x.fr',
+      synthesis_emails_active: null,
+    });
+    expect(s?.synthesisEmailsActive).toEqual(['b@x.fr']);
+  });
+
+  it('colonne absente + pas de défaut → repli sur la 1re adresse, pas toutes', async () => {
+    const s = await loadRow({
+      synthesis_emails: ['a@x.fr', 'b@x.fr'],
+      synthesis_email: null,
+      synthesis_emails_active: null,
+    });
+    expect(s?.synthesisEmailsActive).toEqual(['a@x.fr']);
+  });
+
+  it('colonne renseignée → renvoie exactement le sous-ensemble coché', async () => {
+    const s = await loadRow({
+      synthesis_emails: ['a@x.fr', 'b@x.fr', 'c@x.fr'],
+      synthesis_emails_active: ['a@x.fr', 'c@x.fr'],
+    });
+    expect(s?.synthesisEmailsActive).toEqual(['a@x.fr', 'c@x.fr']);
+  });
+
+  it('filtre les cochées qui ne sont plus dans la liste (adresse supprimée)', async () => {
+    const s = await loadRow({
+      synthesis_emails: ['a@x.fr'],
+      synthesis_emails_active: ['a@x.fr', 'supprimee@x.fr'],
+    });
+    expect(s?.synthesisEmailsActive).toEqual(['a@x.fr']);
+  });
+
+  it('cochée vide explicite → aucune (le briefing ne part à personne)', async () => {
+    const s = await loadRow({
+      synthesis_emails: ['a@x.fr'],
+      synthesis_emails_active: [],
+    });
+    expect(s?.synthesisEmailsActive).toEqual([]);
+  });
+
+  it('patchAppSettings écrit synthesis_emails_active', async () => {
+    const update = vi.fn().mockReturnValue({
+      eq: () => ({
+        select: () => ({
+          single: vi.fn().mockResolvedValue({ data: row(), error: null }),
+        }),
+      }),
+    });
+    mock.mockReturnValue({ from: () => ({ update }) } as never);
+    await patchAppSettings({ synthesisEmailsActive: ['a@x.fr'] });
+    expect(update.mock.calls[0]![0]).toMatchObject({
+      synthesis_emails_active: ['a@x.fr'],
+    });
   });
 });

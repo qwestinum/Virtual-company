@@ -28,10 +28,16 @@ const TABLE = 'app_settings';
 export type IntegrationStatus = 'configured' | 'unconfigured';
 
 export type AppSettings = {
-  /** Adresse par défaut utilisée par le pipeline. */
+  /** Adresse par défaut utilisée par le pipeline (= 1re adresse cochée, repli legacy). */
   synthesisEmail: string | null;
   /** Toutes les adresses de synthèse enregistrées par le DRH. */
   synthesisEmails: string[];
+  /**
+   * Sous-ensemble COCHÉ des adresses de synthèse = destinataires réels des
+   * briefings. Choix multiple : le briefing ne part qu'à celles-là, pas à
+   * toute la liste.
+   */
+  synthesisEmailsActive: string[];
   /** Adresse expéditeur par défaut. */
   senderEmail: string | null;
   /** Toutes les adresses expéditeurs enregistrées. */
@@ -66,6 +72,7 @@ type AppSettingsRow = {
   id: number;
   synthesis_email: string | null;
   synthesis_emails: string[] | null;
+  synthesis_emails_active: string[] | null;
   sender_email: string | null;
   sender_emails: string[] | null;
   intake_email: string | null;
@@ -93,10 +100,32 @@ function mergeLegacy(list: string[] | null, legacy: string | null): string[] {
   return out;
 }
 
+/**
+ * Sous-ensemble coché des adresses de synthèse (destinataires des briefings).
+ * Repli quand la colonne n'a jamais été posée : l'ancienne adresse par défaut
+ * devient la seule cochée (jamais « toute la liste » — c'était le bug). On
+ * filtre toujours sur les adresses encore présentes dans la liste complète.
+ */
+function resolveActiveSynthesis(
+  active: string[] | null,
+  all: string[],
+  legacyDefault: string | null,
+): string[] {
+  if (active != null) return active.filter((a) => all.includes(a));
+  if (legacyDefault && all.includes(legacyDefault)) return [legacyDefault];
+  return all.length > 0 ? [all[0]] : [];
+}
+
 function rowToDomain(row: AppSettingsRow): AppSettings {
+  const synthesisEmails = mergeLegacy(row.synthesis_emails, row.synthesis_email);
   return {
     synthesisEmail: row.synthesis_email,
-    synthesisEmails: mergeLegacy(row.synthesis_emails, row.synthesis_email),
+    synthesisEmails,
+    synthesisEmailsActive: resolveActiveSynthesis(
+      row.synthesis_emails_active,
+      synthesisEmails,
+      row.synthesis_email,
+    ),
     senderEmail: row.sender_email,
     senderEmails: mergeLegacy(row.sender_emails, row.sender_email),
     intakeEmail: row.intake_email,
@@ -171,6 +200,7 @@ export async function getAppSettings(): Promise<AppSettings | null> {
 export type AppSettingsPatch = {
   synthesisEmail?: string | null;
   synthesisEmails?: string[];
+  synthesisEmailsActive?: string[];
   senderEmail?: string | null;
   senderEmails?: string[];
   intakeEmail?: string | null;
@@ -192,6 +222,8 @@ export async function patchAppSettings(
     row.synthesis_email = patch.synthesisEmail;
   if (patch.synthesisEmails !== undefined)
     row.synthesis_emails = patch.synthesisEmails;
+  if (patch.synthesisEmailsActive !== undefined)
+    row.synthesis_emails_active = patch.synthesisEmailsActive;
   if (patch.senderEmail !== undefined) row.sender_email = patch.senderEmail;
   if (patch.senderEmails !== undefined)
     row.sender_emails = patch.senderEmails;

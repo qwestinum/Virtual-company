@@ -34,6 +34,7 @@ const IntegrationSchema = z.object({
 const PatchSchema = z.object({
   synthesisEmail: z.string().email().nullable().optional(),
   synthesisEmails: z.array(z.string().email()).optional(),
+  synthesisEmailsActive: z.array(z.string().email()).optional(),
   senderEmail: z.string().email().nullable().optional(),
   senderEmails: z.array(z.string().email()).optional(),
   intakeEmail: z.string().email().nullable().optional(),
@@ -68,6 +69,7 @@ function emptyPayload() {
     settings: {
       synthesisEmail: null,
       synthesisEmails: [] as string[],
+      synthesisEmailsActive: [] as string[],
       senderEmail: null,
       senderEmails: [] as string[],
       intakeEmail: null,

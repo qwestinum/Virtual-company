@@ -29,15 +29,15 @@ const TTL_MS = 60_000;
 
 async function loadOnce(): Promise<Cache> {
   if (cached && cached.expiresAt > Date.now()) return cached;
-  let synthesisDb: string | null = null;
-  let synthesisListDb: string[] = [];
+  let synthesisActiveDb: string[] = [];
   let senderDb: string | null = null;
   let resendKeyDb: string | null = null;
   try {
     const settings = await getAppSettings();
     if (settings) {
-      synthesisDb = settings.synthesisEmail;
-      synthesisListDb = settings.synthesisEmails;
+      // Destinataires = adresses COCHÉES uniquement (choix multiple), pas la
+      // liste complète : un débrief ne part qu'aux adresses sélectionnées.
+      synthesisActiveDb = settings.synthesisEmailsActive;
       senderDb = settings.senderEmail;
     }
     // Lecture dédiée (la clé brute n'est PAS dans l'objet settings — write-only).
@@ -45,14 +45,15 @@ async function loadOnce(): Promise<Cache> {
   } catch {
     // En cas d'erreur DB, on tombe sur les env vars.
   }
-  const synthesis = synthesisDb ?? process.env.EMAIL_DRH ?? null;
-  // Liste effective : celle des settings, sinon repli sur la valeur singulière.
+  // Liste effective = adresses cochées ; repli env si aucune en base.
   const synthesisList =
-    synthesisListDb.length > 0
-      ? synthesisListDb
-      : synthesis
-        ? [synthesis]
+    synthesisActiveDb.length > 0
+      ? synthesisActiveDb
+      : process.env.EMAIL_DRH
+        ? [process.env.EMAIL_DRH]
         : [];
+  // Singulier (replyTo IMAP…) = 1re adresse cochée, repli env.
+  const synthesis = synthesisList[0] ?? null;
   cached = {
     synthesis,
     synthesisList,

@@ -38,6 +38,7 @@ import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-setting
 
 import { DonneursOrdreManager } from './DonneursOrdreManager';
 import { EmailListField } from './EmailListField';
+import { EmailMultiSelectField } from './EmailMultiSelectField';
 import { IntegrationCard } from './IntegrationCard';
 import { InterviewConfigManager } from './InterviewConfigManager';
 import { MailboxesManager } from './MailboxesManager';
@@ -55,6 +56,8 @@ export type IntegrationConfig = {
 type Settings = {
   synthesisEmail: string | null;
   synthesisEmails: string[];
+  /** Sous-ensemble coché = destinataires des briefings (choix multiple). */
+  synthesisEmailsActive: string[];
   senderEmail: string | null;
   senderEmails: string[];
   intakeEmail: string | null;
@@ -175,6 +178,7 @@ export function SettingsHub() {
             kind: 'ready',
             settings: {
               ...json.settings,
+              synthesisEmailsActive: json.settings.synthesisEmailsActive ?? [],
               hitlConfig: json.settings.hitlConfig ?? DEFAULT_HITL_CONFIG,
               interviewConfig:
                 json.settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG,
@@ -383,12 +387,11 @@ export function SettingsHub() {
       <SettingsSection
         icon="📝"
         title="Adresses de synthèse"
-        description="Destinataires des briefs entretien générés après chaque candidat accepté. Ajoutez plusieurs adresses, sélectionnez celle qui reçoit les briefs."
+        description="Destinataires des briefings d'entretien. Cochez chaque adresse qui doit recevoir les briefings — le mail ne part qu'aux adresses cochées."
       >
         <FallbackHint
           envName="EMAIL_DRH"
           value={
-            settings.synthesisEmail == null &&
             settings.synthesisEmails.length === 0
               ? fallbacks.synthesisEmail
               : null
@@ -401,25 +404,31 @@ export function SettingsHub() {
             const v = fallbacks.synthesisEmail;
             if (!v) return;
             patchAndSave(
-              { synthesisEmails: [v], synthesisEmail: v },
+              {
+                synthesisEmails: [v],
+                synthesisEmailsActive: [v],
+                synthesisEmail: v,
+              },
               `Adresse de synthèse ${v} enregistrée — vous pouvez maintenant la gérer ici.`,
             );
           }}
         />
-        <EmailListField
+        <EmailMultiSelectField
           addresses={settings.synthesisEmails}
-          selected={settings.synthesisEmail}
-          emptyHint="Aucune adresse de synthèse enregistrée — ajoutez-en une ci-dessous pour activer l'envoi des briefs entretien."
+          checked={settings.synthesisEmailsActive}
+          emptyHint="Aucune adresse de synthèse enregistrée — ajoutez-en une ci-dessous puis cochez-la pour activer l'envoi des briefings."
           inputPlaceholder="ex. responsable.rh@entreprise.com"
-          onChange={({ addresses, selected }) =>
+          onChange={({ addresses, checked }) =>
             patchAndSave(
               {
                 synthesisEmails: addresses,
-                synthesisEmail: selected,
+                synthesisEmailsActive: checked,
+                // Singulier legacy (replyTo) = 1re adresse cochée.
+                synthesisEmail: checked[0] ?? null,
               },
-              selected
-                ? `Adresse de synthèse active : ${selected}.`
-                : 'Liste des adresses de synthèse mise à jour.',
+              checked.length > 0
+                ? `Destinataires des briefings : ${checked.length} adresse${checked.length > 1 ? 's' : ''}.`
+                : 'Liste mise à jour — aucune adresse cochée.',
             )
           }
         />
