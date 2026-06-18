@@ -126,6 +126,29 @@ export async function getLatestApplicationsByEmails(
   return out;
 }
 
+/**
+ * Dernière analyse COMPLÈTE (avec `application`) pour un email — chemin REPLI
+ * du webhook Cal.com : quand aucun briefing n'est en file, on régénère la
+ * trame à partir de cette candidature. Correspondance insensible à la casse
+ * (l'email d'analyse garde la casse du CV). `null` si le candidat est inconnu.
+ */
+export async function getLatestAnalysisByEmail(
+  email: string,
+): Promise<CandidateAnalysisDetail | null> {
+  const clean = email.trim();
+  if (!clean) return null;
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .ilike('candidate_email', escapeLike(clean))
+    .order('received_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getLatestAnalysisByEmail: ${error.message}`);
+  return data ? rowToDetail(data as CandidateAnalysisRow) : null;
+}
+
 export async function insertCandidateAnalysis(
   input: CandidateAnalysisInsert,
 ): Promise<void> {

@@ -6,14 +6,14 @@
  * Pour un candidat analysé par le poller :
  *   - sous seuil → mail de refus envoyé au candidat
  *   - au-dessus  → mail d'acceptation+invitation (template + lien d'agenda) au
- *                  candidat + brief entretien envoyé au DRH (synthèse + trame)
+ *                  candidat + briefing d'entretien MIS EN FILE (délivré au DRH
+ *                  à la réservation Cal.com, cf. src/lib/interview/queue-brief.ts)
  *
  * Les messages candidat sont rendus de manière déterministe
- * (`buildInterviewMail`, plus de LLM) ; la trame DRH reste générée
- * (`composeInterviewGuide`). Service email Resend. Toutes les
- * erreurs sont capturées et loggées dans le journal — un mail
- * raté ne tue pas le poller, le DRH retrouve la trace dans la
- * table journal et l'artefact texte dans Storage.
+ * (`buildInterviewMail`, plus de LLM) ; la trame DRH reste générée puis mise en
+ * attente. Service email Resend. Toutes les erreurs sont capturées et loggées
+ * dans le journal — un mail raté ne tue pas le poller, le DRH retrouve la trace
+ * dans la table journal et l'artefact texte dans Storage.
  *
  * Différent du flux client `dispatchPostAnalysisOutreach` :
  *   - pas de bulles chat (le DRH n'est pas forcément sur la
@@ -27,13 +27,13 @@ import {
   buildInterviewMail,
   getResolvedAgendaLink,
 } from '@/lib/agents/server/interview-mail';
-import { composeInterviewGuide } from '@/lib/agents/server/mail-composer-execute';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { getSynthesisEmail } from '@/lib/email/addresses';
 import { sendEmail } from '@/lib/email/client';
 import { uploadArtifact } from '@/lib/storage/blob';
+import { queueInterviewBrief } from '@/lib/interview/queue-brief';
 import type { MailCandidate } from '@/types/mail-candidate';
 
 export type OutreachInput = {
@@ -78,13 +78,17 @@ export async function dispatchImapCandidateOutreach(
 
   await composeAndSendCandidateMail({ mode, input, ownerKey });
 
-  // ─── Phase 2 : brief DRH (seulement pour les acceptés) ─────────────
+  // ─── Phase 2 : briefing DRH MIS EN FILE (seulement pour les acceptés) ──
+  // On ne l'envoie plus ici : il sera délivré à la réservation Cal.com
+  // (webhook BOOKING_CREATED). Cf. src/lib/interview/queue-brief.ts.
 
   if (mode === 'invite') {
-    await composeAndSendInterviewBrief({
-      input,
-      ownerKey,
-      bookingUrl: agendaLink,
+    await queueInterviewBrief({
+      campaignId: input.campaignId,
+      jobTitle: input.jobTitle,
+      candidate: input.candidate,
+      actor: 'imap_poller',
+      uid: input.uid,
     });
   }
 }
@@ -239,146 +243,6 @@ async function composeAndSendCandidateMail(args: {
   });
 }
 
-async function composeAndSendInterviewBrief(args: {
-  input: OutreachInput;
-  ownerKey: { campaignId: string } | { taskId: string };
-  bookingUrl: string;
-}): Promise<void> {
-  const { input, ownerKey, bookingUrl } = args;
-  const { candidate } = input;
-  const isTaskOwner = 'taskId' in ownerKey;
-  const campaignIdForJournal = isTaskOwner ? null : input.campaignId;
-  const taskIdForJournal = isTaskOwner ? input.campaignId : null;
-
-  let questions: Array<{ theme: string; question: string }>;
-  try {
-    const out = await composeInterviewGuide({
-      candidate,
-      jobTitle: input.jobTitle,
-      campaignId: input.campaignId,
-    });
-    questions = out.guide.questions;
-  } catch (err) {
-    await appendJournalEntry({
-      action: 'imap_outreach_failed',
-      actor: 'imap_poller',
-      campaignId: campaignIdForJournal,
-      payload: {
-        stage: 'compose_guide',
-        candidate: candidate.candidateName,
-        uid: input.uid,
-        error: err instanceof Error ? err.message : String(err),
-      },
-    });
-    return;
-  }
-
-  const drhAddress = await getSynthesisEmail();
-  let providerMessageId: string | null = null;
-  let status:
-    | 'sent'
-    | 'skipped_no_drh'
-    | 'skipped_no_config'
-    | 'send_failed' = 'skipped_no_drh';
-  let sendError: string | undefined;
-
-  if (drhAddress) {
-    const html = renderDrhBriefHtml({
-      candidate,
-      jobTitle: input.jobTitle,
-      campaignId: input.campaignId,
-      bookingUrl,
-      questions,
-    });
-    const sendResult = await sendEmail({
-      to: drhAddress,
-      subject: `Brief entretien — ${candidate.candidateName} (${input.jobTitle ?? input.campaignId})`,
-      html,
-    });
-    if (sendResult.ok) {
-      status = 'sent';
-      providerMessageId = sendResult.messageId;
-    } else if (sendResult.error === 'email_not_configured')
-      status = 'skipped_no_config';
-    else {
-      status = 'send_failed';
-      sendError = sendResult.error;
-    }
-  }
-
-  const fileName = `brief-entretien-${slug(candidate.candidateName)}-${input.uid}.md`;
-  const markdown = renderBriefMarkdown({
-    candidate,
-    jobTitle: input.jobTitle,
-    campaignId: input.campaignId,
-    bookingUrl,
-    questions,
-    status,
-    sendError,
-  });
-
-  const artifactId = `art_imap_brief_${input.uid}_${Math.random().toString(36).slice(2, 6)}`;
-  let publicUrl: string | null = null;
-  let storagePath: string | null = null;
-  let storageBucket: string | null = null;
-  try {
-    const upload = await uploadArtifact({
-      owner: isTaskOwner
-        ? { kind: 'task', id: input.campaignId }
-        : { kind: 'campaign', id: input.campaignId },
-      name: fileName,
-      content: markdown,
-    });
-    storageBucket = upload.bucket;
-    storagePath = upload.path;
-    publicUrl = upload.publicUrl;
-  } catch (err) {
-    if (!(err instanceof SupabaseNotConfiguredError)) {
-      console.error('[imap-outreach] brief storage upload failed', err);
-    }
-  }
-
-  try {
-    await insertArtifactMeta({
-      id: artifactId,
-      campaignId: campaignIdForJournal,
-      taskId: taskIdForJournal,
-      kind: 'other',
-      name: fileName,
-      mime: 'text/markdown',
-      storageBucket,
-      storagePath,
-      publicUrl,
-      metadata: {
-        source: 'imap',
-        kind: 'interview_brief',
-        candidate: candidate.candidateName,
-        status,
-        uid: input.uid,
-      },
-    });
-  } catch (err) {
-    if (!(err instanceof SupabaseNotConfiguredError)) {
-      console.error('[imap-outreach] brief insertArtifactMeta failed', err);
-    }
-  }
-
-  await appendJournalEntry({
-    action: 'imap_outreach_brief',
-    actor: 'imap_poller',
-    campaignId: campaignIdForJournal,
-    payload: {
-      candidate: candidate.candidateName,
-      status,
-      providerMessageId,
-      artifactId,
-      publicUrl,
-      uid: input.uid,
-      error: sendError,
-      taskId: taskIdForJournal ?? undefined,
-    },
-  });
-}
 
 // ─── Helpers de rendu (markdown + HTML email) ─────────────────────────
 
@@ -418,92 +282,6 @@ function renderMailTrace(args: {
     '',
     `## Corps`,
     args.html,
-  ]
-    .filter((l) => l !== '')
-    .join('\n');
-}
-
-function renderBriefMarkdown(args: {
-  candidate: MailCandidate;
-  jobTitle: string | null;
-  campaignId: string;
-  bookingUrl: string;
-  questions: Array<{ theme: string; question: string }>;
-  status: 'sent' | 'skipped_no_drh' | 'skipped_no_config' | 'send_failed';
-  sendError?: string;
-}): string {
-  const c = args.candidate;
-  const label = {
-    sent: 'envoyé au DRH',
-    skipped_no_drh: "non envoyé — adresse de synthèse non configurée",
-    skipped_no_config: 'non envoyé — service email non configuré',
-    send_failed: `non envoyé — erreur (${args.sendError ?? 'inconnue'})`,
-  }[args.status];
-  const lines = [
-    `# Brief entretien — ${c.candidateName}`,
-    '',
-    `Statut envoi DRH : **${label}**`,
-    `Campagne : ${args.campaignId}`,
-    args.jobTitle ? `Poste : ${args.jobTitle}` : '',
-    `Source : IMAP`,
-    '',
-    '## Coordonnées',
-    `- Nom : ${c.candidateName}`,
-    c.email ? `- Email : ${c.email}` : '- Email : *manquant*',
-    c.phone ? `- Téléphone : ${c.phone}` : '',
-    `- Score : ${c.score}/100`,
-    '',
-    '## Synthèse',
-    c.summary,
-    '',
-    '## Verdict CV Analyzer',
-    c.justification,
-    '',
-    "## Trame d'entretien proposée",
-  ];
-  for (const q of args.questions) {
-    lines.push(`- **${q.theme}** — ${q.question}`);
-  }
-  lines.push('', `Lien Cal.com candidat : ${args.bookingUrl}`);
-  return lines.filter((l) => l !== '').join('\n');
-}
-
-function renderDrhBriefHtml(args: {
-  candidate: MailCandidate;
-  jobTitle: string | null;
-  campaignId: string;
-  bookingUrl: string;
-  questions: Array<{ theme: string; question: string }>;
-}): string {
-  const c = args.candidate;
-  const escape = (s: string): string =>
-    s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  const qs = args.questions
-    .map(
-      (q) =>
-        `<li><strong>${escape(q.theme)}</strong> — ${escape(q.question)}</li>`,
-    )
-    .join('');
-  return [
-    `<p>Nouveau candidat retenu pour <strong>${escape(args.jobTitle ?? args.campaignId)}</strong> (reçu par email).</p>`,
-    '<h3>Candidat</h3>',
-    '<ul>',
-    `<li>Nom : ${escape(c.candidateName)}</li>`,
-    c.email ? `<li>Email : ${escape(c.email)}</li>` : '',
-    c.phone ? `<li>Téléphone : ${escape(c.phone)}</li>` : '',
-    `<li>Score CV : ${c.score}/100</li>`,
-    '</ul>',
-    '<h3>Synthèse</h3>',
-    `<p>${escape(c.summary)}</p>`,
-    '<h3>Verdict CV Analyzer</h3>',
-    `<p>${escape(c.justification)}</p>`,
-    "<h3>Trame d'entretien proposée</h3>",
-    `<ul>${qs}</ul>`,
-    `<p>Le candidat a reçu un lien pour réserver un créneau : <a href="${escape(args.bookingUrl)}">${escape(args.bookingUrl)}</a>. Tu seras notifié·e par Cal.com dès la réservation.</p>`,
   ]
     .filter((l) => l !== '')
     .join('\n');

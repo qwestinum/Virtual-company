@@ -15,6 +15,7 @@ import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { HitlConfig } from '@/types/hitl';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
+import type { MailCandidate } from '@/types/mail-candidate';
 import type { PublicationChannel } from '@/types/publication-channel';
 import type { CandidateStatus, ScoringSheet } from '@/types/scoring';
 import type { VivierIndexingStatus, VivierSource } from '@/types/vivier';
@@ -113,6 +114,43 @@ export type CandidateAnalysisRow = {
   /** Snapshot des toggles HITL au moment de l'analyse. Null = rows historiques. */
   hitl_config: HitlConfig | null;
   created_at: string;
+};
+
+/**
+ * Briefing d'entretien mis en file puis délivré (juin 2026, table
+ * `interview_briefs`). Source de vérité de l'état des candidatures retenues :
+ * `awaiting_booking` (accepté + invité, RDV pas encore pris) → `scheduled`
+ * (réservation Cal.com reçue, briefing délivré au DRH). `questions` = trame
+ * générée ; `candidate_snapshot` = MailCandidate (corps mail + repli).
+ */
+export type InterviewBriefRow = {
+  id: string;
+  campaign_id: string | null;
+  task_id: string | null;
+  candidate_email: string | null;
+  candidate_name: string;
+  job_title: string | null;
+  status: 'awaiting_booking' | 'scheduled';
+  questions: Array<{ theme: string; question: string }>;
+  candidate_snapshot: MailCandidate;
+  booking_uid: string | null;
+  interview_start_at: string | null;
+  interview_end_at: string | null;
+  interview_location: string | null;
+  delivered_message_id: string | null;
+  created_at: string;
+  booked_at: string | null;
+  updated_at: string;
+};
+
+/**
+ * Idempotence du webhook Cal.com (table `calcom_webhook_events`). Clé = uid
+ * du booking. Sa présence = booking déjà traité → un rejeu ne renvoie rien.
+ */
+export type CalcomWebhookEventRow = {
+  booking_uid: string;
+  trigger_event: string;
+  processed_at: string;
 };
 
 export type FdpArchivedRow = {

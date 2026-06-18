@@ -4,7 +4,8 @@
  *
  * Réutilise les routes d'envoi existantes :
  *   1. /api/mail-composer (override) → envoie le mail ÉDITÉ au candidat.
- *   2. /api/scheduler (si accept)    → brief entretien au DRH (best-effort).
+ *   2. /api/scheduler (si accept)    → trame d'entretien MISE EN FILE
+ *                                       (délivrée au DRH à la réservation Cal.com).
  *   3. /api/validations/[id]/send    → marque `sent` + journalise.
  *
  * Seul échec bloquant : l'envoi candidat (1). Si le brief (2) échoue, on
@@ -158,21 +159,21 @@ export async function sendValidation(
     mailStatus = 'network_error';
   }
 
-  // 2. Brief DRH pour un accept (best-effort, ne bloque pas).
+  // 2. Briefing DRH MIS EN FILE pour un accept (best-effort, ne bloque pas).
+  //    Il sera délivré (mail + CV) à la réservation Cal.com du candidat.
   if (v.decision === 'accept') {
     try {
       await fetch('/api/scheduler', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          artifactId: newArtifactId('art_brief'),
           campaignId: v.campaignId,
           jobTitle,
           candidate,
         }),
       });
     } catch {
-      // best-effort : le brief n'est pas bloquant.
+      // best-effort : la mise en file du brief n'est pas bloquante.
     }
   }
 
@@ -206,7 +207,7 @@ export async function sendValidation(
   if (mailStatus === 'sent') {
     tail =
       v.decision === 'accept'
-        ? '— invitation envoyée (brief DRH inclus).'
+        ? '— invitation envoyée (le brief partira au DRH à la réservation du créneau).'
         : '— refus envoyé au candidat.';
   } else if (mailStatus === 'skipped_no_email') {
     tail = '— pas d’email candidat, mail à transmettre manuellement.';

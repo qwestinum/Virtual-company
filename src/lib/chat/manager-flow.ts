@@ -512,7 +512,8 @@ export async function dispatchCVBatch(args: {
  * Pour chaque candidat :
  *   - sous seuil  → 1 appel /api/mail-composer (mode reject).
  *   - au-dessus   → 1 appel /api/mail-composer (mode invite) +
- *                   1 appel /api/scheduler (brief DRH + trame).
+ *                   1 appel /api/scheduler (trame d'entretien MISE EN FILE,
+ *                   délivrée au DRH à la réservation Cal.com).
  *
  * Les bulles Manager sont posées au fil de l'eau pour que le DRH
  * voie le travail s'enchaîner — pas de batch silencieux.
@@ -823,7 +824,6 @@ async function dispatchSchedulerBrief(args: {
 }): Promise<void> {
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
-  const artifacts = useArtifactsStore.getState();
   const taskId = nowTaskId('sched');
 
   agents.setAgentStatus(SCHEDULER_ID, 'active');
@@ -834,59 +834,39 @@ async function dispatchSchedulerBrief(args: {
     payload: { taskId, candidate: args.candidate.candidate.fullName },
   });
 
-  const artifactId = `art_brief_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   try {
     const res = await fetch('/api/scheduler', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        artifactId,
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
         candidate: cvApplicationToMailCandidate(args.candidate),
       }),
     });
     const data = (await res.json()) as {
-      status: 'sent' | 'skipped_no_drh' | 'skipped_no_config' | 'send_failed';
-      fileName: string;
-      publicUrl: string | null;
+      status: 'queued' | 'compose_failed' | 'persist_skipped';
+      briefId: string | null;
       error: string | null;
     };
 
-    artifacts.hydrateArtifact({
-      id: artifactId,
-      name: data.fileName,
-      mime: 'text/markdown',
-      createdAt: new Date().toISOString(),
-      campaignId: args.campaignId.startsWith('TASK-') ? null : args.campaignId,
-      taskId: args.campaignId.startsWith('TASK-') ? args.campaignId : null,
-      kind: 'other',
-      publicUrl: data.publicUrl,
-    });
-
+    // Le briefing est MIS EN FILE : il partira au DRH (avec le CV) dès que le
+    // candidat aura réservé son créneau via Cal.com. Plus d'envoi immédiat.
     let tail: string;
-    if (data.status === 'sent') {
-      tail = 'et te l\'a envoyé par email pour préparer l\'entretien.';
-    } else if (data.status === 'skipped_no_drh') {
+    if (data.status === 'queued') {
       tail =
-        '— EMAIL_DRH n\'est pas configurée, le brief reste accessible ici.';
-    } else if (data.status === 'skipped_no_config') {
+        '— il partira au DRH avec le CV dès que le candidat aura réservé son créneau.';
+    } else if (data.status === 'persist_skipped') {
       tail =
-        '— service email non configuré, le brief reste accessible ici.';
+        '— mais la mise en attente n\'a pas pu être enregistrée (base indisponible).';
     } else {
-      tail = `— échec d'envoi (${data.error ?? 'erreur inconnue'}), le brief reste accessible ici.`;
+      tail = `— mais la trame n'a pas pu être générée (${data.error ?? 'erreur inconnue'}).`;
     }
 
     chat.appendMessage({
       role: 'manager',
       source: 'text',
       content: `Le Scheduler a préparé une trame d'entretien pour ${args.candidate.candidate.fullName} ${tail}`,
-      attachment: {
-        artifactId,
-        label: `Brief entretien — ${args.candidate.candidate.fullName}`,
-        fileName: data.fileName,
-        mime: 'text/markdown',
-      },
     });
 
     agents.pushEvent({
