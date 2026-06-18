@@ -36,7 +36,10 @@ import {
   type Intent,
   type IntentClassification,
 } from '@/types/intent';
-import type { ManagerResponse } from '@/types/manager-response';
+import {
+  ManagerResponseSchema,
+  type ManagerResponse,
+} from '@/types/manager-response';
 import {
   SWITCH_CHIP_KEEP,
   SWITCH_CHIP_NEW,
@@ -51,7 +54,11 @@ export {
   type PendingSwitch,
 } from '@/types/switch-dialog';
 
-import { buildIntentClassificationPrompt } from './manager-prompts';
+import { MANAGER_CARTOGRAPHY } from './manager-cartography';
+import {
+  buildIntentClassificationPrompt,
+  buildManagerReadOnlyPrompt,
+} from './manager-prompts';
 
 export const MANAGER_AGENT_ID = 'agent.manager-rh';
 
@@ -577,65 +584,18 @@ export async function runManagerTurn(
     classification = { ...classification, needsClarification: true };
   }
 
-  // VERROU DÉTERMINISTE — `out_of_campaign_task` désactivé en v1. On court-circuite
-  // AVANT toute logique de switch / création de TASK / tour conversationnel :
-  // redirection polie vers la création de campagne. Tout le flux isolé en aval
-  // reste dans le code mais devient inatteignable (non-destructif).
-  if (classification.intent === 'out_of_campaign_task') {
-    return {
-      classification,
-      response: buildOutOfCampaignUnavailableResponse(),
-      preSearchHits: [],
-      campaignId: input.fdp?.campaignId ?? null,
-      pendingSwitch: null,
-      metrics: {
-        durationMs: intentCompletion.durationMs,
-        tokensUsed: intentCompletion.usage.totalTokens,
-        costEstimate: intentCompletion.costEstimate,
-      },
-    };
-  }
+  // ── Tour de FORMULATION (lecture seule) ──────────────────────────────────
+  // Le classifieur (déterministe) a routé l'intention. Il pilote ici DEUX
+  // choses sans jamais autoriser une écriture : la SITUATION (hint d'orientation
+  // passé au LLM) et l'INJECTION des données (chiffres réels d'un point
+  // campagne, dérivés du journal). Le LLM ne fait que RÉDIGER une réponse de
+  // lecture / orientation chaleureuse — il n'agit jamais (verrou plus bas).
+  const situation = buildManagerSituation(
+    classification.intent,
+    classification.needsClarification,
+  );
 
-  // VERROU « Manager lecture seule » — l'intention `new_campaign` ne déclenche
-  // aucun cadrage write (collecte FDP, création, scoring, flux, annonce) : on
-  // ORIENTE vers l'UI déterministe, seul endroit où une campagne se crée.
-  if (classification.intent === 'new_campaign') {
-    return {
-      classification,
-      response: buildCreationRedirectResponse(),
-      preSearchHits: [],
-      campaignId: null,
-      pendingSwitch: null,
-      metrics: {
-        durationMs: intentCompletion.durationMs,
-        tokensUsed: intentCompletion.usage.totalTokens,
-        costEstimate: intentCompletion.costEstimate,
-      },
-    };
-  }
-
-  // VERROU DÉTERMINISTE — intention `other` (salutation, hors-sujet).
-  // Manager lecture seule : plus de collecte FDP du tout, donc plus d'exception
-  // « aparté en pleine collecte » (qui faisait tourner le tour conversationnel).
-  // On recadre TOUJOURS vers la mission RH (point campagne / analyse CV).
-  if (classification.intent === 'other') {
-    return {
-      classification,
-      response: buildOtherIntentResponse(),
-      preSearchHits: [],
-      campaignId: null,
-      pendingSwitch: null,
-      metrics: {
-        durationMs: intentCompletion.durationMs,
-        tokensUsed: intentCompletion.usage.totalTokens,
-        costEstimate: intentCompletion.costEstimate,
-      },
-    };
-  }
-
-  // SUIVI / REPORTING — réponses déterministes alimentées par les
-  // données réelles (campagnes + journal), pas par le LLM. On charge le
-  // snapshot paresseusement (aucune requête DB sur les tours de collecte).
+  let campaignData = '';
   if (
     classification.intent === 'campaign_followup' ||
     classification.intent === 'reporting_request'
@@ -643,37 +603,117 @@ export async function runManagerTurn(
     const snapshot = input.loadReportingSnapshot
       ? await input.loadReportingSnapshot().catch(() => null)
       : null;
-    const response =
+    // Chiffres DÉTERMINISTES (le code les calcule) que le LLM narrera tels
+    // quels — on réutilise les builders de reporting comme source de données.
+    campaignData =
       classification.intent === 'reporting_request'
-        ? buildReportingResponse(snapshot)
-        : buildCampaignFollowupResponse(snapshot, lastUserMessage);
-    return {
-      classification,
-      response,
-      preSearchHits: [],
-      campaignId: input.fdp?.campaignId ?? null,
-      pendingSwitch: null,
-      metrics: {
-        durationMs: intentCompletion.durationMs,
-        tokensUsed: intentCompletion.usage.totalTokens,
-        costEstimate: intentCompletion.costEstimate,
-      },
-    };
+        ? buildReportingResponse(snapshot).message
+        : buildCampaignFollowupResponse(snapshot, lastUserMessage).message;
   }
 
-  // Exhaustif : les 5 intentions canoniques retournent toutes ci-dessus
-  // (lecture seule). Filet défensif au cas où une évolution du classifier
-  // introduirait une intention inconnue → on ORIENTE, jamais d'écriture.
+  const responseSystem = buildManagerReadOnlyPrompt({
+    cartography: MANAGER_CARTOGRAPHY,
+    situation,
+    campaignData,
+  });
+
+  const responseCompletion = await chatComplete({
+    model: 'gpt-4o',
+    jsonMode: true,
+    temperature: 0.5,
+    messages: [{ role: 'system', content: responseSystem }, ...conversation],
+  });
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(responseCompletion.content);
+  } catch (err) {
+    throw new ManagerError(
+      'invalid_response_json',
+      err instanceof Error ? err.message : 'Unparseable response JSON.',
+    );
+  }
+  if (raw && typeof raw === 'object') {
+    const r = raw as Record<string, unknown>;
+    if (r.chips === null) delete r.chips;
+    // VERROU LECTURE SEULE — on supprime toute tentative d'écriture du LLM,
+    // même émise par erreur. « Le LLM propose [de lire], le code verrouille. »
+    delete r.fieldExtractions;
+    delete r.proposalField;
+  }
+  let response: ManagerResponse;
+  try {
+    response = ManagerResponseSchema.parse(raw);
+  } catch (err) {
+    throw new ManagerError(
+      'invalid_response_shape',
+      err instanceof Error ? err.message : 'Manager response shape invalid.',
+    );
+  }
+  response = ensureReadOnlyChips(response, lastUserMessage);
+  response = ensureNonEmptyMessage(response);
+
   return {
     classification,
-    response: buildOtherIntentResponse(),
+    response,
     preSearchHits: [],
     campaignId: input.fdp?.campaignId ?? null,
     pendingSwitch: null,
     metrics: {
-      durationMs: intentCompletion.durationMs,
-      tokensUsed: intentCompletion.usage.totalTokens,
-      costEstimate: intentCompletion.costEstimate,
+      durationMs: intentCompletion.durationMs + responseCompletion.durationMs,
+      tokensUsed:
+        intentCompletion.usage.totalTokens +
+        responseCompletion.usage.totalTokens,
+      costEstimate:
+        intentCompletion.costEstimate + responseCompletion.costEstimate,
+    },
+  };
+}
+
+/**
+ * Hint de SITUATION passé au prompt de formulation, dérivé de l'intention
+ * classée (déterministe). Oriente la rédaction sans jamais autoriser une
+ * écriture. PUR — testé.
+ */
+export function buildManagerSituation(
+  intent: Intent,
+  needsClarification: boolean,
+): string {
+  const base: Record<Intent, string> = {
+    new_campaign:
+      "L'utilisateur veut créer ou lancer une campagne. Tu ne la crées pas toi-même : oriente-le chaleureusement vers la création de campagne (cf. cartographie « Créer une campagne »).",
+    out_of_campaign_task:
+      "L'utilisateur demande un livrable ponctuel hors campagne. Dans cet outil, tout passe par une campagne : oriente-le gentiment vers la création d'une campagne, sans rien produire toi-même.",
+    campaign_followup:
+      "L'utilisateur veut un POINT sur une campagne. Narre uniquement les chiffres réels fournis dans la section « Données » ; si une donnée manque, dis-le. Tu peux suggérer où agir ensuite, sans agir.",
+    reporting_request:
+      "L'utilisateur veut un bilan transverse. Narre les chiffres réels fournis dans la section « Données » et oriente vers l'onglet « Reporting » pour le détail.",
+    other:
+      "Message hors-sujet, salutation ou demande non RH. Recadre chaleureusement vers ce que tu sais faire : analyser un CV, faire le point sur une campagne, orienter dans l'outil.",
+  };
+  const hint = base[intent];
+  if (needsClarification) {
+    return `${hint}\nL'intention est AMBIGUË : pose UNE question courte pour clarifier, avec 2 à 3 chips d'orientation.`;
+  }
+  return hint;
+}
+
+/**
+ * Garde-fou chips en mode lecture seule : si le LLM n'a pas mis de chips et que
+ * l'utilisateur ne demande pas une explication libre, on injecte une paire
+ * d'orientation par défaut (cohérent avec la règle « chips toujours présents »).
+ */
+export function ensureReadOnlyChips(
+  response: ManagerResponse,
+  lastUserMessage: string,
+): ManagerResponse {
+  if (response.chips && response.chips.options.length >= 2) return response;
+  if (hasClarificationRequestKeyword(lastUserMessage)) return response;
+  return {
+    ...response,
+    chips: {
+      placement: 'below_bubble',
+      options: ['Faire un point sur une campagne', 'Analyser un CV'],
     },
   };
 }

@@ -13,17 +13,16 @@ import {
   CLARIFICATION_THRESHOLD,
   ManagerError,
   MANAGER_AGENT_ID,
+  buildManagerSituation,
   buildOtherIntentResponse,
   ensureNonEmptyMessage,
   ensureProposalAnchor,
+  ensureReadOnlyChips,
   generateCampaignId,
   runManagerTurn,
   type ConversationTurn,
 } from '@/lib/agents/manager';
-import {
-  buildConversationalPrompt,
-  buildIntentClassificationPrompt,
-} from '@/lib/agents/manager-prompts';
+import { buildIntentClassificationPrompt } from '@/lib/agents/manager-prompts';
 import { searchExistingJobDescriptions } from '@/lib/storage/job-descriptions';
 import { buildEmptyFDP, FIELD_KEYS } from '@/types/field-collection';
 
@@ -260,340 +259,168 @@ describe('manager-prompts — content', () => {
     }
     expect(prompt).toContain('needsClarification');
   });
-
-  it('conversational prompt includes the closed list of 8 fields', () => {
-    const prompt = buildConversationalPrompt({
-      intent: 'new_campaign',
-      confidence: 0.9,
-      needsClarification: false,
-      fdp: null,
-      preSearchHits: [],
-    });
-    for (const key of [
-      'job_title',
-      'seniority',
-      'contract_type',
-      'location',
-      'salary_range',
-      'start_date',
-      'main_missions',
-      'key_skills',
-    ]) {
-      expect(prompt).toContain(key);
-    }
-    expect(prompt).toContain('LISTE FERMÉE');
-  });
-
-  it('conversational prompt instructs 2-3 canonical chips when needsClarification', () => {
-    const prompt = buildConversationalPrompt({
-      intent: 'other',
-      confidence: 0.4,
-      needsClarification: true,
-      fdp: null,
-      preSearchHits: [],
-    });
-    expect(prompt).toContain('CLARIFICATION');
-    expect(prompt).toContain('2 à 3 chips');
-    expect(prompt).toContain('below_bubble');
-  });
-
-  it('conversational prompt mentions empty pre-search hint', () => {
-    const prompt = buildConversationalPrompt({
-      intent: 'new_campaign',
-      confidence: 0.9,
-      needsClarification: false,
-      fdp: null,
-      preSearchHits: [],
-    });
-    expect(prompt).toContain('Aucune fiche archivée');
-  });
-
-  it('first campaign turn: verbalise la pré-recherche mais interdit l’annonce d’échec sans poste', () => {
-    const prompt = buildConversationalPrompt({
-      intent: 'new_campaign',
-      confidence: 0.9,
-      needsClarification: false,
-      fdp: null,
-      preSearchHits: [],
-    });
-    expect(prompt).toContain('VERBALISATION');
-    expect(prompt).toMatch(/PREMIER tour/i);
-    // Garde-fou : jamais « pas trouvé de fiche » tant qu'aucun poste nommé.
-    expect(prompt).toMatch(/jamais/i);
-    expect(prompt).toMatch(/pas trouvé de fiche/i);
-  });
-
-  it('skips pre-search verbalization once at least one field is filled', () => {
-    const fdp = buildEmptyFDP('CAMP-2026-099');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Comptable',
-      status: 'filled',
-    };
-    const prompt = buildConversationalPrompt({
-      intent: 'new_campaign',
-      confidence: 0.9,
-      needsClarification: false,
-      fdp,
-      preSearchHits: [],
-    });
-    expect(prompt).not.toContain('VERBALISATION OBLIGATOIRE');
-  });
-
-  it('mode réutilisation L1 : conserve l’intitulé DEMANDÉ, pas celui de l’archive', () => {
-    const archived = buildEmptyFDP('CAMP-2026-ARCH');
-    archived.fields.job_title = {
-      ...archived.fields.job_title!,
-      value: 'Comptable senior',
-      status: 'filled',
-    };
-    const prompt = buildConversationalPrompt({
-      intent: 'new_campaign',
-      confidence: 0.9,
-      needsClarification: false,
-      fdp: null, // premier tour de cadrage → MODE RÉUTILISATION L1
-      preSearchHits: [
-        {
-          id: 'a1',
-          title: 'Comptable senior',
-          archivedAt: '2026-01-01T00:00:00.000Z',
-          fdp: archived,
-        },
-      ],
-    });
-    expect(prompt).toContain('MODE RÉUTILISATION L1');
-    // RÈGLE 1bis : job_title = intitulé demandé, JAMAIS celui de l'archive.
-    expect(prompt).toMatch(/RÈGLE 1bis/);
-    expect(prompt).toMatch(/intitulé EXACT que le DRH vient de demander/i);
-    expect(prompt).toMatch(/PAS celui de la fiche archivée/i);
-  });
-
-  it('conversational prompt formats FDP state when present', () => {
-    const fdp = buildEmptyFDP('CAMP-2026-014');
-    const prompt = buildConversationalPrompt({
-      intent: 'new_campaign',
-      confidence: 0.9,
-      needsClarification: false,
-      fdp,
-      preSearchHits: [],
-    });
-    expect(prompt).toContain('CAMP-2026-014');
-    expect(prompt).toContain('isComplete: false');
-  });
 });
 
-describe('runManagerTurn — orchestration', () => {
+describe('runManagerTurn — formulation lecture seule', () => {
   beforeEach(() => {
     chatCompleteMock.mockReset();
     searchMock.mockReset();
     searchMock.mockResolvedValue([]);
   });
 
-  // Manager LECTURE SEULE — l'intention `new_campaign` n'initie plus aucun
-  // cadrage write : elle ORIENTE vers l'UI déterministe. Un seul appel LLM (la
-  // classification), pas de pré-recherche, pas de tour conversationnel, pas de
-  // création d'id, jamais de switch dialog.
-  it('new_campaign → ORIENTATION vers l’UI (lecture seule), sans collecte ni création', async () => {
-    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_INTENT));
-
-    const result = await runManagerTurn({
-      history: SIMPLE_HISTORY,
-      fdp: null,
-    });
-
-    // Un seul appel LLM (classification) — pas de tour conversationnel.
-    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
-    expect(searchMock).not.toHaveBeenCalled();
+  it('classifie PUIS formule (2 appels LLM) et VERROUILLE toute écriture', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
+      // VALID_RESPONSE contient fieldExtractions → le code DOIT les supprimer.
+      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+    const result = await runManagerTurn({ history: SIMPLE_HISTORY, fdp: null });
+    expect(chatCompleteMock).toHaveBeenCalledTimes(2);
     expect(result.classification.intent).toBe('new_campaign');
-    // Oriente vers l'onglet Campagnes ; pas de proposition de champ.
-    expect(result.response.message).toMatch(/Campagnes/);
-    expect(result.response.message).toMatch(/Nouvelle campagne/i);
+    expect(result.response.message).toContain('séniorité');
+    // Verrou lecture seule : aucune écriture ne sort, même émise par le LLM.
     expect(result.response.fieldExtractions).toBeUndefined();
-    // Aucune création d'entité : pas d'id, pas de switch.
-    expect(result.campaignId).toBeNull();
-    expect(result.pendingSwitch).toBeNull();
-    expect(result.preSearchHits).toEqual([]);
+    expect(result.response.proposalField).toBeUndefined();
   });
 
-  it('new_campaign AVEC une FDP courante → oriente quand même (jamais de switch dialog)', async () => {
-    chatCompleteMock.mockResolvedValueOnce(
-      fakeCompletion(
-        JSON.stringify({
-          intent: 'new_campaign',
-          confidence: 0.92,
-          reasoning: 'Le DRH évoque un autre poste.',
-          needsClarification: false,
-          isDistinctNewCampaign: true,
-          candidateNewJobTitle: 'Commercial',
-        }),
-      ),
-    );
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Comptable senior',
-      status: 'filled',
-    };
-    const result = await runManagerTurn({
-      history: [{ role: 'user', content: 'En fait je veux recruter un commercial.' }],
-      fdp,
-    });
-    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
-    expect(result.pendingSwitch).toBeNull();
-    expect(result.campaignId).toBeNull();
-    expect(result.response.message).toMatch(/Campagnes/);
-  });
-
-  it('new_campaign ne déclenche PAS la pré-recherche (lecture seule)', async () => {
-    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_INTENT));
+  it('injecte la cartographie produit dans le prompt de formulation', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
+      .mockResolvedValueOnce(fakeCompletion(JSON.stringify({ message: 'ok' })));
     await runManagerTurn({ history: SIMPLE_HISTORY, fdp: null });
-    expect(searchMock).not.toHaveBeenCalled();
+    const system = chatCompleteMock.mock.calls[1]![0].messages[0]!
+      .content as string;
+    expect(system).toContain('CARTOGRAPHIE PRODUIT');
+    expect(system).toContain('Nouvelle campagne'); // libellé réel d'UI
+    expect(system).toMatch(/LECTURE SEULE/);
   });
 
-  it('intention `other` (salutation) → recadrage déterministe sans LLM conversationnel', async () => {
-    chatCompleteMock.mockResolvedValueOnce(
-      fakeCompletion(
-        JSON.stringify({
-          intent: 'other',
-          confidence: 0.9,
-          reasoning: 'Salutation.',
-          needsClarification: false,
-        }),
-      ),
-    );
-    const result = await runManagerTurn({
-      history: [{ role: 'user', content: 'bonjour' }],
-      fdp: null,
-    });
-    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
-    expect(result.response.message).toMatch(/Manager RH/i);
-    expect(result.response.chips?.options).toContain('Lancer un recrutement');
-  });
-
-  it('intention `out_of_campaign_task` → redirection déterministe, sans TASK ni LLM conversationnel', async () => {
-    chatCompleteMock.mockResolvedValueOnce(
-      fakeCompletion(
-        JSON.stringify({
-          intent: 'out_of_campaign_task',
-          confidence: 0.9,
-          reasoning: 'Demande atomique hors campagne.',
-          needsClarification: false,
-        }),
-      ),
-    );
-
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'prépare-moi juste une fiche de poste isolée' },
-      ],
-      fdp: null,
-    });
-
-    // Un seul appel LLM (la classification) — pas de tour conversationnel.
-    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
-    expect(result.classification.intent).toBe('out_of_campaign_task');
-    // Aucune TASK-XXXX créée.
-    expect(result.campaignId).toBeNull();
-    // Redirection polie vers la création de campagne, avec chips.
-    expect(result.response.message).toMatch(/n'est pas disponible/i);
-    expect(result.response.chips?.options).toContain('Lancer un recrutement');
-    expect(result.preSearchHits).toEqual([]);
-    expect(result.pendingSwitch).toBeNull();
-  });
-
-  it('out_of_campaign_task gaté même avec une FDP en cours (pas de switch vers une TASK)', async () => {
-    chatCompleteMock.mockResolvedValueOnce(
-      fakeCompletion(
-        JSON.stringify({
-          intent: 'out_of_campaign_task',
-          confidence: 0.95,
-          reasoning: 'Bascule explicite vers une tâche isolée.',
-          needsClarification: false,
-          isDistinctNewCampaign: true,
-          candidateNewJobTitle: 'Développeur',
-        }),
-      ),
-    );
-
-    const fdp = buildEmptyFDP('CAMP-2026-077');
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'en fait prépare juste une fiche isolée pour un développeur' },
-      ],
-      fdp,
-    });
-
-    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
-    expect(result.pendingSwitch).toBeNull();
-    expect(result.response.message).toMatch(/n'est pas disponible/i);
-    // On conserve l'id de campagne courant, pas de TASK générée.
-    expect(result.campaignId).toBe('CAMP-2026-077');
-  });
-
-  it('promotes needsClarification when confidence < CLARIFICATION_THRESHOLD', async () => {
+  it('campaign_followup : charge le snapshot et injecte une section Données', async () => {
     chatCompleteMock
       .mockResolvedValueOnce(
         fakeCompletion(
           JSON.stringify({
-            intent: 'new_campaign',
-            confidence: 0.4,
-            reasoning: 'Hésitation entre new_campaign et out_of_campaign_task.',
-            needsClarification: false,
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            message: "Voulez-vous lancer une campagne complète ou simplement préparer une fiche ?",
-            chips: {
-              placement: 'below_bubble',
-              options: ['Lancer une campagne', 'Préparer une fiche'],
-            },
-          }),
-        ),
-      );
-
-    const result = await runManagerTurn({
-      history: SIMPLE_HISTORY,
-      fdp: null,
-    });
-
-    expect(result.classification.confidence).toBe(0.4);
-    expect(result.classification.needsClarification).toBe(true);
-    expect(searchMock).not.toHaveBeenCalled();
-  });
-
-  it('skips pre-search for non-campaign intents', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            intent: 'reporting_request',
+            intent: 'campaign_followup',
             confidence: 0.9,
-            reasoning: 'Le DRH demande un point.',
+            reasoning: 'suivi',
             needsClarification: false,
           }),
         ),
       )
-      .mockResolvedValueOnce(
-        fakeCompletion(JSON.stringify({ message: 'Je vous prépare le bilan.' })),
-      );
-
+      .mockResolvedValueOnce(fakeCompletion(JSON.stringify({ message: 'Le point.' })));
+    const loadReportingSnapshot = vi.fn(async () => null);
     await runManagerTurn({
-      history: [{ role: 'user', content: 'Fais-moi un point.' }],
+      history: [{ role: 'user', content: 'où en est la campagne ?' }],
+      fdp: null,
+      loadReportingSnapshot,
+    });
+    expect(loadReportingSnapshot).toHaveBeenCalledTimes(1);
+    const system = chatCompleteMock.mock.calls[1]![0].messages[0]!
+      .content as string;
+    expect(system).toMatch(/Données|récupérer les données/);
+  });
+
+  it('injecte une paire de chips d’orientation si le LLM n’en met pas', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
+      .mockResolvedValueOnce(
+        fakeCompletion(JSON.stringify({ message: 'Réponse sans chips.' })),
+      );
+    const result = await runManagerTurn({ history: SIMPLE_HISTORY, fdp: null });
+    expect(result.response.chips?.options).toHaveLength(2);
+  });
+
+  it('pas de chips imposés si l’utilisateur demande une explication libre', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(
+        fakeCompletion(
+          JSON.stringify({
+            intent: 'other',
+            confidence: 0.9,
+            reasoning: 'q',
+            needsClarification: false,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(fakeCompletion(JSON.stringify({ message: 'Voici pourquoi…' })));
+    const result = await runManagerTurn({
+      history: [{ role: 'user', content: 'explique-moi pourquoi' }],
       fdp: null,
     });
+    expect(result.response.chips).toBeUndefined();
+  });
 
-    expect(searchMock).not.toHaveBeenCalled();
+  it('agrège les métriques des deux appels LLM', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(
+        fakeCompletion(VALID_INTENT, {
+          durationMs: 200,
+          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+          costEstimate: 0.002,
+        }),
+      )
+      .mockResolvedValueOnce(
+        fakeCompletion(JSON.stringify({ message: 'ok' }), {
+          durationMs: 350,
+          usage: { promptTokens: 15, completionTokens: 25, totalTokens: 40 },
+          costEstimate: 0.003,
+        }),
+      );
+    const result = await runManagerTurn({ history: SIMPLE_HISTORY, fdp: null });
+    expect(result.metrics.durationMs).toBe(550);
+    expect(result.metrics.tokensUsed).toBe(70);
+    expect(result.metrics.costEstimate).toBeCloseTo(0.005, 5);
   });
 
   it('throws ManagerError on invalid intent JSON', async () => {
     chatCompleteMock.mockResolvedValueOnce(fakeCompletion('not-json'));
-
     await expect(
       runManagerTurn({ history: SIMPLE_HISTORY, fdp: null }),
     ).rejects.toBeInstanceOf(ManagerError);
   });
 
+  it('throws ManagerError si la formulation renvoie une forme invalide', async () => {
+    chatCompleteMock
+      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
+      .mockResolvedValueOnce(fakeCompletion(JSON.stringify({ message: '' })));
+    await expect(
+      runManagerTurn({ history: SIMPLE_HISTORY, fdp: null }),
+    ).rejects.toMatchObject({ name: 'ManagerError' });
+  });
+});
+
+describe('buildManagerSituation', () => {
+  it('oriente new_campaign vers la création sans agir', () => {
+    const s = buildManagerSituation('new_campaign', false);
+    expect(s).toMatch(/création|créer/i);
+    expect(s).toMatch(/ne la crées pas/i);
+  });
+  it('demande de narrer les chiffres réels pour campaign_followup', () => {
+    expect(buildManagerSituation('campaign_followup', false)).toMatch(
+      /chiffres réels/i,
+    );
+  });
+  it('ajoute une consigne de clarification quand l’intention est ambiguë', () => {
+    expect(buildManagerSituation('other', true)).toMatch(/AMBIGUË/);
+  });
+});
+
+describe('ensureReadOnlyChips', () => {
+  it('injecte une paire d’orientation si chips absents', () => {
+    const out = ensureReadOnlyChips({ message: 'x' }, 'crée une campagne');
+    expect(out.chips?.options).toEqual([
+      'Faire un point sur une campagne',
+      'Analyser un CV',
+    ]);
+  });
+  it('laisse la prose libre si l’utilisateur demande une explication', () => {
+    const out = ensureReadOnlyChips({ message: 'x' }, 'explique-moi pourquoi');
+    expect(out.chips).toBeUndefined();
+  });
+  it('préserve les chips fournis par le LLM', () => {
+    const out = ensureReadOnlyChips(
+      { message: 'x', chips: { placement: 'below_bubble', options: ['A', 'B'] } },
+      'salut',
+    );
+    expect(out.chips?.options).toEqual(['A', 'B']);
+  });
 });
