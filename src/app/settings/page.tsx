@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { SiteFooter } from '@/components/navigation/SiteFooter';
 import { TopBanner } from '@/components/navigation/TopBanner';
 import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
@@ -25,6 +27,12 @@ export default function SettingsPage() {
         ]}
       />
       <div className="relative mx-auto w-full max-w-4xl flex-1 px-6 py-8">
+        <Link
+          href="/rh/recrutement"
+          className="mb-6 inline-flex items-center gap-1.5 font-body text-[13px] font-semibold text-stone-600 transition-colors hover:text-stone-900"
+        >
+          <span aria-hidden>←</span> Retour au recrutement
+        </Link>
         <header className="mb-8">
           <p className="font-display text-[11px] uppercase tracking-[0.18em] text-stone-500 font-semibold mb-1">
             Configuration

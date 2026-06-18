@@ -33,11 +33,18 @@ export type TopBannerProps = {
    * (middleware filtre l'accès anonyme avant que la page ne rende).
    */
   showLogout?: boolean;
+  /**
+   * Affiche le lien « Paramètres » du bandeau. Par défaut `true`. Mis à
+   * `false` sur le workspace recrutement, où l'icône d'engrenage (à droite des
+   * onglets) fait déjà l'accès aux paramètres — éviter la redondance.
+   */
+  showSettings?: boolean;
 };
 
 export function TopBanner({
   breadcrumb,
   showLogout = true,
+  showSettings = true,
 }: TopBannerProps) {
   return (
     <header
@@ -57,12 +64,14 @@ export function TopBanner({
         </div>
       ) : null}
       <nav className="ml-auto flex items-center gap-4">
-        <Link
-          href="/settings"
-          className="font-body text-[13px] font-semibold text-stone-900/85 transition-opacity hover:opacity-70"
-        >
-          Paramètres
-        </Link>
+        {showSettings ? (
+          <Link
+            href="/settings"
+            className="font-body text-[13px] font-semibold text-stone-900/85 transition-opacity hover:opacity-70"
+          >
+            Paramètres
+          </Link>
+        ) : null}
         {showLogout ? <LogoutButton /> : null}
       </nav>
     </header>

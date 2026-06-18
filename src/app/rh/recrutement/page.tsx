@@ -26,6 +26,7 @@ export default function RecrutementPage() {
           { label: 'RH', href: '/rh' },
           { label: 'Recrutement' },
         ]}
+        showSettings={false}
       />
       <div className="relative flex flex-1 min-h-0 w-full">
         <HydrationGate />
