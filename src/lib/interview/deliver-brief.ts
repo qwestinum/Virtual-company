@@ -29,7 +29,10 @@ import {
   sendEmail,
   type EmailAttachment,
 } from '@/lib/email/client';
-import { downloadArtifact } from '@/lib/storage/blob';
+import {
+  createSignedArtifactUrl,
+  downloadArtifact,
+} from '@/lib/storage/blob';
 import { normalizeEmail } from '@/lib/vivier/candidates';
 import type { InterviewQuestion } from '@/types/interview-brief';
 import {
@@ -61,19 +64,51 @@ export type DeliverBriefResult = {
   error?: string;
 };
 
-/** Charge le CV du candidat (vivier, par email) en pièce jointe base64. */
-async function loadCvAttachment(
-  email: string,
-): Promise<EmailAttachment | null> {
+/** Validité du lien CV signé : ~30 j (jusqu'après l'entretien). RGPD : temporaire. */
+const CV_LINK_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+/** Devine le type MIME d'un CV depuis son extension de fichier. */
+function inferMimeType(filename: string): string {
+  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  if (ext === 'pdf') return 'application/pdf';
+  if (ext === 'doc') return 'application/msword';
+  if (ext === 'docx')
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  return 'application/octet-stream';
+}
+
+type LoadedCv = {
+  /** Pièce jointe email (filet de sécurité universel). */
+  attachment: EmailAttachment;
+  base64: string;
+  filename: string;
+  mimeType: string;
+  /** Lien signé à durée limitée (cliquable dans l'événement agenda). */
+  signedUrl: string | null;
+};
+
+/** Charge le CV du candidat (vivier, par email) : binaire + lien signé. */
+async function loadCv(email: string): Promise<LoadedCv | null> {
   try {
     const candidate = await getVivierCandidateByEmail(normalizeEmail(email));
     if (!candidate?.cvPath) return null;
     const buf = await downloadArtifact(candidate.cvPath);
     if (!buf) return null;
     const filename = candidate.cvFileName ?? 'CV.pdf';
-    return { filename, content: buf.toString('base64') };
+    const base64 = buf.toString('base64');
+    const signedUrl = await createSignedArtifactUrl(
+      candidate.cvPath,
+      CV_LINK_TTL_SECONDS,
+    );
+    return {
+      attachment: { filename, content: base64 },
+      base64,
+      filename,
+      mimeType: inferMimeType(filename),
+      signedUrl,
+    };
   } catch {
-    // Dégradation douce : on livre le briefing sans PJ (mention dans le corps).
+    // Dégradation douce : on livre le briefing sans CV (mention dans le corps).
     return null;
   }
 }
@@ -99,10 +134,11 @@ async function sendBrief(args: {
   questions: InterviewQuestion[];
   input: DeliverBriefInput;
 }): Promise<{ ok: boolean; messageId: string | null; error?: string }> {
-  const attachment = await loadCvAttachment(args.input.attendeeEmail);
+  const cv = await loadCv(args.input.attendeeEmail);
 
   // .ics pour ajouter l'entretien à l'agenda (les adresses de synthèse ne sont
-  // pas invitées à l'événement Cal.com). Absent si le créneau manque.
+  // pas invitées à l'événement Cal.com). Absent si le créneau manque. Le CV y
+  // est intégré : lien signé (Google/Outlook) + binaire (Apple).
   const label = args.jobTitle ?? args.ownerLabel;
   const ics = args.input.startTime
     ? buildInterviewIcs({
@@ -113,6 +149,10 @@ async function sendBrief(args: {
         description: args.candidate.summary,
         location: args.input.location,
         stampAt: new Date().toISOString(),
+        cvUrl: cv?.signedUrl ?? null,
+        cvBinary: cv
+          ? { base64: cv.base64, filename: cv.filename, mimeType: cv.mimeType }
+          : null,
       })
     : null;
   const icsAttachment: EmailAttachment | null = ics
@@ -122,7 +162,7 @@ async function sendBrief(args: {
       }
     : null;
 
-  const attachments = [attachment, icsAttachment].filter(
+  const attachments = [cv?.attachment ?? null, icsAttachment].filter(
     (a): a is EmailAttachment => a !== null,
   );
 
@@ -136,7 +176,7 @@ async function sendBrief(args: {
       endAt: args.input.endTime,
       location: args.input.location,
     },
-    cvAttached: attachment !== null,
+    cvAttached: cv !== null,
     icsAttached: icsAttachment !== null,
   });
   return sendEmail({

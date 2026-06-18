@@ -56,4 +56,32 @@ describe('buildInterviewIcs', () => {
   it('renvoie null si le début est invalide (pas d’événement sans date)', () => {
     expect(buildInterviewIcs({ ...base, startAt: 'pas-une-date' })).toBeNull();
   });
+
+  it('intègre le lien signé du CV dans la description et en ATTACH (URI, non échappé)', () => {
+    const url = 'https://x.supabase.co/storage/v1/object/sign/cv.pdf?token=abc';
+    const ics = buildInterviewIcs({ ...base, cvUrl: url })!;
+    // On déplie (les longues lignes sont repliées RFC 5545) avant d'asserter.
+    const unfolded = ics.replace(/\r\n /g, '');
+    // Lien cliquable côté Google Calendar via la description.
+    expect(unfolded).toContain(`CV du candidat : ${url}`);
+    // ATTACH URI : la valeur n'est PAS text-escapée (pas de \, sur les paramètres URL).
+    expect(unfolded).toContain(`ATTACH;FMTTYPE=application/pdf:${url}`);
+  });
+
+  it('embarque le CV binaire (ATTACH base64) et plie les lignes à ≤ 75 caractères', () => {
+    const base64 = 'QUJD'.repeat(60); // 240 caractères → forcément plié
+    const ics = buildInterviewIcs({
+      ...base,
+      cvBinary: { base64, filename: 'cv.pdf', mimeType: 'application/pdf' },
+    })!;
+    // Aucune ligne physique ne dépasse 75 caractères (pliage RFC 5545).
+    for (const line of ics.split('\r\n')) {
+      expect(line.length).toBeLessThanOrEqual(75);
+    }
+    // Une fois déplié, le base64 complet est présent dans un ATTACH binaire.
+    const unfolded = ics.replace(/\r\n /g, '');
+    expect(unfolded).toContain('ENCODING=BASE64;VALUE=BINARY');
+    expect(unfolded).toContain('X-APPLE-FILENAME=cv.pdf');
+    expect(unfolded).toContain(base64);
+  });
 });

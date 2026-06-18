@@ -134,6 +134,28 @@ export async function downloadArtifact(path: string): Promise<Buffer | null> {
 }
 
 /**
+ * URL SIGNÉE à durée limitée vers un objet Storage (RGPD : donnée personnelle
+ * candidat → jamais d'URL publique permanente). Sert au lien CV dans
+ * l'invitation agenda .ics. `null` si l'objet est absent / Storage non
+ * configuré (dégradation douce — l'appelant omet alors le lien).
+ */
+export async function createSignedArtifactUrl(
+  path: string,
+  expiresInSeconds: number,
+): Promise<string | null> {
+  try {
+    const supabase = requireServerSupabase();
+    const { data, error } = await supabase.storage
+      .from(ARTIFACTS_BUCKET)
+      .createSignedUrl(path, expiresInSeconds);
+    if (error || !data?.signedUrl) return null;
+    return data.signedUrl;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Supprime un objet du Storage (suppression cascade du vivier — RGPD §8.2).
  * Idempotent : retirer un objet déjà absent ne lève pas. Lève uniquement sur
  * une vraie erreur Storage, pour que la cascade s'interrompe et signale l'échec.
