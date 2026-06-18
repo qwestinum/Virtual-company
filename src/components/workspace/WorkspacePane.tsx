@@ -8,15 +8,23 @@ import { CampaignsWorkspace } from '@/components/campagnes/CampaignsWorkspace';
 import { DashboardView } from '@/components/dashboard/DashboardView';
 import { ReportingHub } from '@/components/reporting/ReportingHub';
 import { ValidationsHub } from '@/components/validations/ValidationsHub';
+import { VivierValidationsWorklist } from '@/components/vivier/VivierValidationsWorklist';
 import { cn } from '@/lib/utils';
 
-type Tab = 'rh' | 'campagnes' | 'dashboard' | 'validations' | 'reporting';
+type Tab =
+  | 'rh'
+  | 'campagnes'
+  | 'dashboard'
+  | 'validations'
+  | 'vivier'
+  | 'reporting';
 
 const TABS: { id: Tab; label: string; available: boolean }[] = [
   { id: 'rh', label: 'Bureau', available: true },
   { id: 'campagnes', label: 'Campagnes', available: true },
   { id: 'dashboard', label: 'Dashboard', available: true },
   { id: 'validations', label: 'Validation suspendue', available: true },
+  { id: 'vivier', label: 'Validations vivier', available: true },
   { id: 'reporting', label: 'Reporting', available: true },
 ];
 
@@ -42,15 +50,41 @@ function usePendingValidationsCount(): number {
   return count;
 }
 
+/** Compteur global de prises de contact vivier en attente (badge d'onglet). */
+function usePendingVivierCount(): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/vivier/validations', {
+          cache: 'no-store',
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { total?: number };
+        if (!cancelled) setCount(json.total ?? 0);
+      } catch {
+        // silencieux
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return count;
+}
+
 export function WorkspacePane() {
   const [tab, setTab] = useState<Tab>('rh');
   const pendingCount = usePendingValidationsCount();
+  const vivierCount = usePendingVivierCount();
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden">
       <WorkspaceTabs
         current={tab}
         onChange={setTab}
         pendingCount={pendingCount}
+        vivierCount={vivierCount}
       />
       <div className="relative flex-1 overflow-hidden">
         {tab === 'rh' ? (
@@ -66,6 +100,26 @@ export function WorkspacePane() {
           <div className="h-full overflow-auto px-6 py-6">
             <div className="mx-auto w-full max-w-6xl">
               <ValidationsHub />
+            </div>
+          </div>
+        ) : tab === 'vivier' ? (
+          <div className="h-full overflow-auto px-6 py-6">
+            <div className="mx-auto w-full max-w-4xl">
+              <header className="mb-8">
+                <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+                  Sourcing interne
+                </p>
+                <h1 className="font-display text-3xl font-bold text-stone-900">
+                  Validations vivier
+                </h1>
+                <p className="mt-2 max-w-2xl font-body text-[14px] text-stone-600">
+                  Les prises de contact issues du vivier, en attente de votre
+                  décision. Choisissez une campagne pour arbitrer ses candidats :
+                  accepter la prise de contact (envoi d&apos;une invitation à
+                  postuler) ou rejeter.
+                </p>
+              </header>
+              <VivierValidationsWorklist />
             </div>
           </div>
         ) : (
@@ -84,10 +138,12 @@ function WorkspaceTabs({
   current,
   onChange,
   pendingCount,
+  vivierCount,
 }: {
   current: Tab;
   onChange: (tab: Tab) => void;
   pendingCount: number;
+  vivierCount: number;
 }) {
   return (
     <nav
@@ -120,6 +176,11 @@ function WorkspaceTabs({
             {tab.id === 'validations' && pendingCount > 0 ? (
               <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 align-middle font-data text-[10px] font-bold text-white">
                 {pendingCount}
+              </span>
+            ) : null}
+            {tab.id === 'vivier' && vivierCount > 0 ? (
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-600 px-1 align-middle font-data text-[10px] font-bold text-white">
+                {vivierCount}
               </span>
             ) : null}
             {!tab.available ? (

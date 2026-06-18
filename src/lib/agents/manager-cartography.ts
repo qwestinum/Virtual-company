@@ -17,11 +17,12 @@
 export const MANAGER_CARTOGRAPHY = `# CARTOGRAPHIE PRODUIT — ORQA, service Recrutement
 
 ## Repères de navigation
-- Workspace Recrutement : 5 onglets en haut — « Bureau », « Campagnes »,
-  « Dashboard », « Validation suspendue » (badge = nombre de mails en attente),
+- Workspace Recrutement : 6 onglets en haut — « Bureau », « Campagnes »,
+  « Dashboard », « Validation suspendue » (badge = mails en attente),
+  « Validations vivier » (badge = prises de contact vivier en attente),
   « Reporting ».
-- Bandeau supérieur : liens « Validations vivier » (badge si en attente),
-  « Paramètres », « Se déconnecter ». L'engrenage mène aussi à « Paramètres ».
+- Bandeau supérieur : liens « Paramètres » et « Se déconnecter ». L'engrenage
+  mène aussi à « Paramètres ».
 - Chat Manager : tablette verte « Chat Manager » au bord droit ; le trombone
   « Joindre des fichiers » accepte PDF, DOCX, txt, md.
 
@@ -85,7 +86,7 @@ Chat Manager (tablette verte) → trombone « Joindre des fichiers ». Le CV est
 analysé par rapport à une campagne existante.
 
 ### Traiter les prises de contact issues du vivier
-Bandeau → « Validations vivier » → choisir une campagne → pour chaque candidat,
+Onglet « Validations vivier » → choisir une campagne → pour chaque candidat,
 « Accepter » (envoie une invitation à postuler) ou « Rejeter ».
 
 ### Valider les mails en attente (refus / acceptation)
