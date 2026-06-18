@@ -51,11 +51,13 @@ import { ValidateIsolatedCriteriaButton } from '@/components/chat/ValidateIsolat
 import { getAvatarColor, getAvatarUrl } from '@/lib/agents/avatar-colors';
 import { sanitizeFieldExtractions } from '@/lib/agents/extraction-guard';
 import {
+  postDocumentClassify,
   postIsolatedManagerChat,
   postManagerChat,
   postManagerScoring,
   postTranscribe,
 } from '@/lib/chat/api-client';
+import { documentNatureNotice } from '@/lib/chat/document-nature-notice';
 import {
   chooseExistingCampaign,
   chooseRouteExisting,
@@ -1171,12 +1173,45 @@ export function ManagerChat() {
 
   async function handleFilesSelected(files: File[]) {
     if (files.length === 0 || isAgentBusy) return;
-    // Phase 6.3 — on ne court-circuite PLUS le route-picker, même
-    // quand la campagne courante est validée et que le flux manual
-    // est actif. Le DRH doit toujours pouvoir trancher entre tâche
-    // isolée et rattachement à une campagne existante (peut être
-    // une autre campagne que la courante).
-    dispatchCVRouting(files);
+    // Reconnaissance LÉGÈRE de la nature AVANT toute analyse/comptabilisation :
+    // seul un CV est analysé. Un appel d'offres → on oriente vers le menu
+    // Campagnes (jamais analysé/compté). Tout autre document → on avertit qu'il
+    // ne ressemble pas à un CV. (cf. Manager lecture seule — capacité 1.)
+    setAgentBusy(true);
+    try {
+      appendMessage({
+        role: 'user',
+        source: 'text',
+        content:
+          files.length === 1
+            ? `J'ai joint un fichier : ${files[0].name}.`
+            : `J'ai joint ${files.length} fichiers : ${files.map((f) => f.name).join(', ')}.`,
+      });
+      const classified = await Promise.all(
+        files.map(async (file) => ({
+          file,
+          ...(await postDocumentClassify(file)),
+        })),
+      );
+      const cvFiles = classified
+        .filter((c) => c.nature === 'cv')
+        .map((c) => c.file);
+      for (const c of classified) {
+        if (c.nature === 'cv') continue;
+        appendMessage({
+          role: 'manager',
+          source: 'text',
+          content: documentNatureNotice(c.nature, c.fileName),
+        });
+      }
+      // On route UNIQUEMENT les CV vers l'analyse (la bulle utilisateur est déjà
+      // postée ci-dessus → `announce: false` pour éviter une bulle en double).
+      if (cvFiles.length > 0) {
+        dispatchCVRouting(cvFiles, { announce: false });
+      }
+    } finally {
+      setAgentBusy(false);
+    }
   }
 
   function handleRoutePick(

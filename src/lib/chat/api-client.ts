@@ -207,3 +207,35 @@ export async function postCVAnalyzer(params: {
   if (!res.ok) throw new Error(await readError(res));
   return (await res.json()) as CVAnalyzerResult;
 }
+
+/** Nature reconnue d'un document déposé (reconnaissance légère, pas extraction). */
+export type DocumentNature = 'cv' | 'appel_offres' | 'autre' | 'illisible';
+
+/**
+ * Classe la NATURE d'un document avant toute analyse/comptabilisation
+ * (`/api/documents/classify`). Best-effort : en cas d'erreur réseau/serveur, on
+ * renvoie 'illisible' pour fail-safe (ne jamais analyser un document incertain).
+ */
+export async function postDocumentClassify(
+  file: File,
+): Promise<{ nature: DocumentNature; fileName: string }> {
+  const form = new FormData();
+  form.append('document', file);
+  try {
+    const res = await fetch('/api/documents/classify', {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) return { nature: 'illisible', fileName: file.name };
+    const json = (await res.json()) as {
+      nature?: DocumentNature;
+      fileName?: string;
+    };
+    return {
+      nature: json.nature ?? 'illisible',
+      fileName: json.fileName ?? file.name,
+    };
+  } catch {
+    return { nature: 'illisible', fileName: file.name };
+  }
+}

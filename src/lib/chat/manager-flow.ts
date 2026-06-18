@@ -993,7 +993,10 @@ function snapshotActiveCampaigns(): CampaignPickerEntry[] {
  * forcé (ni campagne validée + source manuelle, ni autre flux explicite).
  * Pose la question routante au DRH avec les 3 options.
  */
-export function dispatchCVRouting(files: File[]): void {
+export function dispatchCVRouting(
+  files: File[],
+  options: { announce?: boolean } = {},
+): void {
   if (files.length === 0) return;
   const pendingId = nowTaskId('route');
   pendingRoutings.set(pendingId, {
@@ -1005,14 +1008,19 @@ export function dispatchCVRouting(files: File[]): void {
   });
 
   const chat = useChatStore.getState();
-  chat.appendMessage({
-    role: 'user',
-    source: 'text',
-    content:
-      files.length === 1
-        ? `J'ai joint un CV : ${files[0].name}.`
-        : `J'ai joint ${files.length} CV : ${files.map((f) => f.name).join(', ')}.`,
-  });
+  // `announce: false` quand l'appelant a DÉJÀ posté une bulle utilisateur (flux
+  // de reconnaissance de nature : on dépose une seule bulle pour tout le lot,
+  // puis on route les CV seulement) — évite une double bulle « J'ai joint… ».
+  if (options.announce !== false) {
+    chat.appendMessage({
+      role: 'user',
+      source: 'text',
+      content:
+        files.length === 1
+          ? `J'ai joint un CV : ${files[0].name}.`
+          : `J'ai joint ${files.length} CV : ${files.map((f) => f.name).join(', ')}.`,
+    });
+  }
 
   const activeCampaigns = snapshotActiveCampaigns();
   chat.appendMessage({
