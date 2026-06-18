@@ -1187,29 +1187,12 @@ export function ManagerChat() {
     route: 'new' | 'existing' | 'isolated' | 'brief',
   ) {
     if (isAgentBusy || isSending || isTranscribing) return;
-    if (route === 'isolated') {
-      chooseRouteIsolated(pendingId);
-    } else if (route === 'existing') {
+    // Manager LECTURE SEULE : seule l'analyse de CV contre une campagne
+    // EXISTANTE est autorisée. Les routes mutantes (nouvelle campagne, tâche
+    // isolée, brief) ne sont plus proposées par le picker et sont ignorées ici
+    // par sécurité (les fonctions sous-jacentes seront retirées en Phase 3).
+    if (route === 'existing') {
       chooseRouteExisting(pendingId);
-    } else if (route === 'brief') {
-      // Document de cadrage (appel d'offres / notes) : extraction commune +
-      // pré-remplissage conversationnel. Asynchrone → on verrouille l'agent.
-      void (async () => {
-        setAgentBusy(true);
-        try {
-          await chooseRouteBrief(pendingId);
-        } finally {
-          setAgentBusy(false);
-        }
-      })();
-    } else {
-      // Nouvelle campagne : pas de notion de nom → on crée directement la
-      // CAMP-XXXX + une FDP vide et on déclenche le tour Manager qui ouvre la
-      // collecte (job_title en premier).
-      const campaignId = chooseRouteNewCampaign(pendingId);
-      if (campaignId) {
-        void sendToManager(useChatStore.getState().messages);
-      }
     }
   }
 
@@ -2124,90 +2107,47 @@ export function ManagerChat() {
   function handleSelectCampaign(entry: CampaignEntry) {
     if (isSending || isTranscribing || isAgentBusy) return;
     if (!entry.snapshot) return;
-    wipeForFreshStart();
-    if (entry.kind === 'fdp') {
-      restoreFDP(entry.snapshot);
-      // Phase 5.2 — si l'archive embarque une fiche de scoring,
-      // on la restaure aussi. Le DRH retrouve l'état exact où il
-      // s'est arrêté (FDP + scoring + status) ; il peut continuer
-      // à éditer si pas validé, ou re-uploader des CV si validé.
-      const archived = useCampaignsStore.getState().getById(entry.id);
-      if (archived?.scoringSheet) {
-        useScoringStore.getState().restoreSheet(archived.scoringSheet);
-      }
-    } else {
-      restoreCollection(entry.snapshot);
-    }
+    // Manager LECTURE SEULE — sélectionner une campagne = en faire le POINT,
+    // jamais la charger pour édition. Plus de wipe/restore (qui amorçaient le
+    // cadrage write) ni de chips d'action mutante (reprendre / modifier /
+    // rouvrir). Toute modification passe par l'UI déterministe (onglet
+    // « Campagnes »). Le récap d'avancement reste une LECTURE.
+    pendingResumeActionsRef.current = null;
+    pendingReopenRef.current = null;
     const noun = entry.kind === 'fdp' ? 'campagne' : 'sollicitation';
-    // Phase 5.1 — message contextuel selon l'état d'avancement.
-    const reopen: Record<CampaignStatus, string> = {
-      draft:
-        "Tu peux reprendre la collecte des champs manquants ou ajuster ceux déjà remplis.",
-      in_progress:
-        "La fiche de poste est validée. Tu peux modifier les annonces, configurer les flux, ou finaliser la fiche de scoring.",
-      active:
-        "Tout est aligné. Tu peux déposer des CV ou ajuster un élément ci-dessous.",
-      paused:
-        "Cette campagne est suspendue. Tu peux la reprendre depuis le menu, ou ajuster un élément ci-dessous.",
-      closed:
-        "Cette campagne est marquée comme terminée. Tu peux la rouvrir pour la réactiver.",
-    };
-    // Phase 7.4 / 7.4.1 — récap multi-ligne + chips contextuels. La
-    // bulle résume où en est la campagne (✓ / · / ○ par jalon) et
-    // propose des CTA :
-    //   - draft/in_progress/active/paused : Initier/Continuer/Modifier
-    //     pour chaque artefact (FDP, scoring, annonces, flux),
-    //   - closed : une CTA spéciale « Rouvrir la campagne » pour
-    //     remettre la campagne en travail.
-    // Tâches isolées : cycle plus court, pas de chips multi-jalons.
-    const isFdpEntry = entry.kind === 'fdp';
-    let chips: { placement: 'below_bubble'; options: string[] } | undefined;
     let recap = '';
-    if (isFdpEntry && entry.status === 'closed') {
-      pendingResumeActionsRef.current = null;
-      pendingReopenRef.current = entry;
-      chips = { placement: 'below_bubble', options: [REOPEN_CHIP_LABEL] };
-    } else if (isFdpEntry && entry.status === 'paused') {
-      // Phase 7.5 — paused : pas de chips de modification (elles
-      // agiraient sans pouvoir changer le statut, recomputeStatus
-      // n'override jamais paused). On force le DRH à reprendre
-      // d'abord, puis les chips de modification reviennent.
-      pendingResumeActionsRef.current = null;
-      pendingReopenRef.current = entry;
+    if (entry.kind === 'fdp') {
       const snap = computeProgressSnapshot(entry.id);
-      if (snap) {
-        recap = `\n\nÉtat actuel :\n${formatProgressRecap(snap)}`;
-      }
-      chips = {
-        placement: 'below_bubble',
-        options: [RESUME_PAUSED_CHIP_LABEL],
-      };
-    } else if (isFdpEntry) {
-      const snap = computeProgressSnapshot(entry.id);
-      if (snap) {
-        recap = `\n\nÉtat actuel :\n${formatProgressRecap(snap)}`;
-        const { options, labelMap } = buildResumeChipPayload(snap);
-        pendingResumeActionsRef.current = labelMap;
-        pendingReopenRef.current = null;
-        chips = { placement: 'below_bubble', options };
-      }
+      if (snap) recap = `\n\nÉtat actuel :\n${formatProgressRecap(snap)}`;
     }
     appendMessage({
       role: 'manager',
       source: 'text',
-      content: `On reprend sur la ${noun} ${entry.id} — ${entry.title} (${CAMPAIGN_STATUS_LABELS[entry.status].toLowerCase()}). ${reopen[entry.status]}${recap}`,
-      chips,
+      content: `Point sur la ${noun} ${entry.id} — ${entry.title} (${CAMPAIGN_STATUS_LABELS[entry.status].toLowerCase()}).${recap}\n\nPour la modifier (fiche, scoring, flux, statut), ouvrez-la dans l'onglet « Campagnes ». Je peux analyser un CV pour cette campagne si vous en déposez un.`,
+      chips: {
+        placement: 'below_bubble',
+        options: ['Analyser un CV', 'Faire un point sur une autre campagne'],
+      },
     });
   }
 
   /**
-   * Démarre une nouvelle campagne depuis le sélecteur. Wipe complet
-   * sans seed : le greeting du chat reset accueille le DRH, qui
-   * formule alors son intention librement au tour suivant.
+   * Manager lecture seule — la création passe EXCLUSIVEMENT par l'UI. Le bouton
+   * « nouvelle campagne » du sélecteur n'amorce plus de cadrage dans le chat :
+   * il oriente vers l'onglet Campagnes (aucune mutation, aucun wipe).
    */
   function handleNewCampaign() {
     if (isSending || isTranscribing || isAgentBusy) return;
-    wipeForFreshStart();
+    appendMessage({
+      role: 'manager',
+      source: 'text',
+      content:
+        "La création d'une campagne se fait dans l'onglet « Campagnes » → « Nouvelle campagne » : vous y cadrez la fiche de poste, le scoring et les flux, puis vous l'activez. Je reste disponible pour faire le point sur une campagne ou analyser un CV.",
+      chips: {
+        placement: 'below_bubble',
+        options: ['Faire un point sur une campagne', 'Analyser un CV'],
+      },
+    });
   }
 
   /**

@@ -389,49 +389,65 @@ describe('runManagerTurn — orchestration', () => {
     searchMock.mockResolvedValue([]);
   });
 
-  it('chains intent classification then conversational response', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
+  // Manager LECTURE SEULE — l'intention `new_campaign` n'initie plus aucun
+  // cadrage write : elle ORIENTE vers l'UI déterministe. Un seul appel LLM (la
+  // classification), pas de pré-recherche, pas de tour conversationnel, pas de
+  // création d'id, jamais de switch dialog.
+  it('new_campaign → ORIENTATION vers l’UI (lecture seule), sans collecte ni création', async () => {
+    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_INTENT));
 
     const result = await runManagerTurn({
       history: SIMPLE_HISTORY,
       fdp: null,
     });
 
-    expect(chatCompleteMock).toHaveBeenCalledTimes(2);
+    // Un seul appel LLM (classification) — pas de tour conversationnel.
+    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(searchMock).not.toHaveBeenCalled();
     expect(result.classification.intent).toBe('new_campaign');
-    expect(result.response.message).toContain('séniorité');
-    expect(result.response.chips?.options).toContain('junior');
-    expect(result.response.fieldExtractions?.job_title).toBe('Comptable senior');
+    // Oriente vers l'onglet Campagnes ; pas de proposition de champ.
+    expect(result.response.message).toMatch(/Campagnes/);
+    expect(result.response.message).toMatch(/Nouvelle campagne/i);
+    expect(result.response.fieldExtractions).toBeUndefined();
+    // Aucune création d'entité : pas d'id, pas de switch.
+    expect(result.campaignId).toBeNull();
+    expect(result.pendingSwitch).toBeNull();
+    expect(result.preSearchHits).toEqual([]);
   });
 
-  it('démarrage de recrutement SANS poste → demande l’intitulé, sans appeler le LLM conversationnel ni la pré-recherche', async () => {
+  it('new_campaign AVEC une FDP courante → oriente quand même (jamais de switch dialog)', async () => {
     chatCompleteMock.mockResolvedValueOnce(
       fakeCompletion(
         JSON.stringify({
           intent: 'new_campaign',
-          confidence: 0.95,
-          reasoning: 'Demande de recrutement sans poste précisé.',
+          confidence: 0.92,
+          reasoning: 'Le DRH évoque un autre poste.',
           needsClarification: false,
-          specifiedRole: null,
+          isDistinctNewCampaign: true,
+          candidateNewJobTitle: 'Commercial',
         }),
       ),
     );
-
+    const fdp = buildEmptyFDP('CAMP-2026-042');
+    fdp.fields.job_title = {
+      ...fdp.fields.job_title!,
+      value: 'Comptable senior',
+      status: 'filled',
+    };
     const result = await runManagerTurn({
-      history: [{ role: 'user', content: 'je veux un recrutement' }],
-      fdp: null,
+      history: [{ role: 'user', content: 'En fait je veux recruter un commercial.' }],
+      fdp,
     });
-
-    // Verrou déterministe : un seul appel LLM (la classification), pas de
-    // tour conversationnel.
     expect(chatCompleteMock).toHaveBeenCalledTimes(1);
+    expect(result.pendingSwitch).toBeNull();
+    expect(result.campaignId).toBeNull();
+    expect(result.response.message).toMatch(/Campagnes/);
+  });
+
+  it('new_campaign ne déclenche PAS la pré-recherche (lecture seule)', async () => {
+    chatCompleteMock.mockResolvedValueOnce(fakeCompletion(VALID_INTENT));
+    await runManagerTurn({ history: SIMPLE_HISTORY, fdp: null });
     expect(searchMock).not.toHaveBeenCalled();
-    expect(result.response.message).toMatch(/pour quel poste/i);
-    // Surtout PAS la réponse absurde.
-    expect(result.response.message).not.toMatch(/pas trouvé/i);
-    expect(result.preSearchHits).toEqual([]);
   });
 
   it('intention `other` (salutation) → recadrage déterministe sans LLM conversationnel', async () => {
@@ -548,17 +564,6 @@ describe('runManagerTurn — orchestration', () => {
     expect(searchMock).not.toHaveBeenCalled();
   });
 
-  it('calls searchExistingJobDescriptions for new_campaign without clarification', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    await runManagerTurn({ history: SIMPLE_HISTORY, fdp: null });
-
-    expect(searchMock).toHaveBeenCalledOnce();
-    expect(searchMock).toHaveBeenCalledWith(SIMPLE_HISTORY[0].content);
-  });
-
   it('skips pre-search for non-campaign intents', async () => {
     chatCompleteMock
       .mockResolvedValueOnce(
@@ -583,442 +588,6 @@ describe('runManagerTurn — orchestration', () => {
     expect(searchMock).not.toHaveBeenCalled();
   });
 
-  it('mints a CAMP-XXXX id for new_campaign without existing fdp', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const result = await runManagerTurn({
-      history: SIMPLE_HISTORY,
-      fdp: null,
-    });
-
-    expect(result.campaignId).toMatch(/^CAMP-\d{4}-\d{3}$/);
-  });
-
-  it('keeps the existing fdp.campaignId when fdp is provided (empty job_title)', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    const result = await runManagerTurn({ history: SIMPLE_HISTORY, fdp });
-
-    expect(result.campaignId).toBe('CAMP-2026-042');
-    expect(result.pendingSwitch).toBeNull();
-  });
-
-  it('triggers deterministic switch dialog when FDP has job_title + new_campaign high confidence + isDistinctNewCampaign + candidate', async () => {
-    chatCompleteMock.mockResolvedValueOnce(
-      fakeCompletion(
-        JSON.stringify({
-          intent: 'new_campaign',
-          confidence: 0.92,
-          reasoning: 'Le DRH bascule sur un autre poste.',
-          needsClarification: false,
-          isDistinctNewCampaign: true,
-          candidateNewJobTitle: 'Commercial',
-        }),
-      ),
-    );
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Comptable senior',
-      status: 'filled',
-    };
-
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'Comptable senior à Paris.' },
-        { role: 'manager', content: 'Pour la fourchette, je propose 50-65K.' },
-        { role: 'user', content: 'En fait je veux recruter un commercial.' },
-      ],
-      fdp,
-    });
-
-    // Court-circuit : seul l'appel de classification est fait, pas le tour conversationnel.
-    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
-    expect(result.pendingSwitch).not.toBeNull();
-    expect(result.pendingSwitch?.currentCampaignId).toBe('CAMP-2026-042');
-    expect(result.pendingSwitch?.currentJobTitle).toBe('Comptable senior');
-    expect(result.pendingSwitch?.currentStatus).toBe('draft');
-    expect(result.pendingSwitch?.proposedCampaignId).toMatch(
-      /^CAMP-\d{4}-\d{3}$/,
-    );
-    expect(result.pendingSwitch?.proposedCampaignId).not.toBe('CAMP-2026-042');
-    // Le campaignId du tour reste celui de la campagne courante.
-    expect(result.campaignId).toBe('CAMP-2026-042');
-    // Réponse déterministe : message + chips canoniques.
-    expect(result.response.chips?.options).toEqual([
-      'Oui, nouvelle campagne',
-      'Non, je continue',
-    ]);
-    expect(result.response.chips?.placement).toBe('below_bubble');
-    expect(result.response.message).toContain('Comptable senior');
-  });
-
-  it('switch dialog mentions validated status when current FDP is validated', async () => {
-    chatCompleteMock.mockResolvedValueOnce(
-      fakeCompletion(
-        JSON.stringify({
-          intent: 'new_campaign',
-          confidence: 0.92,
-          reasoning: 'Le DRH bascule sur un autre poste.',
-          needsClarification: false,
-          isDistinctNewCampaign: true,
-          candidateNewJobTitle: 'Commercial',
-        }),
-      ),
-    );
-
-    const fdp = {
-      ...buildEmptyFDP('CAMP-2026-042'),
-      isComplete: true,
-      isValidated: true,
-    };
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Comptable senior',
-      status: 'filled',
-    };
-
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'Maintenant je veux recruter un commercial.' },
-      ],
-      fdp,
-    });
-
-    expect(result.pendingSwitch?.currentStatus).toBe('validated');
-    expect(result.response.message).toContain('déjà validée');
-  });
-
-  it('does NOT trigger switch dialog when LLM hallucinates isDistinctNewCampaign=true but no candidateNewJobTitle (e.g. user said "ok")', async () => {
-    // Cas réel observé : le LLM peut renvoyer isDistinctNewCampaign=true
-    // à tort sur un message court (« ok », « oui ») à cause de la
-    // pollution de l'historique. Le garde-fou serveur exige aussi un
-    // candidateNewJobTitle non vide pour déclencher le switch.
-    chatCompleteMock
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            intent: 'new_campaign',
-            confidence: 0.9,
-            reasoning: "L'historique parle de plusieurs postes.",
-            needsClarification: false,
-            isDistinctNewCampaign: true,
-            candidateNewJobTitle: null,
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Développeur Python',
-      status: 'filled',
-    };
-
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'En fait je veux un développeur python.' },
-        { role: 'manager', content: 'Quelle séniorité ?' },
-        { role: 'user', content: 'ok' },
-      ],
-      fdp,
-    });
-
-    expect(result.pendingSwitch).toBeNull();
-    expect(chatCompleteMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('does NOT trigger switch dialog when candidate matches current job_title (case-insensitive)', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            intent: 'new_campaign',
-            confidence: 0.9,
-            reasoning: 'Le DRH répète le même poste.',
-            needsClarification: false,
-            isDistinctNewCampaign: true,
-            candidateNewJobTitle: 'comptable',
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Comptable',
-      status: 'filled',
-    };
-
-    const result = await runManagerTurn({
-      history: [{ role: 'user', content: 'on continue sur Comptable.' }],
-      fdp,
-    });
-
-    expect(result.pendingSwitch).toBeNull();
-  });
-
-  it('triggers switch dialog via keyword fallback when LLM is conservative (no candidate, isDistinct=false)', async () => {
-    // Cas réel observé : DRH dit « non en fait je veux lancer une
-    // campagne » sans nommer le poste cible. Le LLM met isDistinct=false
-    // et candidate=null par excès de prudence. Le keyword « lancer une
-    // campagne » suffit à déclencher le switch côté serveur.
-    chatCompleteMock.mockResolvedValueOnce(
-      fakeCompletion(
-        JSON.stringify({
-          intent: 'new_campaign',
-          confidence: 0.9,
-          reasoning: 'Le DRH demande une nouvelle campagne.',
-          needsClarification: false,
-          isDistinctNewCampaign: false,
-          candidateNewJobTitle: null,
-        }),
-      ),
-    );
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Développeur Python',
-      status: 'filled',
-    };
-
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'Développeur Python' },
-        { role: 'manager', content: 'Quelle séniorité ?' },
-        { role: 'user', content: 'non en fait je veux lancer une campagne' },
-      ],
-      fdp,
-    });
-
-    expect(chatCompleteMock).toHaveBeenCalledTimes(1);
-    expect(result.pendingSwitch).not.toBeNull();
-    expect(result.pendingSwitch?.currentJobTitle).toBe('Développeur Python');
-  });
-
-  it('does NOT trigger switch via keyword when message is just a short reply ("senior")', async () => {
-    // Garde-fou : keyword n'est jamais matché par des réponses
-    // courantes de collecte. Le LLM dit isDistinct=true par erreur,
-    // mais aucun keyword → pas de switch.
-    chatCompleteMock
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            intent: 'new_campaign',
-            confidence: 0.9,
-            reasoning: 'Faux positif hypothétique.',
-            needsClarification: false,
-            isDistinctNewCampaign: true,
-            candidateNewJobTitle: null,
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Développeur Python',
-      status: 'filled',
-    };
-
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'Développeur Python' },
-        { role: 'manager', content: 'Quelle séniorité ?' },
-        { role: 'user', content: 'senior' },
-      ],
-      fdp,
-    });
-
-    expect(result.pendingSwitch).toBeNull();
-  });
-
-  it('does NOT trigger switch dialog when DRH continues collection on the same job (isDistinctNewCampaign omitted)', async () => {
-    // Reproduit le bug : pendant la collecte FDP, le DRH répond
-    // « senior » à une question. Le classifier voit toute la conv
-    // comme « new_campaign » mais isDistinctNewCampaign reste false
-    // (ou omis) → le switch ne doit PAS se déclencher.
-    chatCompleteMock
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            intent: 'new_campaign',
-            confidence: 0.9,
-            reasoning: 'La conversation reste dans le contexte de cadrage.',
-            needsClarification: false,
-            isDistinctNewCampaign: false,
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Comptable',
-      status: 'filled',
-    };
-
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'Je veux recruter un comptable.' },
-        { role: 'manager', content: 'Quelle séniorité ?' },
-        { role: 'user', content: 'senior' },
-      ],
-      fdp,
-    });
-
-    // Pas de switch — le tour conversationnel LLM est appelé normalement.
-    expect(chatCompleteMock).toHaveBeenCalledTimes(2);
-    expect(result.pendingSwitch).toBeNull();
-  });
-
-  it('does NOT trigger switch dialog when FDP has no job_title yet', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-
-    const result = await runManagerTurn({
-      history: SIMPLE_HISTORY,
-      fdp,
-    });
-
-    // FDP vide ⇒ pas de switch ⇒ deux appels LLM (classification + tour conversationnel)
-    expect(chatCompleteMock).toHaveBeenCalledTimes(2);
-    expect(result.pendingSwitch).toBeNull();
-    expect(result.campaignId).toBe('CAMP-2026-042');
-  });
-
-  it('does NOT trigger switch dialog when intent confidence is below threshold', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            intent: 'new_campaign',
-            confidence: 0.55,
-            reasoning: 'Hésitation.',
-            needsClarification: false,
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(fakeCompletion(VALID_RESPONSE));
-
-    const fdp = buildEmptyFDP('CAMP-2026-042');
-    fdp.fields.job_title = {
-      ...fdp.fields.job_title!,
-      value: 'Comptable senior',
-      status: 'filled',
-    };
-
-    const result = await runManagerTurn({
-      history: SIMPLE_HISTORY,
-      fdp,
-    });
-
-    expect(result.pendingSwitch).toBeNull();
-    expect(result.campaignId).toBe('CAMP-2026-042');
-  });
-
-  it('aggregates metrics across both LLM calls', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(
-        fakeCompletion(VALID_INTENT, {
-          durationMs: 200,
-          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
-          costEstimate: 0.002,
-        }),
-      )
-      .mockResolvedValueOnce(
-        fakeCompletion(VALID_RESPONSE, {
-          durationMs: 350,
-          usage: { promptTokens: 15, completionTokens: 25, totalTokens: 40 },
-          costEstimate: 0.003,
-        }),
-      );
-
-    const result = await runManagerTurn({
-      history: SIMPLE_HISTORY,
-      fdp: null,
-    });
-
-    expect(result.metrics.durationMs).toBe(550);
-    expect(result.metrics.tokensUsed).toBe(70);
-    expect(result.metrics.costEstimate).toBeCloseTo(0.005, 5);
-  });
-
-  it('cleans null chips/fieldExtractions but injects fallback chips when missing', async () => {
-    // Le LLM renvoie chips/fieldExtractions à null → on les déserialise
-    // proprement (les rendre undefined avant zod). Puis la Phase 2
-    // garde-fou ensureChipsPresent injecte la paire fallback
-    // Continuer/Ajuster placement above_input (le dernier message DRH
-    // n'est pas une demande d'éclaircissement).
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            message: 'Quelles sont les missions principales ?',
-            chips: null,
-            fieldExtractions: null,
-          }),
-        ),
-      );
-
-    const result = await runManagerTurn({
-      history: SIMPLE_HISTORY,
-      fdp: null,
-    });
-
-    expect(result.response.fieldExtractions).toBeUndefined();
-    expect(result.response.chips).toEqual({
-      placement: 'above_input',
-      options: ['Continuer', 'Ajuster'],
-    });
-  });
-
-  it('does NOT inject fallback chips when DRH asks for clarification', async () => {
-    // Exception unique à la règle « chips toujours » : si le dernier
-    // message DRH contient un keyword d'éclaircissement (« explique »,
-    // « pourquoi », « précise »…), le Manager peut répondre en prose
-    // libre sans chips.
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(
-        fakeCompletion(
-          JSON.stringify({
-            message:
-              "La fourchette dépend du niveau d'expérience et de la localisation…",
-          }),
-        ),
-      );
-
-    const result = await runManagerTurn({
-      history: [
-        { role: 'user', content: 'Je veux recruter un comptable senior.' },
-        {
-          role: 'manager',
-          content: 'Pour la fourchette, je propose 50-65K.',
-        },
-        { role: 'user', content: "Pourquoi cette fourchette ? Explique-moi." },
-      ],
-      fdp: null,
-    });
-
-    expect(result.response.chips).toBeUndefined();
-  });
-
   it('throws ManagerError on invalid intent JSON', async () => {
     chatCompleteMock.mockResolvedValueOnce(fakeCompletion('not-json'));
 
@@ -1027,15 +596,4 @@ describe('runManagerTurn — orchestration', () => {
     ).rejects.toBeInstanceOf(ManagerError);
   });
 
-  it('throws ManagerError on invalid response shape', async () => {
-    chatCompleteMock
-      .mockResolvedValueOnce(fakeCompletion(VALID_INTENT))
-      .mockResolvedValueOnce(
-        fakeCompletion(JSON.stringify({ message: '' })),
-      );
-
-    await expect(
-      runManagerTurn({ history: SIMPLE_HISTORY, fdp: null }),
-    ).rejects.toMatchObject({ name: 'ManagerError' });
-  });
 });

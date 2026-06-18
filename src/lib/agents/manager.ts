@@ -504,6 +504,27 @@ export function buildOutOfCampaignUnavailableResponse(): ManagerResponse {
 }
 
 /**
+ * Réponse DÉTERMINISTE d'ORIENTATION pour la création de campagne.
+ *
+ * Refonte « Manager lecture seule » : le Manager n'initie ni ne conduit PLUS
+ * aucun cadrage write (création/édition de campagne). Toute intention
+ * `new_campaign` est redirigée vers l'UI déterministe, qui est le SEUL endroit
+ * où l'on crée une campagne. Le Manager SAIT, ANALYSE, ORIENTE — il n'agit pas.
+ * Le wording de navigation sera adossé à la cartographie produit (Phase 4) ;
+ * en l'état il pointe vers l'entrée réelle de l'interface.
+ */
+export function buildCreationRedirectResponse(): ManagerResponse {
+  return {
+    message:
+      "Je ne crée pas les campagnes moi-même — c'est vous qui gardez la main. Pour en lancer une : onglet « Campagnes » → « Nouvelle campagne ». Vous y cadrez la fiche de poste, le scoring et les flux, puis vous l'activez. Je reste là pour faire le point sur vos campagnes ou analyser un CV.",
+    chips: {
+      placement: 'below_bubble',
+      options: ['Faire un point sur une campagne', 'Analyser un CV'],
+    },
+  };
+}
+
+/**
  * Filet anti-bulle-vide. Le schéma autorise un message d'espaces
  * (`min(1)`) ; un message blanc afficherait une bulle vide côté chat.
  * On le remplace par une relance neutre — universel, appliqué à TOUTE
@@ -584,6 +605,31 @@ export async function runManagerTurn(
     };
   }
 
+  // VERROU « Manager lecture seule » — l'intention `new_campaign` ne déclenche
+  // PLUS aucun cadrage write (collecte FDP, création, scoring, flux, annonce).
+  // On ORIENTE vers l'UI déterministe, seul endroit où une campagne se crée.
+  // Tout le flux de collecte/proposition en aval (switch dialog, cold-start,
+  // pré-recherche, tour conversationnel) devient inatteignable — CONSERVÉ pour
+  // l'instant (nettoyage Phase 3), non-destructif. Le drapeau `: boolean`
+  // (et non `true` littéral) est VOLONTAIRE : il empêche TypeScript de réduire
+  // `intent` à `never` dans la suite, ce qui permet de garder le tail mort mais
+  // compilable jusqu'à sa suppression en Phase 3.
+  const MANAGER_READ_ONLY: boolean = true;
+  if (MANAGER_READ_ONLY && classification.intent === 'new_campaign') {
+    return {
+      classification,
+      response: buildCreationRedirectResponse(),
+      preSearchHits: [],
+      campaignId: null,
+      pendingSwitch: null,
+      metrics: {
+        durationMs: intentCompletion.durationMs,
+        tokensUsed: intentCompletion.usage.totalTokens,
+        costEstimate: intentCompletion.costEstimate,
+      },
+    };
+  }
+
   // Détection déterministe du switch de campagne. On court-circuite le
   // tour conversationnel LLM si :
   //   - une FDP existe avec au moins job_title rempli,
@@ -655,10 +701,10 @@ export async function runManagerTurn(
   }
 
   // VERROU DÉTERMINISTE — intention `other` (salutation, hors-sujet).
-  // On ne fait PAS tourner le prompt de collecte FDP dessus : recadrage
-  // fixe vers la mission RH. Exception : si une FDP est en cours (le DRH
-  // glisse un aparté en pleine collecte), on laisse le LLM gérer le fil.
-  if (classification.intent === 'other' && input.fdp === null) {
+  // Manager lecture seule : plus de collecte FDP du tout, donc plus d'exception
+  // « aparté en pleine collecte » (qui faisait tourner le tour conversationnel).
+  // On recadre TOUJOURS vers la mission RH (point campagne / analyse CV).
+  if (classification.intent === 'other') {
     return {
       classification,
       response: buildOtherIntentResponse(),

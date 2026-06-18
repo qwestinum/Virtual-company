@@ -1,6 +1,6 @@
 'use client';
 
-import { Briefcase, FilePlus2, FileText, Sparkles } from 'lucide-react';
+import { Briefcase, Sparkles } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { CampaignPickerEntry } from '@/stores/chat-store';
@@ -41,21 +41,19 @@ export function CVRoutePicker({
   onPick,
 }: CVRoutePickerProps) {
   const noActive = activeCampaigns.length === 0;
+  // Manager LECTURE SEULE : l'unique usage autorisé d'un CV déposé est son
+  // ANALYSE contre une campagne existante. Les routes qui MUTENT (créer une
+  // nouvelle campagne, tâche isolée, pré-remplir depuis un brief) sont retirées
+  // — la création vit exclusivement dans l'UI déterministe.
   const options: Option[] = [
-    {
-      id: 'new',
-      label: 'Nouvelle campagne',
-      hint: 'Créer une CAMP-XXXX et y rattacher ces CV',
-      icon: FilePlus2,
-    },
     {
       id: 'existing',
       label: noActive
         ? 'Campagne en cours (aucune)'
         : `Campagne en cours (${activeCampaigns.length})`,
       hint: noActive
-        ? 'Aucune campagne active pour le moment'
-        : 'Choisir une campagne existante dans la liste',
+        ? 'Aucune campagne active — créez-en une depuis l’onglet Campagnes'
+        : 'Analyser ces CV contre une campagne existante',
       icon: Briefcase,
     },
     ...(ISOLATED_TASK_ENABLED
@@ -65,19 +63,6 @@ export function CVRoutePicker({
             label: 'Tâche isolée',
             hint: 'Analyse atomique sans campagne (TASK-XXXX)',
             icon: Sparkles,
-          },
-        ]
-      : []),
-    // Désambiguïsation : le document déposé n'est peut-être pas un CV mais un
-    // brief (appel d'offres / notes) à partir duquel cadrer une campagne. Ne
-    // proposé que pour un fichier unique (un cadrage = un document).
-    ...(fileCount === 1
-      ? [
-          {
-            id: 'brief' as const,
-            label: 'Appel d’offres / notes',
-            hint: 'Pré-remplir une campagne à partir de ce document',
-            icon: FileText,
           },
         ]
       : []),
