@@ -26,6 +26,8 @@ export type InterviewBriefMailInput = {
   };
   /** true si le CV a pu être joint, false sinon (mention de repli). */
   cvAttached: boolean;
+  /** true si une invitation agenda .ics est jointe. */
+  icsAttached?: boolean;
 };
 
 function escapeHtml(s: string): string {
@@ -77,6 +79,9 @@ export function buildInterviewBriefMail(input: InterviewBriefMailInput): {
     slot ? `<li>Créneau : <strong>${escapeHtml(slot)}</strong></li>` : '',
     input.booking.location
       ? `<li>Lieu / lien : ${escapeHtml(input.booking.location)}</li>`
+      : '',
+    input.icsAttached
+      ? '<li>Agenda : invitation <strong>.ics</strong> en pièce jointe (ouvre-la pour ajouter l’entretien à ton calendrier)</li>'
       : '',
   ].filter((l) => l !== '');
 

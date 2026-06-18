@@ -15,6 +15,7 @@ import {
   buildUnmatchedBookingMail,
 } from '@/lib/agents/server/interview-brief-mail';
 import { composeInterviewGuide } from '@/lib/agents/server/mail-composer-execute';
+import { buildInterviewIcs } from '@/lib/calendar/ics';
 import { getLatestAnalysisByEmail } from '@/lib/db/repos/candidate-analyses';
 import {
   createScheduledBrief,
@@ -77,6 +78,19 @@ async function loadCvAttachment(
   }
 }
 
+/** Slug ASCII pour les noms de fichiers joints. */
+function slug(input: string): string {
+  return (
+    input
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'candidat'
+  );
+}
+
 async function sendBrief(args: {
   recipients: string[];
   candidate: MailCandidate;
@@ -86,6 +100,32 @@ async function sendBrief(args: {
   input: DeliverBriefInput;
 }): Promise<{ ok: boolean; messageId: string | null; error?: string }> {
   const attachment = await loadCvAttachment(args.input.attendeeEmail);
+
+  // .ics pour ajouter l'entretien à l'agenda (les adresses de synthèse ne sont
+  // pas invitées à l'événement Cal.com). Absent si le créneau manque.
+  const label = args.jobTitle ?? args.ownerLabel;
+  const ics = args.input.startTime
+    ? buildInterviewIcs({
+        bookingUid: args.input.bookingUid,
+        startAt: args.input.startTime,
+        endAt: args.input.endTime,
+        summary: `Entretien — ${args.candidate.candidateName} (${label})`,
+        description: args.candidate.summary,
+        location: args.input.location,
+        stampAt: new Date().toISOString(),
+      })
+    : null;
+  const icsAttachment: EmailAttachment | null = ics
+    ? {
+        filename: `entretien-${slug(args.candidate.candidateName)}.ics`,
+        content: Buffer.from(ics, 'utf8').toString('base64'),
+      }
+    : null;
+
+  const attachments = [attachment, icsAttachment].filter(
+    (a): a is EmailAttachment => a !== null,
+  );
+
   const { subject, html } = buildInterviewBriefMail({
     candidate: args.candidate,
     jobTitle: args.jobTitle,
@@ -97,12 +137,13 @@ async function sendBrief(args: {
       location: args.input.location,
     },
     cvAttached: attachment !== null,
+    icsAttached: icsAttachment !== null,
   });
   return sendEmail({
     to: args.recipients,
     subject,
     html,
-    ...(attachment ? { attachments: [attachment] } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
   });
 }
 

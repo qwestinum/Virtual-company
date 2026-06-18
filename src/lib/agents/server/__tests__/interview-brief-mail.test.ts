@@ -43,6 +43,24 @@ describe('buildInterviewBriefMail', () => {
     expect(html).toContain('Verdict CV Analyzer');
   });
 
+  it('mentions the .ics calendar invite when attached', () => {
+    const { html } = buildInterviewBriefMail({
+      candidate: baseCandidate,
+      jobTitle: 'Data Engineer',
+      ownerLabel: 'CAMP-0001',
+      questions: [],
+      booking: {
+        startAt: '2026-06-23T12:00:00.000Z',
+        endAt: null,
+        location: null,
+      },
+      cvAttached: true,
+      icsAttached: true,
+    });
+    expect(html).toContain('.ics');
+    expect(html).toContain('calendrier');
+  });
+
   it('mentions the missing CV instead of pretending it is attached', () => {
     const { html } = buildInterviewBriefMail({
       candidate: baseCandidate,
