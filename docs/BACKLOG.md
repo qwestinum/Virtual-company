@@ -528,3 +528,93 @@ ne sont pas en place dans le modèle.
 
 **Risque** : moyen — touche le schéma de campagne (lifecycle) + la persistance
 Supabase + le cadrage Temps 1. Isolable en commit dédié.
+
+---
+
+## Manager RH lecture seule — nettoyage du code mort (Phase 3, lots 3 & 4)
+
+**Statut** : refonte « Manager lecture seule » **opérationnelle et livrée**
+(Phase 1 inventaire, Phase 2 neutralisation, Phase 3 lots 1-2 commités). Il
+reste à **supprimer le code mort** rendu inatteignable par la Phase 2. C'est de
+l'**hygiène pure, sans impact fonctionnel** : tout ce qui est listé ici est déjà
+inerte (le Manager ne peut plus écrire, l'UI déterministe est intacte).
+
+### Rappel fonctionnel (déjà en place)
+Le Manager RH conversationnel est **strictement lecture seule** : il SAIT,
+ANALYSE, ORIENTE, il n'écrit jamais. Toute mutation (créer/éditer/activer une
+campagne, statuts, pondérations, présélections) passe **exclusivement par l'UI
+déterministe** (onglet Campagnes, formulaires, boutons). Périmètre autorisé du
+Manager : (1) analyse d'un CV déposé contre une campagne existante, (2) point de
+lecture sur une campagne, (3) orientation/navigation. Neutralisation faite aux
+points d'entrée : `manager.ts` (`new_campaign`/`other` → orientation), le
+route-picker d'upload (seul « analyser contre une campagne existante » reste),
+le sélecteur de campagne (lecture seule). Cf. `CLAUDE.md` à compléter quand le
+nettoyage sera fini.
+
+### Discipline de suppression
+Supprimer **uniquement sur « zéro référence » prouvé** (`grep` dans tout `src`
+hors le fichier supprimé) ; **ne jamais toucher une fonction partagée avec
+l'UI** (P) — couper le pont, pas la fonction ; **garder tous les agents en
+place** (Job Writer, Publisher, mail-composer, scheduler, rejection-writer) et
+le **subsystème isolé** (`manager-isolated.ts`, `/api/manager/isolated-criteria`,
+`isolated-criteria-store`, `IsolatedCriteriaChecklist`,
+`ValidateIsolatedCriteriaButton`, `handleValidateIsolated`). Typecheck + vitest
+après chaque coupure, commit conventionnel par lot.
+
+### Lot 4 — gutting `ManagerChat.tsx` (~2766 lignes) + stores + composants
+Lot **gros et délicat** (suppressions interdépendantes dans un composant à état
+lourd : refs, pickers, flux). À faire en sous-étapes vérifiées.
+
+- **Handlers de cadrage morts à retirer** (`src/components/chat/ManagerChat.tsx`) :
+  `advanceFlow`, `postFluxStep`, `postAnnouncementChoice`, `postPublicationChoice`,
+  `postAnnouncementStep`, `postLaunched`, `handleValidateFDP`, `handleChannelToggle`,
+  `handleChannelsConfirm`, `handleSourceToggle`, `handleSourcesConfirm`,
+  `proposeScoringForCampaign`, `handleScoringAdd/Update/Remove`, `handleMailboxPick`,
+  `handleScoringValidate`, `handleResumeAction`, `handleReopenAndContinue`,
+  `handleFieldAdjust`, `handleProposalEditSubmit/Cancel`, `maybeProposeAdRegeneration`,
+  `handleRegenerateAd`, `attachResumeChipsToLastBubble`, `applyFieldToSource`,
+  `editableFieldsForMessage`, `handleSwitchDialogChoice`, et le `handleChipSelect`
+  à élaguer (branches flux/annonce/publish/reopen/adjust). **Garder** :
+  `handleReset`, `handleFilesSelected`, `handleRoutePick`, `handleCampaignPick`,
+  `sendToManager`, `handleSendText`, `handleChipSelect` (épuré), `handleTranscribe`,
+  `handleSelectCampaign` (déjà lecture seule), `handleNewCampaign` (oriente),
+  `handleValidateIsolated` + `sendToManagerIsolated` (subsystème isolé).
+- **Stores M entiers** : `src/stores/fdp-store.ts`, `src/stores/scoring-store.ts`
+  (zéro consommateur hors Manager prouvé). **Garder** `isolated-criteria-store`.
+- **Composants de cadrage chat** : `ScoringSheetEditor`, `CVSourcesPicker`,
+  `PublicationChannelPicker`, `SourcePicker`, `FieldChecklist`, `ValidateFDPButton`,
+  + le `MailboxPicker` **du dossier `components/chat/`** (⚠️ homonyme : NE PAS
+  toucher `components/campagnes/edit/MailboxPicker.tsx`, utilisé par l'UI flux).
+- **`chat-store`** : retirer les `kind` de bloc devenus orphelins
+  (`scoring-sheet-editor`, `cv-sources-picker`, `publication-channel-picker`,
+  `source-picker`, `mailbox-picker`) + leur câblage dans `ChatBubble`. **Garder**
+  `cv-route-picker`, `campaign-picker`, `cv-progress`, `cv-batch-summary`
+  (chemin analyse CV).
+
+### Lot 3 — wrappers Manager (débloqué une fois le Lot 4 fait)
+- `src/lib/chat/manager-flow.ts` : `dispatchJobWriter`, `dispatchPublisher`,
+  `dispatchPostAnalysisOutreach`, `chooseRouteNewCampaign` (créateur de campagne).
+  **Garder** le chemin analyse CV : `dispatchCVRouting`, `chooseRouteExisting`,
+  `chooseExistingCampaign`, `dispatchCVBatch`, `snapshotActiveCampaigns`, et —
+  par prudence (subsystème isolé) — `chooseRouteIsolated` + `wipeForFreshStart`
+  tant que le flux isolé est conservé.
+- `src/lib/chat/api-client.ts` : `postJobWriter`. **Garder** `postCVAnalyzer`,
+  `postManagerScoring`, `postFdpProposal` (ces deux derniers utilisés par
+  `CampaignCreateSheet` — P).
+- **NE PAS supprimer** l'agent Job Writer lui-même (`registry.ts`,
+  `contracts/job-writer.ts`, `job-writer-*`, `/api/job-writer`) ni Publisher :
+  agents en place, conservés (décision produit). On retire seulement le wrapper
+  d'appel côté Manager.
+
+### Résidus mineurs (tidy final)
+- `manager.ts` : helpers de garde devenus orphelins mais encore exportés/testés
+  (`ensureChipsPresent`, `ensureAdjustChip`, `ensureProposalAnchor`,
+  `ensureNonEmptyMessage`, `buildAskRoleResponse`) + `buildConversationalPrompt`
+  (dans `manager-prompts.ts`) : à retirer avec leurs tests une fois le reste fait.
+- Re-tester `manager-prompts.test.ts` (tests du prompt conversationnel à retirer).
+
+**Risque** : moyen-élevé sur le Lot 4 (composant unique de 2766 lignes, état
+imbriqué) ; faible sur le Lot 3 (suppressions mécaniques après Lot 4). Aucune
+régression fonctionnelle attendue (code déjà inerte). **Bien committer par lot**
+et vérifier que le chat reste fonctionnel (analyse CV + point campagne +
+orientation) après chaque coupure.
