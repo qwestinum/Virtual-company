@@ -333,6 +333,13 @@ alter table public.app_settings
   add column if not exists synthesis_emails text[] not null default '{}'::text[],
   add column if not exists sender_emails text[] not null default '{}'::text[];
 
+-- Adresses de synthèse COCHÉES = destinataires réels des briefings (juin 2026).
+-- Choix multiple : le briefing ne part qu'aux adresses actives, pas à toute la
+-- liste. nullable → repli au mapping (l'ancienne adresse par défaut devient la
+-- seule cochée tant que rien n'est explicitement sélectionné).
+alter table public.app_settings
+  add column if not exists synthesis_emails_active text[];
+
 -- Clé API Resend pilotable depuis /settings. Write-only côté UI : la valeur
 -- n'est JAMAIS renvoyée en clair par GET /api/settings (seul un booléen
 -- « configurée » l'est). Le client email la lit côté serveur, avec repli sur
@@ -903,3 +910,125 @@ as $$
   where vc.indexing_status = 'indexed'
     and ae.candidate_id = any(candidate_ids)
 $$;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Recherche plein-texte EXACTE sur le vivier (repêchage manuel)
+-- STRICTEMENT distincte de la présélection sémantique : pas d'embedding, pas de
+-- seuil, pas de variante — « le mot est présent ou pas ». Spec : docs/specs/vivier.md.
+-- ──────────────────────────────────────────────────────────────────────
+-- Colonne tsvector GÉNÉRÉE depuis cv_text : Postgres backfille tous les dossiers
+-- existants à l'ADD COLUMN (réécriture de table, lock bref — OK au volume
+-- prototype) et la maintient à chaque upsert de cv_text. AUCUNE réindexation ni
+-- pipeline LLM nécessaire. Config 'french' (stemming + frontière de MOT : « SAP »
+-- ne matche jamais « sapin », contrairement à un ILIKE '%sap%'). Forme à deux
+-- arguments = IMMUTABLE, requise par une colonne générée.
+alter table public.vivier_candidates
+  add column if not exists cv_tsv tsvector
+  generated always as (to_tsvector('french', coalesce(cv_text, ''))) stored;
+
+create index if not exists vivier_candidates_cv_tsv_idx
+  on public.vivier_candidates using gin (cv_tsv);
+
+-- RPC de recherche plein-texte : dossiers dont le CV INTÉGRAL contient le(s)
+-- mot(s) cherché(s), avec un extrait surligné (ts_headline). Surlignage via des
+-- SENTINELLES non-HTML ([[HL]]…[[/HL]]) que le client transforme en <mark> après
+-- échappement (pas de dangerouslySetInnerHTML → pas d'injection). `title` avec
+-- repli sur le dernier poste (ancre depth 1). Tri : fraîcheur décroissante.
+-- websearch_to_tsquery : ne lève jamais sur une saisie utilisateur libre, et
+-- accepte les "phrases entre guillemets" pour une recherche de séquence exacte.
+create or replace function public.search_vivier_fulltext(
+  p_query text
+)
+returns table (
+  candidate_id uuid,
+  email        text,
+  nom          text,
+  prenom       text,
+  title        text,
+  snippet      text
+)
+language sql
+stable
+as $$
+  select vc.id,
+         vc.email,
+         vc.nom,
+         vc.prenom,
+         coalesce(
+           nullif(vc.title, ''),
+           (select a->>'text'
+              from jsonb_array_elements(vc.title_anchors) a
+             where (a->>'depth') = '1'
+             limit 1)
+         ) as title,
+         ts_headline(
+           'french', vc.cv_text,
+           websearch_to_tsquery('french', p_query),
+           'StartSel=[[HL]], StopSel=[[/HL]], MaxFragments=1, MinWords=8, MaxWords=30'
+         ) as snippet
+  from public.vivier_candidates vc
+  where vc.cv_tsv @@ websearch_to_tsquery('french', p_query)
+  order by vc.updated_at desc
+$$;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Briefings d'entretien — file d'attente + état des candidatures retenues
+-- (juin 2026 — réservation Cal.com pilote la délivrance du briefing)
+-- ──────────────────────────────────────────────────────────────────────
+-- Un candidat ACCEPTÉ + invité génère ici une trame d'entretien MISE EN
+-- ATTENTE (status 'awaiting_booking'). Le briefing n'est délivré (mail au
+-- DRH + CV en PJ) qu'à la réception du webhook Cal.com BOOKING_CREATED, qui
+-- bascule la ligne en 'scheduled'. Cette table est aussi la source de
+-- vérité du dashboard : qui est invité-en-attente vs qui a réservé.
+create table if not exists public.interview_briefs (
+  id                   uuid primary key default gen_random_uuid(),
+  campaign_id          text,
+  task_id              text,
+  candidate_email      text,          -- normalisé (lower+trim), clé de matching webhook
+  candidate_name       text not null,
+  job_title            text,
+  status               text not null default 'awaiting_booking'
+                         check (status in ('awaiting_booking', 'scheduled')),
+  questions            jsonb not null default '[]'::jsonb,   -- trame générée
+  candidate_snapshot   jsonb not null default '{}'::jsonb,   -- MailCandidate (corps mail + repli)
+  booking_uid          text,          -- uid Cal.com, posé à la livraison
+  interview_start_at   timestamptz,
+  interview_end_at     timestamptz,
+  interview_location   text,
+  delivered_message_id text,          -- message-id Resend du brief livré
+  created_at           timestamptz not null default now(),  -- = invité / mis en file le
+  booked_at            timestamptz,
+  updated_at           timestamptz not null default now()
+);
+
+-- Lookup au webhook : la plus récente candidature EN ATTENTE pour un email.
+create index if not exists interview_briefs_pending_email_idx
+  on public.interview_briefs (lower(candidate_email), created_at desc)
+  where status = 'awaiting_booking';
+
+-- Dashboard : état par campagne (invités en attente vs entretiens programmés).
+create index if not exists interview_briefs_campaign_idx
+  on public.interview_briefs (campaign_id, status);
+
+-- Un booking Cal.com ne se rattache qu'à une seule ligne (idempotence livraison).
+create unique index if not exists interview_briefs_booking_uid_idx
+  on public.interview_briefs (booking_uid)
+  where booking_uid is not null;
+
+drop trigger if exists interview_briefs_touch_updated_at on public.interview_briefs;
+create trigger interview_briefs_touch_updated_at
+  before update on public.interview_briefs
+  for each row execute function public.touch_updated_at();
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Idempotence webhook Cal.com — un booking traité une seule fois
+-- ──────────────────────────────────────────────────────────────────────
+-- Clé = uid du booking Cal.com. Le webhook CLAIM cette clé AVANT de livrer ;
+-- si la livraison échoue de façon transitoire, le claim est RELÂCHÉ (Cal.com
+-- pourra rejouer). Un rejeu APRÈS succès trouve la clé présente et ne renvoie
+-- rien — garantit qu'un même booking ne déclenche qu'un seul envoi.
+create table if not exists public.calcom_webhook_events (
+  booking_uid   text primary key,
+  trigger_event text not null,
+  processed_at  timestamptz not null default now()
+);

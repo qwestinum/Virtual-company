@@ -8,15 +8,17 @@
  *   - « Relancer la recherche vivier » (POST sans corps — endpoint idempotent) ;
  *   - recherche libre complémentaire (POST { freeText } — résultats éphémères).
  * La section Validation vivier complète (décisions accepter/rejeter) est en V3.
+ * La recherche par MOT-CLÉ (plein-texte + repêchage) est une fonction à part,
+ * STRICTEMENT distincte de la présélection sémantique (cf. VivierKeywordSearch).
  */
 
 import { useCallback, useEffect, useState } from 'react';
 
 import type { ShortlistEntry } from '@/types/vivier-preselection';
 
+import { VivierKeywordSearch } from './VivierKeywordSearch';
 import { VivierPreselectionRow } from './VivierPreselectionRow';
 
-type Mode = 'fiche' | 'libre';
 type Meta = {
   indexedCount: number;
   deterministicCount: number;
@@ -27,10 +29,8 @@ type Meta = {
 export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) {
   const [entries, setEntries] = useState<ShortlistEntry[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
-  const [mode, setMode] = useState<Mode>('fiche');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [freeText, setFreeText] = useState('');
 
   const base = `/api/campaigns/${campaignId}/vivier-preselection`;
 
@@ -40,7 +40,6 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
       if (!res.ok) return;
       const data = (await res.json()) as { entries: ShortlistEntry[] };
       setEntries(data.entries);
-      setMode('fiche');
     } catch {
       /* silencieux : l'affichage reste vide */
     }
@@ -79,15 +78,7 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
   }
 
   async function relaunch() {
-    setMode('fiche');
     await post();
-  }
-
-  async function search() {
-    const q = freeText.trim();
-    if (!q) return;
-    setMode('libre');
-    await post({ freeText: q });
   }
 
   return (
@@ -101,41 +92,14 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
         >
           Relancer la recherche vivier
         </button>
-        <div className="ml-auto flex items-center gap-1">
-          <input
-            value={freeText}
-            onChange={(e) => setFreeText(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                void search();
-              }
-            }}
-            placeholder="Recherche libre (ex. devops senior bancaire)"
-            className="w-64 rounded-md border border-stone-200 px-2 py-1.5 font-body text-[12px] text-stone-700 outline-none focus:border-emerald-400"
-          />
-          <button
-            type="button"
-            onClick={search}
-            disabled={busy || freeText.trim().length === 0}
-            className="rounded-md border border-stone-200 px-3 py-1.5 font-body text-[12px] font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-50"
-          >
-            Rechercher
-          </button>
-        </div>
       </div>
 
-      {mode === 'libre' ? (
-        <p className="font-body text-[11px] text-amber-700">
-          Résultats de recherche libre — éphémères, non enregistrés.
-        </p>
-      ) : null}
       {error ? (
         <p className="font-body text-[12px] text-rose-600">{error}</p>
       ) : null}
 
       {/* Transparence du run : origine des matchs + écartés sous le seuil. */}
-      {meta && mode === 'fiche' ? (
+      {meta ? (
         <p className="font-body text-[11px] text-stone-400">
           {meta.deterministicCount} correspondance
           {meta.deterministicCount > 1 ? 's' : ''} de titre ·{' '}
@@ -184,6 +148,8 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
           </table>
         </div>
       )}
+
+      <VivierKeywordSearch campaignId={campaignId} />
     </div>
   );
 }

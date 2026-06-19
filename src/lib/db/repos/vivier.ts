@@ -151,6 +151,48 @@ export async function listVivierCandidates(
   };
 }
 
+/** Un résultat de recherche plein-texte (org-level, sans score sémantique). */
+export type VivierFulltextResult = {
+  candidateId: string;
+  email: string;
+  nom: string;
+  prenom: string | null;
+  title: string | null;
+  snippet: string;
+};
+
+/**
+ * Recherche plein-texte EXACTE sur le CV intégral (RPC `search_vivier_fulltext`,
+ * full-text Postgres). Mot ENTIER, pas de similarité ni de seuil — strictement
+ * distincte de la présélection sémantique. Retourne tous les dossiers du vivier
+ * (org-level) contenant le(s) mot(s), avec un extrait surligné, triés par
+ * fraîcheur. Liste vide = réponse valide (le mot n'est nulle part).
+ */
+export async function searchVivierFulltext(
+  query: string,
+): Promise<VivierFulltextResult[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase.rpc('search_vivier_fulltext', {
+    p_query: query,
+  });
+  if (error) throw new Error(`searchVivierFulltext: ${error.message}`);
+  return ((data ?? []) as {
+    candidate_id: string;
+    email: string;
+    nom: string;
+    prenom: string | null;
+    title: string | null;
+    snippet: string;
+  }[]).map((r) => ({
+    candidateId: r.candidate_id,
+    email: r.email,
+    nom: r.nom,
+    prenom: r.prenom,
+    title: r.title,
+    snippet: r.snippet,
+  }));
+}
+
 /** Dossier + entités jointes (vue détail). */
 export async function getVivierEntities(
   candidateId: string,

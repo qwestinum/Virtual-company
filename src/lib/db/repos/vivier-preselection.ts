@@ -17,6 +17,7 @@ import {
 import type {
   HardFilterMatch,
   ShortlistEntry,
+  VivierPreselectionState,
 } from '@/types/vivier-preselection';
 
 const TABLE = 'vivier_preselections';
@@ -116,6 +117,89 @@ export async function listPreselection(
     decidedBy: row.decided_by,
     appliedAt: row.applied_at,
   }));
+}
+
+/**
+ * États de présélection d'un sous-ensemble de candidats pour une campagne
+ * (clé candidat → état). Sert à calculer la « présence » d'un résultat de
+ * recherche mot-clé dans la liste de validation. Les candidats absents de la
+ * Map ne sont dans aucune présélection de la campagne.
+ */
+export async function getPreselectionStatesForCandidates(
+  campaignId: string,
+  candidateIds: string[],
+): Promise<Map<string, VivierPreselectionState>> {
+  if (candidateIds.length === 0) return new Map();
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('candidate_id, state')
+    .eq('campaign_id', campaignId)
+    .in('candidate_id', candidateIds);
+  if (error)
+    throw new Error(`getPreselectionStatesForCandidates: ${error.message}`);
+  const map = new Map<string, VivierPreselectionState>();
+  for (const r of (data ?? []) as {
+    candidate_id: string;
+    state: VivierPreselectionState;
+  }[]) {
+    map.set(r.candidate_id, r.state);
+  }
+  return map;
+}
+
+/**
+ * REPÊCHAGE manuel (recherche mot-clé) : injecte un candidat dans la liste de
+ * validation d'une campagne en `identified`. Override humain explicite :
+ *   - un candidat `rejected` est RÉACTIVÉ en `identified` (le repêchage PRIME
+ *     sur le rejet antérieur) — on remet à null les faits datés pour satisfaire
+ *     le CHECK état↔dates ;
+ *   - un candidat `contacted` n'est PAS retouché (état terminal, déjà engagé) :
+ *     no-op, on renvoie `contacted` ;
+ *   - sinon (absent ou déjà `identified`) : upsert idempotent en `identified`.
+ * Colonnes de score renseignées neutres (pas d'origine sémantique) ;
+ * `match_kind='keyword'` rend la ligne identifiable. Renvoie l'état résultant.
+ */
+export async function repechageToPreselection(
+  campaignId: string,
+  candidateId: string,
+  matchTerm: string | null,
+): Promise<'identified' | 'contacted'> {
+  const supabase = requireServerSupabase();
+
+  const { data: existing, error: readErr } = await supabase
+    .from(TABLE)
+    .select('state')
+    .eq('campaign_id', campaignId)
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (readErr) throw new Error(`repechageToPreselection(read): ${readErr.message}`);
+  if (existing && (existing as { state: string }).state === 'contacted') {
+    return 'contacted';
+  }
+
+  const { error } = await supabase.from(TABLE).upsert(
+    {
+      campaign_id: campaignId,
+      candidate_id: candidateId,
+      state: 'identified' as const,
+      similarity: 0,
+      freshness_factor: 1,
+      relevance_score: 0,
+      passed_filters: [],
+      rank: 0,
+      match_kind: 'keyword',
+      match_term: matchTerm,
+      contacted_at: null,
+      rejected_at: null,
+      decided_by: null,
+      applied_at: null,
+      generated_at: new Date().toISOString(),
+    },
+    { onConflict: 'campaign_id,candidate_id' },
+  );
+  if (error) throw new Error(`repechageToPreselection(upsert): ${error.message}`);
+  return 'identified';
 }
 
 /** Une campagne avec des prises de contact vivier en attente (worklist §5). */
