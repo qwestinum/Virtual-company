@@ -39,6 +39,15 @@ export type InterviewIcsInput = {
   cvBinary?: { base64: string; filename: string; mimeType: string } | null;
 };
 
+/** Échappe une URL pour un contexte HTML (href/texte de la variante X-ALT-DESC). */
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /** Échappe les métacaractères de valeur TEXTE iCalendar (RFC 5545 §3.3.11). */
 function escapeText(value: string): string {
   return value
@@ -96,6 +105,15 @@ export function buildInterviewIcs(input: InterviewIcsInput): string | null {
   ].filter((p) => p !== '');
   const description = descriptionParts.join('\n\n');
 
+  // Variante HTML : on y RÉINJECTE le lien CV (le corps de mail réutilisé ne le
+  // porte pas) pour que les clients riches (Outlook) l'aient aussi.
+  const htmlCvLink = input.cvUrl
+    ? `<p>CV du candidat : <a href="${escapeHtmlAttr(input.cvUrl)}">${escapeHtmlAttr(input.cvUrl)}</a></p>`
+    : '';
+  const htmlDescription = input.htmlDescription
+    ? [input.htmlDescription, htmlCvLink].filter((p) => p !== '').join('')
+    : null;
+
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -110,8 +128,8 @@ export function buildInterviewIcs(input: InterviewIcsInput): string | null {
     `SUMMARY:${escapeText(input.summary)}`,
     description ? `DESCRIPTION:${escapeText(description)}` : '',
     // Variante HTML (Outlook) — text-escapée comme toute valeur iCalendar.
-    input.htmlDescription
-      ? `X-ALT-DESC;FMTTYPE=text/html:${escapeText(input.htmlDescription)}`
+    htmlDescription
+      ? `X-ALT-DESC;FMTTYPE=text/html:${escapeText(htmlDescription)}`
       : '',
     input.location ? `LOCATION:${escapeText(input.location)}` : '',
     // ATTACH URI (valeur = URI, PAS de text-escaping) — lien cliquable.

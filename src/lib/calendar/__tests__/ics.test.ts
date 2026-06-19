@@ -88,6 +88,25 @@ describe('buildInterviewIcs', () => {
     expect(ics).not.toContain('X-ALT-DESC');
   });
 
+  it('réinjecte le lien CV dans la variante HTML (et garde le texte brut)', () => {
+    const url = 'https://x.supabase.co/storage/v1/object/sign/cv.pdf?token=a&exp=b';
+    const ics = buildInterviewIcs({
+      ...base,
+      description: 'Briefing.',
+      htmlDescription: '<h3>Synthèse</h3>',
+      cvUrl: url,
+    })!;
+    const unfolded = ics.replace(/\r\n /g, '');
+    // Texte brut : lien CV présent (Google/Apple).
+    expect(unfolded).toContain(`CV du candidat : ${url}`);
+    // Variante HTML : lien CV présent en <a href>, & échappé HTML en &amp;
+    // (le ; final est ensuite ICS-escapé en \; — déséchappé par le client).
+    expect(unfolded).toContain('X-ALT-DESC;FMTTYPE=text/html:');
+    expect(unfolded).toContain(
+      '<a href="https://x.supabase.co/storage/v1/object/sign/cv.pdf?token=a&amp',
+    );
+  });
+
   it('embarque le CV binaire (ATTACH base64) et plie les lignes à ≤ 75 caractères', () => {
     const base64 = 'QUJD'.repeat(60); // 240 caractères → forcément plié
     const ics = buildInterviewIcs({
