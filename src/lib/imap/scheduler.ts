@@ -31,6 +31,16 @@ export function ensureSchedulerStarted(): {
   alreadyRunning: boolean;
   startedAt: string;
 } {
+  // Serverless (Vercel) : un `setInterval` lancé au boot ne survit pas
+  // proprement et d'ANCIENNES instances « tièdes » continuent de tourner avec
+  // du code périmé (→ double traitement / ancien briefing). On NE démarre donc
+  // PAS le timer ici sur Vercel : le polling passe par le cron Vercel
+  // (vercel.json → GET /api/cron/imap-poll), qui poll via une REQUÊTE et frappe
+  // donc TOUJOURS le déploiement courant. En dev/VPS (`next dev`/`next start`),
+  // le timer reste la voie normale.
+  if (process.env.VERCEL) {
+    return { alreadyRunning: true, startedAt: '' };
+  }
   if (globalThis.__imapSchedulerHandle__) {
     return {
       alreadyRunning: true,

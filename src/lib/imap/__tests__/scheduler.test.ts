@@ -11,12 +11,16 @@ import {
 } from '@/lib/imap/scheduler';
 
 describe('imap scheduler singleton', () => {
+  const prevVercel = process.env.VERCEL;
   beforeEach(() => {
+    delete process.env.VERCEL; // ces tests valident le timer dev/VPS
     stopScheduler();
   });
 
   afterEach(() => {
     stopScheduler();
+    if (prevVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = prevVercel;
     vi.restoreAllMocks();
   });
 
@@ -42,5 +46,12 @@ describe('imap scheduler singleton', () => {
     expect(getSchedulerStatus().running).toBe(true);
     stopScheduler();
     expect(getSchedulerStatus().running).toBe(false);
+  });
+
+  it('ne démarre PAS de timer sur Vercel (polling délégué au cron)', () => {
+    process.env.VERCEL = '1';
+    const res = ensureSchedulerStarted();
+    expect(res.alreadyRunning).toBe(true); // no-op signalé
+    expect(getSchedulerStatus().running).toBe(false); // aucun setInterval
   });
 });
