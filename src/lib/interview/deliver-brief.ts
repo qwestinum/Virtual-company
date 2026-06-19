@@ -12,6 +12,7 @@
 
 import {
   buildInterviewBriefMail,
+  buildInterviewBriefText,
   buildUnmatchedBookingMail,
 } from '@/lib/agents/server/interview-brief-mail';
 import { composeInterviewGuide } from '@/lib/agents/server/mail-composer-execute';
@@ -136,17 +137,42 @@ async function sendBrief(args: {
 }): Promise<{ ok: boolean; messageId: string | null; error?: string }> {
   const cv = await loadCv(args.input.attendeeEmail);
 
+  // Substance commune au mail ET à l'agenda (synthèse, verdict, trame). Le mail
+  // et le .ics partagent ainsi exactement le même briefing — l'événement agenda
+  // est auto-suffisant, sans renvoyer au mail.
+  const label = args.jobTitle ?? args.ownerLabel;
+  const briefBase = {
+    candidate: args.candidate,
+    jobTitle: args.jobTitle,
+    ownerLabel: args.ownerLabel,
+    questions: args.questions,
+    booking: {
+      startAt: args.input.startTime,
+      endAt: args.input.endTime,
+      location: args.input.location,
+    },
+    cvAttached: cv !== null,
+  };
+  const briefText = buildInterviewBriefText(briefBase);
+  // Variante HTML pour la description d'agenda (Outlook) : on EST dans le .ics,
+  // donc pas de mention « .ics en pièce jointe » (icsAttached: false).
+  const briefHtmlForIcs = buildInterviewBriefMail({
+    ...briefBase,
+    icsAttached: false,
+  }).html;
+
   // .ics pour ajouter l'entretien à l'agenda (les adresses de synthèse ne sont
   // pas invitées à l'événement Cal.com). Absent si le créneau manque. Le CV y
-  // est intégré : lien signé (Google/Outlook) + binaire (Apple).
-  const label = args.jobTitle ?? args.ownerLabel;
+  // est intégré : lien signé (Google/Outlook) + binaire (Apple). La description
+  // reprend l'intégralité du briefing (texte brut + variante HTML).
   const ics = args.input.startTime
     ? buildInterviewIcs({
         bookingUid: args.input.bookingUid,
         startAt: args.input.startTime,
         endAt: args.input.endTime,
         summary: `Entretien — ${args.candidate.candidateName} (${label})`,
-        description: args.candidate.summary,
+        description: briefText,
+        htmlDescription: briefHtmlForIcs,
         location: args.input.location,
         stampAt: new Date().toISOString(),
         cvUrl: cv?.signedUrl ?? null,
@@ -167,16 +193,7 @@ async function sendBrief(args: {
   );
 
   const { subject, html } = buildInterviewBriefMail({
-    candidate: args.candidate,
-    jobTitle: args.jobTitle,
-    ownerLabel: args.ownerLabel,
-    questions: args.questions,
-    booking: {
-      startAt: args.input.startTime,
-      endAt: args.input.endTime,
-      location: args.input.location,
-    },
-    cvAttached: cv !== null,
+    ...briefBase,
     icsAttached: icsAttachment !== null,
   });
   return sendEmail({

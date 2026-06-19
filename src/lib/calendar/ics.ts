@@ -24,6 +24,12 @@ export type InterviewIcsInput = {
   endAt: string | null;
   summary: string;
   description?: string | null;
+  /**
+   * Description HTML alternative (X-ALT-DESC;FMTTYPE=text/html) — rendue par les
+   * clients qui la supportent (Outlook). `description` (texte brut) reste le
+   * repli universel (Google/Apple). Le CV n'y est pas injecté (réservé au texte).
+   */
+  htmlDescription?: string | null;
   location?: string | null;
   /** Horodatage de génération (ISO) — injecté pour rester testable/déterministe. */
   stampAt: string;
@@ -103,6 +109,10 @@ export function buildInterviewIcs(input: InterviewIcsInput): string | null {
     `DTEND:${dtEnd}`,
     `SUMMARY:${escapeText(input.summary)}`,
     description ? `DESCRIPTION:${escapeText(description)}` : '',
+    // Variante HTML (Outlook) — text-escapée comme toute valeur iCalendar.
+    input.htmlDescription
+      ? `X-ALT-DESC;FMTTYPE=text/html:${escapeText(input.htmlDescription)}`
+      : '',
     input.location ? `LOCATION:${escapeText(input.location)}` : '',
     // ATTACH URI (valeur = URI, PAS de text-escaping) — lien cliquable.
     input.cvUrl ? `ATTACH;FMTTYPE=application/pdf:${input.cvUrl}` : '',

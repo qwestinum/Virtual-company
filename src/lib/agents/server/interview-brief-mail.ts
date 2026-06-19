@@ -111,6 +111,63 @@ export function buildInterviewBriefMail(input: InterviewBriefMailInput): {
   return { subject, html };
 }
 
+/**
+ * Version TEXTE BRUT du briefing — MÊME contenu que l'email (synthèse, verdict /
+ * décision, trame d'entretien), destinée à la DESCRIPTION de l'événement .ics.
+ *
+ * L'agenda doit être auto-suffisant : le recruteur ouvre l'événement et a tout
+ * sous les yeux sans rechercher le mail. Plain text (pas de HTML) structuré en
+ * sections, lisible dans Google / Apple / Outlook Calendar. Le lien du CV est
+ * ajouté en aval par `buildInterviewIcs`.
+ */
+export function buildInterviewBriefText(input: InterviewBriefMailInput): string {
+  const c = input.candidate;
+  const label = input.jobTitle ?? input.ownerLabel;
+  const repechage = !c.aboveThreshold;
+  const slot = formatBookingSlot(input.booking.startAt);
+
+  const lines: string[] = [
+    `${c.candidateName} a réservé son entretien pour ${label}.`,
+    '',
+  ];
+
+  const entretien: string[] = [];
+  if (slot) entretien.push(`• Créneau : ${slot}`);
+  if (input.booking.location) entretien.push(`• Lieu / lien : ${input.booking.location}`);
+  if (entretien.length > 0) {
+    lines.push('ENTRETIEN', ...entretien, '');
+  }
+
+  lines.push('CANDIDAT');
+  lines.push(`• Nom : ${c.candidateName}`);
+  if (c.email) lines.push(`• Email : ${c.email}`);
+  if (c.phone) lines.push(`• Téléphone : ${c.phone}`);
+  lines.push(`• Score CV : ${c.score}/100`);
+  lines.push(
+    `• CV : ${input.cvAttached ? 'en pièce jointe du mail de briefing' : 'indisponible (à récupérer manuellement)'}`,
+  );
+  lines.push('');
+
+  lines.push('SYNTHÈSE', c.summary, '');
+
+  if (repechage) {
+    lines.push(
+      'DÉCISION',
+      'Candidat repêché par le recruteur : reçu en entretien bien que le pré-tri automatique l’ait placé sous le seuil. Le verdict d’écartage du pré-tri ne s’applique plus.',
+    );
+  } else {
+    lines.push('VERDICT CV ANALYZER', c.justification);
+  }
+  lines.push('');
+
+  lines.push("TRAME D'ENTRETIEN PROPOSÉE");
+  input.questions.forEach((q, i) => {
+    lines.push(`${i + 1}. [${q.theme}] ${q.question}`);
+  });
+
+  return lines.join('\n');
+}
+
 /** Mail de repli : réservation reçue pour un email inconnu de nos candidatures. */
 export function buildUnmatchedBookingMail(input: {
   attendeeEmail: string;

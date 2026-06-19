@@ -68,6 +68,26 @@ describe('buildInterviewIcs', () => {
     expect(unfolded).toContain(`ATTACH;FMTTYPE=application/pdf:${url}`);
   });
 
+  it('ajoute une variante HTML (X-ALT-DESC) text-escapée quand fournie', () => {
+    const ics = buildInterviewIcs({
+      ...base,
+      description: 'Texte brut du briefing.',
+      htmlDescription: '<h3>Synthèse</h3><p>Profil solide, sérieux.</p>',
+    })!;
+    const unfolded = ics.replace(/\r\n /g, '');
+    // Le repli texte brut reste présent (Google/Apple).
+    expect(unfolded).toContain('DESCRIPTION:Texte brut du briefing.');
+    // La variante HTML est émise et text-escapée (la virgule devient \,).
+    expect(unfolded).toContain(
+      'X-ALT-DESC;FMTTYPE=text/html:<h3>Synthèse</h3><p>Profil solide\\, sérieux.</p>',
+    );
+  });
+
+  it('omet X-ALT-DESC quand aucune variante HTML n’est fournie', () => {
+    const ics = buildInterviewIcs(base)!;
+    expect(ics).not.toContain('X-ALT-DESC');
+  });
+
   it('embarque le CV binaire (ATTACH base64) et plie les lignes à ≤ 75 caractères', () => {
     const base64 = 'QUJD'.repeat(60); // 240 caractères → forcément plié
     const ics = buildInterviewIcs({

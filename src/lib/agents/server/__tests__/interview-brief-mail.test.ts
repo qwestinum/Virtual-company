@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildInterviewBriefMail,
+  buildInterviewBriefText,
   buildUnmatchedBookingMail,
   formatBookingSlot,
 } from '@/lib/agents/server/interview-brief-mail';
@@ -98,6 +99,52 @@ describe('buildInterviewBriefMail', () => {
     });
     expect(html).not.toContain('<script>x</script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+describe('buildInterviewBriefText', () => {
+  it('reprend le même contenu que le mail (synthèse, verdict, trame) en texte brut', () => {
+    const text = buildInterviewBriefText({
+      candidate: baseCandidate,
+      jobTitle: 'Data Engineer',
+      ownerLabel: 'CAMP-0001',
+      questions: [
+        { theme: 'Technique', question: 'Décris un pipeline récent.' },
+        { theme: 'Posture', question: 'Comment gères-tu un conflit ?' },
+      ],
+      booking: {
+        startAt: '2026-06-23T12:00:00.000Z',
+        endAt: '2026-06-23T12:30:00.000Z',
+        location: 'Google Meet',
+      },
+      cvAttached: true,
+    });
+    // Pas de HTML dans la description d'agenda.
+    expect(text).not.toContain('<');
+    expect(text).toContain('SYNTHÈSE');
+    expect(text).toContain('Profil solide en data engineering.');
+    expect(text).toContain('VERDICT CV ANALYZER');
+    expect(text).toContain('Au-dessus du seuil sur les critères clés.');
+    // La trame complète est présente et numérotée.
+    expect(text).toContain("TRAME D'ENTRETIEN PROPOSÉE");
+    expect(text).toContain('1. [Technique] Décris un pipeline récent.');
+    expect(text).toContain('2. [Posture] Comment gères-tu un conflit ?');
+    expect(text).toContain('Google Meet');
+  });
+
+  it('affiche la note de repêchage au lieu du verdict pour un sous-seuil', () => {
+    const text = buildInterviewBriefText({
+      candidate: { ...baseCandidate, aboveThreshold: false },
+      jobTitle: null,
+      ownerLabel: 'CAMP-0001',
+      questions: [],
+      booking: { startAt: null, endAt: null, location: null },
+      cvAttached: false,
+    });
+    expect(text).toContain('DÉCISION');
+    expect(text).toContain('repêché par le recruteur');
+    expect(text).not.toContain('VERDICT CV ANALYZER');
+    expect(text).toContain('indisponible');
   });
 });
 
