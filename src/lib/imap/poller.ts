@@ -657,29 +657,57 @@ function slug(input: string): string {
 }
 
 /**
+ * Garde anti-réentrance : un seul poll à la fois DANS CE PROCESS. `last_uid_seen`
+ * n'est écrit qu'en FIN de `pollMailbox` ; si un second poll démarre pendant
+ * qu'un premier analyse encore un CV (LLM > intervalle de 30 s, ou /poll-now
+ * concurrent), les deux lisent le MÊME `last_uid_seen`, re-traitent le même
+ * message et envoient le mail en double. Le flag vit sur `globalThis` pour
+ * survivre aux hot-reloads dev (même raison que le handle du scheduler).
+ *
+ * Limite : sur Vercel chaque invocation cron est un process isolé ⇒ ce flag ne
+ * les sérialise pas. Le cron étant à la minute et mono-instance en pratique, le
+ * risque y est marginal ; une idempotence durable (clé `uid`) reste la vraie
+ * parade serverless si besoin (cf. note de revue).
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __imapPollInFlight__: boolean | undefined;
+}
+
+/**
  * Poll TOUTES les mailboxes activées, en parallèle. Appelé par le
  * scheduler. Capture les erreurs par mailbox pour ne pas qu'une
  * mauvaise mailbox tue les autres.
  */
 export async function pollAllMailboxes(): Promise<PollOutcome[]> {
-  let mailboxes: MailboxRow[];
+  // Un poll déjà en cours ⇒ on saute ce déclenchement (anti double-traitement).
+  if (globalThis.__imapPollInFlight__) return [];
+  globalThis.__imapPollInFlight__ = true;
   try {
-    mailboxes = await listEnabledMailboxesWithSecrets();
-  } catch (err) {
-    if (err instanceof SupabaseNotConfiguredError) return [];
-    throw err;
+    let mailboxes: MailboxRow[];
+    try {
+      mailboxes = await listEnabledMailboxesWithSecrets();
+    } catch (err) {
+      if (err instanceof SupabaseNotConfiguredError) return [];
+      throw err;
+    }
+    if (mailboxes.length === 0) return [];
+    // `await` IMPÉRATIF ici : le `finally` ne doit libérer le flag qu'une fois
+    // TOUTES les mailboxes relevées (sinon il retombe à false immédiatement et
+    // la garde ne sert à rien).
+    return await Promise.all(
+      mailboxes.map((mb) =>
+        pollMailbox(mb).catch((err) => ({
+          mailboxId: mb.id,
+          processed: 0,
+          matched: 0,
+          errors: 1,
+          newLastUid: mb.last_uid_seen,
+          _crashed: err instanceof Error ? err.message : String(err),
+        })) as Promise<PollOutcome>,
+      ),
+    );
+  } finally {
+    globalThis.__imapPollInFlight__ = false;
   }
-  if (mailboxes.length === 0) return [];
-  return Promise.all(
-    mailboxes.map((mb) =>
-      pollMailbox(mb).catch((err) => ({
-        mailboxId: mb.id,
-        processed: 0,
-        matched: 0,
-        errors: 1,
-        newLastUid: mb.last_uid_seen,
-        _crashed: err instanceof Error ? err.message : String(err),
-      })) as Promise<PollOutcome>,
-    ),
-  );
 }
