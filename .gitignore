@@ -51,3 +51,7 @@ next-env.d.ts
 bench-cv-*.json
 bench/*
 !bench/fiche.json
+
+# scripts de smoke-test locaux (brouillons de dev, jamais importés par src/)
+/*-smoke.ts
+/*-smoke.mjs
