@@ -407,6 +407,14 @@ async function pollMailboxImpl(
               }).catch(() => {});
             });
         }
+
+        // Un message DIFFÉRÉ arrête le poll ICI. On traite en UID croissant :
+        // continuer enverrait des mails à des UID SUPÉRIEURS qui seraient
+        // ensuite re-traités (et renvoyés) au prochain poll, puisqu'on va
+        // rembobiner `last_uid_seen` sous le message différé. Stopper garantit
+        // qu'aucun mail au-delà du différé ne part deux fois. Le différé et la
+        // suite sont repris au prochain passage.
+        if (minRetryUid !== null) break;
       }
 
       // Plafonne au plus petit UID différé moins 1 : on committe la
