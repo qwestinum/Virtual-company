@@ -35,7 +35,10 @@ import {
   renderCVBatchMarkdown,
 } from '@/lib/agents/cv-report-render';
 import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
-import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
+import {
+  dispatchImapCandidateOutreach,
+  RetryableOutreachError,
+} from '@/lib/imap/outreach';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
@@ -235,6 +238,11 @@ async function pollMailboxImpl(
         ? Number(mailbox.last_uid_seen)
         : 0;
       let maxUidSeen = previousLastUid;
+      // Plus petit UID dont le traitement a été DIFFÉRÉ (état HITL non
+      // confirmable). On plafonnera `last_uid_seen` juste en deçà pour que ce
+      // message — et tous ceux après lui — soient re-fetchés au prochain poll
+      // plutôt que perdus. null = aucun différé.
+      let minRetryUid: number | null = null;
 
       // Garde-fou : si la mailbox est neuve (last_uid_seen null) et
       // contient déjà 10 000 messages anciens, on ne veut pas tous
@@ -374,6 +382,17 @@ async function pollMailboxImpl(
               outcome.processed += 1;
             })
             .catch(async (err) => {
+              // Différé (HITL non confirmable) : ce N'EST PAS un échec. On
+              // marque l'UID pour réessai et on ne le compte pas en erreur —
+              // l'événement `imap_outreach_deferred` est déjà journalisé en
+              // amont. Le candidat reste à traiter au prochain poll.
+              if (err instanceof RetryableOutreachError) {
+                if (typeof uid === 'number') {
+                  minRetryUid =
+                    minRetryUid === null ? uid : Math.min(minRetryUid, uid);
+                }
+                return;
+              }
               outcome.errors += 1;
               await appendJournalEntry({
                 action: 'imap_cv_failed',
@@ -390,7 +409,20 @@ async function pollMailboxImpl(
         }
       }
 
-      outcome.newLastUid = maxUidSeen > 0 ? String(maxUidSeen) : outcome.newLastUid;
+      // Plafonne au plus petit UID différé moins 1 : on committe la
+      // progression jusqu'au dernier message RÉELLEMENT traité, mais on
+      // re-fetchera le message différé (et la suite) au prochain poll. Anti
+      // perte silencieuse : un candidat non traité pour cause de panne n'est
+      // jamais marqué « vu ».
+      let committedUid = maxUidSeen;
+      if (minRetryUid !== null) {
+        committedUid = Math.min(committedUid, minRetryUid - 1);
+      }
+      // N'avance que si on dépasse réellement l'UID déjà committé (sinon on
+      // garde `outcome.newLastUid` = last_uid_seen courant, donc pas d'avance).
+      if (committedUid > previousLastUid) {
+        outcome.newLastUid = String(committedUid);
+      }
     } finally {
       lock.release();
     }
@@ -595,9 +627,11 @@ async function processEmailAttachment(args: {
       uid,
     });
   } catch (err) {
-    // L'outreach orchestre déjà ses propres journals d'erreur ; ce
-    // catch est un filet pour ne pas tuer le poller si quelque
-    // chose s'échappe (logique métier vs réseau).
+    // Différé HITL : on REMONTE pour que la boucle ne marque pas le message
+    // comme vu (réessai au prochain poll). Tout le reste est avalé : l'outreach
+    // orchestre déjà ses propres journals d'erreur, on ne tue pas le poller
+    // pour une erreur métier/réseau ponctuelle.
+    if (err instanceof RetryableOutreachError) throw err;
     console.error('[imap-poller] outreach failed', err);
   }
 }

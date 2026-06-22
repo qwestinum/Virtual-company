@@ -33,10 +33,13 @@ import {
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import {
   DEFAULT_HITL_CONFIG,
-  hitlSectionForDecision,
   type HitlConfig,
   type HitlDecision,
 } from '@/types/hitl';
+import {
+  gateCandidateOutreach,
+  type SendResult,
+} from '@/lib/hitl/outreach-gate';
 import { postCVAnalyzer, postJobWriter } from '@/lib/chat/api-client';
 import { pushArtifact } from '@/lib/db/sync/artifacts-sync';
 import { useAgentsStore } from '@/stores/agents-store';
@@ -556,129 +559,183 @@ export async function dispatchPostAnalysisOutreach(args: {
     const mode = cv.scoringResult.status === 'accepted' ? 'invite' : 'reject';
     const decision: HitlDecision =
       cv.scoringResult.status === 'accepted' ? 'accept' : 'reject';
-    const gated = hitl[hitlSectionForDecision(decision)];
 
-    // Section sous validation humaine → on rédige un BROUILLON et on met en
-    // file (aucun envoi). Le Scheduler/brief est aussi différé (P5).
-    if (gated) {
-      await enqueuePendingValidation({
-        cv,
-        uid,
-        decision,
-        mode,
-        campaignId: args.campaignId,
-        jobTitle: args.jobTitle,
-        reportArtifactId: args.reportArtifactId,
-      });
-      continue;
-    }
-
-    const agentId = MAIL_COMPOSER_ID;
-    const taskId = nowTaskId(`mail_${mode}`);
-
-    agents.setAgentStatus(agentId, 'active');
-    agents.markAgentBusy(agentId, taskId);
-    agents.pushEvent({
-      agentId,
-      type: 'task_started',
-      payload: { taskId, candidate: cv.candidate.fullName, mode },
-    });
-
-    const artifactId = `art_mail_${mode}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    try {
-      // Le lien d'agenda est résolu côté serveur (réglage org-level) — pas
-      // besoin de le passer ici. La route renvoie 503 en mode 'invite' si
-      // aucun lien d'agenda n'est configuré.
-      const body: Record<string, unknown> = {
-        artifactId,
-        campaignId: args.campaignId,
-        jobTitle: args.jobTitle,
-        mode,
-        uid, // L1 : journalise l'outreach auto → le candidat avance au dashboard.
-        // Frontière mail/scheduler (non migré, 6c-mail) : projection legacy.
-        candidate: cvApplicationToMailCandidate(cv),
-      };
-      const res = await fetch('/api/mail-composer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = (await res.json()) as {
-        status: 'sent' | 'skipped_no_email' | 'skipped_no_config' | 'send_failed';
-        sentTo: string | null;
-        subject: string;
-        fileName: string;
-        publicUrl: string | null;
-        error: string | null;
-      };
-
-      // Seed l'artefact pour AttachmentChip.
-      artifacts.hydrateArtifact({
-        id: artifactId,
-        name: data.fileName,
-        mime: 'text/markdown',
-        createdAt: new Date().toISOString(),
-        campaignId: args.campaignId.startsWith('TASK-') ? null : args.campaignId,
-        taskId: args.campaignId.startsWith('TASK-') ? args.campaignId : null,
-        kind: 'other',
-        publicUrl: data.publicUrl,
-      });
-
-      const verb = mode === 'reject' ? 'a rédigé un refus' : 'a rédigé une invitation';
-      let tail: string;
-      if (data.status === 'sent') {
-        tail = `et l'a envoyé à ${data.sentTo}.`;
-      } else if (data.status === 'skipped_no_email') {
-        tail =
-          '— pas d\'email extractible du CV, à transmettre manuellement.';
-      } else if (data.status === 'skipped_no_config') {
-        tail =
-          '— service email non configuré, le mail est prêt à être copié-collé.';
-      } else {
-        tail = `— échec d'envoi (${data.error ?? 'erreur inconnue'}). Le brouillon reste accessible.`;
-      }
-
-      chat.appendMessage({
-        role: 'manager',
-        source: 'text',
-        content: `Le Mail Composer ${verb} pour ${cv.candidate.fullName} ${tail}`,
-        attachment: {
-          artifactId,
-          label: `${mode === 'reject' ? 'Refus' : 'Invitation'} — ${cv.candidate.fullName}`,
-          fileName: data.fileName,
-          mime: 'text/markdown',
+    // Décision HITL — règle PARTAGÉE avec le chemin IMAP
+    // (`gateCandidateOutreach`). onUnconfirmed:'send' préserve le comportement
+    // chat historique : `fetchHitlConfig` renvoie déjà OFF (jamais null) si
+    // offline, donc gaté=false → envoi auto, sans perdre de mail.
+    const outcome = await gateCandidateOutreach(
+      decision,
+      {
+        loadHitlConfig: async () => hitl,
+        send: () =>
+          sendChatCandidateMail({
+            cv,
+            mode,
+            uid,
+            campaignId: args.campaignId,
+            jobTitle: args.jobTitle,
+          }),
+        enqueue: async () => {
+          await enqueuePendingValidation({
+            cv,
+            uid,
+            decision,
+            mode,
+            campaignId: args.campaignId,
+            jobTitle: args.jobTitle,
+            reportArtifactId: args.reportArtifactId,
+          });
+          return true;
         },
-      });
+      },
+      { onUnconfirmed: 'send' },
+    );
 
-      agents.pushEvent({
-        agentId,
-        type: 'task_completed',
-        payload: { taskId, candidate: cv.candidate.fullName, status: data.status },
-      });
-    } catch (err) {
-      console.error('[mail-composer] dispatch failed', err);
-      agents.pushEvent({
-        agentId,
-        type: 'task_failed',
-        payload: {
-          taskId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-      });
-    } finally {
-      agents.markAgentIdle(agentId);
-      agents.setAgentStatus(agentId, 'idle');
-    }
-
-    // Round 4 — pour les candidats acceptés, on enchaîne avec le
-    // Scheduler : trame d'entretien + brief DRH par email.
-    if (mode === 'invite') {
+    // Round 4 — brief Scheduler pour les acceptés RÉELLEMENT contactés. Si
+    // l'invitation a été mise en file ('queued'), le brief est différé jusqu'à
+    // la validation humaine (sendValidation → /api/scheduler), pas ici.
+    if (mode === 'invite' && outcome.kind !== 'queued') {
       await dispatchSchedulerBrief({
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
         candidate: cv,
       });
     }
+  }
+}
+
+/**
+ * Envoi immédiat d'un mail candidat (chemin chat, non gaté) via
+ * `/api/mail-composer` : pilote l'agent Mail Composer (statut + événements),
+ * pousse la bulle Manager et l'artefact. Renvoie un `SendResult` au gate.
+ */
+async function sendChatCandidateMail(args: {
+  cv: CVApplication;
+  mode: 'invite' | 'reject';
+  uid: string;
+  campaignId: string;
+  jobTitle: string | null;
+}): Promise<SendResult> {
+  const { cv, mode, uid, campaignId, jobTitle } = args;
+  const agents = useAgentsStore.getState();
+  const artifacts = useArtifactsStore.getState();
+  const chat = useChatStore.getState();
+
+  const agentId = MAIL_COMPOSER_ID;
+  const taskId = nowTaskId(`mail_${mode}`);
+
+  agents.setAgentStatus(agentId, 'active');
+  agents.markAgentBusy(agentId, taskId);
+  agents.pushEvent({
+    agentId,
+    type: 'task_started',
+    payload: { taskId, candidate: cv.candidate.fullName, mode },
+  });
+
+  const artifactId = `art_mail_${mode}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    // Le lien d'agenda est résolu côté serveur (réglage org-level) — pas
+    // besoin de le passer ici. La route renvoie 503 en mode 'invite' si
+    // aucun lien d'agenda n'est configuré.
+    const body: Record<string, unknown> = {
+      artifactId,
+      campaignId,
+      jobTitle,
+      mode,
+      uid, // L1 : journalise l'outreach auto → le candidat avance au dashboard.
+      // Frontière mail/scheduler (non migré, 6c-mail) : projection legacy.
+      candidate: cvApplicationToMailCandidate(cv),
+    };
+    const res = await fetch('/api/mail-composer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json()) as {
+      status: 'sent' | 'skipped_no_email' | 'skipped_no_config' | 'send_failed';
+      sentTo: string | null;
+      subject: string;
+      fileName: string;
+      publicUrl: string | null;
+      error: string | null;
+    };
+
+    // Seed l'artefact pour AttachmentChip.
+    artifacts.hydrateArtifact({
+      id: artifactId,
+      name: data.fileName,
+      mime: 'text/markdown',
+      createdAt: new Date().toISOString(),
+      campaignId: campaignId.startsWith('TASK-') ? null : campaignId,
+      taskId: campaignId.startsWith('TASK-') ? campaignId : null,
+      kind: 'other',
+      publicUrl: data.publicUrl,
+    });
+
+    const verb = mode === 'reject' ? 'a rédigé un refus' : 'a rédigé une invitation';
+    let tail: string;
+    if (data.status === 'sent') {
+      tail = `et l'a envoyé à ${data.sentTo}.`;
+    } else if (data.status === 'skipped_no_email') {
+      tail = '— pas d\'email extractible du CV, à transmettre manuellement.';
+    } else if (data.status === 'skipped_no_config') {
+      tail =
+        '— service email non configuré, le mail est prêt à être copié-collé.';
+    } else {
+      tail = `— échec d'envoi (${data.error ?? 'erreur inconnue'}). Le brouillon reste accessible.`;
+    }
+
+    chat.appendMessage({
+      role: 'manager',
+      source: 'text',
+      content: `Le Mail Composer ${verb} pour ${cv.candidate.fullName} ${tail}`,
+      attachment: {
+        artifactId,
+        label: `${mode === 'reject' ? 'Refus' : 'Invitation'} — ${cv.candidate.fullName}`,
+        fileName: data.fileName,
+        mime: 'text/markdown',
+      },
+    });
+
+    agents.pushEvent({
+      agentId,
+      type: 'task_completed',
+      payload: { taskId, candidate: cv.candidate.fullName, status: data.status },
+    });
+
+    let result: SendResult;
+    switch (data.status) {
+      case 'sent':
+        result = { kind: 'sent' };
+        break;
+      case 'skipped_no_email':
+        result = { kind: 'skipped', reason: 'no_email' };
+        break;
+      case 'skipped_no_config':
+        result = { kind: 'skipped', reason: 'no_config' };
+        break;
+      default:
+        result = { kind: 'send_failed', reason: data.error ?? 'unknown' };
+    }
+    return result;
+  } catch (err) {
+    console.error('[mail-composer] dispatch failed', err);
+    agents.pushEvent({
+      agentId,
+      type: 'task_failed',
+      payload: {
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    return {
+      kind: 'send_failed',
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    agents.markAgentIdle(agentId);
+    agents.setAgentStatus(agentId, 'idle');
   }
 }
 
