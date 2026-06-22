@@ -261,6 +261,11 @@ function ValidationCard({
   // éditer (on ne piétine pas ses modifications).
   const [draftLoading, setDraftLoading] = useState(false);
   const editedRef = useRef(false);
+  // Garde de réentrance SYNCHRONE de l'envoi. `disabled={sending}` ne suffit
+  // pas : `setSending(true)` n'est appliqué qu'au re-render suivant, donc un
+  // double-clic rapide rappelle `onSend` avant et envoie le mail DEUX fois
+  // (l'étape mail-composer n'est pas idempotente). Le ref bloque dès le 1er clic.
+  const sendingRef = useRef(false);
   const canSend =
     subject.trim().length > 0 && body.trim().length > 0 && !draftLoading;
 
@@ -318,14 +323,21 @@ function ValidationCard({
   );
 
   const onSend = async () => {
+    // Anti double-soumission : un envoi déjà en vol → on ignore ce clic.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
     setSendError(null);
-    const result = await sendValidation(v, { subject, html: body });
-    setSending(false);
-    if (result.ok) {
-      onSent(v, result.message);
-    } else {
-      setSendError(result.message);
+    try {
+      const result = await sendValidation(v, { subject, html: body });
+      if (result.ok) {
+        onSent(v, result.message);
+      } else {
+        setSendError(result.message);
+      }
+    } finally {
+      setSending(false);
+      sendingRef.current = false;
     }
   };
 
