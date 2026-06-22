@@ -24,6 +24,14 @@ import { withUtf8Bom } from '@/lib/storage/utf8';
 
 export const ARTIFACTS_BUCKET = 'artifacts';
 
+/**
+ * Durée de vie d'un lien signé vers un artefact (CV, rapport…). Le bucket est
+ * PRIVÉ (donnée personnelle candidat, RGPD) : aucun accès permanent, on génère
+ * un lien éphémère à chaque ouverture. 10 min = assez pour ouvrir/lire un PDF,
+ * assez court pour ne pas être une fuite durable.
+ */
+export const SIGNED_URL_TTL_SECONDS = 600;
+
 export type ArtifactOwner =
   | { kind: 'campaign'; id: string }
   | { kind: 'task'; id: string }
@@ -39,7 +47,12 @@ export type UploadArtifactInput = {
 export type UploadArtifactResult = {
   bucket: string;
   path: string;
-  publicUrl: string;
+  /**
+   * TOUJOURS `null` : le bucket est privé, on n'expose plus d'URL publique
+   * permanente. L'accès se fait via un lien signé éphémère généré à l'ouverture
+   * (`createSignedArtifactUrl`). Champ conservé pour compat de forme.
+   */
+  publicUrl: null;
 };
 
 const OWNER_PREFIX: Record<ArtifactOwner['kind'], string> = {
@@ -84,11 +97,8 @@ export async function uploadArtifact(
     throw new Error(`uploadArtifact: ${uploadError.message}`);
   }
 
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(ARTIFACTS_BUCKET).getPublicUrl(path);
-
-  return { bucket: ARTIFACTS_BUCKET, path, publicUrl };
+  // Bucket privé : pas d'URL publique. L'accès passe par un lien signé.
+  return { bucket: ARTIFACTS_BUCKET, path, publicUrl: null };
 }
 
 /**
@@ -113,10 +123,8 @@ export async function uploadArtifactBinary(input: {
   if (uploadError) {
     throw new Error(`uploadArtifactBinary: ${uploadError.message}`);
   }
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(ARTIFACTS_BUCKET).getPublicUrl(path);
-  return { bucket: ARTIFACTS_BUCKET, path, publicUrl };
+  // Bucket privé : pas d'URL publique. L'accès passe par un lien signé.
+  return { bucket: ARTIFACTS_BUCKET, path, publicUrl: null };
 }
 
 /**

@@ -3,6 +3,7 @@
 import { Download, ExternalLink, FileText } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import {
   downloadArtifact,
   useArtifactsStore,
@@ -15,15 +16,19 @@ export type AttachmentChipProps = {
 };
 
 export function AttachmentChip({ attachment, disabled }: AttachmentChipProps) {
-  // S'abonne au store par id pour re-render quand `publicUrl` arrive
-  // après l'upload Supabase Storage (round 3).
+  // S'abonne au store par id pour re-render quand `storagePath` arrive
+  // après l'upload Supabase Storage.
   const artifact = useArtifactsStore((s) => s.byId[attachment.artifactId]);
-  const publicUrl = artifact?.publicUrl ?? null;
+  // Bucket privé : on ouvre via un lien signé (pas d'URL publique). La présence
+  // d'un `storagePath` = l'objet existe dans Storage → ouvrable.
+  const isHosted = Boolean(artifact?.storagePath);
   const hasContent = Boolean(artifact?.content);
 
-  function handleOpen() {
-    if (!publicUrl) return;
-    window.open(publicUrl, '_blank', 'noopener,noreferrer');
+  async function handleOpen() {
+    if (!artifact) return;
+    const ok = await openSignedArtifact(artifact.id);
+    // Repli : si la signature échoue mais qu'on a le contenu local, on télécharge.
+    if (!ok && hasContent) downloadArtifact(artifact);
   }
 
   function handleDownload() {
@@ -31,10 +36,10 @@ export function AttachmentChip({ attachment, disabled }: AttachmentChipProps) {
     downloadArtifact(artifact);
   }
 
-  // Action principale = ouvrir le fichier hébergé si dispo (effet
-  // « livrable client visible côté Storage »), sinon download local.
-  const primaryAction = publicUrl ? handleOpen : handleDownload;
-  const showSecondaryDownload = Boolean(publicUrl && hasContent);
+  // Action principale = ouvrir le fichier hébergé (lien signé) si dispo, sinon
+  // download local.
+  const primaryAction = isHosted ? handleOpen : handleDownload;
+  const showSecondaryDownload = Boolean(isHosted && hasContent);
 
   return (
     <div
@@ -48,9 +53,9 @@ export function AttachmentChip({ attachment, disabled }: AttachmentChipProps) {
       <button
         type="button"
         onClick={primaryAction}
-        disabled={disabled || (!publicUrl && !hasContent)}
+        disabled={disabled || (!isHosted && !hasContent)}
         className="flex items-center gap-2.5 min-w-0 flex-1 text-left disabled:cursor-not-allowed"
-        title={publicUrl ? 'Ouvrir le fichier' : 'Télécharger le fichier'}
+        title={isHosted ? 'Ouvrir le fichier' : 'Télécharger le fichier'}
       >
         <span className="h-8 w-8 grid place-items-center rounded-lg bg-amber-100 text-amber-700 shrink-0">
           <FileText className="h-4 w-4" aria-hidden />
@@ -61,13 +66,13 @@ export function AttachmentChip({ attachment, disabled }: AttachmentChipProps) {
           </span>
           <span className="font-body text-[10.5px] text-stone-500 block truncate">
             {attachment.fileName}
-            {publicUrl ? (
+            {isHosted ? (
               <span className="ml-1.5 text-stone-400">· hébergé</span>
             ) : null}
           </span>
         </span>
         <span className="h-7 w-7 grid place-items-center rounded-lg bg-stone-100 text-stone-600 shrink-0">
-          {publicUrl ? (
+          {isHosted ? (
             <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           ) : (
             <Download className="h-3.5 w-3.5" aria-hidden />

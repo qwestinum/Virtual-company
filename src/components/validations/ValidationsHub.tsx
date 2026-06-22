@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { hydrateArtifactsForCampaign } from '@/lib/db/sync/artifacts-sync';
 import { sendValidation, switchValidation } from '@/lib/hitl/send-validation';
+import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import {
   downloadArtifact,
   useArtifactsStore,
@@ -24,14 +25,14 @@ import {
 import type { PendingValidation } from '@/types/hitl';
 
 /**
- * Ouvre l'artefact DIRECTEMENT dans le navigateur via son URL publique (rapport,
- * FDP — consultation, pas téléchargement). Repli sur le download si pas d'URL
- * (artefact non encore poussé en Storage).
+ * Ouvre l'artefact (rapport, FDP — consultation) via un lien signé éphémère
+ * généré côté serveur (bucket privé). Repli sur le download local si l'objet
+ * n'est pas encore en Storage ou si la signature échoue.
  */
-function openArtifact(artifact: Artifact): void {
-  if (typeof window !== 'undefined' && artifact.publicUrl) {
-    window.open(artifact.publicUrl, '_blank', 'noopener,noreferrer');
-    return;
+async function openArtifact(artifact: Artifact): Promise<void> {
+  if (artifact.storagePath) {
+    const ok = await openSignedArtifact(artifact.id);
+    if (ok) return;
   }
   downloadArtifact(artifact);
 }
@@ -376,7 +377,7 @@ function ValidationCard({
           {reportArtifact ? (
             <button
               type="button"
-              onClick={() => openArtifact(reportArtifact)}
+              onClick={() => void openArtifact(reportArtifact)}
               className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-2 py-1 font-body text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
             >
               📄 Rapport d’analyse
@@ -385,7 +386,7 @@ function ValidationCard({
           {fdpArtifact ? (
             <button
               type="button"
-              onClick={() => openArtifact(fdpArtifact)}
+              onClick={() => void openArtifact(fdpArtifact)}
               className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-2 py-1 font-body text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
             >
               📋 Fiche de poste

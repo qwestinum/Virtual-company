@@ -65,11 +65,12 @@ describe('uploadArtifact', () => {
     expect(options!.upsert).toBe(true);
     expect((body as string).charCodeAt(0)).toBe(0xfeff); // BOM UTF-8
     expect((body as string).endsWith('# FDP\n')).toBe(true);
-    expect(getPublicUrl).toHaveBeenCalledWith('campagnes/CAMP-1/fdp.md');
+    // Bucket PRIVÉ : on ne construit plus d'URL publique. Accès via lien signé.
+    expect(getPublicUrl).not.toHaveBeenCalled();
     expect(result).toEqual({
       bucket: ARTIFACTS_BUCKET,
       path: 'campagnes/CAMP-1/fdp.md',
-      publicUrl: 'https://example.com/storage/campagnes/CAMP-1/fdp.md',
+      publicUrl: null,
     });
   });
 

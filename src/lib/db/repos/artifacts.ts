@@ -43,6 +43,22 @@ function rowToMeta(row: ArtifactMetaRow): ArtifactMeta {
   };
 }
 
+/**
+ * Métadonnée d'UN artefact par id. Sert à la génération du lien signé : on
+ * résout `storage_path` côté serveur à partir de l'id (jamais un chemin fourni
+ * par le client → impossible de signer un objet arbitraire). `null` si inconnu.
+ */
+export async function getArtifactMeta(id: string): Promise<ArtifactMeta | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`getArtifactMeta: ${error.message}`);
+  return data ? rowToMeta(data as ArtifactMetaRow) : null;
+}
+
 export type ArtifactMetaInsert = {
   id: string;
   campaignId: string | null;
