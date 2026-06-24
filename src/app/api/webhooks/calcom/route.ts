@@ -108,6 +108,9 @@ export async function POST(request: Request): Promise<NextResponse> {
         status: result.status,
         providerMessageId: result.messageId ?? null,
         error: result.error,
+        // Lieu RÉSOLU (lien visio si trouvé) — confirmation que le bon champ est
+        // capté côté Cal.com. URL ⇒ OK ; libellé/null ⇒ videoCallUrl absent du payload.
+        location: booking.location,
       },
     }).catch(() => {});
 

@@ -23,6 +23,18 @@ const PayloadSchema = z
     startTime: z.string().optional().nullable(),
     endTime: z.string().optional().nullable(),
     location: z.string().optional().nullable(),
+    // Lien VISIO réel : Cal.com le place dans `metadata.videoCallUrl` (champ
+    // standard, tous providers) ou `videoCallData.url`. `location` n'est souvent
+    // qu'un LIBELLÉ (« Google Meet ») ou un identifiant (« integrations:daily »).
+    // `.catch(null)` : tolérant aux variations de forme (Cal.com évolutif).
+    metadata: z
+      .object({ videoCallUrl: z.string().nullish().catch(null) })
+      .passthrough()
+      .nullish(),
+    videoCallData: z
+      .object({ url: z.string().nullish().catch(null) })
+      .passthrough()
+      .nullish(),
   })
   .passthrough();
 
@@ -44,6 +56,33 @@ export type CalcomBooking = {
   location: string | null;
 };
 
+/** Une chaîne est-elle une URL http(s) ? Pur. */
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+/**
+ * Résout le « lieu » de l'entretien en privilégiant le LIEN VISIO réel, pour
+ * qu'il atterrisse dans `LOCATION` du .ics (cliquable) plutôt qu'un libellé :
+ *   1. `metadata.videoCallUrl` (champ standard Cal.com, tous providers) ;
+ *   2. `videoCallData.url` (repli) ;
+ *   3. `location` si c'est une URL, une adresse physique ou un libellé humain.
+ * Les identifiants internes « integrations:* » (non cliquables, non humains)
+ * sont ÉCARTÉS (→ `null`) plutôt que de polluer le champ. Pur et déterministe.
+ */
+export function resolveMeetingLocation(payload: {
+  location?: string | null;
+  metadata?: { videoCallUrl?: string | null } | null;
+  videoCallData?: { url?: string | null } | null;
+}): string | null {
+  const videoUrl =
+    payload.metadata?.videoCallUrl?.trim() || payload.videoCallData?.url?.trim();
+  if (videoUrl && isHttpUrl(videoUrl)) return videoUrl;
+  const loc = payload.location?.trim();
+  if (!loc || loc.toLowerCase().startsWith('integrations:')) return null;
+  return loc;
+}
+
 /**
  * Projette une enveloppe Cal.com en `CalcomBooking`. `null` si la forme ne
  * correspond pas (on répond alors 200 « ignoré », pas une erreur).
@@ -60,6 +99,7 @@ export function parseCalcomBooking(raw: unknown): CalcomBooking | null {
     attendeeName: first?.name ?? null,
     startTime: payload.startTime ?? null,
     endTime: payload.endTime ?? null,
-    location: payload.location ?? null,
+    // Lieu résolu = lien visio réel si présent (cf. resolveMeetingLocation).
+    location: resolveMeetingLocation(payload),
   };
 }
