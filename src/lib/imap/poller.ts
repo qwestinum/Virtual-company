@@ -633,6 +633,9 @@ async function processEmailAttachment(args: {
       // on projette vers l'ancienne forme via l'adapter transitoire.
       candidate: cvApplicationToMailCandidate(application),
       uid,
+      // Rapport d'analyse déjà généré + persisté ci-dessus : on le relie à la
+      // validation (parité chat — sinon la carte n'affiche pas « 📄 Rapport »).
+      reportArtifactId: artifactId,
     });
   } catch (err) {
     // Différé HITL : on REMONTE pour que la boucle ne marque pas le message

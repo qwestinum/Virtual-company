@@ -63,6 +63,12 @@ export type OutreachInput = {
   candidate: MailCandidate;
   /** UID IMAP du message d'origine, pour traçabilité dans le journal. */
   uid: string;
+  /**
+   * Id de l'artefact « rapport d'analyse » (cv_report) déjà généré + persisté
+   * par le poller. Rattaché à la validation pour que la carte affiche le bouton
+   * « 📄 Rapport d'analyse » (parité avec le chemin chat). `null` si non produit.
+   */
+  reportArtifactId: string | null;
 };
 
 export async function dispatchImapCandidateOutreach(
@@ -255,7 +261,7 @@ async function enqueueImapPendingValidation(args: {
       score: candidate.score,
       decision,
       cvArtifactId: null,
-      reportArtifactId: null,
+      reportArtifactId: input.reportArtifactId,
       mailDraftArtifactId: draftPersisted ? artifactId : null,
       confirmed: false,
       status: 'pending',
