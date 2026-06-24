@@ -67,6 +67,23 @@ describe('fdps-archived repo', () => {
     expect(row.location).toBe('Paris');
   });
 
+  it('archiveFdp JOINT un contrat MULTI-valeur dans la colonne (non-régression)', async () => {
+    // Régression visée : avant le passage multi-valeur, `extractField` faisait
+    // `typeof v === 'string'` → renvoyait null sur un tableau → PERTE silencieuse
+    // de la colonne archive. Désormais on joint (« CDI, CDD »).
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    const from = vi.fn().mockReturnValue({ upsert });
+    requireServerSupabaseMock.mockReturnValue({ from } as never);
+
+    const fdp = buildFdp();
+    (fdp.fields.contract_type as { value: unknown }).value = ['CDI', 'CDD'];
+
+    await archiveFdp('CAMP-0001', fdp);
+
+    const row = upsert.mock.calls[0]![0] as Record<string, unknown>;
+    expect(row.contract_type).toBe('CDI, CDD'); // joint, PAS null
+  });
+
   it('searchFdps returns [] for queries shorter than 2 chars', async () => {
     const from = vi.fn();
     requireServerSupabaseMock.mockReturnValue({ from } as never);

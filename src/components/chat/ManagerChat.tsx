@@ -520,7 +520,14 @@ const STRUCTURAL_AD_FIELDS = new Set<FieldKey>([
   'key_skills',
 ]);
 
-const AD_ARRAY_FIELDS = new Set<FieldKey>(['main_missions', 'key_skills']);
+// `contract_type` est désormais multi-valeur (string[]) : il est parsé/comparé
+// comme une liste (sinon `parseFieldValue` le réduirait à un scalaire et un
+// changement de contrat ne rejouerait plus la régénération d'annonce).
+const AD_ARRAY_FIELDS = new Set<FieldKey>([
+  'main_missions',
+  'key_skills',
+  'contract_type',
+]);
 
 // Libellés des chips de la proposition de régénération d'annonce —
 // interceptés côté client (cf. handleChipSelect).

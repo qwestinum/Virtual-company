@@ -299,8 +299,10 @@ export function prefillToFDP(
 
   const seniority = normalizeSeniority(prefill.seniority.value);
   if (seniority) set('seniority', seniority);
+  // Le champ est multi-valeur : le LLM extrait le contrat DOMINANT, on l'écrit
+  // en liste à 1 élément (l'humain en ajoute d'autres dans l'UI au besoin).
   const contract = normalizeContractType(prefill.contractType.value);
-  if (contract) set('contract_type', contract);
+  if (contract) set('contract_type', [contract]);
 
   return fdp;
 }

@@ -74,10 +74,13 @@ describe('normalizeContractType', () => {
     expect(normalizeContractType('mission freelance')).toBe('freelance');
     expect(normalizeContractType('portage salarial')).toBe('freelance');
     expect(normalizeContractType('stage de fin d’études')).toBe('stage');
+    // Options ajoutées (match exact) : reconnues désormais.
+    expect(normalizeContractType('alternance')).toBe('alternance');
+    expect(normalizeContractType('intérim')).toBe('intérim');
   });
   it('renvoie null si non reconnu', () => {
     expect(normalizeContractType(null)).toBeNull();
-    expect(normalizeContractType('alternance')).toBeNull();
+    expect(normalizeContractType('bénévolat')).toBeNull();
   });
 });
 
@@ -98,8 +101,8 @@ describe('prefillToFDP', () => {
     expect(fdp.fields.location.value).toBe('Lyon');
     // Liste nettoyée (vides retirés).
     expect(fdp.fields.main_missions.value).toEqual(['Saisie', 'Clôture']);
-    // Contrat normalisé.
-    expect(fdp.fields.contract_type.value).toBe('CDI');
+    // Contrat normalisé, écrit en LISTE à 1 élément (champ multi-valeur).
+    expect(fdp.fields.contract_type.value).toEqual(['CDI']);
     // Séniorité non reconnue → champ laissé vide (non sélectionnable évité).
     expect(fdp.fields.seniority.status).toBe('empty');
     // Champs absents : vides.

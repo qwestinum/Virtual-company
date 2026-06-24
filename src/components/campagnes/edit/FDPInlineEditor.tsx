@@ -18,7 +18,6 @@
 import type { ChangeEvent, FocusEvent } from 'react';
 
 import {
-  ContractTypeSchema,
   FIELD_KEYS,
   FIELD_LABELS,
   SenioritySchema,
@@ -27,32 +26,12 @@ import {
   type FieldStatus,
 } from '@/types/field-collection';
 
-/** Valeur d'un champ liste (missions/compétences) → texte du textarea. */
-export function listValueToText(value: unknown): string {
-  return Array.isArray(value)
-    ? value.join('\n')
-    : typeof value === 'string'
-      ? value
-      : '';
-}
-
-/**
- * Frappe : conserve le texte BRUT (lignes non trimées, vides incluses). Garantit
- * `listValueToText(parseListInputRaw(t)) === t` pour tout `t` non vide — c'est ce
- * round-trip exact qui empêche le curseur de sauter en fin de paragraphe.
- */
-export function parseListInputRaw(text: string): string[] | undefined {
-  return text.trim().length === 0 ? undefined : text.split('\n');
-}
-
-/** Blur : normalise (trim de chaque ligne + suppression des lignes vides). */
-export function normalizeListInput(text: string): string[] | undefined {
-  const lines = text
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return lines.length === 0 ? undefined : lines;
-}
+import { ContractTypeField } from './ContractTypeField';
+import {
+  listValueToText,
+  normalizeListInput,
+  parseListInputRaw,
+} from './list-input';
 
 export type FDPInlineEditorProps = {
   fdp: FDPInProgress;
@@ -159,23 +138,9 @@ function renderInput(
       );
     }
     case 'contract_type': {
-      const v = typeof value === 'string' ? value : '';
+      // Multi-sélection + saisie libre (composant dédié). Valeur = string[].
       return (
-        <select
-          value={v}
-          disabled={disabled}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-            onChange(e.currentTarget.value || undefined)
-          }
-          style={baseStyle}
-        >
-          <option value="">—</option>
-          {ContractTypeSchema.options.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
+        <ContractTypeField value={value} onChange={onChange} disabled={disabled} />
       );
     }
     case 'main_missions':

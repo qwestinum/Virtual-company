@@ -659,3 +659,25 @@ bug — il re-lit `getVivierEmbeddingMeta` après indexation et compte le dossie
 `indexed`. En revanche il ne **répare pas** les dossiers creux préexistants
 (créés par le glisser-déposer) : il les voit comme doublons et les ignore. C'est
 précisément ce correctif app qui les couvrira.
+
+---
+
+## [Reporting] Colonne `fdps_archived.contract_type` en `text[]` (filtrage par contrat)
+
+**Statut** : réserve, décidé pendant la feature « type de contrat multi-valeur »
+(`feat/contract-type-multi`).
+
+**Contexte.** Le type de contrat est devenu multi-valeur (`string[]` dans le JSON
+FDP). La colonne dénormalisée `fdps_archived.contract_type` (string) stocke
+désormais la liste **jointe** (« CDI, CDD ») — choix « zéro migration » au stade
+pilote (cf. décision produit). Conséquence : le filtrage/reporting **par type de
+contrat individuel** reste approximatif (recherche sous-chaîne sur le texte joint).
+
+**Quand le faire.** Si le reporting par contrat devient un vrai besoin : migrer la
+colonne en `text[]` (migration SQL manuelle Supabase dev + prod), peupler depuis
+`asContractList(fdp.fields.contract_type.value)` dans `archiveFdp`, et adapter les
+lecteurs (`rowToJobDescription`, recherche). La logique applicative est déjà prête
+(helpers `src/lib/fdp/contract-type.ts`) — seul le stockage colonne change.
+
+**Risque** : faible. Aucune perte de donnée (le JSON FDP reste la source canonique
+de la liste) ; la colonne n'est qu'un index dénormalisé.

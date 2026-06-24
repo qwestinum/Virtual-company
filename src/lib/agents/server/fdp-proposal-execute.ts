@@ -120,7 +120,8 @@ export async function runFdpProposal(args: {
   // job_title : toujours forcé à la valeur du DRH, jamais au gré du LLM.
   if (jobTitle) fields.job_title = jobTitle;
   if (f.seniority) fields.seniority = f.seniority;
-  if (f.contract_type) fields.contract_type = f.contract_type;
+  // Multi-valeur : sortie LLM mono-contrat écrite en liste à 1 élément.
+  if (f.contract_type) fields.contract_type = [f.contract_type];
   const location = cleanString(f.location);
   if (location) fields.location = location;
   const salary = cleanString(f.salary_range);

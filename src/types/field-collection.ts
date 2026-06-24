@@ -25,7 +25,23 @@ export const FIELD_LABELS: Record<(typeof FIELD_KEYS)[number], string> = {
 };
 
 export const SenioritySchema = z.enum(['junior', 'confirmé', 'senior']);
-export const ContractTypeSchema = z.enum(['CDI', 'CDD', 'freelance', 'stage']);
+
+// Options prédéfinies du type de contrat. Les 4 valeurs historiques (CDI, CDD,
+// freelance, stage) sont CONSERVÉES telles quelles (rétro-compat des données +
+// sortie LLM) ; on ajoute les contrats français courants. Le champ est désormais
+// MULTI-VALEUR + saisie libre — lecture/canonicalisation dans
+// `src/lib/fdp/contract-type.ts` (`asContractList`/`joinContracts`).
+export const ContractTypeSchema = z.enum([
+  'CDI',
+  'CDD',
+  'alternance',
+  'apprentissage',
+  'intérim',
+  'stage',
+  'freelance',
+  'portage salarial',
+  'CDI de chantier',
+]);
 
 export const FieldStatusValueSchema = z.enum(['empty', 'in_progress', 'filled']);
 

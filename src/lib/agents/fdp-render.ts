@@ -14,6 +14,7 @@ import {
   FIELD_LABELS,
   type FDPInProgress,
 } from '@/types/field-collection';
+import { joinContracts } from '@/lib/fdp/contract-type';
 
 function fieldValue(fdp: FDPInProgress, key: (typeof FIELD_KEYS)[number]): {
   raw: unknown;
@@ -48,6 +49,13 @@ export function renderFdpMarkdown(fdp: FDPInProgress): string {
   for (const key of FIELD_KEYS) {
     const { raw, isList } = fieldValue(fdp, key);
     const label = FIELD_LABELS[key];
+    // Type de contrat = liste, mais rendue JOINTE inline (« CDI, CDD ») et non
+    // en sous-liste à puces, pour un affichage homogène partout (plan §display).
+    if (key === 'contract_type') {
+      const joined = joinContracts(raw);
+      if (joined) lines.push(`- ${label} : ${joined}`);
+      continue;
+    }
     if (isList && Array.isArray(raw) && raw.length > 0) {
       lines.push(`- ${label} :`);
       lines.push(...renderListField(raw));

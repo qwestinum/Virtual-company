@@ -49,7 +49,7 @@ describe('runFdpProposal', () => {
     const { fields } = await runFdpProposal({ jobTitle: 'Comptable senior' });
     expect(fields.job_title).toBe('Comptable senior');
     expect(fields.seniority).toBe('senior');
-    expect(fields.contract_type).toBe('CDI');
+    expect(fields.contract_type).toEqual(['CDI']);
     expect(fields.main_missions).toEqual(['Clôtures', 'Déclarations']);
     expect(fields.key_skills).toEqual(['IFRS', 'SAP']);
   });
@@ -64,7 +64,7 @@ describe('runFdpProposal', () => {
     );
     const { fields } = await runFdpProposal({ jobTitle: 'Dev' });
     expect(fields.seniority).toBeUndefined();
-    expect(fields.contract_type).toBe('CDI');
+    expect(fields.contract_type).toEqual(['CDI']);
   });
 
   it('coerce une liste fournie en chaîne unique vers un tableau', async () => {

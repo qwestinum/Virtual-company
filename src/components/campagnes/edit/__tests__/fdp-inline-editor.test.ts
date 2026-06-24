@@ -4,7 +4,7 @@ import {
   listValueToText,
   normalizeListInput,
   parseListInputRaw,
-} from '@/components/campagnes/edit/FDPInlineEditor';
+} from '@/components/campagnes/edit/list-input';
 
 describe('FDPInlineEditor — saisie liste (missions / compétences)', () => {
   describe('parseListInputRaw — round-trip exact (curseur préservé)', () => {

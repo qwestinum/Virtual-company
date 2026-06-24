@@ -21,6 +21,7 @@
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { FdpArchivedRow } from '@/lib/db/types';
 import type { JobDescription } from '@/lib/storage/job-descriptions';
+import { joinContracts } from '@/lib/fdp/contract-type';
 import type { FDPInProgress } from '@/types/field-collection';
 
 const TABLE = 'fdps_archived';
@@ -95,7 +96,9 @@ export async function archiveFdp(
     campaign_id: campaignId,
     job_title: jobTitle,
     seniority: extractField(fdp, 'seniority'),
-    contract_type: extractField(fdp, 'contract_type'),
+    // Multi-valeur : on JOINT (« CDI, CDD ») pour la colonne string. Sans ça,
+    // `extractField` renverrait null sur un tableau (perte silencieuse). '' → null.
+    contract_type: joinContracts(fdp.fields.contract_type?.value) || null,
     location: extractField(fdp, 'location'),
     fdp,
   };
