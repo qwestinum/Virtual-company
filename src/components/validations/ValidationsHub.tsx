@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { hydrateArtifactsForCampaign } from '@/lib/db/sync/artifacts-sync';
+import { formatDateTimeFr } from '@/lib/format/datetime';
 import { sendValidation, switchValidation } from '@/lib/hitl/send-validation';
 import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import {
@@ -344,6 +345,9 @@ function ValidationCard({
 
   return (
     <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-sm">
+      <p className="mb-1.5 font-body text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+        Reçue le {formatDateTimeFr(v.createdAt)}
+      </p>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-display text-[15px] font-bold text-stone-900 truncate">

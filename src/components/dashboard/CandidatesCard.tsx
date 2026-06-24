@@ -20,6 +20,7 @@ import {
   type ValidationMark,
 } from '@/lib/dashboard/candidate-actions';
 import type { CandidateRow } from '@/lib/dashboard/derive-metrics';
+import { formatDateTimeFr } from '@/lib/format/datetime';
 import {
   selectActiveCampaigns,
   useCampaignsStore,
@@ -349,9 +350,9 @@ function CandidateLine({
               marginTop: 1,
             }}
           >
+            {formatDateTimeFr(candidate.receivedAt)} ·{' '}
             {candidate.role ?? 'Sans campagne'}
-            {candidate.campaignId ? ` (${candidate.campaignId})` : ''} ·{' '}
-            {relativeTime(candidate.receivedAt)}
+            {candidate.campaignId ? ` (${candidate.campaignId})` : ''}
           </div>
         </div>
         <StatusPill kind={candidate.status as PillKind} />
@@ -493,16 +494,4 @@ function EmptyHint() {
       Pas encore de candidat à afficher.
     </div>
   );
-}
-
-function relativeTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  const diffMs = Date.now() - d.getTime();
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  if (hours < 1) return 'à l’instant';
-  if (hours < 24) return `il y a ${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return 'il y a 1j';
-  return `il y a ${days}j`;
 }
