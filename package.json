@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "bench:cv": "tsx scripts/bench-cv-analyzer.ts",
     "reindex:vivier": "tsx scripts/reindex-vivier.ts",
+    "import:vivier": "tsx scripts/import-vivier.ts",
     "vivier:title-distribution": "tsx scripts/vivier-title-distribution.ts"
   },
   "dependencies": {

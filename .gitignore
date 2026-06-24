@@ -34,7 +34,10 @@ yarn-error.log*
 
 # env files — on ignore les fichiers de secrets (*.local), mais on TRACE
 # .env.example (template public documentant les variables d'environnement).
+# `.env.local*` couvre aussi les typos/backups (.env.localT, .env.local.bak…) :
+# un fichier de secrets ne doit JAMAIS pouvoir être committé par accident.
 .env*.local
+.env.local*
 .env
 
 # vercel
@@ -55,3 +58,7 @@ bench/*
 # scripts de smoke-test locaux (brouillons de dev, jamais importés par src/)
 /*-smoke.ts
 /*-smoke.mjs
+
+# journal d'import vivier (script npm run import:vivier) — contient des EMAILS de
+# candidats (donnée personnelle) : JAMAIS committé. Couvre aussi le .dryrun.json.
+.import-vivier-journal*.json
