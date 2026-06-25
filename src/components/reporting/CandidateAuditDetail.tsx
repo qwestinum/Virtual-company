@@ -25,6 +25,10 @@ import {
   decisionMethod,
   filterByMethod,
 } from '@/lib/reporting/criterion-method-filter';
+import {
+  JOURNEY_TONE_COLORS,
+  journeyCurrentState,
+} from '@/lib/reporting/candidate-journey';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
   CANDIDATE_STATUS_LABELS,
@@ -57,6 +61,12 @@ export function CandidateAuditDetail({
   const visibleCriteria = filterByMethod(ordered, methodFilter);
   const history = buildCandidateHistory(detail);
   const accepted = scoringResult.status === 'accepted';
+  // Statut affiché = ÉTAT COURANT du parcours (MÊME source que la liste de
+  // sélection : `journeyCurrentState`), pas le verdict figé à l'analyse système.
+  // Repli sur le verdict d'analyse si le parcours est absent (Supabase offline).
+  const currentState = detail.journey
+    ? journeyCurrentState(detail.journey)
+    : null;
   const reportEndpoint = `/api/reporting/audit/candidates/${detail.id}/report`;
   // Nom indicatif — le serveur recalcule la date réelle à la génération.
   const todayIso = formatFrDate(detail.computedAt); // affichage seulement
@@ -107,13 +117,22 @@ export function CandidateAuditDetail({
           </div>
           <div className="flex items-center gap-3">
             <ScoreBadge score={scoringResult.totalScore} size="lg" />
-            <span
-              className={`rounded-full px-3 py-1 font-body text-[12px] font-semibold text-white ${
-                accepted ? 'bg-emerald-600' : 'bg-rose-600'
-              }`}
-            >
-              {CANDIDATE_STATUS_LABELS[scoringResult.status]}
-            </span>
+            {currentState ? (
+              <span
+                className="rounded-full px-3 py-1 font-body text-[12px] font-semibold text-white"
+                style={{ backgroundColor: JOURNEY_TONE_COLORS[currentState.tone] }}
+              >
+                {currentState.label}
+              </span>
+            ) : (
+              <span
+                className={`rounded-full px-3 py-1 font-body text-[12px] font-semibold text-white ${
+                  accepted ? 'bg-emerald-600' : 'bg-rose-600'
+                }`}
+              >
+                {CANDIDATE_STATUS_LABELS[scoringResult.status]}
+              </span>
+            )}
           </div>
         </div>
         <p className="mt-3 font-body text-[13px] text-stone-600">
