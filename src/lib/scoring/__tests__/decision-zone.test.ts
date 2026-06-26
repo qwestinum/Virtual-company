@@ -14,8 +14,9 @@ describe('classifyDecisionZone (HITL 3 zones)', () => {
     expect(classifyDecisionZone(40, LOW, HIGH, false)).toBe('gray');
   });
 
-  it('bas < score < haut → gray', () => {
+  it('bas < score < haut → gray (ex. 25 ≥ seuil bas 16 → validation, pas refus)', () => {
     expect(classifyDecisionZone(60, LOW, HIGH, false)).toBe('gray');
+    expect(classifyDecisionZone(25, 16, 90, false)).toBe('gray');
   });
 
   it('score == haut → auto_accept (borne haute incluse)', () => {
@@ -37,7 +38,6 @@ describe('classifyDecisionZone (HITL 3 zones)', () => {
 
   it('bord assumé : score 100 avec haut=100 → auto_accept (bornes non tordues)', () => {
     expect(classifyDecisionZone(100, 0, 100, false)).toBe('auto_accept');
-    // … et tout le reste de [0,100[ est gris (traduction « tout validé »).
     expect(classifyDecisionZone(99, 0, 100, false)).toBe('gray');
     expect(classifyDecisionZone(0, 0, 100, false)).toBe('gray');
   });

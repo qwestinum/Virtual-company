@@ -115,14 +115,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (Number.isFinite(n) && n >= 0 && n <= 100) return n;
     return DEFAULT_CV_THRESHOLD;
   })();
-  // HITL 3 zones (lot 2). Repli sur le seuil unique (collées) si non fournis —
-  // un client en cours de déploiement n'enverrait pas encore les deux poignées.
+  // HITL 3 zones (lot 2). Repli SÛR (tout gris 0/100 → validation) si les deux
+  // poignées ne sont pas fournies — JAMAIS collées sur un seuil qui rejetterait
+  // en masse (garde-fou « incertain → validation, jamais auto-refus »).
   const parsePct = (raw: FormDataEntryValue | null): number | undefined => {
     const n = raw != null ? Number(raw) : NaN;
     return Number.isFinite(n) && n >= 0 && n <= 100 ? n : undefined;
   };
-  const thresholdLow = parsePct(thresholdLowRaw) ?? threshold;
-  const thresholdHigh = parsePct(thresholdHighRaw) ?? threshold;
+  const thresholdLow = parsePct(thresholdLowRaw) ?? 0;
+  const thresholdHigh = parsePct(thresholdHighRaw) ?? 100;
 
   const taskId =
     typeof taskIdRaw === 'string' && taskIdRaw.length > 0

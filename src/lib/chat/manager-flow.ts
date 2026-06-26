@@ -347,10 +347,12 @@ export async function dispatchCVBatch(args: {
     : null;
   const threshold =
     args.threshold ?? campaignForThreshold?.threshold ?? DEFAULT_CV_THRESHOLD;
-  // HITL 3 zones (lot 2) — deux poignées de la campagne. Hors campagne (TASK)
-  // ou override de test : collées sur `threshold` (binaire, pas de zone grise).
-  const thresholdLow = campaignForThreshold?.thresholdLow ?? threshold;
-  const thresholdHigh = campaignForThreshold?.thresholdHigh ?? threshold;
+  // HITL 3 zones (lot 2) — deux poignées de la campagne. Repli SÛR si la
+  // campagne n'a pas de seuils lisibles (hors campagne, store périmé) : tout
+  // GRIS (0/100 → validation), JAMAIS collées sur un seuil qui rejetterait en
+  // masse. Garde-fou « incertain → validation, jamais auto-refus ».
+  const thresholdLow = campaignForThreshold?.thresholdLow ?? 0;
+  const thresholdHigh = campaignForThreshold?.thresholdHigh ?? 100;
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
   const artifacts = useArtifactsStore.getState();
