@@ -192,6 +192,9 @@ export async function postCVAnalyzer(params: {
   file: File;
   scoringSheet?: ScoringSheet;
   threshold: number;
+  /** HITL 3 zones (lot 2) — seuils bas/haut. Repli collées sur `threshold`. */
+  thresholdLow?: number;
+  thresholdHigh?: number;
   taskId?: string;
   campaignId?: string;
 }): Promise<CVAnalyzerResult> {
@@ -201,6 +204,10 @@ export async function postCVAnalyzer(params: {
     form.append('scoringSheet', JSON.stringify(params.scoringSheet));
   }
   form.append('threshold', String(params.threshold));
+  if (params.thresholdLow !== undefined)
+    form.append('thresholdLow', String(params.thresholdLow));
+  if (params.thresholdHigh !== undefined)
+    form.append('thresholdHigh', String(params.thresholdHigh));
   if (params.taskId) form.append('taskId', params.taskId);
   if (params.campaignId) form.append('campaignId', params.campaignId);
   const res = await fetch('/api/cv-analyzer', { method: 'POST', body: form });

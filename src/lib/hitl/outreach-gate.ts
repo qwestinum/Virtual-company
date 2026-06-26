@@ -8,11 +8,20 @@
  * IMAP la dupliquait (en fait : ne l'avait pas), d'où le bug « le refus part
  * sans validation ». Elle n'existe désormais qu'ici.
  *
+ * Lot 2 (HITL 3 zones) — la décision n'est plus dérivée d'une config HITL
+ * GLOBALE par type de mail, mais de la ZONE du candidat (calculée UNE fois par
+ * `scoreCandidat` à partir des deux seuils de la campagne) :
+ *   - `auto_reject` / `auto_accept` → on envoie (refus / invitation auto) ;
+ *   - `gray` → on met en file de validation humaine, on n'envoie JAMAIS.
+ * La zone est passée par l'appelant (chat lit `scoringResult.decisionZone`,
+ * IMAP lit `candidate.decisionZone` — même champ, même source). Zéro
+ * duplication de la logique de zone ici.
+ *
  * Pur contrôle de flux : aucun import server-only (supabase) ni client-only
- * (fetch/store). Les effets de bord (lire la config, envoyer, mettre en file)
- * sont injectés par l'appelant via `OutreachGatePorts`.
+ * (fetch/store). Les effets de bord (envoyer, mettre en file) sont injectés par
+ * l'appelant via `OutreachGatePorts`.
  */
-import { hitlSectionForDecision, type HitlConfig, type HitlDecision } from '@/types/hitl';
+import type { DecisionZone } from '@/types/hitl';
 
 /** Issue terminale d'un envoi immédiat (chemin non gaté). */
 export type SendResult =
@@ -24,61 +33,33 @@ export type SendResult =
 export type GateOutcome =
   | SendResult // a été envoyé (ou skip/échec terminal)
   | { kind: 'queued' } // mis en file de validation (persisté durablement)
-  | { kind: 'deferred'; reason: 'hitl_unconfirmed' | 'enqueue_unpersisted' };
-//   ^ état HITL non confirmable / file non persistée ET on a choisi de NE PAS
-//     envoyer → l'appelant DOIT préserver l'item pour réessai (ne pas marquer
-//     traité). C'est le contrat anti-perte-silencieuse.
+  | { kind: 'deferred'; reason: 'enqueue_unpersisted' };
+//   ^ zone grise ET la file n'a PAS persisté → on n'envoie RIEN (un gris n'a
+//     aucune direction de mail décidée : l'auto-envoyer serait la perte
+//     silencieuse interdite). L'appelant DOIT préserver l'item pour réessai
+//     (IMAP : RetryableOutreachError ; chat : on saute, candidat non traité).
 
 export interface OutreachGatePorts {
-  /** Config HITL, ou `null` si on ne peut pas la confirmer (offline / illisible). */
-  loadHitlConfig(): Promise<HitlConfig | null>;
-  /** Envoie le mail maintenant (chemin non gaté). */
+  /** Envoie le mail maintenant (zones auto). */
   send(): Promise<SendResult>;
   /** Met en file de validation. `true` = persisté durablement, `false` sinon. */
   enqueue(): Promise<boolean>;
 }
 
-export interface GateOptions {
-  /**
-   * Que faire quand l'état HITL est non confirmable (`loadHitlConfig`→null/throw)
-   * ou que la mise en file ne persiste pas :
-   *  - `'send'`  : retombe sur l'envoi immédiat (comportement chat historique) ;
-   *  - `'defer'` : n'envoie RIEN, renvoie `{kind:'deferred'}` (comportement sûr
-   *    IMAP — un mail retardé est rattrapable, un refus parti à tort ne l'est pas).
-   */
-  onUnconfirmed: 'send' | 'defer';
-}
-
 export async function gateCandidateOutreach(
-  decision: HitlDecision,
+  zone: DecisionZone,
   ports: OutreachGatePorts,
-  options: GateOptions,
 ): Promise<GateOutcome> {
-  let hitl: HitlConfig | null;
-  try {
-    hitl = await ports.loadHitlConfig();
-  } catch {
-    // Lecture illisible (réseau, table absente non gérée…) → non confirmable.
-    hitl = null;
-  }
-
-  if (hitl === null) {
-    return options.onUnconfirmed === 'send'
-      ? await ports.send()
-      : { kind: 'deferred', reason: 'hitl_unconfirmed' };
-  }
-
-  const gated = hitl[hitlSectionForDecision(decision)];
-  if (!gated) {
+  // Zones automatiques → envoi immédiat (refus ou invitation).
+  if (zone !== 'gray') {
     return await ports.send();
   }
 
-  // Section sous validation humaine → on met en file, on n'envoie pas.
+  // Zone grise → validation humaine. On met en file, on n'envoie pas.
   const persisted = await ports.enqueue();
   if (persisted) return { kind: 'queued' };
 
-  // Gaté mais file non persistée → ne pas envoyer aveuglément.
-  return options.onUnconfirmed === 'send'
-    ? await ports.send()
-    : { kind: 'deferred', reason: 'enqueue_unpersisted' };
+  // Gris mais file non persistée → ne JAMAIS envoyer à l'aveugle (un gris n'a
+  // pas de direction décidée). Defer pour les DEUX chemins (chat inclus).
+  return { kind: 'deferred', reason: 'enqueue_unpersisted' };
 }

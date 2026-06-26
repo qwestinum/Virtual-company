@@ -289,6 +289,45 @@ alter table public.campaigns
   check (threshold between 0 and 100);
 
 -- ──────────────────────────────────────────────────────────────────────
+-- HITL 3 zones (lot 2) — DEUX seuils par campagne remplacent `threshold`.
+-- Zones : score < low → refus auto · [low, high) → zone grise (validation
+-- humaine) · score ≥ high → acceptation auto. `threshold` (mono) est
+-- DÉPRÉCIÉE (drop au lot 3), conservée le temps de la transition.
+--
+-- Backfill conditionné à l'état HITL GLOBAL actuel (app_settings.hitl_config) :
+-- valeur PROD lue = {rejectionMail:true, acceptanceMail:true} (tout validé)
+-- ⇒ branche « tout gris » : low=0, high=100 sur les campagnes EXISTANTES, ce
+-- qui préserve la posture observable (toute décision passe en validation).
+-- Les NOUVELLES campagnes prendront 10/90 par défaut (côté applicatif), PAS
+-- ce 0/100 — ne pas confondre les deux. Bord assumé : un score EXACTEMENT
+-- 100 retombe en acceptation auto (≥ high) ; négligeable, bornes non tordues.
+-- ──────────────────────────────────────────────────────────────────────
+alter table public.campaigns add column if not exists threshold_low  int;
+alter table public.campaigns add column if not exists threshold_high int;
+
+-- Backfill « tout gris » des lignes existantes (idempotent : ne touche que les
+-- non encore remplies). À adapter SI app_settings.hitl_config changeait avant
+-- application (les deux OFF ⇒ low=high=threshold à la place).
+update public.campaigns
+  set threshold_low = 0, threshold_high = 100
+  where threshold_low is null or threshold_high is null;
+
+-- Invariant low ≤ high garanti en base (posé APRÈS backfill pour ne jamais
+-- violer le CHECK à l'ajout). Idempotent via garde sur pg_constraint.
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'campaigns_thresholds_chk'
+  ) then
+    alter table public.campaigns
+      add constraint campaigns_thresholds_chk
+      check (threshold_low is null or threshold_high is null
+             or (threshold_low between 0 and 100
+                 and threshold_high between 0 and 100
+                 and threshold_low <= threshold_high));
+  end if;
+end $$;
+
+-- ──────────────────────────────────────────────────────────────────────
 -- Session 6 v3 — Flux de réception des CV par campagne
 -- ──────────────────────────────────────────────────────────────────────
 -- Distinct de published_channels (où l'annonce est diffusée). Un flux

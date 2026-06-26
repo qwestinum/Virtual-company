@@ -21,6 +21,8 @@
 
 import { z } from 'zod';
 
+import { DecisionZoneSchema } from '@/types/hitl';
+
 export const SCORING_LEVELS = [
   'redhibitoire',
   'obligatoire',
@@ -491,6 +493,14 @@ export type CriterionFailure = z.infer<typeof CriterionFailureSchema>;
 export const ScoreResultSchema = z.object({
   totalScore: z.number().int().min(0).max(100),
   status: CandidateStatusSchema,
+  /**
+   * Zone de décision (modèle HITL 3 zones, lot 2) : `auto_reject` < seuil_bas,
+   * `gray` dans [seuil_bas, seuil_haut[, `auto_accept` ≥ seuil_haut. OPTIONNEL :
+   * absent des résultats antérieurs au lot 2 (jsonb stocké) → les lecteurs
+   * retombent sur le `status`. `scoreCandidat` la pose TOUJOURS. `gray` n'a pas
+   * de `status` propre (status = 'rejected' provisoire — la vérité est ici).
+   */
+  decisionZone: DecisionZoneSchema.optional(),
   /**
    * Breakdown TOUJOURS complet : tous les critères sont évalués, même pour un
    * candidat knockouté. Aucun court-circuit — la précédence n'est appliquée

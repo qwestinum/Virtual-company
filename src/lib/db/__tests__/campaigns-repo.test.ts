@@ -37,6 +37,8 @@ function buildCampaign(overrides: Partial<ActiveCampaign> = {}): ActiveCampaign 
     sourcesConfirmed: false,
     sources: ['manual'],
     threshold: 75,
+    thresholdLow: 10,
+    thresholdHigh: 90,
     siteId: null,
     donneurOrdreId: null,
     status: 'in_progress',

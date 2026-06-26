@@ -1,23 +1,22 @@
 /**
- * P8 — E2E déterministe du gating HITL dans `dispatchPostAnalysisOutreach`.
+ * E2E déterministe du gating HITL 3 zones dans `dispatchPostAnalysisOutreach`.
  *
- * Vérifie le cœur du cycle : selon la config HITL lue à l'analyse, chaque
- * candidat est SOIT mis en file (brouillon, aucun envoi), SOIT traité en envoi
- * automatique (mail réel + brief pour un accept). `fetch` est mocké et on
- * inspecte les endpoints réellement appelés.
+ * Vérifie le cœur du cycle : la ZONE du candidat (auto_reject / gray /
+ * auto_accept, calculée par scoreCandidat) décide. `gray` → file (brouillon,
+ * aucun envoi) ; zones auto → envoi réel (+ brief pour un accept). `fetch` est
+ * mocké et on inspecte les endpoints réellement appelés.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dispatchPostAnalysisOutreach } from '@/lib/chat/manager-flow';
 import { sendValidation, switchValidation } from '@/lib/hitl/send-validation';
-import type { HitlConfig, PendingValidation } from '@/types/hitl';
+import type { DecisionZone, PendingValidation } from '@/types/hitl';
 import type { CVApplication, CVBatchSummary } from '@/types/cv-analysis';
 import type { MailCandidate } from '@/types/mail-candidate';
 
 type Call = { url: string; body: Record<string, unknown> | undefined };
 
 let calls: Call[] = [];
-let hitlConfig: HitlConfig = { rejectionMail: true, acceptanceMail: true };
 /** Force le statut d'envoi du mail-composer (override) — null = 'sent'. */
 let mailComposerStatus: string | null = null;
 
@@ -37,9 +36,6 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
       : undefined;
   calls.push({ url, body });
 
-  if (url === '/api/settings') {
-    return jsonResponse({ offline: false, settings: { hitlConfig } });
-  }
   if (url === '/api/mail-composer') {
     return jsonResponse({
       status: body?.draft ? 'draft' : (mailComposerStatus ?? 'sent'),
@@ -78,7 +74,9 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   return jsonResponse({});
 }
 
-function makeCV(status: 'accepted' | 'rejected', name: string): CVApplication {
+function makeCV(zone: DecisionZone, name: string): CVApplication {
+  const status = zone === 'auto_accept' ? 'accepted' : 'rejected';
+  const totalScore = zone === 'auto_accept' ? 82 : zone === 'gray' ? 60 : 30;
   return {
     candidate: {
       fullName: name,
@@ -93,8 +91,9 @@ function makeCV(status: 'accepted' | 'rejected', name: string): CVApplication {
       photoPresent: false,
     },
     scoringResult: {
-      totalScore: status === 'accepted' ? 82 : 30,
+      totalScore,
       status,
+      decisionZone: zone,
       breakdown: [],
       criteriaVersion: 'v1',
       computedAt: '2026-06-08T10:00:00.000Z',
@@ -133,35 +132,35 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('HITL gating E2E — dispatchPostAnalysisOutreach', () => {
-  const accept = makeCV('accepted', 'Alice');
-  const reject = makeCV('rejected', 'Bob');
+describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
+  const autoAccept = makeCV('auto_accept', 'Alice');
+  const autoReject = makeCV('auto_reject', 'Bob');
+  const gray = makeCV('gray', 'Gris');
 
-  it('toggles ON : tout en FILE (brouillons), aucun envoi ni brief', async () => {
-    hitlConfig = { rejectionMail: true, acceptanceMail: true };
+  it('tout GRIS : tout en FILE (brouillons), aucun envoi ni brief', async () => {
     await dispatchPostAnalysisOutreach({
       campaignId: 'CAMP-1',
       jobTitle: 'Dev',
-      summary: summaryOf(accept, reject),
-      uids: ['u-accept', 'u-reject'],
+      summary: summaryOf(gray, makeCV('gray', 'Gris2')),
+      uids: ['u-g1', 'u-g2'],
       reportArtifactId: 'rep-1',
     });
 
-    expect(at('/api/validations')).toHaveLength(2); // les 2 mis en file
+    expect(at('/api/validations')).toHaveLength(2); // les 2 gris mis en file
     expect(mailDrafts()).toHaveLength(2); // brouillons composés
     expect(mailSends()).toHaveLength(0); // AUCUN envoi réel
-    expect(at('/api/scheduler')).toHaveLength(0); // brief différé
-    // Le uid de l'analyse est rattaché à la validation.
-    const uids = at('/api/validations').map((c) => (c.body?.payload as { uid?: string })?.uid);
-    expect(new Set(uids)).toEqual(new Set(['u-accept', 'u-reject']));
+    expect(at('/api/scheduler')).toHaveLength(0); // pas de brief (rien d'accepté)
+    const uids = at('/api/validations').map(
+      (c) => (c.body?.payload as { uid?: string })?.uid,
+    );
+    expect(new Set(uids)).toEqual(new Set(['u-g1', 'u-g2']));
   });
 
-  it('toggles OFF : envoi AUTOMATIQUE (mail réel + brief pour l’accept)', async () => {
-    hitlConfig = { rejectionMail: false, acceptanceMail: false };
+  it('zones AUTO : envoi automatique (mail réel + brief pour l’auto_accept)', async () => {
     await dispatchPostAnalysisOutreach({
       campaignId: 'CAMP-1',
       jobTitle: 'Dev',
-      summary: summaryOf(accept, reject),
+      summary: summaryOf(autoAccept, autoReject),
       uids: ['u-accept', 'u-reject'],
       reportArtifactId: 'rep-1',
     });
@@ -169,26 +168,25 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach', () => {
     expect(at('/api/validations')).toHaveLength(0); // rien en file
     expect(mailSends()).toHaveLength(2); // envois réels
     expect(mailDrafts()).toHaveLength(0);
-    expect(at('/api/scheduler')).toHaveLength(1); // brief du seul accept
-    // L1 : le uid est transmis → la route journalisera l'outreach (avance dashboard).
+    expect(at('/api/scheduler')).toHaveLength(1); // brief du seul auto_accept
     expect(mailSends().every((c) => typeof c.body?.uid === 'string')).toBe(true);
   });
 
-  it('toggle MIXTE (refus ON / accept OFF) : refus en file, accept auto', async () => {
-    hitlConfig = { rejectionMail: true, acceptanceMail: false };
+  it('MIXTE (gris + auto_accept) : le gris en file, l’auto_accept envoyé', async () => {
     await dispatchPostAnalysisOutreach({
       campaignId: 'CAMP-1',
       jobTitle: 'Dev',
-      summary: summaryOf(accept, reject),
-      uids: ['u-accept', 'u-reject'],
+      summary: summaryOf(autoAccept, gray),
+      uids: ['u-accept', 'u-gray'],
       reportArtifactId: 'rep-1',
     });
 
-    expect(at('/api/validations')).toHaveLength(1); // le refus
+    expect(at('/api/validations')).toHaveLength(1); // le gris
+    // Direction PROVISOIRE du gris = refus (statut provisoire 'rejected').
     expect(at('/api/validations')[0]?.body?.decision).toBe('reject');
-    expect(mailSends()).toHaveLength(1); // l'accept envoyé auto
-    expect(mailDrafts()).toHaveLength(1); // brouillon du refus en file
-    expect(at('/api/scheduler')).toHaveLength(1); // brief de l'accept
+    expect(mailSends()).toHaveLength(1); // l'auto_accept envoyé
+    expect(mailDrafts()).toHaveLength(1); // brouillon du gris en file
+    expect(at('/api/scheduler')).toHaveLength(1); // brief de l'auto_accept
   });
 });
 

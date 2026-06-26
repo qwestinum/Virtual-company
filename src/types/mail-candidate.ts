@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 
+import { DecisionZoneSchema } from './hitl';
 import type { CVApplication } from './cv-analysis';
 
 export const MailCandidateSchema = z.object({
@@ -20,6 +21,13 @@ export const MailCandidateSchema = z.object({
   score: z.number().int().min(0).max(100),
   /** accepted au scoring → mode 'invite', sinon 'reject'. */
   aboveThreshold: z.boolean(),
+  /**
+   * HITL 3 zones (lot 2) — zone de décision portée jusqu'au chemin IMAP
+   * (`dispatchImapCandidateOutreach` route par ELLE, pas par `aboveThreshold` :
+   * sinon impossible de distinguer `gray` de `auto_reject`). Optionnel : repli
+   * sur `aboveThreshold` pour les projections antérieures.
+   */
+  decisionZone: DecisionZoneSchema.optional(),
   summary: z.string().min(1),
   strengths: z.array(z.string().min(1)),
   weaknesses: z.array(z.string().min(1)),
@@ -38,6 +46,7 @@ export function cvApplicationToMailCandidate(
     phone: candidate.phone,
     score: scoringResult.totalScore,
     aboveThreshold: scoringResult.status === 'accepted',
+    decisionZone: scoringResult.decisionZone,
     summary: narration.summary,
     strengths: narration.strengths,
     weaknesses: narration.weaknesses,

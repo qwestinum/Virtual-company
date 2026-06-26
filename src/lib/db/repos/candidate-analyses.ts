@@ -24,6 +24,7 @@ import {
   type DecidedBy,
   type DecisionZone,
   type HitlConfig,
+  type HumanDecider,
 } from '@/types/hitl';
 import type { CandidateStatus } from '@/types/scoring';
 import type {
@@ -222,6 +223,46 @@ export async function persistCandidateAnalysis(
   } catch (err) {
     if (!(err instanceof SupabaseNotConfiguredError)) {
       console.error('[candidate-analyses] persist failed', err);
+    }
+  }
+}
+
+/**
+ * Propage la décision HUMAINE d'un candidat de zone grise (lot 2). UNIQUE
+ * écriture UPDATE de cette table (insert-only partout ailleurs) : un humain a
+ * tranché un gris → on fige le statut FINAL + qui a décidé + son identité.
+ * `decision_zone` reste `'gray'` (immuable : ça A ÉTÉ gris — la trace d'audit
+ * « repêché par l'humain » repose dessus). Corrélation par `uid` (+ campagne).
+ * Best-effort : avale Supabase non configuré, logue le reste, ne casse jamais
+ * le flux d'envoi appelant. Idempotent (re-send = même UPDATE).
+ */
+export async function updateCandidateAnalysisDecision(params: {
+  uid: string;
+  campaignId: string | null;
+  status: CandidateStatus;
+  decidedByUser: HumanDecider | null;
+}): Promise<void> {
+  try {
+    const supabase = requireServerSupabase();
+    let q = supabase
+      .from(TABLE)
+      .update({
+        status: params.status,
+        decided_by: 'user',
+        decided_by_user_id: params.decidedByUser?.userId ?? null,
+        decided_by_user_email: params.decidedByUser?.email ?? null,
+      })
+      .eq('uid', params.uid);
+    q = params.campaignId
+      ? q.eq('campaign_id', params.campaignId)
+      : q.is('campaign_id', null);
+    const { error } = await q;
+    if (error) {
+      console.error('[candidate-analyses] decision update failed', error.message);
+    }
+  } catch (err) {
+    if (!(err instanceof SupabaseNotConfiguredError)) {
+      console.error('[candidate-analyses] decision update failed', err);
     }
   }
 }

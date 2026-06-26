@@ -510,6 +510,10 @@ async function processEmailAttachment(args: {
     computedAt: new Date().toISOString(),
     // Convergence seuil (6c) : campaign.threshold est la source unique.
     acceptanceThreshold: campaign.threshold,
+    // HITL 3 zones (lot 2) — deux poignées de la campagne (repli 0/100 « tout
+    // gris » sur les lignes legacy, garanti par rowToCampaign).
+    thresholdLow: campaign.thresholdLow,
+    thresholdHigh: campaign.thresholdHigh,
   });
 
   // Statut de résolution email pour le journal (l'email est déjà résolu

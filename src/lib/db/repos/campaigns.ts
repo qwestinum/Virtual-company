@@ -58,6 +58,10 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     // « activable » après rechargement.
     sources: row.sources ?? [],
     threshold: row.threshold ?? 75,
+    // Lot 2 — repli 0/100 (tout gris = validation) pour les lignes antérieures
+    // aux colonnes : garde-fou « config illisible → validation, jamais auto ».
+    thresholdLow: row.threshold_low ?? 0,
+    thresholdHigh: row.threshold_high ?? 100,
     siteId: row.site_id ?? null,
     donneurOrdreId: row.donneur_ordre_id ?? null,
     launchedAt: row.launched_at ?? null,
@@ -81,6 +85,8 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     sources_confirmed: campaign.sourcesConfirmed,
     sources: campaign.sources,
     threshold: campaign.threshold,
+    threshold_low: campaign.thresholdLow,
+    threshold_high: campaign.thresholdHigh,
     site_id: campaign.siteId,
     donneur_ordre_id: campaign.donneurOrdreId,
     launched_at: campaign.launchedAt,
@@ -157,6 +163,8 @@ export type CampaignPatch = {
   publishedChannels?: PublicationChannel[];
   sourcesConfirmed?: boolean;
   threshold?: number;
+  thresholdLow?: number;
+  thresholdHigh?: number;
   /** Reporting (préparation) — rattachement campagne → site / donneur d'ordre
    *  (nullable). `null` détache explicitement. */
   siteId?: string | null;
@@ -175,6 +183,9 @@ export async function patchCampaign(
   if (patch.sourcesConfirmed !== undefined)
     row.sources_confirmed = patch.sourcesConfirmed;
   if (patch.threshold !== undefined) row.threshold = patch.threshold;
+  if (patch.thresholdLow !== undefined) row.threshold_low = patch.thresholdLow;
+  if (patch.thresholdHigh !== undefined)
+    row.threshold_high = patch.thresholdHigh;
   if (patch.siteId !== undefined) row.site_id = patch.siteId;
   if (patch.donneurOrdreId !== undefined)
     row.donneur_ordre_id = patch.donneurOrdreId;

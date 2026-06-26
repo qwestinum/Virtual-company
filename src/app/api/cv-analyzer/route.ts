@@ -55,6 +55,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   const file = form.get('cv');
   const scoringSheetRaw = form.get('scoringSheet');
   const thresholdRaw = form.get('threshold');
+  const thresholdLowRaw = form.get('thresholdLow');
+  const thresholdHighRaw = form.get('thresholdHigh');
   const taskIdRaw = form.get('taskId');
   const campaignIdRaw = form.get('campaignId');
 
@@ -113,6 +115,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (Number.isFinite(n) && n >= 0 && n <= 100) return n;
     return DEFAULT_CV_THRESHOLD;
   })();
+  // HITL 3 zones (lot 2). Repli sur le seuil unique (collées) si non fournis —
+  // un client en cours de déploiement n'enverrait pas encore les deux poignées.
+  const parsePct = (raw: FormDataEntryValue | null): number | undefined => {
+    const n = raw != null ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 0 && n <= 100 ? n : undefined;
+  };
+  const thresholdLow = parsePct(thresholdLowRaw) ?? threshold;
+  const thresholdHigh = parsePct(thresholdHighRaw) ?? threshold;
 
   const taskId =
     typeof taskIdRaw === 'string' && taskIdRaw.length > 0
@@ -149,6 +159,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       receivedAt: new Date().toISOString(),
       computedAt: new Date().toISOString(),
       acceptanceThreshold: threshold,
+      thresholdLow,
+      thresholdHigh,
     });
 
     // L'email est déjà résolu déterministe dans analyzeCVApplication ; on

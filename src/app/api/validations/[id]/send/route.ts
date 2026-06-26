@@ -8,6 +8,8 @@
  */
 import { NextResponse } from 'next/server';
 
+import { getApiUser } from '@/lib/auth/require-api-user';
+import { updateCandidateAnalysisDecision } from '@/lib/db/repos/candidate-analyses';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
   getPendingValidation,
@@ -69,6 +71,21 @@ export async function POST(
       status: 'sent',
       decidedAt: new Date().toISOString(),
     });
+
+    // Propagation lot 2 — un humain a tranché un gris : on fige le statut FINAL
+    // de l'analyse + son identité (depuis la SESSION serveur, jamais le client).
+    // `decision_zone` reste 'gray' (audit « repêché par l'humain »). Best-effort.
+    const uid =
+      typeof validation.payload?.uid === 'string' ? validation.payload.uid : null;
+    if (uid) {
+      const user = await getApiUser();
+      await updateCandidateAnalysisDecision({
+        uid,
+        campaignId: validation.campaignId,
+        status: validation.decision === 'accept' ? 'accepted' : 'rejected',
+        decidedByUser: user ? { userId: user.id, email: user.email ?? null } : null,
+      });
+    }
     return NextResponse.json({ validation: updated ?? validation });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

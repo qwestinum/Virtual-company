@@ -31,11 +31,7 @@ import {
   suggestCVReportFileName,
 } from '@/lib/agents/cv-report-render';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
-import {
-  DEFAULT_HITL_CONFIG,
-  type HitlConfig,
-  type HitlDecision,
-} from '@/types/hitl';
+import type { DecisionZone, HitlDecision } from '@/types/hitl';
 import {
   gateCandidateOutreach,
   type SendResult,
@@ -351,6 +347,10 @@ export async function dispatchCVBatch(args: {
     : null;
   const threshold =
     args.threshold ?? campaignForThreshold?.threshold ?? DEFAULT_CV_THRESHOLD;
+  // HITL 3 zones (lot 2) — deux poignées de la campagne. Hors campagne (TASK)
+  // ou override de test : collées sur `threshold` (binaire, pas de zone grise).
+  const thresholdLow = campaignForThreshold?.thresholdLow ?? threshold;
+  const thresholdHigh = campaignForThreshold?.thresholdHigh ?? threshold;
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
   const artifacts = useArtifactsStore.getState();
@@ -395,6 +395,8 @@ export async function dispatchCVBatch(args: {
         file,
         scoringSheet,
         threshold,
+        thresholdLow,
+        thresholdHigh,
         taskId: itemTaskId,
         campaignId: args.campaignId ?? undefined,
       });
@@ -539,10 +541,6 @@ export async function dispatchPostAnalysisOutreach(args: {
   // Le lien d'agenda est résolu côté serveur (réglage org-level, repli env).
   // Le client n'a pas besoin de le connaître ni de le transmettre.
 
-  // HITL — config des sections gardées. OFF si offline (la file ne pourrait
-  // pas persister → on reste sur l'envoi auto pour ne pas perdre les mails).
-  const hitl = await fetchHitlConfig();
-
   for (let index = 0; index < args.summary.perCV.length; index++) {
     const cv = args.summary.perCV[index];
     // L2 : pas de faux uid fabriqué. Aligné sur summary.perCV ; absent =
@@ -556,41 +554,50 @@ export async function dispatchPostAnalysisOutreach(args: {
       );
       continue;
     }
-    const mode = cv.scoringResult.status === 'accepted' ? 'invite' : 'reject';
-    const decision: HitlDecision =
-      cv.scoringResult.status === 'accepted' ? 'accept' : 'reject';
+    // HITL 3 zones (lot 2) — la ZONE pilote le gate (source unique :
+    // `scoringResult.decisionZone`). Repli sur le statut binaire pour les
+    // analyses antérieures sans zone. Direction PROVISOIRE du gris = refus
+    // (statut provisoire) ; l'humain bascule dans la file si besoin.
+    const zone: DecisionZone =
+      cv.scoringResult.decisionZone ??
+      (cv.scoringResult.status === 'accepted' ? 'auto_accept' : 'auto_reject');
+    const accept = zone === 'auto_accept';
+    const mode = accept ? 'invite' : 'reject';
+    const decision: HitlDecision = accept ? 'accept' : 'reject';
 
-    // Décision HITL — règle PARTAGÉE avec le chemin IMAP
-    // (`gateCandidateOutreach`). onUnconfirmed:'send' préserve le comportement
-    // chat historique : `fetchHitlConfig` renvoie déjà OFF (jamais null) si
-    // offline, donc gaté=false → envoi auto, sans perdre de mail.
-    const outcome = await gateCandidateOutreach(
-      decision,
-      {
-        loadHitlConfig: async () => hitl,
-        send: () =>
-          sendChatCandidateMail({
-            cv,
-            mode,
-            uid,
-            campaignId: args.campaignId,
-            jobTitle: args.jobTitle,
-          }),
-        enqueue: async () => {
-          await enqueuePendingValidation({
-            cv,
-            uid,
-            decision,
-            mode,
-            campaignId: args.campaignId,
-            jobTitle: args.jobTitle,
-            reportArtifactId: args.reportArtifactId,
-          });
-          return true;
-        },
+    // Décision HITL — règle PARTAGÉE avec le chemin IMAP (`gateCandidateOutreach`).
+    // Gris + échec de mise en file → 'deferred' : on n'envoie RIEN (candidat
+    // non traité, jamais d'auto-envoi d'un gris).
+    const outcome = await gateCandidateOutreach(zone, {
+      send: () =>
+        sendChatCandidateMail({
+          cv,
+          mode,
+          uid,
+          campaignId: args.campaignId,
+          jobTitle: args.jobTitle,
+        }),
+      enqueue: async () => {
+        await enqueuePendingValidation({
+          cv,
+          uid,
+          decision,
+          mode,
+          campaignId: args.campaignId,
+          jobTitle: args.jobTitle,
+          reportArtifactId: args.reportArtifactId,
+        });
+        return true;
       },
-      { onUnconfirmed: 'send' },
-    );
+    });
+
+    if (outcome.kind === 'deferred') {
+      console.error(
+        '[hitl] mise en validation impossible, candidat non traité:',
+        cv.candidate.fullName,
+      );
+      continue;
+    }
 
     // Round 4 — brief Scheduler pour les acceptés RÉELLEMENT contactés. Si
     // l'invitation a été mise en file ('queued'), le brief est différé jusqu'à
@@ -736,24 +743,6 @@ async function sendChatCandidateMail(args: {
   } finally {
     agents.markAgentIdle(agentId);
     agents.setAgentStatus(agentId, 'idle');
-  }
-}
-
-/** Lit la config HITL ; OFF partout si offline (la file ne persiste pas → on
- * reste sur l'envoi auto pour ne pas perdre silencieusement les mails). */
-async function fetchHitlConfig(): Promise<HitlConfig> {
-  const OFF: HitlConfig = { rejectionMail: false, acceptanceMail: false };
-  try {
-    const res = await fetch('/api/settings', { cache: 'no-store' });
-    if (!res.ok) return OFF;
-    const json = (await res.json()) as {
-      offline?: boolean;
-      settings?: { hitlConfig?: HitlConfig };
-    };
-    if (json.offline) return OFF;
-    return json.settings?.hitlConfig ?? DEFAULT_HITL_CONFIG;
-  } catch {
-    return OFF;
   }
 }
 

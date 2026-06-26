@@ -12,6 +12,7 @@ import {
   insertCandidateAnalysis,
   rowToDetail,
   rowToSummary,
+  updateCandidateAnalysisDecision,
   type CandidateAnalysisInsert,
 } from '@/lib/db/repos/candidate-analyses';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
@@ -201,5 +202,64 @@ describe('insertCandidateAnalysis — capture « système »', () => {
       decision_zone: 'auto_reject',
       decided_by: 'auto',
     });
+  });
+});
+
+describe('updateCandidateAnalysisDecision — propagation décision humaine (gris)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function captureUpdate(): {
+    update: ReturnType<typeof vi.fn>;
+    eq: ReturnType<typeof vi.fn>;
+    is: ReturnType<typeof vi.fn>;
+  } {
+    const eq = vi.fn();
+    const is = vi.fn();
+    const builder: Record<string, unknown> = {
+      update: vi.fn(() => builder),
+      eq: eq.mockImplementation(() => builder),
+      is: is.mockImplementation(() => builder),
+      then: (resolve: (v: { error: null }) => void) => resolve({ error: null }),
+    };
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn(() => builder),
+    } as never);
+    return { update: builder.update as ReturnType<typeof vi.fn>, eq, is };
+  }
+
+  it('fige statut FINAL + decided_by=user + identité, keyé par uid + campagne', async () => {
+    const { update, eq } = captureUpdate();
+    await updateCandidateAnalysisDecision({
+      uid: 'u-1',
+      campaignId: 'CAMP-1',
+      status: 'accepted',
+      decidedByUser: { userId: 'usr-uuid', email: 'rh@client.fr' },
+    });
+    // decision_zone n'est JAMAIS touchée (reste 'gray' — audit « repêché »).
+    expect(update).toHaveBeenCalledWith({
+      status: 'accepted',
+      decided_by: 'user',
+      decided_by_user_id: 'usr-uuid',
+      decided_by_user_email: 'rh@client.fr',
+    });
+    expect(eq).toHaveBeenCalledWith('uid', 'u-1');
+    expect(eq).toHaveBeenCalledWith('campaign_id', 'CAMP-1');
+  });
+
+  it('campagne null (TASK/hors campagne) → filtre is null + identité null', async () => {
+    const { update, is } = captureUpdate();
+    await updateCandidateAnalysisDecision({
+      uid: 'u-2',
+      campaignId: null,
+      status: 'rejected',
+      decidedByUser: null,
+    });
+    expect(update).toHaveBeenCalledWith({
+      status: 'rejected',
+      decided_by: 'user',
+      decided_by_user_id: null,
+      decided_by_user_email: null,
+    });
+    expect(is).toHaveBeenCalledWith('campaign_id', null);
   });
 });

@@ -165,8 +165,12 @@ export type AnalyzeCVApplicationInput = {
   source: CVSource;
   /** Date de réception ISO 8601 (métadonnée système). */
   receivedAt: string;
-  /** Seuil d'acceptation (sinon sheet.acceptanceThreshold, sinon défaut). */
+  /** DÉPRÉCIÉ (lot 2) — seuil unique = poignées collées. Préférer low/high. */
   acceptanceThreshold?: number;
+  /** Seuil bas (lot 2) : score < bas → refus auto. */
+  thresholdLow?: number;
+  /** Seuil haut (lot 2) : score ≥ haut → acceptation auto ; entre = zone grise. */
+  thresholdHigh?: number;
   /** Étiquette de version de fiche (réelle en C7). */
   criteriaVersion?: string;
   /** Horodatage ISO 8601 du calcul (sinon laissé au défaut de scoreCandidat). */
@@ -254,6 +258,8 @@ export async function analyzeCVApplication(
     }));
     const scoringResult = scoreCandidat(verdicts, input.sheet, {
       acceptanceThreshold: input.acceptanceThreshold,
+      thresholdLow: input.thresholdLow,
+      thresholdHigh: input.thresholdHigh,
       criteriaVersion: input.criteriaVersion,
       computedAt: input.computedAt,
     });

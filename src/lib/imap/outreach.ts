@@ -29,7 +29,6 @@ import {
 } from '@/lib/agents/server/interview-mail';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
-import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { upsertPendingValidation } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { getSynthesisEmail } from '@/lib/email/addresses';
@@ -40,7 +39,7 @@ import {
   gateCandidateOutreach,
   type SendResult,
 } from '@/lib/hitl/outreach-gate';
-import type { HitlDecision } from '@/types/hitl';
+import type { DecisionZone, HitlDecision } from '@/types/hitl';
 import type { MailCandidate } from '@/types/mail-candidate';
 
 /**
@@ -75,8 +74,14 @@ export async function dispatchImapCandidateOutreach(
   input: OutreachInput,
 ): Promise<void> {
   const { candidate } = input;
-  const mode = candidate.aboveThreshold ? 'invite' : 'reject';
-  const decision: HitlDecision = candidate.aboveThreshold ? 'accept' : 'reject';
+  // HITL 3 zones (lot 2) — la ZONE pilote le gate. Repli sur `aboveThreshold`
+  // pour les projections antérieures. Direction PROVISOIRE du gris = refus.
+  const zone: DecisionZone =
+    candidate.decisionZone ??
+    (candidate.aboveThreshold ? 'auto_accept' : 'auto_reject');
+  const accept = zone === 'auto_accept';
+  const mode = accept ? 'invite' : 'reject';
+  const decision: HitlDecision = accept ? 'accept' : 'reject';
   const isTaskOwner = input.campaignId.startsWith('TASK-');
   const ownerKey = isTaskOwner
     ? { taskId: input.campaignId }
@@ -102,18 +107,13 @@ export async function dispatchImapCandidateOutreach(
   }
 
   // ─── Décision HITL (règle PARTAGÉE avec le chemin chat) ────────────────
-  // onUnconfirmed: 'defer' → si l'état HITL est illisible (Supabase down) ou
-  // si la file ne persiste pas, on N'ENVOIE RIEN et on demande le réessai.
-  const outcome = await gateCandidateOutreach(
-    decision,
-    {
-      loadHitlConfig: async () => (await getAppSettings())?.hitlConfig ?? null,
-      send: () => composeAndSendCandidateMail({ mode, input, ownerKey }),
-      enqueue: () =>
-        enqueueImapPendingValidation({ mode, decision, input, ownerKey }),
-    },
-    { onUnconfirmed: 'defer' },
-  );
+  // La ZONE pilote : auto → envoi, gris → file. Gris + file non persistée →
+  // 'deferred' → on N'ENVOIE RIEN et on demande le réessai (anti-perte).
+  const outcome = await gateCandidateOutreach(zone, {
+    send: () => composeAndSendCandidateMail({ mode, input, ownerKey }),
+    enqueue: () =>
+      enqueueImapPendingValidation({ mode, decision, input, ownerKey }),
+  });
 
   if (outcome.kind === 'deferred') {
     await appendJournalEntry({

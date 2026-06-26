@@ -28,6 +28,7 @@
 import { z } from 'zod';
 
 import { DEFAULT_CV_THRESHOLD } from '@/types/cv-analysis';
+import type { DecisionZone } from '@/types/hitl';
 import {
   criterionBehavior,
   DECISION_OUTCOME_MATRIX,
@@ -90,13 +91,39 @@ export const LlmCriterionVerdictSchema = z.object({
 export type LlmCriterionVerdict = z.infer<typeof LlmCriterionVerdictSchema>;
 
 export type ScoreOptions = {
-  /** Surcharge le seuil d'acceptation (sinon sheet.acceptanceThreshold, sinon 75). */
+  /**
+   * DÉPRÉCIÉ (compat) — seuil unique. Équivaut à `thresholdLow == thresholdHigh`
+   * (poignées collées → pas de zone grise, comportement binaire d'origine).
+   * Ignoré si `thresholdLow`/`thresholdHigh` sont fournis.
+   */
   acceptanceThreshold?: number;
+  /** Seuil bas (lot 2) : score < bas → refus auto. Défaut via `acceptanceThreshold`/fiche/75. */
+  thresholdLow?: number;
+  /** Seuil haut (lot 2) : score ≥ haut → acceptation auto ; [bas, haut[ → zone grise. */
+  thresholdHigh?: number;
   /** Étiquette de version de fiche (réelle en C7 ; sentinelle ici). */
   criteriaVersion?: string;
   /** Horodatage ISO 8601 du calcul (C4 fournit la vraie valeur ; pureté préservée). */
   computedAt?: string;
 };
+
+/**
+ * Zone de décision HITL (lot 2), PURE. Un knockout force `auto_reject` (un
+ * critère rédhibitoire raté n'est jamais « gris »). Bornes : `< bas` refus auto ;
+ * `[bas, haut[` zone grise ; `≥ haut` acceptation auto. Poignées collées
+ * (`bas == haut`) ⇒ aucune zone grise (binaire). Bord assumé : score 100 avec
+ * `haut = 100` ⇒ acceptation auto.
+ */
+export function classifyDecisionZone(
+  totalScore: number,
+  thresholdLow: number,
+  thresholdHigh: number,
+  knockout: boolean,
+): DecisionZone {
+  if (knockout || totalScore < thresholdLow) return 'auto_reject';
+  if (totalScore < thresholdHigh) return 'gray';
+  return 'auto_accept';
+}
 
 function pointsToFactor(points: DecisionOutcome['points']): number {
   if (points === 'full') return 1;
@@ -140,7 +167,15 @@ export function scoreCandidat(
     );
   }
 
-  const acceptanceThreshold =
+  // Lot 2 — deux seuils. Repli compat : `acceptanceThreshold` (mono) → collées ;
+  // sinon fiche ; sinon défaut. La zone grise n'existe que si bas < haut.
+  const thresholdLow =
+    options.thresholdLow ??
+    options.acceptanceThreshold ??
+    sheet.acceptanceThreshold ??
+    DEFAULT_CV_THRESHOLD;
+  const thresholdHigh =
+    options.thresholdHigh ??
     options.acceptanceThreshold ??
     sheet.acceptanceThreshold ??
     DEFAULT_CV_THRESHOLD;
@@ -202,11 +237,23 @@ export function scoreCandidat(
     softDenominator > 0 ? (softNumerator / softDenominator) * 100 : 0;
   const bonus = Math.min(signalRaw, SIGNAL_BONUS_TOTAL_MAX);
   let rawScore = baseScore + bonus;
-  if (capTriggered) rawScore = Math.min(rawScore, acceptanceThreshold - 1);
+  // HARD_CAP raté → plafonné sous le seuil BAS ⇒ retombe en `auto_reject`
+  // (jamais en zone grise ni en acceptation).
+  if (capTriggered) rawScore = Math.min(rawScore, thresholdLow - 1);
 
   const totalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+  const decisionZone = classifyDecisionZone(
+    totalScore,
+    thresholdLow,
+    thresholdHigh,
+    knockout,
+  );
+  // `status` binaire conservé (lecteurs existants). Un gris est `rejected`
+  // PROVISOIRE (aucun envoi/compte agissant ne s'y fie — cf. neutralisation
+  // reporting) ; sa vérité est `decisionZone='gray'`. Seul `auto_accept` est
+  // `accepted`.
   const status: CandidateStatus =
-    knockout || totalScore < acceptanceThreshold ? 'rejected' : 'accepted';
+    decisionZone === 'auto_accept' ? 'accepted' : 'rejected';
 
   // 2ᵉ passe — breakdown avec contribution effective (au score 0-100). HARD =
   // 0 (hors moyenne, ils filtrent). SOFT = part du score ; SIGNAL = bonus brut.
@@ -247,6 +294,7 @@ export function scoreCandidat(
   return ScoreResultSchema.parse({
     totalScore,
     status,
+    decisionZone,
     breakdown,
     hardFailures,
     criteriaVersion,
