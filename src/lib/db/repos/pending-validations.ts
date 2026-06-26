@@ -124,6 +124,29 @@ export async function listPendingValidations(): Promise<PendingValidation[]> {
   }
 }
 
+/** Validations DÉJÀ traitées (status = 'sent') — historique consultable (lot 2d). */
+export async function listSentValidations(
+  limit = 50,
+): Promise<PendingValidation[]> {
+  try {
+    const supabase = requireServerSupabase();
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('*')
+      .eq('status', 'sent')
+      .order('updated_at', { ascending: false })
+      .limit(Math.min(Math.max(limit, 1), 200));
+    if (error) {
+      if (isTableMissing(error)) return [];
+      throw new Error(`listSentValidations: ${error.message}`);
+    }
+    return (data ?? []).map((r) => rowToDomain(r as PendingValidationRow));
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return [];
+    throw err;
+  }
+}
+
 export async function getPendingValidation(
   id: string,
 ): Promise<PendingValidation | null> {

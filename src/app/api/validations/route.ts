@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import {
   listPendingValidations,
+  listSentValidations,
   upsertPendingValidation,
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -19,9 +20,14 @@ import { HitlDecisionSchema, type PendingValidation } from '@/types/hitl';
 
 export const runtime = 'nodejs';
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  // ?status=sent → historique consultable (lot 2d) ; défaut = file en attente.
+  const status = new URL(request.url).searchParams.get('status');
   try {
-    const validations = await listPendingValidations();
+    const validations =
+      status === 'sent'
+        ? await listSentValidations()
+        : await listPendingValidations();
     return NextResponse.json({ validations });
   } catch (err) {
     console.error('[api/validations] GET failed', err);
