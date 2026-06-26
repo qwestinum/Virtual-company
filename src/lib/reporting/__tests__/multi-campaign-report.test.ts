@@ -117,7 +117,8 @@ describe('recommandations transverses (règles)', () => {
         ],
       }),
     ]);
-    expect(data.recommendations.join(' ')).toMatch(/LinkedIn.*75%|75%.*LinkedIn/);
+    // Reco « canal dominant » NEUTRALISÉE (HITL 3 zones, lot 2c) — retenue ambiguë.
+    expect(data.recommendations.join(' ')).not.toMatch(/LinkedIn/);
   });
 
   it('≥ 2 campagnes lentes (time-to-hire > 45 j)', () => {
@@ -144,8 +145,9 @@ describe('recommandations transverses (règles)', () => {
         ],
       }),
     ]);
+    // Donnée calculée (lot 3 recalibrera) mais reco NEUTRALISÉE (lot 2c).
     expect(data.rates.arbitrationRate).toBe(0.5);
-    expect(data.recommendations.join(' ')).toMatch(/arbitrage manuel/i);
+    expect(data.recommendations.join(' ')).not.toMatch(/arbitrage manuel/i);
   });
 
   it('divergence de taux de retenue entre sites (> 20 pts)', () => {
@@ -153,10 +155,9 @@ describe('recommandations transverses (règles)', () => {
       unit({ id: 'A', siteLabel: 'Paris', analyses: [datum({ status: 'accepted' }), datum({ status: 'accepted' })] }),
       unit({ id: 'B', siteLabel: 'Lyon', analyses: [datum({ status: 'rejected' }), datum({ status: 'rejected' })] }),
     ]);
+    // Reco « divergence sites » NEUTRALISÉE (HITL 3 zones, lot 2c) — taux ambigu.
     const joined = data.recommendations.join(' ');
-    expect(joined).toMatch(/Paris/);
-    expect(joined).toMatch(/Lyon/);
-    expect(joined).toMatch(/harmonisation/i);
+    expect(joined).not.toMatch(/harmonisation/i);
   });
 
   it('canaux sans aucun retenu signalés', () => {
@@ -169,8 +170,10 @@ describe('recommandations transverses (règles)', () => {
         ],
       }),
     ]);
+    // La donnée reste calculée…
     expect(data.underperformingChannelLabels).toContain('Indeed');
-    expect(data.recommendations.join(' ')).toMatch(/Indeed/);
+    // … mais la reco est NEUTRALISÉE (HITL 3 zones, lot 2c).
+    expect(data.recommendations.join(' ')).not.toMatch(/Indeed/);
   });
 
   it('plafonne à 5 recommandations', () => {

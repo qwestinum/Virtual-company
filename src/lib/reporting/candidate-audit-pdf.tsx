@@ -135,8 +135,21 @@ const styles = StyleSheet.create({
   },
 });
 
-function statusColor(status: 'accepted' | 'rejected'): string {
-  return status === 'accepted' ? '#15803d' : '#b91c1c';
+/**
+ * Pastille de décision (HITL 3 zones, lot 2c). Honnête vis-à-vis du gris : un
+ * candidat de zone grise (statut provisoire 'rejected') n'est PAS « écarté »,
+ * il est en attente de validation → ambre « En validation ». Repli sur le
+ * statut binaire pour les analyses antérieures sans `decisionZone`.
+ */
+function decisionPill(
+  status: 'accepted' | 'rejected',
+  zone: 'auto_reject' | 'gray' | 'auto_accept' | undefined,
+): { color: string; label: string } {
+  if (zone === 'gray') return { color: '#b45309', label: 'En validation' };
+  if (zone === 'auto_accept' || (zone === undefined && status === 'accepted')) {
+    return { color: '#15803d', label: CANDIDATE_STATUS_LABELS.accepted };
+  }
+  return { color: '#b91c1c', label: CANDIDATE_STATUS_LABELS.rejected };
 }
 
 type AuditPdfProps = {
@@ -175,14 +188,17 @@ function AuditDocument({ detail, generatedAtIso, campaignLabel }: AuditPdfProps)
 
         <View style={styles.scoreBox}>
           <Text style={styles.scoreNum}>{scoringResult.totalScore}/100</Text>
-          <Text
-            style={[
-              styles.statusPill,
-              { backgroundColor: statusColor(scoringResult.status) },
-            ]}
-          >
-            {CANDIDATE_STATUS_LABELS[scoringResult.status]}
-          </Text>
+          {(() => {
+            const pill = decisionPill(
+              scoringResult.status,
+              scoringResult.decisionZone,
+            );
+            return (
+              <Text style={[styles.statusPill, { backgroundColor: pill.color }]}>
+                {pill.label}
+              </Text>
+            );
+          })()}
           <Text style={{ flex: 1, fontSize: 8.5, color: MUTED }}>
             {narration.justification}
           </Text>

@@ -112,7 +112,7 @@ describe('buildCampaignReportSummary', () => {
 });
 
 describe('buildCampaignReportData — recommandations (règles)', () => {
-  it('recommande le canal dominant + signale le faible volume', () => {
+  it('faible volume signalé ; canal dominant NEUTRALISÉ (HITL 3 zones, lot 2c)', () => {
     const analyses = [
       datum({ source: 'linkedin', status: 'accepted', recruited: true }),
       datum({ source: 'email', status: 'rejected' }),
@@ -120,7 +120,9 @@ describe('buildCampaignReportData — recommandations (règles)', () => {
     const summary = buildCampaignReportSummary(META, analyses, [], null);
     const data = buildCampaignReportData(summary, analyses);
     const joined = data.recommendations.join(' | ');
-    expect(joined).toMatch(/LinkedIn/);
+    // Reco « canal dominant » suppressée tant que la retenue est ambiguë (3 zones).
+    expect(joined).not.toMatch(/LinkedIn/);
+    // Reco indépendante du modèle de décision → toujours émise.
     expect(joined).toMatch(/[Ff]aible volume/);
     expect(data.recommendations.length).toBeLessThanOrEqual(5);
   });
@@ -143,14 +145,16 @@ describe('buildCampaignReportData — recommandations (règles)', () => {
     expect(data.recommendations.join(' ')).toMatch(/[Tt]ime-to-hire/);
   });
 
-  it('taux d’arbitrage élevé → reco de recalibration', () => {
+  it('taux d’arbitrage calculé mais reco NEUTRALISÉE (HITL 3 zones, lot 2c)', () => {
     const analyses = Array.from({ length: 4 }, (_, i) =>
       datum({ humanIntervention: i < 2, status: 'accepted', recruited: false }),
     );
     const summary = buildCampaignReportSummary(META, analyses, [], null);
     const data = buildCampaignReportData(summary, analyses);
+    // La donnée reste calculée (lot 3 la recalibrera)…
     expect(data.scoring.arbitrationRate).toBe(0.5);
-    expect(data.recommendations.join(' ')).toMatch(/arbitrage/i);
+    // … mais la reco « recalibrer la grille » est suppressée (faux positif avec 3 zones).
+    expect(data.recommendations.join(' ')).not.toMatch(/arbitrage/i);
   });
 
   it('porte la métrique de conversion vivier quand fournie (§8)', () => {

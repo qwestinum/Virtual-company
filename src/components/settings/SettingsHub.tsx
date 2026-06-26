@@ -295,39 +295,15 @@ export function SettingsHub() {
       <SettingsSection
         icon="🛡️"
         title="Validation humaine (Human in the loop)"
-        description="Quand une section est activée, les mails correspondants ne partent PAS automatiquement : ils sont mis en file dans « Validation suspendue » pour que vous validiez chaque envoi. Désactivée, la section envoie automatiquement comme aujourd'hui."
+        description="La validation humaine se règle désormais PAR CAMPAGNE, via les « Seuils de décision »."
       >
-        <div className="flex flex-col gap-2">
-          <ToggleRow
-            label="Mails de refus"
-            hint="Soumettre chaque refus candidat à validation avant envoi."
-            checked={settings.hitlConfig.rejectionMail}
-            onChange={(v) =>
-              patchAndSave(
-                {
-                  hitlConfig: { ...settings.hitlConfig, rejectionMail: v },
-                },
-                v
-                  ? 'Validation humaine activée pour les refus.'
-                  : 'Refus envoyés automatiquement (validation désactivée).',
-              )
-            }
-          />
-          <ToggleRow
-            label="Mails d'acceptation"
-            hint="Soumettre chaque acceptation (invitation + brief) à validation avant envoi."
-            checked={settings.hitlConfig.acceptanceMail}
-            onChange={(v) =>
-              patchAndSave(
-                {
-                  hitlConfig: { ...settings.hitlConfig, acceptanceMail: v },
-                },
-                v
-                  ? "Validation humaine activée pour les acceptations."
-                  : 'Acceptations envoyées automatiquement (validation désactivée).',
-              )
-            }
-          />
+        <div className="rounded-lg border border-[var(--dash-border)] bg-[var(--dash-warm)] px-4 py-3 text-[13px] text-[var(--dash-text-secondary)] font-body leading-relaxed">
+          Le réglage global a été remplacé par deux seuils de score par campagne :
+          en dessous du seuil bas, le refus part automatiquement ; au-dessus du
+          seuil haut, l&apos;acceptation part automatiquement ; entre les deux,
+          la candidature est mise en file dans « Validation suspendue » pour que
+          vous tranchiez. Ajustez ces seuils dans l&apos;onglet Campagnes → édition
+          → « Seuils de décision ».
         </div>
       </SettingsSection>
 
