@@ -98,7 +98,7 @@ describe('FDPEditBlock.onSave via le store réel — pas de rétrogradation', ()
           {
             id: 'c1',
             label: 'SQL',
-            level: 'obligatoire',
+            level: 'critique',
             weight: 1,
             keywords: ['sql'],
             verificationMethod: 'keywords_exact',

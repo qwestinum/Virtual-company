@@ -23,9 +23,12 @@ import { z } from 'zod';
 
 import { DecisionZoneSchema } from '@/types/hitl';
 
+// `obligatoire` (HARD_CAP) RETIRÉ du modèle : il court-circuitait la zone grise
+// (plafond sous le seuil bas → toujours auto_reject). Désormais soit
+// `redhibitoire` (éliminatoire dur, saisi en connaissance de cause), soit un
+// niveau SOFT_WEIGHTED — le score décide, le gris route vers la validation.
 export const SCORING_LEVELS = [
   'redhibitoire',
-  'obligatoire',
   'critique',
   'tres_important',
   'important',
@@ -45,7 +48,6 @@ export type CriticityLevel = ScoringLevel;
 
 export const SCORING_LEVEL_LABELS: Record<ScoringLevel, string> = {
   redhibitoire: 'Rédhibitoire',
-  obligatoire: 'Obligatoire',
   critique: 'Critique',
   tres_important: 'Très important',
   important: 'Important',
@@ -58,7 +60,6 @@ export const SCORING_LEVEL_LABELS: Record<ScoringLevel, string> = {
  */
 export const SCORING_LEVEL_COLORS: Record<ScoringLevel, string> = {
   redhibitoire: '#dc2626', // red-600
-  obligatoire: '#ea580c', // orange-600
   critique: '#d97706', // amber-600
   tres_important: '#65a30d', // lime-600
   important: '#0891b2', // cyan-600
@@ -72,7 +73,6 @@ export const SCORING_LEVEL_COLORS: Record<ScoringLevel, string> = {
  */
 export const DEFAULT_WEIGHTS: Record<ScoringLevel, number> = {
   redhibitoire: 0,
-  obligatoire: 10,
   critique: 8,
   tres_important: 6,
   important: 4,
@@ -267,19 +267,19 @@ export type ScoringBehavior = z.infer<typeof ScoringBehaviorSchema>;
  * (cf. memory/feedback_single_source_of_truth.md).
  *
  * Arbitrage DRH acté :
- *   - redhibitoire   → HARD_KNOCKOUT : non démontré ⇒ rejected.
- *   - obligatoire    → HARD_CAP      : non démontré ⇒ cap, jamais auto-rejet sec.
+ *   - redhibitoire   → HARD_KNOCKOUT : non démontré ⇒ rejected (éliminatoire dur).
  *   - critique       → SOFT_WEIGHTED : écart coûteux mais non bloquant (poids fort).
  *   - tres_important → SOFT_WEIGHTED
  *   - important      → SOFT_WEIGHTED
  *   - souhaitable    → SOFT_WEIGHTED
  *
- * `SIGNAL_BONUS` n'est PAS utilisé par le mapping actuel : il reste défini dans
- * le type pour accueillir un futur niveau « bonus » sans changer le contrat.
+ * `HARD_CAP` (ancien niveau `obligatoire`) et `SIGNAL_BONUS` ne sont mappés par
+ * AUCUN niveau : ils restent définis dans le type (comportements dormants) sans
+ * changer le contrat. `obligatoire` a été retiré car son cap court-circuitait la
+ * zone grise (cf. SCORING_LEVELS).
  */
 export const CRITICITY_TO_BEHAVIOR: Record<ScoringLevel, ScoringBehavior> = {
   redhibitoire: 'HARD_KNOCKOUT',
-  obligatoire: 'HARD_CAP',
   critique: 'SOFT_WEIGHTED',
   tres_important: 'SOFT_WEIGHTED',
   important: 'SOFT_WEIGHTED',

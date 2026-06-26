@@ -27,12 +27,9 @@ const KO: CriterionFailure = {
   criticityLevel: 'redhibitoire',
   reason: 'unsatisfied',
 };
-const CAP: CriterionFailure = {
-  criterionId: 'cap',
-  criterionLabel: '5+ ans',
-  criticityLevel: 'obligatoire',
-  reason: 'unverifiable',
-};
+// NB : la cause `cap` (HARD_CAP / ancien niveau `obligatoire`) est désormais
+// DORMANTE — aucun niveau ne mappe vers HARD_CAP, donc inconstructible via un
+// `criticityLevel` valide. Le libellé reste défini (comportement dormant).
 
 describe('rejectionCause', () => {
   it('accepted ⇒ null', () => {
@@ -43,17 +40,9 @@ describe('rejectionCause', () => {
     expect(rejectionCause(result('rejected'))).toBe('below_threshold');
   });
 
-  it('rejected avec cap obligatoire ⇒ cap', () => {
-    expect(rejectionCause(result('rejected', [CAP]))).toBe('cap');
-  });
-
   it('rejected avec knockout rédhibitoire ⇒ knockout', () => {
     expect(rejectionCause(result('rejected', [KO]))).toBe('knockout');
-  });
-
-  it('précédence : knockout l’emporte sur cap', () => {
-    expect(rejectionCause(result('rejected', [CAP, KO]))).toBe('knockout');
-    expect(isKnockout(result('rejected', [CAP, KO]))).toBe(true);
+    expect(isKnockout(result('rejected', [KO]))).toBe(true);
   });
 
   it('libellés des 3 causes', () => {

@@ -16,7 +16,7 @@ import {
 } from '@/types/scoring';
 
 describe('CRITICITY_TO_BEHAVIOR — mapping métier → technique', () => {
-  it('exhaustivité : chacun des 6 niveaux est mappé', () => {
+  it('exhaustivité : chacun des niveaux est mappé', () => {
     expect(Object.keys(CRITICITY_TO_BEHAVIOR).sort()).toEqual(
       [...SCORING_LEVELS].sort(),
     );
@@ -31,15 +31,14 @@ describe('CRITICITY_TO_BEHAVIOR — mapping métier → technique', () => {
     }
   });
 
-  it('cohérence : les deux comportements HARD sont rédhibitoire et obligatoire, jamais les autres', () => {
+  it('cohérence : le SEUL niveau dur restant est rédhibitoire (obligatoire retiré)', () => {
     const hardLevels = SCORING_LEVELS.filter(
       (l) =>
         CRITICITY_TO_BEHAVIOR[l] === 'HARD_KNOCKOUT' ||
         CRITICITY_TO_BEHAVIOR[l] === 'HARD_CAP',
     );
-    expect([...hardLevels].sort()).toEqual(['obligatoire', 'redhibitoire']);
+    expect([...hardLevels].sort()).toEqual(['redhibitoire']);
     expect(CRITICITY_TO_BEHAVIOR.redhibitoire).toBe('HARD_KNOCKOUT');
-    expect(CRITICITY_TO_BEHAVIOR.obligatoire).toBe('HARD_CAP');
   });
 
   it('cohérence : tous les niveaux non-durs sont SOFT_WEIGHTED', () => {
@@ -53,9 +52,12 @@ describe('CRITICITY_TO_BEHAVIOR — mapping métier → technique', () => {
     }
   });
 
-  it('SIGNAL_BONUS est défini dans le type mais inutilisé par le mapping actuel (extensibilité)', () => {
+  it('HARD_CAP et SIGNAL_BONUS sont définis dans le type mais DORMANTS (aucun niveau ne s’y mappe)', () => {
     expect(SCORING_BEHAVIORS).toContain('SIGNAL_BONUS');
-    expect(Object.values(CRITICITY_TO_BEHAVIOR)).not.toContain('SIGNAL_BONUS');
+    expect(SCORING_BEHAVIORS).toContain('HARD_CAP');
+    const mapped = Object.values(CRITICITY_TO_BEHAVIOR);
+    expect(mapped).not.toContain('SIGNAL_BONUS');
+    expect(mapped).not.toContain('HARD_CAP');
   });
 });
 

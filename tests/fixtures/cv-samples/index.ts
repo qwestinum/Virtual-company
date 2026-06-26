@@ -10,7 +10,7 @@
  * Les scores `expectedScoreResult.totalScore` sont calculés à la main depuis la
  * formule (option B) : base = Σ_SOFT(poids × facteur) / Σ_SOFT(poids) × 100,
  * facteur satisfait=1 / partiel=0.5 / non=0 / non_verifiable=0 ; HARD hors
- * moyenne ; cap = seuil-1 = 74 ; knockout ⇒ rejected, score conservé.
+ * moyenne ; knockout (rédhibitoire) ⇒ rejected, score réel conservé.
  */
 
 import type { LlmCriterionVerdict } from '@/lib/scoring';
@@ -42,7 +42,7 @@ export type CVSampleFixture = {
 
 const ACCEPTANCE = 75;
 
-/** Fiche « Comptable senior » : KO(p0) + CAP(p10) + 4 SOFT [8,6,4,2] (den 20). */
+/** Fiche « Comptable senior » : KO(p0) + 4 SOFT [8,6,4,2] (den 20). */
 function comptableSeniorSheet(): ScoringSheet {
   return {
     campaignId: 'CAMP-2041',
@@ -50,7 +50,6 @@ function comptableSeniorSheet(): ScoringSheet {
     acceptanceThreshold: ACCEPTANCE,
     criteria: [
       buildCriterion({ id: 'ko_dec', label: 'Diplôme DEC (expertise comptable)', level: 'redhibitoire' }),
-      buildCriterion({ id: 'cap_xp', label: '5+ ans en comptabilité générale', level: 'obligatoire' }),
       buildCriterion({ id: 's_ifrs', label: 'Maîtrise des normes IFRS', level: 'critique', weight: 8 }),
       buildCriterion({ id: 's_sap', label: 'Pratique avérée de SAP', level: 'tres_important', weight: 6 }),
       buildCriterion({ id: 's_eng', label: 'Anglais courant écrit/oral', level: 'important', weight: 4 }),
@@ -67,7 +66,6 @@ function devBackendFrontierSheet(): ScoringSheet {
     acceptanceThreshold: ACCEPTANCE,
     criteria: [
       buildCriterion({ id: 'ko_dipl', label: 'Diplôme Bac+5 informatique', level: 'redhibitoire' }),
-      buildCriterion({ id: 'cap_xp', label: '3+ ans de développement backend', level: 'obligatoire' }),
       buildCriterion({ id: 'b_go', label: 'Maîtrise de Go', level: 'critique', weight: 7 }),
       buildCriterion({ id: 'b_sql', label: 'Modélisation SQL avancée', level: 'tres_important', weight: 6 }),
       buildCriterion({ id: 'b_k8s', label: 'Kubernetes en production', level: 'important', weight: 6 }),
@@ -101,7 +99,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'satisfait', 'DEC mentionné (2014).', 'Expert-comptable diplômée (DEC, 2014)'),
-      v('cap_xp', 'satisfait', '9 ans en compta générale.', '9 ans en comptabilité générale'),
       v('s_ifrs', 'satisfait', 'IFRS au quotidien.', 'normes IFRS au quotidien'),
       v('s_sap', 'satisfait', 'SAP FI/CO.', 'SAP FI/CO'),
       v('s_eng', 'satisfait', 'Anglais courant, TOEIC 945.', 'Anglais courant (TOEIC 945)'),
@@ -123,7 +120,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'satisfait', 'DEC 2017.', 'DEC (2017)'),
-      v('cap_xp', 'satisfait', '6 ans compta générale.', '6 ans en comptabilité générale'),
       v('s_ifrs', 'satisfait', 'IFRS maîtrisées.', 'IFRS et consolidation maîtrisées'),
       v('s_sap', 'satisfait', 'SAP cité.', 'SAP'),
       v('s_eng', 'non', "Aucun élément sur l'anglais.", ''),
@@ -145,7 +141,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'satisfait', 'DEC obtenu.', 'DEC obtenu (2019)'),
-      v('cap_xp', 'satisfait', '5 ans en cabinet.', '5 ans en cabinet'),
       v('s_ifrs', 'non', "Peu d'exposition IFRS.", "Peu d'exposition IFRS"),
       v('s_sap', 'partiel', 'Découverte de SAP sur un projet.', 'Découverte de SAP sur un projet'),
       v('s_eng', 'non', 'Anglais scolaire.', 'anglais scolaire'),
@@ -154,60 +149,47 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     expectedScoreResult: { totalScore: 15, status: 'rejected', hardFailures: [] },
   },
 
-  // ── 04 — rejected : HARD_CAP non satisfait (cap) ────────────────────────
+  // ── 04 — accepted : profil technique fort (plus de must-have d'ancienneté) ─
   {
     meta: {
-      name: '04-experience-insuffisante-cap',
-      description: 'Profil techniquement excellent mais expérience requise non atteinte → cap.',
-      expectedC4Range: [72, 76],
+      name: '04-tech-fort-accepte',
+      description:
+        "Profil techniquement excellent. L'ancienneté n'étant plus un critère dur, le score soft le porte au-dessus du seuil → accepté.",
+      expectedC4Range: [93, 97],
     },
     cvText:
-      "Tom Garnier — DEC (2022). 2 ans d'expérience en comptabilité générale seulement. " +
-      "Excellente maîtrise IFRS, SAP, anglais courant, passage par KPMG.",
+      "Tom Garnier — DEC (2022). Excellente maîtrise IFRS, SAP, anglais courant, passage par KPMG. " +
+      "Expérience en comptabilité générale plus courte (2 ans).",
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'satisfait', 'DEC 2022.', 'DEC (2022)'),
-      v('cap_xp', 'non', '2 ans seulement, < 5 ans requis.', "2 ans d'expérience en comptabilité générale seulement"),
       v('s_ifrs', 'satisfait', 'Excellente maîtrise IFRS.', 'Excellente maîtrise IFRS'),
       v('s_sap', 'satisfait', 'SAP.', 'SAP'),
       v('s_eng', 'satisfait', 'Anglais courant.', 'anglais courant'),
       v('s_big4', 'satisfait', 'Passage par KPMG (Big 4).', 'passage par KPMG'),
     ],
-    expectedScoreResult: {
-      totalScore: 74,
-      status: 'rejected',
-      hardFailures: [
-        { criterionId: 'cap_xp', criterionLabel: '5+ ans en comptabilité générale', criticityLevel: 'obligatoire', reason: 'unsatisfied' },
-      ],
-    },
+    expectedScoreResult: { totalScore: 100, status: 'accepted', hardFailures: [] },
   },
 
-  // ── 05 — rejected : HARD_CAP non vérifiable (cap) ───────────────────────
+  // ── 05 — rejected : technicals solides mais lacunes → sous le seuil ──────
   {
     meta: {
-      name: '05-anciennete-non-verifiable-cap',
-      description: "Ancienneté non datée dans le CV → HARD_CAP non vérifiable → cap.",
-      expectedC4Range: [72, 76],
+      name: '05-lacunes-soft-rejete',
+      description:
+        "IFRS et SAP solides mais anglais et Big 4 absents → 14/20 = 70, sous le seuil → rejeté par le score.",
+      expectedC4Range: [68, 72],
     },
     cvText:
-      "Sofia Moreau — DEC. Expérience en comptabilité générale (durée non précisée). " +
-      "IFRS et SAP solides, notions d'anglais. Pas de cabinet Big 4.",
+      "Sofia Moreau — DEC. IFRS et SAP solides. Pas d'élément sur l'anglais. Pas de cabinet Big 4.",
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'satisfait', 'DEC mentionné.', 'DEC'),
-      v('cap_xp', 'non_verifiable', 'Durée non précisée, impossible de vérifier les 5 ans.', 'durée non précisée'),
       v('s_ifrs', 'satisfait', 'IFRS solides.', 'IFRS et SAP solides'),
       v('s_sap', 'satisfait', 'SAP solide.', 'IFRS et SAP solides'),
-      v('s_eng', 'partiel', "Notions d'anglais.", "notions d'anglais"),
+      v('s_eng', 'non', "Aucun élément sur l'anglais.", ''),
       v('s_big4', 'non', 'Pas de Big 4.', 'Pas de cabinet Big 4'),
     ],
-    expectedScoreResult: {
-      totalScore: 74,
-      status: 'rejected',
-      hardFailures: [
-        { criterionId: 'cap_xp', criterionLabel: '5+ ans en comptabilité générale', criticityLevel: 'obligatoire', reason: 'unverifiable' },
-      ],
-    },
+    expectedScoreResult: { totalScore: 70, status: 'rejected', hardFailures: [] },
   },
 
   // ── 06 — rejected : HARD_KNOCKOUT non satisfait (score conservé) ────────
@@ -223,7 +205,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'non', "Master CCA, pas le DEC requis.", "Master CCA (pas le DEC)"),
-      v('cap_xp', 'satisfait', '8 ans compta générale.', '8 ans en comptabilité générale'),
       v('s_ifrs', 'satisfait', 'IFRS.', 'IFRS'),
       v('s_sap', 'satisfait', 'SAP.', 'SAP'),
       v('s_eng', 'satisfait', 'Anglais courant.', 'anglais courant'),
@@ -251,7 +232,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'non_verifiable', "Aucun diplôme mentionné dans le CV.", 'Le CV ne mentionne aucun diplôme'),
-      v('cap_xp', 'satisfait', '7 ans compta générale.', '7 ans en comptabilité générale'),
       v('s_ifrs', 'satisfait', 'IFRS.', 'IFRS'),
       v('s_sap', 'partiel', 'SAP en montée en compétence.', 'SAP (en montée en compétence)'),
       v('s_eng', 'satisfait', 'Anglais courant.', 'anglais courant'),
@@ -279,7 +259,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'satisfait', 'DEC.', 'Expert-comptable (DEC)'),
-      v('cap_xp', 'satisfait', '6 ans compta générale.', "6 ans d'expérience en comptabilité générale"),
       v('s_ifrs', 'non_verifiable', 'Rien sur IFRS.', ''),
       v('s_sap', 'non_verifiable', 'Rien sur SAP.', ''),
       v('s_eng', 'non_verifiable', "Rien sur l'anglais.", ''),
@@ -301,7 +280,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     scoringSheet: devBackendFrontierSheet(),
     decisions: [
       v('ko_dipl', 'satisfait', 'Master informatique.', 'Master informatique'),
-      v('cap_xp', 'satisfait', '4 ans de backend.', '4 ans de backend'),
       v('b_go', 'satisfait', 'Go solide.', 'Go solide'),
       v('b_sql', 'satisfait', 'SQL avancé.', 'SQL avancé'),
       v('b_k8s', 'partiel', 'Premières mises en prod K8s.', 'premières mises en prod sur Kubernetes'),
@@ -321,7 +299,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
     scoringSheet: comptableSeniorSheet(),
     decisions: [
       v('ko_dec', 'non_verifiable', 'CV illisible.', '', { llmFailure: true }),
-      v('cap_xp', 'non_verifiable', 'CV illisible.', '', { llmFailure: true }),
       v('s_ifrs', 'non_verifiable', 'CV illisible.', '', { llmFailure: true }),
       v('s_sap', 'non_verifiable', 'CV illisible.', '', { llmFailure: true }),
       v('s_eng', 'non_verifiable', 'CV illisible.', '', { llmFailure: true }),
@@ -332,7 +309,6 @@ export const CV_SAMPLE_FIXTURES: CVSampleFixture[] = [
       status: 'rejected',
       hardFailures: [
         { criterionId: 'ko_dec', criterionLabel: 'Diplôme DEC (expertise comptable)', criticityLevel: 'redhibitoire', reason: 'unverifiable' },
-        { criterionId: 'cap_xp', criterionLabel: '5+ ans en comptabilité générale', criticityLevel: 'obligatoire', reason: 'unverifiable' },
       ],
     },
   },

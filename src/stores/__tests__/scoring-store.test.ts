@@ -10,7 +10,7 @@ describe('scoring-store', () => {
 
   it('proposeSheet stores the criteria and starts in draft state', () => {
     const sheet = useScoringStore.getState().proposeSheet('CAMP-2026-001', [
-      buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+      buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
       buildCriterion({ id: 'c2', label: 'Anglais', level: 'important' }),
     ]);
 
@@ -18,7 +18,7 @@ describe('scoring-store', () => {
     expect(sheet.criteria).toHaveLength(2);
     expect(sheet.isValidated).toBe(false);
     expect(useScoringStore.getState().sheet?.criteria[0]?.weight).toBe(
-      DEFAULT_WEIGHTS.obligatoire,
+      DEFAULT_WEIGHTS.critique,
     );
   });
 
@@ -35,7 +35,7 @@ describe('scoring-store', () => {
 
   it('updateCriterion realigns weight on level change when weight is omitted', () => {
     useScoringStore.getState().proposeSheet('CAMP-2026-003', [
-      buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+      buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
     ]);
     useScoringStore.getState().updateCriterion('c1', { level: 'souhaitable' });
     const c = useScoringStore.getState().sheet?.criteria[0];
@@ -45,7 +45,7 @@ describe('scoring-store', () => {
 
   it('updateCriterion respects explicit weight override', () => {
     useScoringStore.getState().proposeSheet('CAMP-2026-004', [
-      buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+      buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
     ]);
     useScoringStore
       .getState()
@@ -56,7 +56,7 @@ describe('scoring-store', () => {
 
   it('removeCriterion drops the matching entry', () => {
     useScoringStore.getState().proposeSheet('CAMP-2026-005', [
-      buildCriterion({ id: 'c1', label: 'A', level: 'obligatoire' }),
+      buildCriterion({ id: 'c1', label: 'A', level: 'critique' }),
       buildCriterion({ id: 'c2', label: 'B', level: 'critique' }),
     ]);
     useScoringStore.getState().removeCriterion('c1');
@@ -72,7 +72,7 @@ describe('scoring-store', () => {
 
     useScoringStore
       .getState()
-      .addCriterion({ label: 'IFRS', level: 'obligatoire' });
+      .addCriterion({ label: 'IFRS', level: 'critique' });
     useScoringStore.getState().validate();
     expect(useScoringStore.getState().sheet?.isValidated).toBe(true);
   });
@@ -87,7 +87,7 @@ describe('scoring-store', () => {
 
   it('invalidate flips isValidated back to false without losing criteria', () => {
     useScoringStore.getState().proposeSheet('CAMP-2026-008', [
-      buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+      buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
     ]);
     useScoringStore.getState().validate();
     expect(useScoringStore.getState().sheet?.isValidated).toBe(true);

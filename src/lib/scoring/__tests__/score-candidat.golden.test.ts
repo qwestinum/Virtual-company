@@ -24,11 +24,9 @@ describe('scoreCandidat — golden fixtures (banque CV)', () => {
         f.expectedScoreResult.hardFailures.map((h) => `${h.criticityLevel}:${h.reason}`),
       ),
     );
-    // knockout unsatisfied/unverifiable + cap unsatisfied/unverifiable.
+    // Seul comportement dur restant : le knockout rédhibitoire (unsatisfied + unverifiable).
     expect(reasons).toContain('redhibitoire:unsatisfied');
     expect(reasons).toContain('redhibitoire:unverifiable');
-    expect(reasons).toContain('obligatoire:unsatisfied');
-    expect(reasons).toContain('obligatoire:unverifiable');
   });
 
   for (const fixture of CV_SAMPLE_FIXTURES) {

@@ -18,7 +18,7 @@ function sheet(): ScoringSheet {
     acceptanceThreshold: 75,
     criteria: [
       buildCriterion({ id: 'ko', label: 'Diplôme requis', level: 'redhibitoire' }),
-      buildCriterion({ id: 'cap', label: '5+ ans', level: 'obligatoire' }),
+      buildCriterion({ id: 'exp', label: '5+ ans', level: 'important', weight: 4 }),
       buildCriterion({ id: 's1', label: 'IFRS', level: 'critique', weight: 8 }),
       buildCriterion({ id: 's2', label: 'Anglais', level: 'important', weight: 4 }),
     ],
@@ -58,7 +58,7 @@ const LEDGER_OK = {
 };
 
 // Le LLM renvoie le NUMÉRO du critère (1..N), remappé vers le vrai id par
-// remapVerdictsToCriteria. Ordre de sheet() : 1=ko, 2=cap, 3=s1, 4=s2.
+// remapVerdictsToCriteria. Ordre de sheet() : 1=ko, 2=exp, 3=s1, 4=s2.
 const VERDICTS_OK = {
   verdicts: [
     { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Diplôme présent.', llmCVQuote: 'Master' },
@@ -126,11 +126,11 @@ describe('analyzeCVApplication', () => {
   });
 
   it('RÉGRESSION : le chemin d’analyse RÉEL applique les DEUX seuils → zone grise (pas refus collé sur 75)', async () => {
-    // ko + cap satisfaits (aucun échec dur) ; s1(8) satisfait, s2(4) non →
-    // score = 8/12*100 ≈ 67. Avec seuils 16/90 ⇒ 67 ∈ [16,90[ ⇒ ZONE GRISE.
+    // ko satisfait (pas d'échec dur) ; exp(4) sat, s1(8) sat, s2(4) non →
+    // score = (4+8+0)/16*100 = 75. Avec seuils 16/90 ⇒ 75 ∈ [16,90[ ⇒ ZONE GRISE.
     // Si le 2e appel scoreCandidat ne recevait pas thresholdLow/High (bug
     // historique), il retomberait sur acceptanceThreshold=75 (collées) →
-    // 67 < 75 → auto_reject. Ce test verrouille la transmission des deux seuils.
+    // 75 ≥ 75 → auto_accept (≠ gris). Ce test verrouille la transmission des deux seuils.
     const VERDICTS_MID = {
       verdicts: [
         { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Diplôme.', llmCVQuote: 'Master' },
@@ -153,7 +153,7 @@ describe('analyzeCVApplication', () => {
       thresholdHigh: 90,
     });
 
-    expect(out.application.scoringResult.totalScore).toBe(67);
+    expect(out.application.scoringResult.totalScore).toBe(75);
     expect(out.application.scoringResult.decisionZone).toBe('gray');
   });
 
@@ -181,11 +181,12 @@ describe('analyzeCVApplication', () => {
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
 
     expect(out.llmFailures.verdicts).toBe(true);
-    // Tous les critères non vérifiables → knockout (ko) + cap → score 0, rejected.
+    // Tous non vérifiables → knockout (ko) → score 0, rejected. exp/s1/s2 sont
+    // SOFT (plus de cap) → un seul échec DUR : ko.
     expect(out.application.scoringResult.totalScore).toBe(0);
     expect(out.application.scoringResult.status).toBe('rejected');
     const hf = out.application.scoringResult.hardFailures;
-    expect(hf.map((h) => h.criterionId).sort()).toEqual(['cap', 'ko']);
+    expect(hf.map((h) => h.criterionId).sort()).toEqual(['ko']);
     expect(hf.every((h) => h.reason === 'unverifiable')).toBe(true);
     // Le breakdown reflète le fallback.
     expect(

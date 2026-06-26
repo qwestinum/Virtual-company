@@ -76,11 +76,11 @@ const VALID_LLM_RESPONSE = JSON.stringify({
   criteria: [
     {
       label: 'Diplôme comptable Bac+5 (DSCG/DEC)',
-      level: 'obligatoire',
+      level: 'critique',
     },
     {
       label: "5+ ans d'expérience en comptabilité générale",
-      level: 'obligatoire',
+      level: 'critique',
     },
     { label: 'Maîtrise des normes IFRS', level: 'critique' },
     { label: 'Pratique avérée de SAP', level: 'tres_important' },
@@ -105,7 +105,6 @@ describe('runScoringProposal', () => {
     expect(out.criteria).toHaveLength(8);
     const byLevel = (level: string) =>
       out.criteria.find((c) => c.level === level);
-    expect(byLevel('obligatoire')?.weight).toBe(DEFAULT_WEIGHTS.obligatoire);
     expect(byLevel('critique')?.weight).toBe(DEFAULT_WEIGHTS.critique);
     expect(byLevel('tres_important')?.weight).toBe(
       DEFAULT_WEIGHTS.tres_important,
@@ -136,7 +135,7 @@ describe('runScoringProposal', () => {
       fakeCompletion(
         JSON.stringify({
           criteria: [
-            { label: 'A', level: 'obligatoire' },
+            { label: 'A', level: 'critique' },
             { label: 'B', level: 'critique' },
           ],
         }),

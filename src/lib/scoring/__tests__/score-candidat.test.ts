@@ -7,7 +7,7 @@ import {
 } from '@/lib/scoring';
 import { buildCriterion, type ScoringSheet } from '@/types/scoring';
 
-/** Fiche « comptable senior » : 1 knockout (p0) + 1 cap (p10) + 4 SOFT [8,6,4,2]. */
+/** Fiche « comptable senior » : 1 knockout (p0) + 4 SOFT [8,6,4,2]. */
 function sheetA(acceptanceThreshold = 75): ScoringSheet {
   return {
     campaignId: 'CAMP-TEST',
@@ -15,7 +15,6 @@ function sheetA(acceptanceThreshold = 75): ScoringSheet {
     acceptanceThreshold,
     criteria: [
       buildCriterion({ id: 'ko', label: 'Diplôme DEC', level: 'redhibitoire' }),
-      buildCriterion({ id: 'cap', label: '5+ ans compta', level: 'obligatoire' }),
       buildCriterion({ id: 's_ifrs', label: 'IFRS', level: 'critique', weight: 8 }),
       buildCriterion({ id: 's_sap', label: 'SAP', level: 'tres_important', weight: 6 }),
       buildCriterion({ id: 's_eng', label: 'Anglais', level: 'important', weight: 4 }),
@@ -38,7 +37,7 @@ function verdict(
   };
 }
 
-const HARD_OK = [verdict('ko', 'satisfait'), verdict('cap', 'satisfait')];
+const HARD_OK = [verdict('ko', 'satisfait')];
 
 describe('scoreCandidat — normalisation SOFT uniquement (option B)', () => {
   it('moyenne pondérée sur les SOFT seuls (HARD hors moyenne)', () => {
@@ -74,20 +73,6 @@ describe('scoreCandidat — normalisation SOFT uniquement (option B)', () => {
     expect(r.status).toBe('rejected');
   });
 
-  it('le poids du critère HARD_CAP (obligatoire) n’entre PAS dans la moyenne', () => {
-    // Même décisions SOFT, cap satisfait : si le cap comptait (p10), le score
-    // changerait. Ici il est exclu → score gouverné par les seuls SOFT.
-    const decisions = [
-      ...HARD_OK,
-      verdict('s_ifrs', 'satisfait'),
-      verdict('s_sap', 'satisfait'),
-      verdict('s_eng', 'non'),
-      verdict('s_big4', 'satisfait'),
-    ];
-    // 8+6+0+2 = 16 → 80.
-    expect(scoreCandidat(decisions, sheetA()).totalScore).toBe(80);
-  });
-
   it('Σ des contributions SOFT du breakdown == score de base', () => {
     const r = scoreCandidat(
       [
@@ -115,7 +100,6 @@ describe('scoreCandidat — HARD_KNOCKOUT (score conservé)', () => {
     const r = scoreCandidat(
       [
         verdict('ko', 'non'),
-        verdict('cap', 'satisfait'),
         verdict('s_ifrs', 'satisfait'),
         verdict('s_sap', 'satisfait'),
         verdict('s_eng', 'satisfait'),
@@ -137,7 +121,7 @@ describe('scoreCandidat — HARD_KNOCKOUT (score conservé)', () => {
 
   it('rédhibitoire non vérifiable ⇒ même effet (rejected), reason unverifiable', () => {
     const r = scoreCandidat(
-      [verdict('ko', 'non_verifiable'), verdict('cap', 'satisfait'),
+      [verdict('ko', 'non_verifiable'),
        verdict('s_ifrs', 'satisfait'), verdict('s_sap', 'satisfait'),
        verdict('s_eng', 'satisfait'), verdict('s_big4', 'satisfait')],
       sheetA(),
@@ -145,34 +129,6 @@ describe('scoreCandidat — HARD_KNOCKOUT (score conservé)', () => {
     expect(r.status).toBe('rejected');
     expect(r.totalScore).toBe(100);
     expect(r.hardFailures[0]).toMatchObject({ criterionId: 'ko', reason: 'unverifiable' });
-  });
-});
-
-describe('scoreCandidat — HARD_CAP', () => {
-  it('obligatoire non satisfait ⇒ score plafonné à (seuil-1) ⇒ rejected', () => {
-    const r = scoreCandidat(
-      [verdict('ko', 'satisfait'), verdict('cap', 'non'),
-       verdict('s_ifrs', 'satisfait'), verdict('s_sap', 'satisfait'),
-       verdict('s_eng', 'satisfait'), verdict('s_big4', 'satisfait')],
-      sheetA(),
-    );
-    expect(r.totalScore).toBe(74); // 100 plafonné à 75-1
-    expect(r.status).toBe('rejected');
-    expect(r.hardFailures).toEqual([
-      { criterionId: 'cap', criterionLabel: '5+ ans compta', criticityLevel: 'obligatoire', reason: 'unsatisfied' },
-    ]);
-  });
-
-  it('cap sans effet quand le score est déjà bas (statut vient du seuil)', () => {
-    const r = scoreCandidat(
-      [verdict('ko', 'satisfait'), verdict('cap', 'non_verifiable'),
-       verdict('s_ifrs', 'non'), verdict('s_sap', 'non'),
-       verdict('s_eng', 'non'), verdict('s_big4', 'non')],
-      sheetA(),
-    );
-    expect(r.totalScore).toBe(0); // base 0, cap min(0,74)=0
-    expect(r.status).toBe('rejected');
-    expect(r.hardFailures[0]).toMatchObject({ reason: 'unverifiable' });
   });
 });
 
@@ -185,7 +141,6 @@ describe('scoreCandidat — comportement de seuil (frontière)', () => {
       acceptanceThreshold: 75,
       criteria: [
         buildCriterion({ id: 'ko', label: 'KO', level: 'redhibitoire' }),
-        buildCriterion({ id: 'cap', label: 'CAP', level: 'obligatoire' }),
         buildCriterion({ id: 'b1', label: 'B1', level: 'critique', weight: 7 }),
         buildCriterion({ id: 'b2', label: 'B2', level: 'tres_important', weight: 6 }),
         buildCriterion({ id: 'b3', label: 'B3', level: 'important', weight: 6 }),
@@ -265,7 +220,7 @@ describe('scoreCandidat — robustesse & purété', () => {
 
   it('breakdown TOUJOURS complet (tous les critères de la fiche) même si knockout', () => {
     const r = scoreCandidat([verdict('ko', 'non')], sheetA());
-    expect(r.breakdown).toHaveLength(6);
+    expect(r.breakdown).toHaveLength(5);
     expect(r.status).toBe('rejected');
   });
 

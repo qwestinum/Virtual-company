@@ -103,7 +103,7 @@ describe('campaigns-store', () => {
       campaignId: 'CAMP-2026-006',
       isValidated: true,
       criteria: [
-        buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+        buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
       ],
     };
     useCampaignsStore
@@ -121,7 +121,7 @@ describe('campaigns-store', () => {
       campaignId: 'CAMP-2026-007',
       isValidated: true,
       criteria: [
-        buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+        buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
       ],
     };
     useCampaignsStore
@@ -182,7 +182,7 @@ describe('campaigns-store', () => {
       campaignId: 'CAMP-2026-REC3',
       isValidated: true,
       criteria: [
-        buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+        buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
       ],
     };
     const store = useCampaignsStore.getState();
@@ -230,7 +230,7 @@ describe('campaigns-store', () => {
     const sheet: ScoringSheet = {
       campaignId: 'CAMP-2026-ACT2',
       isValidated: true,
-      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' })],
     };
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
@@ -252,7 +252,7 @@ describe('campaigns-store', () => {
       campaignId: 'CAMP-2026-SUGG',
       isValidated: true,
       criteria: [
-        buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+        buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
         // Pondération PROPOSÉE par l'IA, non encore traitée → bloque le lancement.
         buildCriterion({
           id: 'sugg-1',
@@ -304,7 +304,7 @@ describe('campaigns-store', () => {
     const sheet: ScoringSheet = {
       campaignId: 'CAMP-2026-INT1',
       isValidated: true,
-      criteria: [buildCriterion({ id: 'c1', label: 'X', level: 'obligatoire' })],
+      criteria: [buildCriterion({ id: 'c1', label: 'X', level: 'critique' })],
     };
     // Défaut : sources=[] → aucun flux de réception.
     store.addCampaign({ fdp, scoringSheet: sheet });
@@ -323,7 +323,7 @@ describe('campaigns-store', () => {
     const sheet: ScoringSheet = {
       campaignId: 'CAMP-2026-INT2',
       isValidated: true,
-      criteria: [buildCriterion({ id: 'c1', label: 'X', level: 'obligatoire' })],
+      criteria: [buildCriterion({ id: 'c1', label: 'X', level: 'critique' })],
     };
     store.addCampaign({ fdp, scoringSheet: sheet });
     store.setSources('CAMP-2026-INT2', ['manual']);
@@ -343,7 +343,7 @@ describe('campaigns-store', () => {
       campaignId: 'CAMP-2026-008',
       isValidated: true,
       criteria: [
-        buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' }),
+        buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' }),
       ],
     };
     useCampaignsStore
@@ -371,7 +371,7 @@ describe('campaigns-store', () => {
     const sheet: ScoringSheet = {
       campaignId: 'CAMP-2026-LC2',
       isValidated: true,
-      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' })],
     };
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
@@ -391,7 +391,7 @@ describe('campaigns-store', () => {
     const sheet: ScoringSheet = {
       campaignId: id,
       isValidated: true,
-      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' })],
     };
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });
@@ -429,7 +429,7 @@ describe('campaigns-store', () => {
     const sheet: ScoringSheet = {
       campaignId: id,
       isValidated: true,
-      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+      criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' })],
     };
     const store = useCampaignsStore.getState();
     store.addCampaign({ fdp, scoringSheet: sheet });

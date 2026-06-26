@@ -41,7 +41,7 @@ function validatedSheet(id: string): ScoringSheet {
   return {
     campaignId: id,
     isValidated: true,
-    criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'obligatoire' })],
+    criteria: [buildCriterion({ id: 'c1', label: 'IFRS', level: 'critique' })],
   };
 }
 
