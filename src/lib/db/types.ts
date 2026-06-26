@@ -212,6 +212,7 @@ export type JournalRow = {
 export type ArtifactKind =
   | 'fdp'
   | 'job_ad'
+  | 'cv'
   | 'cv_report'
   | 'scoring_sheet'
   | 'campaign_report'

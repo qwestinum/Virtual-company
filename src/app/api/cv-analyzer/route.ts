@@ -8,6 +8,8 @@ import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { ScoringError } from '@/lib/scoring';
 import { AIProviderError } from '@/lib/ai/errors';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
+import { uploadArtifactBinary } from '@/lib/storage/blob';
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -219,10 +221,48 @@ export async function POST(request: Request): Promise<NextResponse> {
       console.error('[vivier] planification alimentation auto échouée', vivierErr);
     }
 
+    // Persiste le CV (binaire) comme artefact → consultable depuis la carte de
+    // validation (zone grise) et l'audit. Best-effort, uniquement en campagne
+    // (un artefact a besoin d'un owner). Échec storage → cvArtifactId null.
+    let cvArtifactId: string | null = null;
+    if (campaignId) {
+      try {
+        const isTask = campaignId.startsWith('TASK-');
+        const mime = file.type || 'application/octet-stream';
+        const up = await uploadArtifactBinary({
+          owner: isTask
+            ? { kind: 'task', id: campaignId }
+            : { kind: 'campaign', id: campaignId },
+          name: extracted.fileName,
+          content: Buffer.from(await file.arrayBuffer()),
+          mimeType: mime,
+        });
+        const id = `art_cv_${taskId}`;
+        await insertArtifactMeta({
+          id,
+          campaignId: isTask ? null : campaignId,
+          taskId: isTask ? campaignId : null,
+          kind: 'cv',
+          name: extracted.fileName,
+          mime,
+          storageBucket: up.bucket,
+          storagePath: up.path,
+          publicUrl: up.publicUrl,
+          metadata: { source: 'chat', uid: taskId },
+        });
+        cvArtifactId = id;
+      } catch (cvErr) {
+        if (!(cvErr instanceof SupabaseNotConfiguredError)) {
+          console.error('[cv-analyzer] persistance CV échouée', cvErr);
+        }
+      }
+    }
+
     return NextResponse.json({
       application,
       threshold,
       metrics,
+      cvArtifactId,
     });
   } catch (err) {
     if (err instanceof CVExtractError) {

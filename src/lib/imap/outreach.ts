@@ -68,6 +68,12 @@ export type OutreachInput = {
    * « 📄 Rapport d'analyse » (parité avec le chemin chat). `null` si non produit.
    */
   reportArtifactId: string | null;
+  /**
+   * Id de l'artefact CV (binaire) persisté par le poller. Rattaché à la
+   * validation pour que la carte affiche « 📎 CV du candidat ». `null` si non
+   * persisté (storage indisponible).
+   */
+  cvArtifactId: string | null;
 };
 
 export async function dispatchImapCandidateOutreach(
@@ -260,7 +266,7 @@ async function enqueueImapPendingValidation(args: {
       candidateEmail: candidate.email ?? null,
       score: candidate.score,
       decision,
-      cvArtifactId: null,
+      cvArtifactId: input.cvArtifactId,
       reportArtifactId: input.reportArtifactId,
       mailDraftArtifactId: draftPersisted ? artifactId : null,
       confirmed: false,

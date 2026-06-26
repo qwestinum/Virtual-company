@@ -104,6 +104,9 @@ export function ValidationCard({
 
   const jobTitle = payloadString(v, 'jobTitle');
   const summary = payloadString(v, 'summary') ?? candidateSummary(v);
+  const cvArtifact = useArtifactsStore((s) =>
+    v.cvArtifactId ? s.byId[v.cvArtifactId] : undefined,
+  );
   const reportArtifact = useArtifactsStore((s) =>
     v.reportArtifactId ? s.byId[v.reportArtifactId] : undefined,
   );
@@ -182,8 +185,17 @@ export function ValidationCard({
           {summary}
         </p>
       ) : null}
-      {reportArtifact || fdpArtifact ? (
+      {cvArtifact || reportArtifact || fdpArtifact ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
+          {cvArtifact ? (
+            <button
+              type="button"
+              onClick={() => void openArtifact(cvArtifact)}
+              className="inline-flex items-center gap-1 rounded-md border border-stone-300 bg-stone-50 px-2 py-1 font-body text-[11px] font-semibold text-stone-700 hover:bg-stone-100"
+            >
+              📎 CV du candidat
+            </button>
+          ) : null}
           {reportArtifact ? (
             <button
               type="button"

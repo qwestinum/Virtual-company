@@ -55,7 +55,7 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { feedVivierFromApplication } from '@/lib/vivier/ingest-application';
 import { matchVivierApplication } from '@/lib/vivier/match-application';
 import { openConnection } from '@/lib/imap/client';
-import { uploadArtifact } from '@/lib/storage/blob';
+import { uploadArtifact, uploadArtifactBinary } from '@/lib/storage/blob';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 
 /**
@@ -628,6 +628,38 @@ async function processEmailAttachment(args: {
     typeof jobTitleVal === 'string' && jobTitleVal.trim().length > 0
       ? jobTitleVal.trim()
       : null;
+  // Persiste le CV (binaire) comme artefact → consultable depuis la carte de
+  // validation (parité chat). Best-effort : échec storage → cvArtifactId null.
+  let cvArtifactId: string | null = null;
+  try {
+    const cvUp = await uploadArtifactBinary({
+      owner: isTaskOwner
+        ? { kind: 'task', id: campaign.id }
+        : { kind: 'campaign', id: campaign.id },
+      name: fileName,
+      content: buffer,
+      mimeType: mime,
+    });
+    const cvId = `art_imap_cvfile_${mailbox.id}_${uid}`;
+    await insertArtifactMeta({
+      id: cvId,
+      campaignId: isTaskOwner ? null : campaign.id,
+      taskId: isTaskOwner ? campaign.id : null,
+      kind: 'cv',
+      name: fileName,
+      mime,
+      storageBucket: cvUp.bucket,
+      storagePath: cvUp.path,
+      publicUrl: cvUp.publicUrl,
+      metadata: { source: 'imap', mailboxId: mailbox.id, uid },
+    });
+    cvArtifactId = cvId;
+  } catch (cvErr) {
+    if (!(cvErr instanceof SupabaseNotConfiguredError)) {
+      console.error('[imap-poller] persistance CV échouée', cvErr);
+    }
+  }
+
   try {
     await dispatchImapCandidateOutreach({
       mailboxId: mailbox.id,
@@ -640,6 +672,7 @@ async function processEmailAttachment(args: {
       // Rapport d'analyse déjà généré + persisté ci-dessus : on le relie à la
       // validation (parité chat — sinon la carte n'affiche pas « 📄 Rapport »).
       reportArtifactId: artifactId,
+      cvArtifactId,
     });
   } catch (err) {
     // Différé HITL : on REMONTE pour que la boucle ne marque pas le message

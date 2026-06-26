@@ -154,6 +154,8 @@ export type CVAnalyzerResult = {
     tokensUsed: number;
     costEstimate: number;
   };
+  /** Artefact CV persisté (consultable depuis la carte de validation). Null hors campagne / échec storage. */
+  cvArtifactId: string | null;
 };
 
 export type IsolatedManagerChatResult = {

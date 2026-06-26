@@ -143,6 +143,7 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
       jobTitle: 'Dev',
       summary: summaryOf(gray, makeCV('gray', 'Gris2')),
       uids: ['u-g1', 'u-g2'],
+      cvArtifactIds: [null, null],
       reportArtifactId: 'rep-1',
     });
 
@@ -162,6 +163,7 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
       jobTitle: 'Dev',
       summary: summaryOf(autoAccept, autoReject),
       uids: ['u-accept', 'u-reject'],
+      cvArtifactIds: [null, null],
       reportArtifactId: 'rep-1',
     });
 
@@ -178,6 +180,7 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
       jobTitle: 'Dev',
       summary: summaryOf(autoAccept, gray),
       uids: ['u-accept', 'u-gray'],
+      cvArtifactIds: [null, null],
       reportArtifactId: 'rep-1',
     });
 

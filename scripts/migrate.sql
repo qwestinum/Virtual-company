@@ -179,7 +179,7 @@ create table if not exists public.artifacts_meta (
   id               text primary key,
   campaign_id      text references public.campaigns(id) on delete cascade,
   task_id          text references public.tasks_archived(id) on delete cascade,
-  kind             text not null check (kind in ('fdp','job_ad','cv_report','scoring_sheet','other')),
+  kind             text not null check (kind in ('fdp','job_ad','cv','cv_report','scoring_sheet','campaign_report','other')),
   name             text not null,
   mime             text not null default 'text/markdown',
   storage_bucket   text,
@@ -192,6 +192,21 @@ create table if not exists public.artifacts_meta (
     (campaign_id is null and task_id is not null)
   )
 );
+
+-- Étend la liste des `kind` autorisés pour les tables PRÉEXISTANTES (la
+-- contrainte inline ci-dessus ne s'applique qu'aux créations fraîches).
+-- Ajoute 'cv' (CV binaire consultable en validation) + 'campaign_report'
+-- (aligne la contrainte sur le type ArtifactKind). Idempotent.
+alter table public.artifacts_meta
+  drop constraint if exists artifacts_meta_kind_check;
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'artifacts_meta_kind_chk'
+  ) then
+    alter table public.artifacts_meta add constraint artifacts_meta_kind_chk
+      check (kind in ('fdp','job_ad','cv','cv_report','scoring_sheet','campaign_report','other'));
+  end if;
+end $$;
 
 -- Si la table existait déjà avec les anciennes colonnes drive_*, on
 -- les renomme proprement (idempotent grâce au DO block).

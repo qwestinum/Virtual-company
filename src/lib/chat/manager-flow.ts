@@ -388,6 +388,9 @@ export async function dispatchCVBatch(args: {
   // Aligné index-par-index avec `results`/`summary.perCV` → sert au
   // rapprochement HITL PAR ANALYSE (chaque analyse = un traitement distinct).
   const uids: string[] = [];
+  // Artefact CV persisté par /api/cv-analyzer, aligné index-par-index avec
+  // `results`/`uids` → rattaché à la validation pour consultation du CV.
+  const cvArtifactIds: (string | null)[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -404,6 +407,7 @@ export async function dispatchCVBatch(args: {
       });
       results.push(res.application);
       uids.push(itemTaskId);
+      cvArtifactIds.push(res.cvArtifactId);
     } catch (err) {
       // Un CV en erreur n'arrête pas le lot — on poste une note
       // discrète et on continue.
@@ -508,6 +512,7 @@ export async function dispatchCVBatch(args: {
       jobTitle,
       summary,
       uids,
+      cvArtifactIds,
       reportArtifactId: reportArtifact.id,
     });
   }
@@ -534,6 +539,8 @@ export async function dispatchPostAnalysisOutreach(args: {
   summary: CVBatchSummary;
   /** UID par analyse, aligné sur `summary.perCV` (rapprochement HITL par analyse). */
   uids: string[];
+  /** Artefact CV par analyse, aligné sur `summary.perCV` (consultation en validation). */
+  cvArtifactIds: (string | null)[];
   /** Rapport d'analyse du lot — rattaché aux validations pour accès depuis la carte. */
   reportArtifactId: string;
 }): Promise<void> {
@@ -587,6 +594,7 @@ export async function dispatchPostAnalysisOutreach(args: {
           mode,
           campaignId: args.campaignId,
           jobTitle: args.jobTitle,
+          cvArtifactId: args.cvArtifactIds[index] ?? null,
           reportArtifactId: args.reportArtifactId,
         });
         return true;
@@ -763,6 +771,8 @@ async function enqueuePendingValidation(args: {
   jobTitle: string | null;
   /** Rapport d'analyse du lot (accès depuis la carte de validation). */
   reportArtifactId: string;
+  /** Artefact CV (consultation du CV depuis la carte de validation). */
+  cvArtifactId: string | null;
 }): Promise<void> {
   const chat = useChatStore.getState();
   const artifacts = useArtifactsStore.getState();
@@ -833,6 +843,7 @@ async function enqueuePendingValidation(args: {
         decision: args.decision,
         mailDraftArtifactId,
         reportArtifactId: args.reportArtifactId,
+        cvArtifactId: args.cvArtifactId,
         payload: {
           uid: args.uid,
           candidate,

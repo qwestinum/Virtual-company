@@ -103,6 +103,7 @@ function fakeCVResult(
     application,
     threshold: 75,
     metrics: { durationMs: 2500, tokensUsed: 1000, costEstimate: 0.005 },
+    cvArtifactId: null,
   };
 }
 
