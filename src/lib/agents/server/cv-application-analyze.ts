@@ -412,6 +412,8 @@ export async function analyzeCVApplication(
   // 3. Score calculé par le CODE — le LLM ne note jamais.
   const scoringResult = scoreCandidat(verdicts, input.sheet, {
     acceptanceThreshold: input.acceptanceThreshold,
+    thresholdLow: input.thresholdLow,
+    thresholdHigh: input.thresholdHigh,
     criteriaVersion: input.criteriaVersion,
     computedAt: input.computedAt,
   });

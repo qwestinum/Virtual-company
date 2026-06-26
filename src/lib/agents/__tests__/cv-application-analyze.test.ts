@@ -125,6 +125,38 @@ describe('analyzeCVApplication', () => {
     });
   });
 
+  it('RÉGRESSION : le chemin d’analyse RÉEL applique les DEUX seuils → zone grise (pas refus collé sur 75)', async () => {
+    // ko + cap satisfaits (aucun échec dur) ; s1(8) satisfait, s2(4) non →
+    // score = 8/12*100 ≈ 67. Avec seuils 16/90 ⇒ 67 ∈ [16,90[ ⇒ ZONE GRISE.
+    // Si le 2e appel scoreCandidat ne recevait pas thresholdLow/High (bug
+    // historique), il retomberait sur acceptanceThreshold=75 (collées) →
+    // 67 < 75 → auto_reject. Ce test verrouille la transmission des deux seuils.
+    const VERDICTS_MID = {
+      verdicts: [
+        { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Diplôme.', llmCVQuote: 'Master' },
+        { criterionId: '2', llmDecision: 'satisfait', llmJustification: '8 ans.', llmCVQuote: '8 ans' },
+        { criterionId: '3', llmDecision: 'satisfait', llmJustification: 'IFRS.', llmCVQuote: 'IFRS' },
+        { criterionId: '4', llmDecision: 'non', llmJustification: 'Pas d’anglais.', llmCVQuote: '' },
+      ],
+    };
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(jsonResult(VERDICTS_MID))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({
+      ...BASE_INPUT,
+      sheet: sheet(),
+      thresholdLow: 16,
+      thresholdHigh: 90,
+    });
+
+    expect(out.application.scoringResult.totalScore).toBe(67);
+    expect(out.application.scoringResult.decisionZone).toBe('gray');
+  });
+
   it('email résolu de façon déterministe depuis le CV (corrige un email LLM erroné)', async () => {
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult({ ...CANDIDATE_OK, email: 'faux@halluciné.com' }))
