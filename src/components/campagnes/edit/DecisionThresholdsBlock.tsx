@@ -18,6 +18,7 @@ import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 
 import { SaveBanner } from './SaveBanner';
+import { ThreeZoneRange } from './ThreeZoneRange';
 
 const FLASH_MS = 3000;
 
@@ -63,11 +64,6 @@ function DecisionThresholdsInner({ campaign }: DecisionThresholdsBlockProps) {
     window.setTimeout(() => setFlash(null), FLASH_MS);
   };
 
-  // Les poignées ne se croisent jamais (invariant bas ≤ haut).
-  const onLow = (v: number) => setLow(Math.min(v, high));
-  const onHigh = (v: number) => setHigh(Math.max(v, low));
-
-  const grayWidth = high - low;
   const hint =
     low === high
       ? 'Aucune zone de validation — tout est automatique.'
@@ -79,66 +75,36 @@ function DecisionThresholdsInner({ campaign }: DecisionThresholdsBlockProps) {
     <div>
       <SaveBanner message={flash} />
 
-      {/* Barre 3 zones */}
-      <div
-        style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden' }}
-        aria-hidden
-      >
-        <div style={{ width: `${low}%`, background: 'var(--dash-red)' }} />
-        <div style={{ width: `${grayWidth}%`, background: 'var(--dash-orange)' }} />
-        <div style={{ width: `${100 - high}%`, background: 'var(--dash-green)' }} />
-      </div>
-
       <div
         className="font-data"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          marginTop: 8,
+          marginBottom: 4,
           fontSize: 13,
           fontWeight: 700,
         }}
       >
         <span style={{ color: 'var(--dash-red)' }}>Refus auto &lt; {low}</span>
+        <span style={{ color: 'var(--dash-orange)' }}>Validation</span>
         <span style={{ color: 'var(--dash-green)' }}>Accept. auto ≥ {high}</span>
       </div>
 
-      <label className="font-body" style={labelStyle}>
-        Seuil bas (refus auto en dessous)
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={low}
-          onChange={(e) => onLow(Number(e.currentTarget.value))}
-          onPointerUp={onCommit}
-          onKeyUp={onCommit}
-          style={{ width: '100%', accentColor: 'var(--dash-red)' }}
-          aria-label="Seuil bas (refus automatique)"
-        />
-      </label>
-
-      <label className="font-body" style={labelStyle}>
-        Seuil haut (acceptation auto au-dessus)
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={high}
-          onChange={(e) => onHigh(Number(e.currentTarget.value))}
-          onPointerUp={onCommit}
-          onKeyUp={onCommit}
-          style={{ width: '100%', accentColor: 'var(--dash-green)' }}
-          aria-label="Seuil haut (acceptation automatique)"
-        />
-      </label>
+      {/* Slider unique, deux poignées, 3 zones colorées en direct. */}
+      <ThreeZoneRange
+        low={low}
+        high={high}
+        onChange={(lo, hi) => {
+          setLow(lo);
+          setHigh(hi);
+        }}
+        onCommit={onCommit}
+      />
 
       <p
         className="font-body"
         style={{
-          marginTop: 12,
+          marginTop: 8,
           fontSize: 12,
           color: 'var(--dash-text-secondary)',
           lineHeight: 1.5,
@@ -152,10 +118,3 @@ function DecisionThresholdsInner({ campaign }: DecisionThresholdsBlockProps) {
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  marginTop: 14,
-  fontSize: 12,
-  color: 'var(--dash-text-secondary)',
-};
