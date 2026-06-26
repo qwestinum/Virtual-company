@@ -107,7 +107,14 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   // (cohérent avec le reste — pas de « manuel » implicite).
   const [sources, setSources] = useState<CVSource[]>([]);
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
-  const [threshold, setThreshold] = useState(75);
+  // HITL 3 zones (lot 2) — défaut NOUVELLE campagne : 10/90 (bande grise large,
+  // seuls les extrêmes automatisés). Distinct du backfill 0/100 de l'existant.
+  const [thresholdLow, setThresholdLow] = useState(10);
+  const [thresholdHigh, setThresholdHigh] = useState(90);
+  const setThresholds = (low: number, high: number) => {
+    setThresholdLow(low);
+    setThresholdHigh(high);
+  };
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Persistance en cours : verrouille le bouton et affiche « Enregistrement… ».
   // La création n'est déclarée réussie qu'APRÈS confirmation serveur.
@@ -246,7 +253,7 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
         }
         if (copiedChannels) setChannels([...sourceCamp.publishedChannels]);
         if (copiedFlux) setSources([...sourceCamp.sources]);
-        setThreshold(sourceCamp.threshold);
+        setThresholds(sourceCamp.thresholdLow, sourceCamp.thresholdHigh);
       }
       setMatchHint({
         sourceId: hit.id,
@@ -321,7 +328,7 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       setChannels([]);
       setSources([]);
       setMailboxIds([]);
-      setThreshold(75);
+      setThresholds(10, 90);
       setMatchHint(null);
       setDocumentHint({
         fileName: file.name,
@@ -433,7 +440,8 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       // délibéré du formulaire), jamais d'après les canaux de DIFFUSION.
       sourcesConfirmed: sources.length > 0,
       sources,
-      threshold,
+      thresholdLow,
+      thresholdHigh,
       status: isComplete ? 'in_progress' : 'draft',
       // Archive de traçabilité du pré-remplissage (null si création de zéro).
       prefillExtraction,
@@ -533,7 +541,7 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
     setChannels([]);
     setSources([]);
     setMailboxIds([]);
-    setThreshold(75);
+    setThresholds(10, 90);
     setMatchHint(null);
     // Repart vierge : on abandonne aussi le pré-remplissage par document.
     setDocumentHint(null);
@@ -624,8 +632,9 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
             setSources={setSources}
             mailboxIds={mailboxIds}
             setMailboxIds={setMailboxIds}
-            threshold={threshold}
-            setThreshold={setThreshold}
+            thresholdLow={thresholdLow}
+            thresholdHigh={thresholdHigh}
+            setThresholds={setThresholds}
             submitError={submitError}
             submitting={submitting}
             onCancel={onClose}
@@ -1136,8 +1145,9 @@ function EditingStage({
   setSources,
   mailboxIds,
   setMailboxIds,
-  threshold,
-  setThreshold,
+  thresholdLow,
+  thresholdHigh,
+  setThresholds,
   submitError,
   submitting,
   onCancel,
@@ -1163,8 +1173,9 @@ function EditingStage({
   setSources: (next: CVSource[]) => void;
   mailboxIds: string[];
   setMailboxIds: (next: string[]) => void;
-  threshold: number;
-  setThreshold: (next: number) => void;
+  thresholdLow: number;
+  thresholdHigh: number;
+  setThresholds: (low: number, high: number) => void;
   submitError: string | null;
   submitting: boolean;
   onCancel: () => void;
@@ -1295,15 +1306,23 @@ function EditingStage({
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Seuil d'acceptation"
+          title="Seuils de décision"
           icon="🎚️"
-          subtitle={`${threshold}%`}
+          subtitle={
+            thresholdLow === thresholdHigh
+              ? `Tout automatique au seuil ${thresholdLow}`
+              : `Validation ${thresholdLow}–${thresholdHigh}`
+          }
           open={openSection === 'threshold'}
           onToggle={() => toggle('threshold')}
           saved={isSaved('threshold')}
           onSave={() => saveSection('threshold')}
         >
-          <ThresholdDraftEditor value={threshold} onChange={setThreshold} />
+          <ThresholdDraftEditor
+            low={thresholdLow}
+            high={thresholdHigh}
+            onChange={setThresholds}
+          />
         </CollapsibleSection>
       </div>
       <footer

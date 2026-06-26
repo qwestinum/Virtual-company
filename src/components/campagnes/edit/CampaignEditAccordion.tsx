@@ -17,8 +17,8 @@ import { ChannelsEditBlock } from './ChannelsEditBlock';
 import { FDPEditBlock } from './FDPEditBlock';
 import { FluxEditBlock } from './FluxEditBlock';
 import { LifecycleEditBlock } from './LifecycleEditBlock';
+import { DecisionThresholdsBlock } from './DecisionThresholdsBlock';
 import { ScoringEditBlock } from './ScoringEditBlock';
-import { ThresholdEditBlock } from './ThresholdEditBlock';
 
 export type CampaignEditAccordionProps = {
   campaign: ActiveCampaign;
@@ -103,13 +103,17 @@ export function CampaignEditAccordion({
         </AccordionItem>
       ) : null}
       <AccordionItem
-        title="Seuil d'acceptation"
-        subtitle={`${campaign.threshold}% — applique aux prochains CV`}
+        title="Seuils de décision"
+        subtitle={
+          campaign.thresholdLow === campaign.thresholdHigh
+            ? `Tout automatique au seuil ${campaign.thresholdLow}`
+            : `Validation ${campaign.thresholdLow}–${campaign.thresholdHigh} · appliqué aux prochains CV`
+        }
         icon="🎚️"
         open={expanded === 'threshold'}
         onToggle={() => toggle('threshold')}
       >
-        <ThresholdEditBlock campaign={campaign} />
+        <DecisionThresholdsBlock campaign={campaign} />
       </AccordionItem>
       <AccordionItem
         title="Cycle de vie"

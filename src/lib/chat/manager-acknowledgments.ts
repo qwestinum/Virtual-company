@@ -36,6 +36,15 @@ export type AcknowledgmentAction =
       next: number;
     }
   | {
+      kind: 'thresholds_changed';
+      campaignId: string;
+      campaignName: string;
+      previousLow: number;
+      previousHigh: number;
+      nextLow: number;
+      nextHigh: number;
+    }
+  | {
       kind: 'scoring_updated';
       campaignId: string;
       campaignName: string;
@@ -80,6 +89,13 @@ function phraseFor(action: AcknowledgmentAction): string {
           : 'plus inclusif';
       return `Vous avez ajusté le seuil d'acceptation de ${action.previous} à ${action.next} sur « ${action.campaignName} » (${dir}). Le nouveau seuil s'applique aux prochaines candidatures — je vous propose un récap quand on aura assez de recul.`;
     }
+    case 'thresholds_changed': {
+      const noGray = action.nextLow === action.nextHigh;
+      const zones = noGray
+        ? `tout est désormais automatique (refus sous ${action.nextLow}, acceptation au-dessus).`
+        : `refus auto sous ${action.nextLow}, validation entre ${action.nextLow} et ${action.nextHigh}, acceptation auto au-dessus de ${action.nextHigh}.`;
+      return `Vous avez ajusté les seuils de décision sur « ${action.campaignName} » : ${zones} J'applique ça aux prochaines candidatures — pas de reclassement des CV déjà analysés.`;
+    }
     case 'scoring_updated':
       return `J'ai bien pris en compte la nouvelle grille de scoring sur « ${action.campaignName} ». Le CV Analyzer va l'utiliser pour les analyses à venir.`;
     case 'channel_toggled':
@@ -119,6 +135,14 @@ function payloadFor(action: AcknowledgmentAction): Record<string, unknown> {
         campaignName: action.campaignName,
         previous: action.previous,
         threshold: action.next,
+      };
+    case 'thresholds_changed':
+      return {
+        campaignName: action.campaignName,
+        previousLow: action.previousLow,
+        previousHigh: action.previousHigh,
+        thresholdLow: action.nextLow,
+        thresholdHigh: action.nextHigh,
       };
     case 'scoring_updated':
       return { campaignName: action.campaignName };
