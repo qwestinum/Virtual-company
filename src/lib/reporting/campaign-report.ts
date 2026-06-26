@@ -110,6 +110,16 @@ export function buildCampaignReportSummary(
  */
 export const HITL_ZONES_RECALIBRATION = true;
 
+/**
+ * Bandeau affiché sur les surfaces KPI tant que `HITL_ZONES_RECALIBRATION` est
+ * actif (lot 2c). Les chiffres « retenue / arbitrage / volumes » restent
+ * calculés mais leur SENS a changé avec les 3 zones (gris en attente comptés en
+ * refusés, validation grise = « arbitrage ») — on contextualise plutôt que de
+ * laisser un nombre trompeur sans avertissement. Retiré au lot 3.
+ */
+export const HITL_METRICS_RECALIBRATION_NOTICE =
+  'Métriques de décision (retenue, arbitrage, volumes) en cours de recalibrage — passage au modèle de validation à 3 zones. À interpréter avec prudence jusqu’à la mise à jour du reporting.';
+
 /** Recommandations par RÈGLES (3 à 5, priorisées). Toujours au moins une. */
 export function buildRecommendations(
   data: Omit<CampaignReportData, 'recommendations'>,

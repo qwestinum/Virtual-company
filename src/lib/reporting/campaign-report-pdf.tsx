@@ -17,6 +17,10 @@ import {
 
 import { formatFrDate, formatFrDateTime } from '@/lib/reporting/audit-display';
 import {
+  HITL_METRICS_RECALIBRATION_NOTICE,
+  HITL_ZONES_RECALIBRATION,
+} from '@/lib/reporting/campaign-report';
+import {
   CAMPAIGN_ISSUE_LABELS,
   donneurOrdreLabel,
 } from '@/lib/reporting/campaign-report-display';
@@ -143,6 +147,24 @@ function CampaignReportDocument({
               candidature{summary.volumes.received > 1 ? 's' : ''} traitée
               {summary.volumes.received > 1 ? 's' : ''} — statistiques peu
               significatives.
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Bandeau neutralisation (lot 2c) — métriques de décision en recalibrage. */}
+        {HITL_ZONES_RECALIBRATION ? (
+          <View
+            style={{
+              marginTop: 8,
+              padding: 8,
+              borderRadius: 4,
+              backgroundColor: '#fef3c7',
+              borderWidth: 1,
+              borderColor: '#f59e0b',
+            }}
+          >
+            <Text style={{ fontSize: 7.5, color: '#92400e' }}>
+              ⚠ {HITL_METRICS_RECALIBRATION_NOTICE}
             </Text>
           </View>
         ) : null}

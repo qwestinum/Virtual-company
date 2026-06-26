@@ -15,6 +15,10 @@ import {
 } from '@react-pdf/renderer';
 
 import { formatFrDate, formatFrDateTime } from '@/lib/reporting/audit-display';
+import {
+  HITL_METRICS_RECALIBRATION_NOTICE,
+  HITL_ZONES_RECALIBRATION,
+} from '@/lib/reporting/campaign-report';
 import { CAMPAIGN_ISSUE_LABELS } from '@/lib/reporting/campaign-report-display';
 import { PDF_COLORS, pdfBaseStyles } from '@/lib/reporting/pdf-theme';
 import type { MultiCampaignReportData } from '@/types/reporting';
@@ -125,6 +129,23 @@ function MultiCampaignDocument({
             />
           </View>
         </View>
+
+        {HITL_ZONES_RECALIBRATION ? (
+          <View
+            style={{
+              marginTop: 8,
+              padding: 8,
+              borderRadius: 4,
+              backgroundColor: '#fef3c7',
+              borderWidth: 1,
+              borderColor: '#f59e0b',
+            }}
+          >
+            <Text style={{ fontSize: 7.5, color: '#92400e' }}>
+              ⚠ {HITL_METRICS_RECALIBRATION_NOTICE}
+            </Text>
+          </View>
+        ) : null}
 
         {/* 2. Vue d'ensemble agrégée */}
         <Text style={pdfBaseStyles.sectionTitle}>Vue d&apos;ensemble agrégée</Text>

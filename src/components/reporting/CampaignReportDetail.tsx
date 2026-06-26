@@ -12,6 +12,10 @@ import { useEffect, useState } from 'react';
 
 import { formatFrDate } from '@/lib/reporting/audit-display';
 import {
+  HITL_METRICS_RECALIBRATION_NOTICE,
+  HITL_ZONES_RECALIBRATION,
+} from '@/lib/reporting/campaign-report';
+import {
   CAMPAIGN_ISSUE_LABELS,
   donneurOrdreLabel,
 } from '@/lib/reporting/campaign-report-display';
@@ -143,6 +147,11 @@ function CampaignReportBody({ data }: { data: CampaignReportData }) {
       {data.lowVolume ? (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 font-body text-[12px] font-semibold text-amber-800">
           Moins de 5 candidatures traitées — statistiques peu significatives.
+        </p>
+      ) : null}
+      {HITL_ZONES_RECALIBRATION ? (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 font-body text-[12px] text-amber-800">
+          ⚠ {HITL_METRICS_RECALIBRATION_NOTICE}
         </p>
       ) : null}
 

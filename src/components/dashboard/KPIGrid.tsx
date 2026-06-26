@@ -9,6 +9,7 @@
  */
 
 import type { GlobalKPIs } from '@/lib/dashboard/derive-metrics';
+import { HITL_ZONES_RECALIBRATION } from '@/lib/reporting/campaign-report';
 
 import { AnimatedCounter } from './AnimatedCounter';
 import { DASH_COLORS, type DashColor } from './tokens';
@@ -69,17 +70,33 @@ export function KPIGrid({ kpis }: KPIGridProps) {
   ];
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-        gap: 10,
-        marginBottom: 24,
-      }}
-    >
-      {items.map((it) => (
-        <KPICard key={it.label} item={it} />
-      ))}
+    <div style={{ marginBottom: 24 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gap: 10,
+        }}
+      >
+        {items.map((it) => (
+          <KPICard key={it.label} item={it} />
+        ))}
+      </div>
+      {HITL_ZONES_RECALIBRATION ? (
+        <p
+          className="font-body"
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            color: 'var(--dash-text-tertiary)',
+            lineHeight: 1.4,
+          }}
+        >
+          ⚠ « Shortlistés » et « Conversion » n&apos;incluent pas les
+          candidatures en zone de validation (en attente de décision) — comptage
+          en cours de recalibrage (modèle 3 zones).
+        </p>
+      ) : null}
     </div>
   );
 }
