@@ -1,8 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { rowToDetail, rowToSummary } from '@/lib/db/repos/candidate-analyses';
+vi.mock('@/lib/db/supabase-server', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/lib/db/supabase-server')
+  >('@/lib/db/supabase-server');
+  return { ...actual, requireServerSupabase: vi.fn() };
+});
+
+import {
+  deriveDecisionZone,
+  insertCandidateAnalysis,
+  rowToDetail,
+  rowToSummary,
+  type CandidateAnalysisInsert,
+} from '@/lib/db/repos/candidate-analyses';
+import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { CandidateAnalysisRow } from '@/lib/db/types';
 import { DEFAULT_HITL_CONFIG } from '@/types/hitl';
+
+const requireServerSupabaseMock = vi.mocked(requireServerSupabase);
 
 const ROW: CandidateAnalysisRow = {
   id: 'can_42',
@@ -46,6 +62,10 @@ const ROW: CandidateAnalysisRow = {
     },
   },
   hitl_config: { rejectionMail: false, acceptanceMail: true },
+  decision_zone: 'auto_accept',
+  decided_by: 'auto',
+  decided_by_user_id: null,
+  decided_by_user_email: null,
   created_at: '2026-06-06T09:05:01.000Z',
 };
 
@@ -66,6 +86,9 @@ describe('rowToSummary', () => {
       computedAt: '2026-06-06T09:05:00.000Z',
       createdAt: '2026-06-06T09:05:01.000Z',
       hitlConfig: { rejectionMail: false, acceptanceMail: true },
+      decisionZone: 'auto_accept',
+      decidedBy: 'auto',
+      decidedByUser: null,
     });
     expect('application' in s).toBe(false);
   });
@@ -73,6 +96,33 @@ describe('rowToSummary', () => {
   it('hitl_config null (row historique) retombe sur DEFAULT (ON)', () => {
     const s = rowToSummary({ ...ROW, hitl_config: null });
     expect(s.hitlConfig).toEqual(DEFAULT_HITL_CONFIG);
+  });
+
+  it('rétro-compat : colonnes décision NULL (ligne antérieure au lot 1) → null', () => {
+    const s = rowToSummary({
+      ...ROW,
+      decision_zone: null,
+      decided_by: null,
+      decided_by_user_id: null,
+      decided_by_user_email: null,
+    });
+    expect(s.decisionZone).toBeNull();
+    expect(s.decidedBy).toBeNull();
+    expect(s.decidedByUser).toBeNull();
+  });
+
+  it('ligne tranchée par un humain → decidedByUser (id + email snapshot)', () => {
+    const s = rowToSummary({
+      ...ROW,
+      decided_by: 'user',
+      decided_by_user_id: 'usr-uuid-1',
+      decided_by_user_email: 'rh@client.fr',
+    });
+    expect(s.decidedBy).toBe('user');
+    expect(s.decidedByUser).toEqual({
+      userId: 'usr-uuid-1',
+      email: 'rh@client.fr',
+    });
   });
 
   it('préserve les nullables (campagne / email)', () => {
@@ -93,5 +143,63 @@ describe('rowToDetail', () => {
     expect(d.id).toBe('can_42');
     expect(d.application.candidate.fullName).toBe('Jean Test');
     expect(d.application.scoringResult.totalScore).toBe(82);
+  });
+});
+
+describe('deriveDecisionZone (lot 1 : seuil unique)', () => {
+  it('accepted → auto_accept', () => {
+    expect(deriveDecisionZone('accepted')).toBe('auto_accept');
+  });
+  it('rejected → auto_reject', () => {
+    expect(deriveDecisionZone('rejected')).toBe('auto_reject');
+  });
+});
+
+describe('insertCandidateAnalysis — capture « système »', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function captureInsert(): { insert: ReturnType<typeof vi.fn> } {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({ insert }),
+    } as never);
+    return { insert };
+  }
+
+  function insertInput(
+    over: Partial<CandidateAnalysisInsert> = {},
+  ): CandidateAnalysisInsert {
+    return {
+      id: 'can_99',
+      campaignId: 'CAMP-1',
+      application: ROW.application,
+      hitlConfig: DEFAULT_HITL_CONFIG,
+      ...over,
+    };
+  }
+
+  it('pose decision_zone dérivée du statut + decided_by=auto, identité null', async () => {
+    const { insert } = captureInsert();
+    await insertCandidateAnalysis(insertInput());
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(insert.mock.calls[0]![0]).toMatchObject({
+      decision_zone: 'auto_accept',
+      decided_by: 'auto',
+      decided_by_user_id: null,
+      decided_by_user_email: null,
+    });
+  });
+
+  it('statut rejected → decision_zone auto_reject', async () => {
+    const { insert } = captureInsert();
+    const rejected = {
+      ...ROW.application,
+      scoringResult: { ...ROW.application.scoringResult, status: 'rejected' as const },
+    };
+    await insertCandidateAnalysis(insertInput({ application: rejected }));
+    expect(insert.mock.calls[0]![0]).toMatchObject({
+      decision_zone: 'auto_reject',
+      decided_by: 'auto',
+    });
   });
 });

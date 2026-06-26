@@ -13,7 +13,12 @@
 import type { CandidateJourney } from '@/lib/reporting/candidate-journey';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
-import type { HitlConfig } from '@/types/hitl';
+import type {
+  DecidedBy,
+  DecisionZone,
+  HitlConfig,
+  HumanDecider,
+} from '@/types/hitl';
 import type { CandidateStatus } from '@/types/scoring';
 
 /**
@@ -45,6 +50,18 @@ export type CandidateAnalysisSummary = {
    * définitif). Repli sur `DEFAULT_HITL_CONFIG` pour les rows historiques.
    */
   hitlConfig: HitlConfig;
+  /**
+   * Zone de décision figée au scoring (modèle 3 zones HITL). `null` = ligne
+   * antérieure au lot 1. Additif : non lu par l'UI/reporting actuels.
+   */
+  decisionZone: DecisionZone | null;
+  /**
+   * Acteur ayant tranché le statut final (« système vs humain »). `null` =
+   * ligne historique. Additif : non lu par l'UI/reporting actuels.
+   */
+  decidedBy: DecidedBy | null;
+  /** Identité du valideur humain (id + email snapshot) — null si auto/historique. */
+  decidedByUser: HumanDecider | null;
   /**
    * Parcours dérivé du journal (étape + intervention humaine). Présent
    * uniquement quand l'endpoint a enrichi le résumé ; absent sinon.

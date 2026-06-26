@@ -277,6 +277,10 @@ async function enqueueImapPendingValidation(args: {
       createdAt: nowIso,
       updatedAt: nowIso,
       decidedAt: null,
+      // Enqueue auto (poller) : personne n'a encore confirmé. La confirmation
+      // humaine posera decidedBy='user' + identité côté serveur.
+      decidedBy: null,
+      decidedByUser: null,
     });
   } catch (err) {
     if (!(err instanceof SupabaseNotConfiguredError)) {

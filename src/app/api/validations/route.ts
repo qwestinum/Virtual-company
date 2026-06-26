@@ -75,6 +75,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     createdAt: now,
     updatedAt: now,
     decidedAt: null,
+    // Personne n'a encore confirmé à l'enqueue (la confirmation humaine
+    // posera decidedBy='user' + identité, côté serveur).
+    decidedBy: null,
+    decidedByUser: null,
   };
 
   try {

@@ -42,6 +42,9 @@ const DETAIL: CandidateAnalysisDetail & { journey: CandidateJourney } = {
   computedAt: '2026-06-06T09:05:00.000Z',
   createdAt: '2026-06-06T09:05:01.000Z',
   hitlConfig: { rejectionMail: true, acceptanceMail: true },
+  decisionZone: 'auto_accept',
+  decidedBy: 'auto',
+  decidedByUser: null,
   journey: JOURNEY,
   application: {
     candidate: {

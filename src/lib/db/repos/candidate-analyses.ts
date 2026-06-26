@@ -19,7 +19,13 @@ import {
 } from '@/lib/db/supabase-server';
 import type { CandidateAnalysisRow } from '@/lib/db/types';
 import type { CVApplication } from '@/types/cv-analysis';
-import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
+import {
+  DEFAULT_HITL_CONFIG,
+  type DecidedBy,
+  type DecisionZone,
+  type HitlConfig,
+} from '@/types/hitl';
+import type { CandidateStatus } from '@/types/scoring';
 import type {
   CandidateAnalysisDetail,
   CandidateAnalysisFilters,
@@ -30,7 +36,16 @@ const TABLE = 'candidate_analyses';
 
 /** Colonnes du résumé (sans le jsonb `application`). */
 const SUMMARY_COLUMNS =
-  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, hitl_config, created_at';
+  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, hitl_config, decision_zone, decided_by, decided_by_user_id, decided_by_user_email, created_at';
+
+/**
+ * Zone de décision dérivée du statut de scoring. Lot 1 (seuil unique) :
+ * `accepted → auto_accept`, `rejected → auto_reject`. Pas de `gray` tant que
+ * le lot 2 n'introduit pas les deux poignées. Pur, exporté pour test unitaire.
+ */
+export function deriveDecisionZone(status: CandidateStatus): DecisionZone {
+  return status === 'accepted' ? 'auto_accept' : 'auto_reject';
+}
 
 type SummaryRow = Omit<CandidateAnalysisRow, 'application' | 'criteria_version'>;
 
@@ -52,6 +67,13 @@ export function rowToSummary(row: SummaryRow): CandidateAnalysisSummary {
     createdAt: row.created_at,
     // Rows historiques sans snapshot → DEFAULT (ON) : comportement préservé.
     hitlConfig: row.hitl_config ?? DEFAULT_HITL_CONFIG,
+    // Champs « système vs humain » (lot 1). Null = ligne antérieure au modèle
+    // 3 zones — frontière nette, jamais reconstruite.
+    decisionZone: row.decision_zone ?? null,
+    decidedBy: row.decided_by ?? null,
+    decidedByUser: row.decided_by_user_id
+      ? { userId: row.decided_by_user_id, email: row.decided_by_user_email ?? null }
+      : null,
   };
 }
 
@@ -75,6 +97,13 @@ export type CandidateAnalysisInsert = {
   application: CVApplication;
   /** Snapshot des toggles HITL au moment de l'analyse (figé pour l'audit). */
   hitlConfig: HitlConfig;
+  /**
+   * Acteur ayant tranché le statut. Défaut `'auto'` : les deux call-sites de
+   * scoring (chat + IMAP) sont automatiques en lot 1 — call-sites inchangés.
+   * Le `'user'` (+ identité) arrivera au lot 2 quand la décision humaine
+   * propagera vers `candidate_analyses`.
+   */
+  decidedBy?: DecidedBy;
 };
 
 /**
@@ -169,6 +198,12 @@ export async function insertCandidateAnalysis(
     computed_at: scoringResult.computedAt,
     application: input.application,
     hitl_config: input.hitlConfig,
+    // Zone figée au scoring (dérivée du statut en lot 1). decided_by défaut
+    // 'auto' : décision système, pas d'identité (chemin auto sans session).
+    decision_zone: deriveDecisionZone(scoringResult.status),
+    decided_by: input.decidedBy ?? 'auto',
+    decided_by_user_id: null,
+    decided_by_user_email: null,
   });
   if (error) throw new Error(`insertCandidateAnalysis: ${error.message}`);
 }

@@ -34,6 +34,8 @@ function domain(over: Partial<PendingValidation> = {}): PendingValidation {
     createdAt: '2026-06-08T09:00:00Z',
     updatedAt: '2026-06-08T09:00:00Z',
     decidedAt: null,
+    decidedBy: null,
+    decidedByUser: null,
     ...over,
   };
 }
@@ -54,6 +56,9 @@ const ROW = {
   created_at: '2026-06-08T09:00:00Z',
   updated_at: '2026-06-08T09:00:00Z',
   decided_at: null,
+  decided_by: null,
+  decided_by_user_id: null,
+  decided_by_user_email: null,
 };
 
 describe('pending-validations repo', () => {
@@ -123,5 +128,55 @@ describe('pending-validations repo', () => {
   it('patch vide → null (rien à écrire)', async () => {
     requireServerSupabaseMock.mockReturnValue({ from: vi.fn() } as never);
     expect(await patchPendingValidation('PV-1', {})).toBeNull();
+  });
+
+  it('patch confirmation : écrit decided_by + identité (id + email)', async () => {
+    const confirmedRow = {
+      ...ROW,
+      confirmed: true,
+      decided_by: 'user',
+      decided_by_user_id: 'usr-uuid-1',
+      decided_by_user_email: 'rh@client.fr',
+    };
+    const maybeSingle = vi
+      .fn()
+      .mockResolvedValue({ data: confirmedRow, error: null });
+    const eq = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ maybeSingle }) });
+    const update = vi.fn().mockReturnValue({ eq });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({ update }),
+    } as never);
+
+    const result = await patchPendingValidation('PV-1', {
+      confirmed: true,
+      decidedBy: 'user',
+      decidedByUser: { userId: 'usr-uuid-1', email: 'rh@client.fr' },
+    });
+    expect(update).toHaveBeenCalledWith({
+      confirmed: true,
+      decided_by: 'user',
+      decided_by_user_id: 'usr-uuid-1',
+      decided_by_user_email: 'rh@client.fr',
+    });
+    expect(result?.decidedBy).toBe('user');
+    expect(result?.decidedByUser).toEqual({
+      userId: 'usr-uuid-1',
+      email: 'rh@client.fr',
+    });
+  });
+
+  it('rowToDomain : colonnes identité NULL (enqueue / historique) → null', () => {
+    // Vérifie le mapping de lecture via upsert qui renvoie une row sans identité.
+    const single = vi.fn().mockResolvedValue({ data: ROW, error: null });
+    const upsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({ single }),
+    });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({ upsert }),
+    } as never);
+    return upsertPendingValidation(domain()).then((v) => {
+      expect(v.decidedBy).toBeNull();
+      expect(v.decidedByUser).toBeNull();
+    });
   });
 });

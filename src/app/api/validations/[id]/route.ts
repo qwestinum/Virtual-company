@@ -8,12 +8,19 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { patchPendingValidation } from '@/lib/db/repos/pending-validations';
+import { getApiUser } from '@/lib/auth/require-api-user';
+import {
+  patchPendingValidation,
+  type PendingValidationPatch,
+} from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { HitlDecisionSchema } from '@/types/hitl';
 
 export const runtime = 'nodejs';
 
+// NB : l'identité du valideur n'est VOLONTAIREMENT pas dans ce schéma. Elle est
+// injectée côté serveur depuis la session (getApiUser) — jamais lue du payload
+// client (falsifiable). Lot 1 : capture « système vs humain » sur la confirmation.
 const PatchSchema = z.object({
   confirmed: z.boolean().optional(),
   // P6 — Switcher : flip de la décision + régénération du brouillon.
@@ -39,8 +46,20 @@ export async function PATCH(
       { status: 400 },
     );
   }
+  // Capture « qui a confirmé » UNIQUEMENT à la confirmation humaine. L'identité
+  // vient de la session serveur (jamais du payload). Sur le chemin auto (cron
+  // IMAP) il n'y a pas de session → cette route n'est pas empruntée.
+  const patch: PendingValidationPatch = { ...parsed };
+  if (parsed.confirmed === true) {
+    const user = await getApiUser();
+    patch.decidedBy = 'user';
+    patch.decidedByUser = user
+      ? { userId: user.id, email: user.email ?? null }
+      : null;
+  }
+
   try {
-    const updated = await patchPendingValidation(id, parsed);
+    const updated = await patchPendingValidation(id, patch);
     if (!updated) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }

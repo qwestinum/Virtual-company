@@ -38,6 +38,31 @@ describe('hitl types', () => {
       createdAt: '2026-06-08T00:00:00Z',
       updatedAt: '2026-06-08T00:00:00Z',
       decidedAt: null,
+      decidedBy: null,
+      decidedByUser: null,
+    });
+    expect(v.success).toBe(true);
+  });
+
+  it('valide une PendingValidation confirmée par un humain (identité)', () => {
+    const v = PendingValidationSchema.safeParse({
+      id: 'PV-2',
+      campaignId: 'CAMP-1',
+      candidateName: 'X',
+      candidateEmail: null,
+      score: 80,
+      decision: 'accept',
+      cvArtifactId: null,
+      reportArtifactId: null,
+      mailDraftArtifactId: null,
+      confirmed: true,
+      status: 'pending',
+      payload: {},
+      createdAt: '2026-06-08T00:00:00Z',
+      updatedAt: '2026-06-08T00:00:00Z',
+      decidedAt: '2026-06-08T01:00:00Z',
+      decidedBy: 'user',
+      decidedByUser: { userId: 'usr-1', email: 'rh@client.fr' },
     });
     expect(v.success).toBe(true);
   });

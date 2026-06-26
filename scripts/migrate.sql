@@ -403,6 +403,27 @@ create trigger pending_validations_touch_updated_at
   before update on public.pending_validations
   for each row execute function public.touch_updated_at();
 
+-- HITL 3 zones (lot 1) — capture « qui a confirmé » sur la file de validation.
+-- Nullable, sans défaut : l'identité (id + email snapshot, sans FK vers
+-- auth.users pour que la trace survive à la suppression du compte) est posée
+-- côté serveur à la confirmation humaine. NULL = enqueue / ligne historique.
+alter table public.pending_validations
+  add column if not exists decided_by text;
+alter table public.pending_validations
+  add column if not exists decided_by_user_id uuid;
+alter table public.pending_validations
+  add column if not exists decided_by_user_email text;
+
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'pending_validations_decided_by_chk'
+  ) then
+    alter table public.pending_validations
+      add constraint pending_validations_decided_by_chk
+      check (decided_by is null or decided_by in ('auto', 'user'));
+  end if;
+end $$;
+
 -- ──────────────────────────────────────────────────────────────────────
 -- Reporting (préparation) — donneur d'ordre & site
 -- ──────────────────────────────────────────────────────────────────────
@@ -555,6 +576,40 @@ create index if not exists candidate_analyses_name_trgm_idx
 
 create index if not exists candidate_analyses_uid_idx
   on public.candidate_analyses (uid);
+
+-- HITL 3 zones (lot 1) — capture « système vs humain » + zone de décision.
+-- Nullable, sans défaut, jamais backfillées : NULL = ligne antérieure au modèle
+-- 3 zones (frontière nette avant/après lot 1, information vraie pour le
+-- reporting). decision_zone est figée au scoring (lot 1 : auto_reject/
+-- auto_accept ; 'gray' réservé au lot 2, déjà accepté par le CHECK).
+-- decided_by ∈ {auto,user} ; identité (id + email snapshot, sans FK vers
+-- auth.users) renseignée seulement sur le chemin humain.
+alter table public.candidate_analyses
+  add column if not exists decision_zone text;
+alter table public.candidate_analyses
+  add column if not exists decided_by text;
+alter table public.candidate_analyses
+  add column if not exists decided_by_user_id uuid;
+alter table public.candidate_analyses
+  add column if not exists decided_by_user_email text;
+
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'candidate_analyses_decision_zone_chk'
+  ) then
+    alter table public.candidate_analyses
+      add constraint candidate_analyses_decision_zone_chk
+      check (decision_zone is null
+             or decision_zone in ('auto_reject', 'gray', 'auto_accept'));
+  end if;
+  if not exists (
+    select 1 from pg_constraint where conname = 'candidate_analyses_decided_by_chk'
+  ) then
+    alter table public.candidate_analyses
+      add constraint candidate_analyses_decided_by_chk
+      check (decided_by is null or decided_by in ('auto', 'user'));
+  end if;
+end $$;
 
 -- ──────────────────────────────────────────────────────────────────────
 -- Vivier de candidats (Session V1 — socle)

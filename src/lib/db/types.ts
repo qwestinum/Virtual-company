@@ -13,7 +13,7 @@ import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
 import type { FDPInProgress } from '@/types/field-collection';
-import type { HitlConfig } from '@/types/hitl';
+import type { DecidedBy, DecisionZone, HitlConfig } from '@/types/hitl';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { MailCandidate } from '@/types/mail-candidate';
 import type { PublicationChannel } from '@/types/publication-channel';
@@ -113,6 +113,14 @@ export type CandidateAnalysisRow = {
   application: CVApplication;
   /** Snapshot des toggles HITL au moment de l'analyse. Null = rows historiques. */
   hitl_config: HitlConfig | null;
+  /** Zone de décision figée au scoring (lot 1 : auto_reject/auto_accept). Null = ligne historique. */
+  decision_zone: DecisionZone | null;
+  /** Acteur ayant tranché le statut final (lot 1 : 'auto'). Null = ligne historique. */
+  decided_by: DecidedBy | null;
+  /** Identité du valideur humain — null sur le chemin auto / lignes historiques. */
+  decided_by_user_id: string | null;
+  /** Email snapshot du valideur humain (auto-suffisant pour le reporting). */
+  decided_by_user_email: string | null;
   created_at: string;
 };
 

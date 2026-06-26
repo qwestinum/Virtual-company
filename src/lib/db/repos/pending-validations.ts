@@ -12,7 +12,9 @@ import {
   SupabaseNotConfiguredError,
 } from '@/lib/db/supabase-server';
 import type {
+  DecidedBy,
   HitlDecision,
+  HumanDecider,
   PendingValidation,
   PendingValidationStatus,
 } from '@/types/hitl';
@@ -35,6 +37,9 @@ type PendingValidationRow = {
   created_at: string;
   updated_at: string;
   decided_at: string | null;
+  decided_by: DecidedBy | null;
+  decided_by_user_id: string | null;
+  decided_by_user_email: string | null;
 };
 
 function rowToDomain(row: PendingValidationRow): PendingValidation {
@@ -54,6 +59,14 @@ function rowToDomain(row: PendingValidationRow): PendingValidation {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     decidedAt: row.decided_at,
+    // « Qui a confirmé » (lot 1). Null = enqueue / ligne historique.
+    decidedBy: row.decided_by ?? null,
+    decidedByUser: row.decided_by_user_id
+      ? {
+          userId: row.decided_by_user_id,
+          email: row.decided_by_user_email ?? null,
+        }
+      : null,
   };
 }
 
@@ -74,6 +87,9 @@ function domainToRow(v: PendingValidation): PendingValidationRow {
     created_at: v.createdAt,
     updated_at: v.updatedAt,
     decided_at: v.decidedAt,
+    decided_by: v.decidedBy,
+    decided_by_user_id: v.decidedByUser?.userId ?? null,
+    decided_by_user_email: v.decidedByUser?.email ?? null,
   };
 }
 
@@ -141,6 +157,10 @@ export type PendingValidationPatch = {
   mailDraftArtifactId?: string | null;
   payload?: Record<string, unknown>;
   decidedAt?: string | null;
+  /** « Qui a confirmé » — posé côté serveur à la confirmation humaine. */
+  decidedBy?: DecidedBy;
+  /** Identité du valideur — injectée depuis la session serveur (jamais le client). */
+  decidedByUser?: HumanDecider | null;
 };
 
 export async function patchPendingValidation(
@@ -156,6 +176,11 @@ export async function patchPendingValidation(
     row.mail_draft_artifact_id = patch.mailDraftArtifactId;
   if (patch.payload !== undefined) row.payload = patch.payload;
   if (patch.decidedAt !== undefined) row.decided_at = patch.decidedAt;
+  if (patch.decidedBy !== undefined) row.decided_by = patch.decidedBy;
+  if (patch.decidedByUser !== undefined) {
+    row.decided_by_user_id = patch.decidedByUser?.userId ?? null;
+    row.decided_by_user_email = patch.decidedByUser?.email ?? null;
+  }
   if (Object.keys(row).length === 0) return null;
   const { data, error } = await supabase
     .from(TABLE)
