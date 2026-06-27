@@ -16,7 +16,7 @@ export function analysisToDatum(
   a: CandidateAnalysisSummary,
   signals: JourneySignals,
 ): CampaignAnalysisDatum {
-  const j = journeyFromSignals(signals, a.uid, a.status, a.hitlConfig);
+  const j = journeyFromSignals(signals, a.uid, a.status, a.decisionZone, a.decidedBy);
   return {
     status: a.status,
     totalScore: a.totalScore,

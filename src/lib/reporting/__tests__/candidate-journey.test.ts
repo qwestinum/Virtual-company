@@ -8,7 +8,6 @@ import {
   journeyFilterKey,
   type CandidateJourneyInput,
 } from '@/lib/reporting/candidate-journey';
-import { DEFAULT_HITL_CONFIG } from '@/types/hitl';
 
 function input(p: Partial<CandidateJourneyInput>): CandidateJourneyInput {
   return {
@@ -220,21 +219,24 @@ describe('journeyColumns', () => {
   });
 });
 
-describe('deriveJourneyFor — fallback', () => {
-  it('sans marqueurs : retenu → en attente de validation', () => {
-    const j = deriveJourneyFor('accepted', DEFAULT_HITL_CONFIG);
-    expect(j.validation).toBe('en_attente');
+describe('deriveJourneyFor — HITL 3 zones', () => {
+  it('zone auto_accept → retenu pour entretien (auto, non gated)', () => {
+    const j = deriveJourneyFor('accepted', 'auto_accept', 'auto');
+    expect(j.validation).toBe('retenu_entretien');
   });
-  it('sans marqueurs : écarté → présélection écarté', () => {
-    expect(deriveJourneyFor('rejected', DEFAULT_HITL_CONFIG).screening).toBe(
-      'ecarte',
-    );
+  it('zone auto_reject → écarté définitivement', () => {
+    const j = deriveJourneyFor('rejected', 'auto_reject', 'auto');
+    expect(j.screening).toBe('ecarte');
+    expect(j.final).toBe('ecarte');
   });
-  it('drapeau pending propagé', () => {
-    expect(
-      deriveJourneyFor('accepted', DEFAULT_HITL_CONFIG, undefined, true)
-        .validation,
-    ).toBe('en_attente');
+  it('zone grise non tranchée → écarté au screening PROVISOIRE (final en attente)', () => {
+    const j = deriveJourneyFor('rejected', 'gray', 'auto');
+    expect(j.screening).toBe('ecarte');
+    expect(j.final).toBe('na'); // pas définitif tant qu'un humain n'a pas tranché
+  });
+  it('humanIntervention = decidedBy user (gris tranché par un humain)', () => {
+    expect(deriveJourneyFor('accepted', 'gray', 'user').humanIntervention).toBe(true);
+    expect(deriveJourneyFor('accepted', 'auto_accept', 'auto').humanIntervention).toBe(false);
   });
 });
 

@@ -42,8 +42,6 @@ import {
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
-import { getAppSettings } from '@/lib/db/repos/app-settings';
-import { DEFAULT_HITL_CONFIG } from '@/types/hitl';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
   listCampaignsForMailbox,
@@ -603,8 +601,6 @@ async function processEmailAttachment(args: {
     uid: String(uid),
     campaignId: isTaskOwner ? null : campaign.id,
     application,
-    // Fige l'état HITL au moment de l'analyse (audit fidèle). Repli ON.
-    hitlConfig: (await getAppSettings())?.hitlConfig ?? DEFAULT_HITL_CONFIG,
   });
 
   // Alimentation automatique du vivier (§3.1 porte 2). Fire-and-forget : ne

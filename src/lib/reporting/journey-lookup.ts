@@ -24,7 +24,7 @@ import {
   deriveJourneyFor,
   type CandidateJourney,
 } from '@/lib/reporting/candidate-journey';
-import type { HitlConfig } from '@/types/hitl';
+import type { DecidedBy, DecisionZone } from '@/types/hitl';
 import type { CandidateStatus } from '@/types/scoring';
 
 export type JourneySignals = {
@@ -68,12 +68,14 @@ export function journeyFromSignals(
   signals: JourneySignals,
   uid: string,
   screeningStatus: CandidateStatus,
-  hitlConfig: HitlConfig,
+  decisionZone: DecisionZone | null,
+  decidedBy: DecidedBy | null,
 ): CandidateJourney {
   const row = signals.markers.get(uid);
   return deriveJourneyFor(
     screeningStatus,
-    hitlConfig,
+    decisionZone,
+    decidedBy,
     row
       ? {
           dashboardStatus: row.status,

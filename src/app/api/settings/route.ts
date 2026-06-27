@@ -16,7 +16,6 @@ import {
 } from '@/lib/db/repos/app-settings';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { invalidateEmailAddressesCache } from '@/lib/email/addresses';
-import { DEFAULT_HITL_CONFIG, HitlConfigSchema } from '@/types/hitl';
 import {
   DEFAULT_INTERVIEW_CONFIG,
   InterviewConfigSchema,
@@ -40,7 +39,6 @@ const PatchSchema = z.object({
   intakeEmail: z.string().email().nullable().optional(),
   fluxConfig: z.record(z.string(), IntegrationSchema).optional(),
   channelsConfig: z.record(z.string(), IntegrationSchema).optional(),
-  hitlConfig: HitlConfigSchema.optional(),
   vivierConfig: VivierConfigSchema.optional(),
   interviewConfig: InterviewConfigSchema.optional(),
   // Write-only : `''` efface la clé, une valeur non vide la pose. Jamais
@@ -75,7 +73,6 @@ function emptyPayload() {
       intakeEmail: null,
       fluxConfig: {} as Record<string, IntegrationConfig>,
       channelsConfig: {} as Record<string, IntegrationConfig>,
-      hitlConfig: DEFAULT_HITL_CONFIG,
       vivierConfig: DEFAULT_VIVIER_CONFIG,
       interviewConfig: DEFAULT_INTERVIEW_CONFIG,
       resendApiKeyConfigured: false,

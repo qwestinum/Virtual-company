@@ -238,10 +238,10 @@ function AuditDocument({ detail, generatedAtIso, campaignLabel }: AuditPdfProps)
               ))}
             </View>
             <Text style={[styles.paragraph, { marginTop: 4, color: MUTED }]}>
-              Intervention humaine : {detail.journey.humanIntervention ? 'Oui' : 'Non'}
+              Décision : {detail.journey.humanIntervention ? 'tranchée par un humain' : 'automatique (système)'}
               {detail.journey.humanIntervention
-                ? ' — la décision a été modifiée par rapport au verdict IA du screening.'
-                : '.'}
+                ? ' — candidature de la zone grise validée manuellement.'
+                : ' — hors zone grise (acceptation ou refus automatique).'}
             </Text>
           </>
         ) : null}

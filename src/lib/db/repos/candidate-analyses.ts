@@ -40,9 +40,9 @@ const SUMMARY_COLUMNS =
   'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, hitl_config, decision_zone, decided_by, decided_by_user_id, decided_by_user_email, created_at';
 
 /**
- * Zone de décision dérivée du statut de scoring. Lot 1 (seuil unique) :
- * `accepted → auto_accept`, `rejected → auto_reject`. Pas de `gray` tant que
- * le lot 2 n'introduit pas les deux poignées. Pur, exporté pour test unitaire.
+ * Repli déterministe statut→zone (binaire, sans `gray`) — utilisé UNIQUEMENT
+ * quand `scoringResult.decisionZone` est absent (analyses legacy / chemin sans
+ * poignées). La zone autoritaire (3 niveaux) vient de `scoreCandidat`. Pur.
  */
 export function deriveDecisionZone(status: CandidateStatus): DecisionZone {
   return status === 'accepted' ? 'auto_accept' : 'auto_reject';
@@ -96,8 +96,12 @@ export type CandidateAnalysisInsert = {
   uid?: string;
   campaignId: string | null;
   application: CVApplication;
-  /** Snapshot des toggles HITL au moment de l'analyse (figé pour l'audit). */
-  hitlConfig: HitlConfig;
+  /**
+   * Snapshot HITL conservé pour l'audit historique. Le HITL global ayant été
+   * retiré (3c), il vaut désormais `DEFAULT_HITL_CONFIG` par défaut — le
+   * pilotage des décisions passe par les zones de seuils, pas par ce toggle.
+   */
+  hitlConfig?: HitlConfig;
   /**
    * Acteur ayant tranché le statut. Défaut `'auto'` : les deux call-sites de
    * scoring (chat + IMAP) sont automatiques en lot 1 — call-sites inchangés.
@@ -198,10 +202,12 @@ export async function insertCandidateAnalysis(
     criteria_version: scoringResult.criteriaVersion,
     computed_at: scoringResult.computedAt,
     application: input.application,
-    hitl_config: input.hitlConfig,
-    // Zone figée au scoring (dérivée du statut en lot 1). decided_by défaut
-    // 'auto' : décision système, pas d'identité (chemin auto sans session).
-    decision_zone: deriveDecisionZone(scoringResult.status),
+    hitl_config: input.hitlConfig ?? DEFAULT_HITL_CONFIG,
+    // Zone figée au scoring : la VRAIE zone 3 niveaux calculée par scoreCandidat
+    // (auto_reject/gray/auto_accept). Repli déterministe statut→zone seulement
+    // si absente (legacy / chemin sans poignées). decided_by défaut 'auto'.
+    decision_zone:
+      scoringResult.decisionZone ?? deriveDecisionZone(scoringResult.status),
     decided_by: input.decidedBy ?? 'auto',
     decided_by_user_id: null,
     decided_by_user_email: null,

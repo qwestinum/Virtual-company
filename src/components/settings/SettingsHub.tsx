@@ -29,7 +29,6 @@ import {
   PUBLICATION_CHANNEL_ORDER,
   type PublicationChannel,
 } from '@/types/publication-channel';
-import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
 import {
   DEFAULT_INTERVIEW_CONFIG,
   type InterviewConfig,
@@ -63,7 +62,6 @@ type Settings = {
   intakeEmail: string | null;
   fluxConfig: Record<string, IntegrationConfig>;
   channelsConfig: Record<string, IntegrationConfig>;
-  hitlConfig: HitlConfig;
   vivierConfig: VivierConfig;
   interviewConfig: InterviewConfig;
   /** Clé Resend : statut seulement (la valeur n'est jamais renvoyée). */
@@ -179,7 +177,6 @@ export function SettingsHub() {
             settings: {
               ...json.settings,
               synthesisEmailsActive: json.settings.synthesisEmailsActive ?? [],
-              hitlConfig: json.settings.hitlConfig ?? DEFAULT_HITL_CONFIG,
               interviewConfig:
                 json.settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG,
               resendApiKeyConfigured:

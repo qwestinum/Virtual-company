@@ -36,7 +36,8 @@ export async function GET(
       signals,
       detail.uid,
       detail.status,
-      detail.hitlConfig,
+      detail.decisionZone,
+      detail.decidedBy,
     );
     const generatedAtIso = new Date().toISOString();
     const pdf = await renderCandidateAuditPdf({

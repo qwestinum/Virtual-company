@@ -17,7 +17,7 @@
  *   screening (le recruteur a « switché » l'issue).
  */
 
-import type { HitlConfig } from '@/types/hitl';
+import type { DecidedBy, DecisionZone } from '@/types/hitl';
 import type { CandidateStatus } from '@/types/scoring';
 
 export type ScreeningState = 'retenu' | 'ecarte';
@@ -347,13 +347,20 @@ export function journeyFilterKey(j: CandidateJourney): JourneyFilterState {
 // ─── Helper endpoint (fallback sans marqueurs) ─────────────────────────────
 
 /**
- * Dérive le parcours à partir du verdict screening + de l'état HITL FIGÉ
- * (snapshot à l'analyse) + des marqueurs journal éventuels. Sans marqueurs,
- * retombe sur le verdict screening modulé par les toggles HITL.
+ * Dérive le parcours à partir du verdict screening + de la ZONE de décision
+ * HITL 3 zones (figée à l'analyse) + des marqueurs journal éventuels.
+ *
+ * HITL 3 zones : la zone GRISE = décision « gated » (en attente d'un humain) ;
+ * les zones auto (accept/reject) sont définitives/automatiques. Une ligne
+ * historique sans zone (null) est traitée comme non gated (ancien binaire).
+ *
+ * `humanIntervention` est désormais la SOURCE AUTORITAIRE `decidedBy === 'user'`
+ * (un humain a tranché un gris), et non plus une dérivation override du verdict.
  */
 export function deriveJourneyFor(
   screeningStatus: CandidateStatus,
-  hitlConfig: HitlConfig,
+  decisionZone: DecisionZone | null,
+  decidedBy: DecidedBy | null,
   markers?: {
     dashboardStatus: CandidateJourneyInput['dashboardStatus'];
     interviewMarked: 'realized' | 'missed' | null;
@@ -362,7 +369,8 @@ export function deriveJourneyFor(
   },
   isPendingValidation = false,
 ): CandidateJourney {
-  return deriveCandidateJourney({
+  const gated = decisionZone === 'gray';
+  const j = deriveCandidateJourney({
     screeningStatus,
     isPendingValidation,
     dashboardStatus: markers?.dashboardStatus ?? 'analyzed',
@@ -371,7 +379,8 @@ export function deriveJourneyFor(
     recommendation:
       markers?.recommendation ??
       (screeningStatus === 'accepted' ? 'go' : null),
-    rejectionGated: hitlConfig.rejectionMail,
-    acceptanceGated: hitlConfig.acceptanceMail,
+    rejectionGated: gated,
+    acceptanceGated: gated,
   });
+  return { ...j, humanIntervention: decidedBy === 'user' };
 }

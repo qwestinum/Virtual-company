@@ -16,7 +16,6 @@ import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
 } from '@/lib/db/supabase-server';
-import { DEFAULT_HITL_CONFIG, type HitlConfig } from '@/types/hitl';
 import {
   DEFAULT_INTERVIEW_CONFIG,
   type InterviewConfig,
@@ -45,8 +44,6 @@ export type AppSettings = {
   intakeEmail: string | null;
   fluxConfig: Record<string, IntegrationConfig>;
   channelsConfig: Record<string, IntegrationConfig>;
-  /** Toggles HITL par section (validation humaine des mails). Défaut ON. */
-  hitlConfig: HitlConfig;
   /** Réglages vivier (mode contact, template invitation, cooldown, plafond). */
   vivierConfig: VivierConfig;
   /** Réglages entretien (templates acceptation/refus, lien d'agenda org-level). */
@@ -78,7 +75,6 @@ type AppSettingsRow = {
   intake_email: string | null;
   flux_config: Record<string, IntegrationConfig>;
   channels_config: Record<string, IntegrationConfig>;
-  hitl_config: HitlConfig | null;
   vivier_config: VivierConfig | null;
   interview_config: InterviewConfig | null;
   resend_api_key: string | null;
@@ -131,7 +127,6 @@ function rowToDomain(row: AppSettingsRow): AppSettings {
     intakeEmail: row.intake_email,
     fluxConfig: row.flux_config ?? {},
     channelsConfig: row.channels_config ?? {},
-    hitlConfig: row.hitl_config ?? DEFAULT_HITL_CONFIG,
     // Fusion avec les défauts : tolère une row antérieure à la migration V3
     // (vivier_config absent) ou un jsonb partiel.
     vivierConfig: { ...DEFAULT_VIVIER_CONFIG, ...(row.vivier_config ?? {}) },
@@ -206,7 +201,6 @@ export type AppSettingsPatch = {
   intakeEmail?: string | null;
   fluxConfig?: Record<string, IntegrationConfig>;
   channelsConfig?: Record<string, IntegrationConfig>;
-  hitlConfig?: HitlConfig;
   vivierConfig?: VivierConfig;
   interviewConfig?: InterviewConfig;
   /** Write-only : `''` (ou null) efface la clé, une valeur non vide la pose. */
@@ -231,7 +225,6 @@ export async function patchAppSettings(
   if (patch.fluxConfig !== undefined) row.flux_config = patch.fluxConfig;
   if (patch.channelsConfig !== undefined)
     row.channels_config = patch.channelsConfig;
-  if (patch.hitlConfig !== undefined) row.hitl_config = patch.hitlConfig;
   if (patch.vivierConfig !== undefined) row.vivier_config = patch.vivierConfig;
   if (patch.interviewConfig !== undefined)
     row.interview_config = patch.interviewConfig;

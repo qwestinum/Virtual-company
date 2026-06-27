@@ -33,7 +33,8 @@ export async function GET(
       signals,
       candidate.uid,
       candidate.status,
-      candidate.hitlConfig,
+      candidate.decisionZone,
+      candidate.decidedBy,
     );
     // Annotation factuelle « issu du vivier » (§6.3), dérivée du proposal —
     // visible par le recruteur. Rapprochement EXACT par email.
