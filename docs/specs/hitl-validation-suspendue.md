@@ -1,5 +1,13 @@
 # HITL — Validation suspendue (refus / acceptation candidats)
 
+> **⚠️ Déclenchement SUPERSÉDÉ par le modèle à 3 zones.** Le **gating global**
+> décrit ici (`app_settings.hitl_config` = toggles `rejectionMail`/`acceptanceMail`
+> communs à toutes les campagnes) a été **retiré**. Ce qui décide aujourd'hui
+> qu'une candidature part en validation, c'est sa **zone de score** (zone grise =
+> validation requise), réglée par les **deux seuils de la campagne**. Voir
+> `docs/specs/hitl-3-zones.md`. La **mécanique de file** (`pending_validations`,
+> brouillons, envoi `/api/validations/[id]/send`) décrite ci-dessous reste valide.
+
 Spec fonctionnelle + plan d'implémentation. Périmètre **limité** : mise sous
 validation humaine des **mails de refus** et des **mails d'acceptation** envoyés
 aux candidats après scoring. Pose la mécanique d'approbation réutilisable ensuite

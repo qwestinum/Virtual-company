@@ -3,6 +3,16 @@
 Document de spécification fonctionnelle. Référence du module reporting pour
 toutes les sessions à venir.
 
+> **⚠️ Métriques de décision recalibrées (HITL 3 zones).** Les **volumes** et
+> **taux** liés à la décision candidat (« arbitré/arbitrage », retenue, recos sur
+> seuils) ont été refondus : le modèle binaire (retenu/écarté + arbitrage) est
+> remplacé par **5 volumes 3 zones** (retenu / écarté / **en attente** / décidé
+> par le système / tranché par un humain) et « arbitrage » devient **« validation
+> humaine »** (= part en zone grise ; seuil de reco `HUMAN_VALIDATION_HIGH_RATE =
+> 0,5`, ex-`ARBITRATION_HIGH_RATE = 0,20`). Là où ce document dit encore
+> « arbitré/arbitrage » ou définit les volumes en 2 catégories, **la référence à
+> jour est `docs/specs/hitl-3-zones.md` §5**.
+
 ## 1. Vue d'ensemble
 
 Le module Reporting est un **onglet principal** de la navigation ORQA qui

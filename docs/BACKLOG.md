@@ -268,24 +268,29 @@ qu'une fois ce ticket fait.
 
 ---
 
-## Persistance du seuil campagne — fraîcheur côté IMAP (limites mineures)
+## Persistance des seuils campagne — fraîcheur côté IMAP (limites mineures)
 
-**Statut** : fonctionnel. `campaign.threshold` (source unique du seuil, lu par le
-scoring chat + IMAP depuis 6c) est édité au dashboard (`ThresholdEditBlock` →
-`setThreshold`) et **persisté** via la souscription `campaigns-sync.ts` →
-`PUT /api/campaigns` → `upsertCampaign` (colonne `threshold`).
+> **MAJ HITL 3 zones.** Le seuil unique `campaign.threshold` a été remplacé par
+> **deux seuils** `threshold_low/high` (cf. `docs/specs/hitl-3-zones.md`). L'édition
+> passe par le **slider double poignée** → `setThresholds` (plus `setThreshold` /
+> `ThresholdEditBlock`, supprimés). La limite ci-dessous reste valable telle quelle
+> pour les deux seuils.
+
+**Statut** : fonctionnel. `campaign.thresholdLow/High` (lus par le scoring chat +
+IMAP) sont édités via le slider → `setThresholds` et **persistés** via la
+souscription `campaigns-sync.ts` → `PUT /api/campaigns` → `upsertCampaign`
+(colonnes `threshold_low/high`).
 
 **Limites assumées (pas des bugs) :**
 1. **Débounce + best-effort.** La persistance arrive après `PUSH_DEBOUNCE_MS` et
    le `fetch` échoue en silence si Supabase n'est pas configuré. Sans Supabase le
    poller IMAP ne tourne pas non plus → pas d'incohérence (chat-only).
 2. **Micro-course IMAP.** Un CV analysé par IMAP entre l'édition du slider et la
-   fin du push débouncé utiliserait l'ancien seuil. Fenêtre négligeable.
+   fin du push débouncé utiliserait les anciens seuils. Fenêtre négligeable.
 
-**Piste si besoin un jour** : push immédiat (non débouncé) sur `setThreshold`
-spécifiquement, ou relire `campaign.threshold` au plus tard dans le poller. Non
-prioritaire — la fenêtre est étroite et le re-scoring (C7) corrigera de toute
-façon les CV scorés à l'ancien seuil.
+**Piste si besoin un jour** : push immédiat (non débouncé) sur `setThresholds`,
+ou relire les seuils au plus tard dans le poller. Non prioritaire — la fenêtre est
+étroite et un re-scoring corrigera de toute façon les CV scorés aux anciens seuils.
 
 ---
 
