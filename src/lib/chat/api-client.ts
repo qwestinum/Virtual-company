@@ -148,7 +148,8 @@ export async function postFdpProposal(params: {
 
 export type CVAnalyzerResult = {
   application: CVApplication;
-  threshold: number;
+  thresholdLow: number;
+  thresholdHigh: number;
   metrics: {
     durationMs: number;
     tokensUsed: number;
@@ -193,8 +194,7 @@ export async function postIsolatedManagerChat(params: {
 export async function postCVAnalyzer(params: {
   file: File;
   scoringSheet?: ScoringSheet;
-  threshold: number;
-  /** HITL 3 zones (lot 2) — seuils bas/haut. Repli collées sur `threshold`. */
+  /** HITL 3 zones — seuils bas/haut (repli 0/100 côté route si absents). */
   thresholdLow?: number;
   thresholdHigh?: number;
   taskId?: string;
@@ -205,7 +205,6 @@ export async function postCVAnalyzer(params: {
   if (params.scoringSheet) {
     form.append('scoringSheet', JSON.stringify(params.scoringSheet));
   }
-  form.append('threshold', String(params.threshold));
   if (params.thresholdLow !== undefined)
     form.append('thresholdLow', String(params.thresholdLow));
   if (params.thresholdHigh !== undefined)

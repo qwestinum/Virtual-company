@@ -50,7 +50,6 @@ import {
 } from '@/stores/chat-store';
 import { useIsolatedCriteriaStore } from '@/stores/isolated-criteria-store';
 import {
-  DEFAULT_CV_THRESHOLD,
   type CVApplication,
   type CVBatchSummary,
 } from '@/types/cv-analysis';
@@ -309,7 +308,6 @@ export async function dispatchPublisher(args: {
  */
 export async function dispatchCVBatch(args: {
   files: File[];
-  threshold?: number;
   campaignId: string | null;
 }): Promise<void> {
   const { files } = args;
@@ -339,18 +337,13 @@ export async function dispatchCVBatch(args: {
         ? campaignForSheet.scoringSheet
         : undefined;
 
-  // Convergence seuil (6c) : `campaign.threshold` est la SOURCE UNIQUE du seuil
-  // d'acceptation. Override explicite `args.threshold` possible (tests) ; fallback
-  // DEFAULT hors campagne (ex. id TASK non présent dans campaigns-store).
+  // HITL 3 zones — deux poignées de la campagne. Repli SÛR si la campagne n'a
+  // pas de seuils lisibles (hors campagne, store périmé) : tout GRIS (0/100 →
+  // validation), JAMAIS collées sur un seuil qui rejetterait en masse.
+  // Garde-fou « incertain → validation, jamais auto-refus ».
   const campaignForThreshold = args.campaignId
     ? useCampaignsStore.getState().getById(args.campaignId)
     : null;
-  const threshold =
-    args.threshold ?? campaignForThreshold?.threshold ?? DEFAULT_CV_THRESHOLD;
-  // HITL 3 zones (lot 2) — deux poignées de la campagne. Repli SÛR si la
-  // campagne n'a pas de seuils lisibles (hors campagne, store périmé) : tout
-  // GRIS (0/100 → validation), JAMAIS collées sur un seuil qui rejetterait en
-  // masse. Garde-fou « incertain → validation, jamais auto-refus ».
   const thresholdLow = campaignForThreshold?.thresholdLow ?? 0;
   const thresholdHigh = campaignForThreshold?.thresholdHigh ?? 100;
   const chat = useChatStore.getState();
@@ -399,7 +392,6 @@ export async function dispatchCVBatch(args: {
       const res = await postCVAnalyzer({
         file,
         scoringSheet,
-        threshold,
         thresholdLow,
         thresholdHigh,
         taskId: itemTaskId,
@@ -440,7 +432,7 @@ export async function dispatchCVBatch(args: {
     });
   }
 
-  const summary = buildCVBatchSummary(results, threshold);
+  const summary = buildCVBatchSummary(results, thresholdLow, thresholdHigh);
   const reportName = suggestCVReportFileName(args.campaignId);
   const reportContent = renderCVBatchMarkdown(summary, args.campaignId);
   // Le rapport CV peut concerner une campagne OU une tâche isolée.
@@ -471,7 +463,7 @@ export async function dispatchCVBatch(args: {
     content:
       summary.total === 0
         ? "Aucun CV n'a pu être analysé. Réessayez quand vous êtes prêt."
-        : `Analyse terminée — ${summary.total} CV traités, ${summary.aboveThreshold} retenus (seuil d'acceptation ${threshold}).`,
+        : `Analyse terminée — ${summary.total} CV traités, ${summary.aboveThreshold} acceptés automatiquement (score ≥ ${thresholdHigh}). Les profils de la zone de validation [${thresholdLow}–${thresholdHigh}[ partent en validation.`,
     block: { kind: 'cv-batch-summary', summary },
     attachment: {
       artifactId: reportArtifact.id,

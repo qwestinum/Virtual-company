@@ -320,6 +320,10 @@ alter table public.campaigns
 alter table public.campaigns add column if not exists threshold_low  int;
 alter table public.campaigns add column if not exists threshold_high int;
 
+-- Lot 3 — `threshold` (seuil unique) supprimée : remplacée par threshold_low/high.
+-- À appliquer APRÈS déploiement du code qui ne la lit/écrit plus.
+alter table public.campaigns drop column if exists threshold;
+
 -- Backfill « tout gris » des lignes existantes (idempotent : ne touche que les
 -- non encore remplies). À adapter SI app_settings.hitl_config changeait avant
 -- application (les deux OFF ⇒ low=high=threshold à la place).

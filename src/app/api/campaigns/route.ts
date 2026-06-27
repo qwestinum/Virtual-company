@@ -39,9 +39,8 @@ const CampaignSchema = z.object({
   sourcesConfirmed: z.boolean(),
   // Optionnels pour rester rétro-compat avec un client encore en cours
   // de déploiement qui n'enverrait pas le champ. Défauts côté repo.
-  threshold: z.number().int().min(0).max(100).optional(),
-  // HITL 3 zones (lot 2). Optionnels (client en cours de déploiement) ;
-  // défauts côté repo. Invariant bas ≤ haut garanti en base + UI.
+  // HITL 3 zones. Optionnels (client en cours de déploiement) ; défauts côté
+  // repo. Invariant bas ≤ haut garanti en base + UI.
   thresholdLow: z.number().int().min(0).max(100).optional(),
   thresholdHigh: z.number().int().min(0).max(100).optional(),
   sources: z.array(CVSourceSchema).optional(),
@@ -111,7 +110,6 @@ export async function PUT(request: Request): Promise<NextResponse> {
     const sources = parsed.sources ?? [];
     const saved = await upsertCampaign({
       ...parsed,
-      threshold: parsed.threshold ?? 75,
       // Défaut « tout gris » 0/100 ici (création serveur sans poignées explicites
       // = posture validation). La création UI passe 10/90 via le store.
       thresholdLow: parsed.thresholdLow ?? 0,

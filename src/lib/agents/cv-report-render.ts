@@ -48,7 +48,8 @@ export function renderCVBatchMarkdown(
     `# Rapport d'analyse CV${campaignId ? ` — ${campaignId}` : ''}`,
     '',
     `Total analysés : **${summary.total}**  `,
-    `Retenus (seuil d'acceptation ${summary.threshold}) : **${summary.aboveThreshold}**`,
+    `Acceptés automatiquement (score ≥ ${summary.thresholdHigh}) : **${summary.aboveThreshold}**  `,
+    `Zone de validation [${summary.thresholdLow}–${summary.thresholdHigh}[ : à trancher par l'humain`,
   ];
   if (rejected.length > 0) {
     lines.push(
@@ -126,13 +127,15 @@ function renderApplication(cv: CVApplication): string[] {
 
 export function buildCVBatchSummary(
   perCV: CVApplication[],
-  threshold: number,
+  thresholdLow: number,
+  thresholdHigh: number,
 ): CVBatchSummary {
   return {
     total: perCV.length,
     aboveThreshold: perCV.filter((c) => c.scoringResult.status === 'accepted')
       .length,
-    threshold,
+    thresholdLow,
+    thresholdHigh,
     perCV,
   };
 }

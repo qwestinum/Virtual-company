@@ -123,7 +123,6 @@ describe('FDPEditBlock.onSave via le store réel — pas de rétrogradation', ()
       scoringSheet: prev.scoringSheet,
       publishedChannels: prev.publishedChannels,
       sourcesConfirmed: prev.sourcesConfirmed,
-      threshold: prev.threshold,
     });
     store().recomputeStatus(id);
 

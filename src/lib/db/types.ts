@@ -34,12 +34,7 @@ export type CampaignRow = {
    */
   sources: CVSource[];
   /**
-   * DÉPRÉCIÉ (lot 2, drop au lot 3) — seuil unique. Remplacé par
-   * `threshold_low`/`threshold_high`. Conservé le temps de la transition.
-   */
-  threshold: number;
-  /**
-   * HITL 3 zones (lot 2) — seuils bas/haut par campagne. `< low` refus auto,
+   * HITL 3 zones — seuils bas/haut par campagne. `< low` refus auto,
    * `[low, high[` zone grise (validation), `≥ high` acceptation auto.
    * Nullable : lignes antérieures au lot 2 → repli applicatif 0/100 (tout
    * gris) dans `rowToCampaign`. Invariant `low ≤ high` garanti en base.

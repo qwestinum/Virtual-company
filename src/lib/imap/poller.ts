@@ -508,10 +508,8 @@ async function processEmailAttachment(args: {
     source: 'email',
     receivedAt: new Date().toISOString(),
     computedAt: new Date().toISOString(),
-    // Convergence seuil (6c) : campaign.threshold est la source unique.
-    acceptanceThreshold: campaign.threshold,
-    // HITL 3 zones (lot 2) — deux poignées de la campagne (repli 0/100 « tout
-    // gris » sur les lignes legacy, garanti par rowToCampaign).
+    // HITL 3 zones — deux poignées de la campagne (repli 0/100 « tout gris »
+    // sur les lignes legacy, garanti par rowToCampaign).
     thresholdLow: campaign.thresholdLow,
     thresholdHigh: campaign.thresholdHigh,
   });
@@ -525,7 +523,11 @@ async function processEmailAttachment(args: {
 
   // Rapport markdown single-CV — réutilise le renderer batch avec un
   // tableau d'un élément.
-  const summary = buildCVBatchSummary([application], campaign.threshold);
+  const summary = buildCVBatchSummary(
+    [application],
+    campaign.thresholdLow,
+    campaign.thresholdHigh,
+  );
   const reportName = `rapport-cv-imap-${slug(application.candidate.fullName)}-${uid}.md`;
   const reportContent = renderCVBatchMarkdown(summary, campaign.id);
 

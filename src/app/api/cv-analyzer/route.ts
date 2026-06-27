@@ -14,10 +14,7 @@ import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { DEFAULT_HITL_CONFIG } from '@/types/hitl';
-import {
-  type CVApplication,
-  DEFAULT_CV_THRESHOLD,
-} from '@/types/cv-analysis';
+import { type CVApplication } from '@/types/cv-analysis';
 import { ScoringSheetSchema, type ScoringSheet } from '@/types/scoring';
 
 export const runtime = 'nodejs';
@@ -56,7 +53,6 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const file = form.get('cv');
   const scoringSheetRaw = form.get('scoringSheet');
-  const thresholdRaw = form.get('threshold');
   const thresholdLowRaw = form.get('thresholdLow');
   const thresholdHighRaw = form.get('thresholdHigh');
   const taskIdRaw = form.get('taskId');
@@ -112,14 +108,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
   }
 
-  const threshold = (() => {
-    const n = thresholdRaw ? Number(thresholdRaw) : NaN;
-    if (Number.isFinite(n) && n >= 0 && n <= 100) return n;
-    return DEFAULT_CV_THRESHOLD;
-  })();
-  // HITL 3 zones (lot 2). Repli SÛR (tout gris 0/100 → validation) si les deux
-  // poignées ne sont pas fournies — JAMAIS collées sur un seuil qui rejetterait
-  // en masse (garde-fou « incertain → validation, jamais auto-refus »).
+  // HITL 3 zones. Repli SÛR (tout gris 0/100 → validation) si les deux poignées
+  // ne sont pas fournies — JAMAIS collées sur un seuil qui rejetterait en masse
+  // (garde-fou « incertain → validation, jamais auto-refus »).
   const parsePct = (raw: FormDataEntryValue | null): number | undefined => {
     const n = raw != null ? Number(raw) : NaN;
     return Number.isFinite(n) && n >= 0 && n <= 100 ? n : undefined;
@@ -161,7 +152,6 @@ export async function POST(request: Request): Promise<NextResponse> {
       source: 'manual',
       receivedAt: new Date().toISOString(),
       computedAt: new Date().toISOString(),
-      acceptanceThreshold: threshold,
       thresholdLow,
       thresholdHigh,
     });
@@ -260,7 +250,8 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({
       application,
-      threshold,
+      thresholdLow,
+      thresholdHigh,
       metrics,
       cvArtifactId,
     });

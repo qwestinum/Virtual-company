@@ -70,7 +70,8 @@ function request(scoringSheet?: ScoringSheet): Request {
   if (scoringSheet) {
     form.append('scoringSheet', JSON.stringify(scoringSheet));
   }
-  form.append('threshold', '75');
+  form.append('thresholdLow', '16');
+  form.append('thresholdHigh', '90');
   form.append('campaignId', 'CAMP-9');
   return new Request('http://localhost/api/cv-analyzer', {
     method: 'POST',
@@ -117,7 +118,8 @@ describe('POST /api/cv-analyzer', () => {
     const arg = analyzeCVApplicationMock.mock.calls[0][0];
     expect(arg.sheet.campaignId).toBe('CAMP-9');
     expect(arg.source).toBe('manual');
-    expect(arg.acceptanceThreshold).toBe(75);
+    expect(arg.thresholdLow).toBe(16);
+    expect(arg.thresholdHigh).toBe(90);
 
     // Réponse = CVApplication (nouveau modèle).
     const body = await res.json();

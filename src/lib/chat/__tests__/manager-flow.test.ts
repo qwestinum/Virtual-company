@@ -101,7 +101,8 @@ function fakeCVResult(
   };
   return {
     application,
-    threshold: 75,
+    thresholdLow: 10,
+    thresholdHigh: 90,
     metrics: { durationMs: 2500, tokensUsed: 1000, costEstimate: 0.005 },
     cvArtifactId: null,
   };
@@ -187,7 +188,6 @@ describe('manager-flow — dispatchCVBatch', () => {
 
     await dispatchCVBatch({
       files: [makeFile('a.pdf'), makeFile('b.pdf'), makeFile('c.pdf')],
-      threshold: 75,
       campaignId: 'CAMP-2026-007',
     });
 
@@ -201,20 +201,21 @@ describe('manager-flow — dispatchCVBatch', () => {
     }
   });
 
-  it('résout le seuil depuis campaign.threshold sans threshold explicite (convergence 6c)', async () => {
+  it('résout les DEUX seuils depuis la campagne (thresholdLow/High)', async () => {
     useCampaignsStore.getState().addCampaign({
       fdp: buildEmptyFDP('CAMP-2026-088'),
-      threshold: 88,
+      thresholdLow: 20,
+      thresholdHigh: 80,
     });
     postCVAnalyzerMock.mockResolvedValueOnce(fakeCVResult('a.pdf', 82, false));
 
     await dispatchCVBatch({
       files: [makeFile('a.pdf')],
       campaignId: 'CAMP-2026-088',
-      // pas de threshold explicite → résolu depuis la campagne.
     });
 
-    expect(postCVAnalyzerMock.mock.calls[0][0].threshold).toBe(88);
+    expect(postCVAnalyzerMock.mock.calls[0][0].thresholdLow).toBe(20);
+    expect(postCVAnalyzerMock.mock.calls[0][0].thresholdHigh).toBe(80);
   });
 
   it('utilise la fiche PERSISTÉE de la campagne quand aucune fiche active (post-actualisation)', async () => {
@@ -261,7 +262,6 @@ describe('manager-flow — dispatchCVBatch', () => {
 
     await dispatchCVBatch({
       files: [makeFile('a.pdf'), makeFile('b.pdf'), makeFile('c.pdf')],
-      threshold: 75,
       campaignId: 'CAMP-2026-007',
     });
     const messages = useChatStore.getState().messages;

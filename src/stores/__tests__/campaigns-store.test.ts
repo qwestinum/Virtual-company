@@ -477,34 +477,34 @@ describe('campaigns-store', () => {
     expect(c.status).toBe('draft');
   });
 
-  it('addCampaign initialise le seuil par défaut à 75', () => {
+  it('addCampaign initialise les seuils par défaut à 10/90 (zone grise large)', () => {
     const c = useCampaignsStore
       .getState()
       .addCampaign({ fdp: makeFDP('CAMP-2026-100') });
-    expect(c.threshold).toBe(75);
+    expect(c.thresholdLow).toBe(10);
+    expect(c.thresholdHigh).toBe(90);
   });
 
-  it('setThreshold borne la valeur entre 0 et 100', () => {
+  it('setThresholds borne 0..100 + invariant bas ≤ haut', () => {
     const fdp = makeFDP('CAMP-2026-101');
     useCampaignsStore.getState().addCampaign({ fdp });
-    useCampaignsStore.getState().setThreshold('CAMP-2026-101', 150);
-    expect(
-      useCampaignsStore.getState().getById('CAMP-2026-101')?.threshold,
-    ).toBe(100);
-    useCampaignsStore.getState().setThreshold('CAMP-2026-101', -10);
-    expect(
-      useCampaignsStore.getState().getById('CAMP-2026-101')?.threshold,
-    ).toBe(0);
+    useCampaignsStore.getState().setThresholds('CAMP-2026-101', -10, 150);
+    const c = useCampaignsStore.getState().getById('CAMP-2026-101');
+    expect(c?.thresholdLow).toBe(0);
+    expect(c?.thresholdHigh).toBe(100);
+    // bas > haut → bas ramené à haut
+    useCampaignsStore.getState().setThresholds('CAMP-2026-101', 80, 40);
+    const c2 = useCampaignsStore.getState().getById('CAMP-2026-101');
+    expect(c2!.thresholdLow).toBeLessThanOrEqual(c2!.thresholdHigh);
   });
 
-  it('setThreshold met à jour updatedAt seulement quand la valeur change', () => {
+  it('setThresholds ne touche updatedAt que si une valeur change', () => {
     const fdp = makeFDP('CAMP-2026-102');
     useCampaignsStore.getState().addCampaign({ fdp });
     const before = useCampaignsStore
       .getState()
       .getById('CAMP-2026-102')!.updatedAt;
-    useCampaignsStore.getState().setThreshold('CAMP-2026-102', 75);
-    // identique → updatedAt inchangé
+    useCampaignsStore.getState().setThresholds('CAMP-2026-102', 10, 90);
     expect(
       useCampaignsStore.getState().getById('CAMP-2026-102')!.updatedAt,
     ).toBe(before);

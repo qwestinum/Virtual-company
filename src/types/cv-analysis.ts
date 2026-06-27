@@ -132,7 +132,9 @@ export type CVApplication = z.infer<typeof CVApplicationSchema>;
 export const CVBatchSummarySchema = z.object({
   total: z.number().int().nonnegative(),
   aboveThreshold: z.number().int().nonnegative(),
-  threshold: z.number().min(0).max(100),
+  /** Seuils de décision de la campagne (HITL 3 zones) — affichage du récap. */
+  thresholdLow: z.number().min(0).max(100),
+  thresholdHigh: z.number().min(0).max(100),
   perCV: z.array(CVApplicationSchema),
 });
 export type CVBatchSummary = z.infer<typeof CVBatchSummarySchema>;

@@ -115,7 +115,6 @@ function ScoringEditInner({ campaign }: ScoringEditBlockProps) {
       scoringSheet: sheet,
       publishedChannels: campaign.publishedChannels,
       sourcesConfirmed: campaign.sourcesConfirmed,
-      threshold: campaign.threshold,
     });
     pushManagerAcknowledgment({
       kind: 'scoring_updated',

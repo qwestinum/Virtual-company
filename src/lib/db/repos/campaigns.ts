@@ -57,7 +57,6 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     // fait). Réintroduire ['manual'] ici rendrait une campagne sans flux
     // « activable » après rechargement.
     sources: row.sources ?? [],
-    threshold: row.threshold ?? 75,
     // Lot 2 — repli 0/100 (tout gris = validation) pour les lignes antérieures
     // aux colonnes : garde-fou « config illisible → validation, jamais auto ».
     thresholdLow: row.threshold_low ?? 0,
@@ -84,7 +83,6 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     published_channels: campaign.publishedChannels,
     sources_confirmed: campaign.sourcesConfirmed,
     sources: campaign.sources,
-    threshold: campaign.threshold,
     threshold_low: campaign.thresholdLow,
     threshold_high: campaign.thresholdHigh,
     site_id: campaign.siteId,
@@ -162,7 +160,6 @@ export type CampaignPatch = {
   status?: CampaignStatus;
   publishedChannels?: PublicationChannel[];
   sourcesConfirmed?: boolean;
-  threshold?: number;
   thresholdLow?: number;
   thresholdHigh?: number;
   /** Reporting (préparation) — rattachement campagne → site / donneur d'ordre
@@ -182,7 +179,6 @@ export async function patchCampaign(
     row.published_channels = patch.publishedChannels;
   if (patch.sourcesConfirmed !== undefined)
     row.sources_confirmed = patch.sourcesConfirmed;
-  if (patch.threshold !== undefined) row.threshold = patch.threshold;
   if (patch.thresholdLow !== undefined) row.threshold_low = patch.thresholdLow;
   if (patch.thresholdHigh !== undefined)
     row.threshold_high = patch.thresholdHigh;

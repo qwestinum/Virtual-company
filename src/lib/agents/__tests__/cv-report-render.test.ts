@@ -71,11 +71,13 @@ describe('cv-report-render', () => {
         cvApp({ fileName: 'a.pdf', status: 'accepted', score: 82 }),
         cvApp({ fileName: 'b.pdf', status: 'rejected', score: 50 }),
       ],
-      75,
+      16,
+      90,
     );
     expect(summary.total).toBe(2);
     expect(summary.aboveThreshold).toBe(1);
-    expect(summary.threshold).toBe(75);
+    expect(summary.thresholdLow).toBe(16);
+    expect(summary.thresholdHigh).toBe(90);
   });
 
   it('renderCVBatchMarkdown : Retenu/Écarté, évaluation par critère, (knockout) et décompo', () => {
@@ -85,7 +87,8 @@ describe('cv-report-render', () => {
           cvApp({ fileName: 'a.pdf', status: 'accepted', score: 82 }),
           cvApp({ fileName: 'b.pdf', status: 'rejected', score: 90, knockout: true }),
         ],
-        75,
+        16,
+        90,
       ),
       'CAMP-2026-007',
     );

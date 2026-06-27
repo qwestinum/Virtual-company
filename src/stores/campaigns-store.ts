@@ -59,13 +59,7 @@ export type ActiveCampaign = {
    */
   sources: CVSource[];
   /**
-   * DÉPRÉCIÉ (lot 2, retiré au lot 3) — seuil unique. Remplacé par
-   * `thresholdLow`/`thresholdHigh`. Conservé pour les lecteurs legacy
-   * (reporting/dashboard) le temps de la transition.
-   */
-  threshold: number;
-  /**
-   * HITL 3 zones (lot 2) — seuils bas/haut. `< low` refus auto, `[low, high[`
+   * HITL 3 zones — seuils bas/haut. `< low` refus auto, `[low, high[`
    * zone grise (validation humaine), `≥ high` acceptation auto. Poignées
    * collées (`low == high`) = tout automatique. Nouvelles campagnes : 10/90
    * par défaut. Le changement ne recompute pas les candidats déjà analysés.
@@ -125,7 +119,6 @@ export type CampaignsState = {
     publishedChannels?: PublicationChannel[];
     sourcesConfirmed?: boolean;
     sources?: CVSource[];
-    threshold?: number;
     thresholdLow?: number;
     thresholdHigh?: number;
     siteId?: string | null;
@@ -133,13 +126,7 @@ export type CampaignsState = {
     prefillExtraction?: CampaignPrefill | null;
   }) => ActiveCampaign;
   /**
-   * DÉPRÉCIÉ (lot 2) — ajuste le seuil unique. Conservé tant que l'UI slider
-   * mono-poignée (`ThresholdEditBlock`) n'est pas remplacée. Préférer
-   * `setThresholds`. Aucun recompute rétroactif.
-   */
-  setThreshold: (id: string, threshold: number) => void;
-  /**
-   * HITL 3 zones (lot 2) — ajuste les deux seuils (bas ≤ haut, clampés
+   * HITL 3 zones — ajuste les deux seuils (bas ≤ haut, clampés
    * 0..100). Aucun recompute rétroactif des candidats déjà analysés.
    */
   setThresholds: (id: string, low: number, high: number) => void;
@@ -337,8 +324,6 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
     // flux de réception tant que le DRH n'en active pas un → intake non fait.
     const sources =
       input.sources ?? existing?.sources ?? [];
-    const threshold =
-      input.threshold ?? existing?.threshold ?? 75;
     // HITL 3 zones (lot 2) — défaut NOUVELLE campagne : 10/90 (bande grise
     // large, seuls les extrêmes automatisés). Distinct du backfill 0/100 des
     // campagnes EXISTANTES (cf. migration).
@@ -372,7 +357,6 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       publishedChannels,
       sourcesConfirmed,
       sources,
-      threshold,
       thresholdLow,
       thresholdHigh,
       siteId,
@@ -466,25 +450,6 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
           [id]: {
             ...current,
             status: nextStatus,
-            updatedAt: new Date().toISOString(),
-          },
-        },
-      };
-    }),
-
-  setThreshold: (id, threshold) =>
-    set((state) => {
-      const current = state.byId[id];
-      if (!current) return state;
-      const clamped = Math.max(0, Math.min(100, Math.round(threshold)));
-      if (clamped === current.threshold) return state;
-      return {
-        ...state,
-        byId: {
-          ...state.byId,
-          [id]: {
-            ...current,
-            threshold: clamped,
             updatedAt: new Date().toISOString(),
           },
         },

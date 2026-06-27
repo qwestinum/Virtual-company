@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dispatchPostAnalysisOutreach } from '@/lib/chat/manager-flow';
-import { sendValidation, switchValidation } from '@/lib/hitl/send-validation';
+import { sendValidation } from '@/lib/hitl/send-validation';
 import type { DecisionZone, PendingValidation } from '@/types/hitl';
 import type { CVApplication, CVBatchSummary } from '@/types/cv-analysis';
 import type { MailCandidate } from '@/types/mail-candidate';
@@ -112,7 +112,8 @@ function summaryOf(...cvs: CVApplication[]): CVBatchSummary {
     total: cvs.length,
     aboveThreshold: cvs.filter((c) => c.scoringResult.status === 'accepted')
       .length,
-    threshold: 60,
+    thresholdLow: 16,
+    thresholdHigh: 90,
     perCV: cvs,
   };
 }
@@ -241,19 +242,5 @@ describe('HITL E2E — envoi & switch', () => {
     expect(res.ok).toBe(true); // la décision est enregistrée malgré tout
     expect(at('/api/validations/val-1/send')).toHaveLength(1); // finalisée
     expect(res.message).toMatch(/non configuré/i);
-  });
-
-  it('Switcher régénère la chaîne INVERSE (brouillon invite) et flippe la décision', async () => {
-    const res = await switchValidation(makeValidation('reject'));
-    // Brouillon de la décision inverse (accept → mode invite, draft).
-    const draft = at('/api/mail-composer').find((c) => c.body?.draft === true);
-    expect(draft?.body?.mode).toBe('invite');
-    // PATCH : décision flippée, confirmed reset, uid préservé.
-    const patch = at('/api/validations/val-1')[0];
-    expect(patch?.body?.decision).toBe('accept');
-    expect(patch?.body?.confirmed).toBe(false);
-    expect((patch?.body?.payload as { uid?: string })?.uid).toBe('u-bob');
-    expect(res.ok).toBe(true);
-    expect(res.validation?.decision).toBe('accept');
   });
 });

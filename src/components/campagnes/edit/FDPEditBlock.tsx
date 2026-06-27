@@ -88,7 +88,6 @@ function FDPEditInner({ campaign }: FDPEditBlockProps) {
       scoringSheet: campaign.scoringSheet,
       publishedChannels: campaign.publishedChannels,
       sourcesConfirmed: campaign.sourcesConfirmed,
-      threshold: campaign.threshold,
     });
     // Cohérence statut/machine : addCampaign préserve le statut passé, donc une
     // FDP réellement régressée laisserait une campagne « active » incohérente.
