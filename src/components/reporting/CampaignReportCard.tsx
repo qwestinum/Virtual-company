@@ -87,7 +87,7 @@ export function CampaignReportCard({
         <Vol label="Reçues" n={volumes.received} />
         <Vol label="Retenus" n={volumes.retained} />
         <Vol label="Écartés" n={volumes.rejected} />
-        <Vol label="Arbitrés" n={volumes.arbitrated} />
+        <Vol label="En attente" n={volumes.enAttente} />
       </div>
 
       {(sent || generated) && (

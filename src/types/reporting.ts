@@ -82,16 +82,20 @@ export type CandidateAnalysisDetail = CandidateAnalysisSummary & {
 // Sous-onglet « Rapport de campagne » (cf. docs/specs/reporting.md §3)
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Volumes traités d'une campagne (carte + PDF). */
+/** Volumes traités d'une campagne (carte + PDF) — HITL 3 zones. */
 export type CampaignVolumes = {
   /** Candidatures analysées (= lignes candidate_analyses). */
   received: number;
-  /** Retenues au screening (status accepted). */
+  /** Retenues (status accepted : acceptation auto + gris accepté par l'humain). */
   retained: number;
-  /** Écartées au screening (status rejected). */
+  /** Écartées (status rejected, décision PRISE : refus auto + gris refusé). */
   rejected: number;
-  /** Arbitrées manuellement (intervention humaine ≠ verdict IA). */
-  arbitrated: number;
+  /** En zone de validation, pas encore tranchées par l'humain. */
+  enAttente: number;
+  /** Décidées automatiquement par le système (zones auto). */
+  decidedBySystem: number;
+  /** Tranchées par un humain (zone grise décidée). */
+  decidedByHuman: number;
 };
 
 /**
@@ -156,6 +160,11 @@ export type CampaignAnalysisDatum = {
   status: CandidateStatus;
   totalScore: number;
   source: CVSource;
+  /** HITL 3 zones — zone figée au scoring (null = analyse antérieure au lot 1). */
+  decisionZone: DecisionZone | null;
+  /** Acteur de la décision finale (null = ligne historique). */
+  decidedBy: DecidedBy | null;
+  /** Tranché par un humain (= decidedBy 'user'). Remplace l'ancien « arbitrage ». */
   humanIntervention: boolean;
   /** Parcours abouti à un recrutement (final retenu définitivement). */
   recruited: boolean;
@@ -170,7 +179,7 @@ export type CampaignReportData = {
     retentionRate: number;
     /** Proxy : lancement → clôture (jours) quand recrutement, sinon null. */
     timeToHireDays: number | null;
-    arbitrationRate: number;
+    humanValidationRate: number;
     responseRate: number;
   };
   channels: ChannelPerformance[];
@@ -179,7 +188,7 @@ export type CampaignReportData = {
     distribution: ScoreBucket[];
     stdDev: number | null;
     average: number | null;
-    arbitrationRate: number;
+    humanValidationRate: number;
   };
   recommendations: string[];
   rgpd: {
@@ -238,7 +247,7 @@ export type MultiCampaignReportData = {
     retentionRate: number;
     /** Moyenne sur les campagnes ayant abouti à un recrutement (jours). */
     avgTimeToHireDays: number | null;
-    arbitrationRate: number;
+    humanValidationRate: number;
     /** Marque employeur approximée par le taux de réponse aux candidats. */
     responseRate: number;
   };
@@ -250,7 +259,7 @@ export type MultiCampaignReportData = {
     distribution: ScoreBucket[];
     stdDev: number | null;
     average: number | null;
-    arbitrationRate: number;
+    humanValidationRate: number;
   };
   recommendations: string[];
   rgpd: { totalCandidates: number; retentionMonths: number };

@@ -16,15 +16,22 @@ import {
 import type { CampaignAnalysisDatum } from '@/types/reporting';
 
 function datum(p: Partial<CampaignAnalysisDatum>): CampaignAnalysisDatum {
-  return {
+  const d: CampaignAnalysisDatum = {
     status: 'accepted',
     totalScore: 80,
     source: 'email',
+    decisionZone: null,
+    decidedBy: 'auto',
     humanIntervention: false,
     recruited: false,
     contacted: false,
     ...p,
   };
+  // Cohérence : « intervention humaine » = gris tranché par l'humain.
+  if (d.humanIntervention && d.decidedBy === 'auto') {
+    return { ...d, decisionZone: 'gray', decidedBy: 'user' };
+  }
+  return d;
 }
 
 const META: CampaignReportMeta = {
@@ -51,7 +58,14 @@ describe('helpers numériques', () => {
       datum({ status: 'accepted', humanIntervention: true }),
       datum({ status: 'rejected' }),
     ]);
-    expect(v).toEqual({ received: 3, retained: 2, rejected: 1, arbitrated: 1 });
+    expect(v).toEqual({
+      received: 3,
+      retained: 2,
+      rejected: 1,
+      enAttente: 0,
+      decidedBySystem: 2,
+      decidedByHuman: 1,
+    });
   });
 
   it('computeIssue : recruited si au moins un recrutement', () => {
@@ -112,7 +126,7 @@ describe('buildCampaignReportSummary', () => {
 });
 
 describe('buildCampaignReportData — recommandations (règles)', () => {
-  it('faible volume signalé ; canal dominant NEUTRALISÉ (HITL 3 zones, lot 2c)', () => {
+  it('faible volume + canal dominant signalés (HITL 3 zones recalibré)', () => {
     const analyses = [
       datum({ source: 'linkedin', status: 'accepted', recruited: true }),
       datum({ source: 'email', status: 'rejected' }),
@@ -120,9 +134,8 @@ describe('buildCampaignReportData — recommandations (règles)', () => {
     const summary = buildCampaignReportSummary(META, analyses, [], null);
     const data = buildCampaignReportData(summary, analyses);
     const joined = data.recommendations.join(' | ');
-    // Reco « canal dominant » suppressée tant que la retenue est ambiguë (3 zones).
-    expect(joined).not.toMatch(/LinkedIn/);
-    // Reco indépendante du modèle de décision → toujours émise.
+    // Retenue désormais non ambiguë (gris exclus) → reco canal dominant émise.
+    expect(joined).toMatch(/LinkedIn/);
     expect(joined).toMatch(/[Ff]aible volume/);
     expect(data.recommendations.length).toBeLessThanOrEqual(5);
   });
@@ -145,16 +158,15 @@ describe('buildCampaignReportData — recommandations (règles)', () => {
     expect(data.recommendations.join(' ')).toMatch(/[Tt]ime-to-hire/);
   });
 
-  it('taux d’arbitrage calculé mais reco NEUTRALISÉE (HITL 3 zones, lot 2c)', () => {
+  it('taux de validation humaine élevé → reco « resserrer les seuils »', () => {
     const analyses = Array.from({ length: 4 }, (_, i) =>
       datum({ humanIntervention: i < 2, status: 'accepted', recruited: false }),
     );
     const summary = buildCampaignReportSummary(META, analyses, [], null);
     const data = buildCampaignReportData(summary, analyses);
-    // La donnée reste calculée (lot 3 la recalibrera)…
-    expect(data.scoring.arbitrationRate).toBe(0.5);
-    // … mais la reco « recalibrer la grille » est suppressée (faux positif avec 3 zones).
-    expect(data.recommendations.join(' ')).not.toMatch(/arbitrage/i);
+    // 2 gris tranchés sur 4 reçues = 50% en validation humaine ≥ seuil.
+    expect(data.scoring.humanValidationRate).toBe(0.5);
+    expect(data.recommendations.join(' ')).toMatch(/validation humaine/i);
   });
 
   it('porte la métrique de conversion vivier quand fournie (§8)', () => {

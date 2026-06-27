@@ -10,6 +10,8 @@ function datum(p: Partial<CampaignAnalysisDatum>): CampaignAnalysisDatum {
     status: 'accepted',
     totalScore: 80,
     source: 'linkedin',
+    decisionZone: null,
+    decidedBy: 'auto',
     humanIntervention: false,
     recruited: false,
     contacted: true,

@@ -27,10 +27,11 @@ export const RGPD_RETENTION_MONTHS = 24;
  */
 export const TIME_TO_HIRE_REFERENCE_DAYS = 45;
 /**
- * Taux d'arbitrage manuel au-delà duquel on suspecte un décalage grille ↔
- * réalité du marché (verdicts IA souvent corrigés à la main).
+ * Part des candidatures en zone grise (validation humaine) au-delà de laquelle
+ * la charge de revue est jugée élevée → suggérer de resserrer les deux seuils
+ * (automatiser davantage de cas évidents). HITL 3 zones.
  */
-export const ARBITRATION_HIGH_RATE = 0.2;
+export const HUMAN_VALIDATION_HIGH_RATE = 0.5;
 /**
  * Part des retenus produite par un canal au-delà de laquelle il est jugé
  * dominant (à privilégier sur les prochaines campagnes).
@@ -68,11 +69,20 @@ export function addMonthsIso(iso: string, months: number): string {
 }
 
 export function computeVolumes(analyses: CampaignAnalysisDatum[]): CampaignVolumes {
+  // En attente = zone grise pas encore tranchée par l'humain (statut provisoire
+  // 'rejected' → exclu de retained ET de rejected pour ne pas fausser les taux).
+  const isPending = (a: CampaignAnalysisDatum): boolean =>
+    a.decisionZone === 'gray' && a.decidedBy !== 'user';
   return {
     received: analyses.length,
-    retained: analyses.filter((a) => a.status === 'accepted').length,
-    rejected: analyses.filter((a) => a.status === 'rejected').length,
-    arbitrated: analyses.filter((a) => a.humanIntervention).length,
+    retained: analyses.filter((a) => a.status === 'accepted' && !isPending(a))
+      .length,
+    rejected: analyses.filter((a) => a.status === 'rejected' && !isPending(a))
+      .length,
+    enAttente: analyses.filter(isPending).length,
+    // Système = zones auto (et legacy sans zone) ; humain = gris tranché.
+    decidedBySystem: analyses.filter((a) => a.decisionZone !== 'gray').length,
+    decidedByHuman: analyses.filter((a) => a.decidedBy === 'user').length,
   };
 }
 

@@ -17,10 +17,6 @@ import {
 
 import { formatFrDate, formatFrDateTime } from '@/lib/reporting/audit-display';
 import {
-  HITL_METRICS_RECALIBRATION_NOTICE,
-  HITL_ZONES_RECALIBRATION,
-} from '@/lib/reporting/campaign-report';
-import {
   CAMPAIGN_ISSUE_LABELS,
   donneurOrdreLabel,
 } from '@/lib/reporting/campaign-report-display';
@@ -151,31 +147,23 @@ function CampaignReportDocument({
           </View>
         ) : null}
 
-        {/* Bandeau neutralisation (lot 2c) — métriques de décision en recalibrage. */}
-        {HITL_ZONES_RECALIBRATION ? (
-          <View
-            style={{
-              marginTop: 8,
-              padding: 8,
-              borderRadius: 4,
-              backgroundColor: '#fef3c7',
-              borderWidth: 1,
-              borderColor: '#f59e0b',
-            }}
-          >
-            <Text style={{ fontSize: 7.5, color: '#92400e' }}>
-              ⚠ {HITL_METRICS_RECALIBRATION_NOTICE}
-            </Text>
-          </View>
-        ) : null}
-
         {/* 2. Synthèse du déroulé */}
         <Text style={pdfBaseStyles.sectionTitle}>Synthèse du déroulé</Text>
         <View style={s.kpiRow}>
           <Kpi value={String(summary.volumes.received)} label="Reçues" />
           <Kpi value={String(summary.volumes.retained)} label="Retenues" />
           <Kpi value={String(summary.volumes.rejected)} label="Écartées" />
-          <Kpi value={String(summary.volumes.arbitrated)} label="Arbitrées" />
+          <Kpi value={String(summary.volumes.enAttente)} label="En attente" />
+        </View>
+        <View style={[s.kpiRow, { marginTop: 6 }]}>
+          <Kpi
+            value={String(summary.volumes.decidedBySystem)}
+            label="Décidé par le système"
+          />
+          <Kpi
+            value={String(summary.volumes.decidedByHuman)}
+            label="Tranché par un humain"
+          />
         </View>
         <Text style={[pdfBaseStyles.paragraph, { marginTop: 8 }]}>
           {summary.issue === 'recruited'
@@ -196,8 +184,8 @@ function CampaignReportDocument({
             label="Time-to-hire"
           />
           <Kpi
-            value={`${Math.round(performance.arbitrationRate * 100)}%`}
-            label="Arbitrage manuel"
+            value={`${Math.round(performance.humanValidationRate * 100)}%`}
+            label="Validation humaine"
           />
           <Kpi value={`${performance.responseRate}%`} label="Taux de réponse" />
         </View>
@@ -273,7 +261,7 @@ function CampaignReportDocument({
         <Text style={[pdfBaseStyles.paragraph, { marginTop: 4 }]}>
           Score moyen : {scoring.average ?? '—'} · écart-type :{' '}
           {scoring.stdDev ?? '—'} · taux de cas arbitrés :{' '}
-          {Math.round(scoring.arbitrationRate * 100)}%
+          {Math.round(scoring.humanValidationRate * 100)}%
         </Text>
 
         {/* 6. Enseignements & recommandations */}

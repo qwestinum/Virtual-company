@@ -12,10 +12,6 @@ import { useEffect, useState } from 'react';
 
 import { formatFrDate } from '@/lib/reporting/audit-display';
 import {
-  HITL_METRICS_RECALIBRATION_NOTICE,
-  HITL_ZONES_RECALIBRATION,
-} from '@/lib/reporting/campaign-report';
-import {
   CAMPAIGN_ISSUE_LABELS,
   donneurOrdreLabel,
 } from '@/lib/reporting/campaign-report-display';
@@ -149,18 +145,14 @@ function CampaignReportBody({ data }: { data: CampaignReportData }) {
           Moins de 5 candidatures traitées — statistiques peu significatives.
         </p>
       ) : null}
-      {HITL_ZONES_RECALIBRATION ? (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 font-body text-[12px] text-amber-800">
-          ⚠ {HITL_METRICS_RECALIBRATION_NOTICE}
-        </p>
-      ) : null}
-
       <Section title="Synthèse du déroulé">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Kpi n={summary.volumes.received} label="Reçues" />
           <Kpi n={summary.volumes.retained} label="Retenues" />
           <Kpi n={summary.volumes.rejected} label="Écartées" />
-          <Kpi n={summary.volumes.arbitrated} label="Arbitrées" />
+          <Kpi n={summary.volumes.enAttente} label="En attente" />
+          <Kpi n={summary.volumes.decidedBySystem} label="Décidé par le système" />
+          <Kpi n={summary.volumes.decidedByHuman} label="Tranché par un humain" />
         </div>
       </Section>
 
@@ -171,7 +163,7 @@ function CampaignReportBody({ data }: { data: CampaignReportData }) {
             n={performance.timeToHireDays !== null ? `${performance.timeToHireDays} j` : '—'}
             label="Time-to-hire"
           />
-          <Kpi n={`${Math.round(performance.arbitrationRate * 100)}%`} label="Arbitrage" />
+          <Kpi n={`${Math.round(performance.humanValidationRate * 100)}%`} label="Validation humaine" />
           <Kpi n={`${performance.responseRate}%`} label="Taux de réponse" />
         </div>
       </Section>
@@ -223,7 +215,7 @@ function CampaignReportBody({ data }: { data: CampaignReportData }) {
         <p className="mt-2 font-body text-[12px] text-stone-500">
           Score moyen : {scoring.average ?? '—'} · écart-type :{' '}
           {scoring.stdDev ?? '—'} · cas arbitrés :{' '}
-          {Math.round(scoring.arbitrationRate * 100)}%
+          {Math.round(scoring.humanValidationRate * 100)}%
         </p>
       </Section>
 

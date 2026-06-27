@@ -22,9 +22,9 @@ const META: CampaignReportMeta = {
 };
 
 const ANALYSES: CampaignAnalysisDatum[] = [
-  { status: 'accepted', totalScore: 88, source: 'linkedin', humanIntervention: false, recruited: true, contacted: true },
-  { status: 'accepted', totalScore: 72, source: 'email', humanIntervention: true, recruited: false, contacted: true },
-  { status: 'rejected', totalScore: 40, source: 'email', humanIntervention: false, recruited: false, contacted: false },
+  { status: 'accepted', totalScore: 88, source: 'linkedin', decisionZone: 'auto_accept', decidedBy: 'auto', humanIntervention: false, recruited: true, contacted: true },
+  { status: 'accepted', totalScore: 72, source: 'email', decisionZone: 'gray', decidedBy: 'user', humanIntervention: true, recruited: false, contacted: true },
+  { status: 'rejected', totalScore: 40, source: 'email', decisionZone: 'auto_reject', decidedBy: 'auto', humanIntervention: false, recruited: false, contacted: false },
 ];
 
 function fixtureData() {

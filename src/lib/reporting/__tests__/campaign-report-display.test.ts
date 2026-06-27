@@ -24,7 +24,7 @@ function summary(p: Partial<CampaignReportSummary>): CampaignReportSummary {
     donneurOrdreId: 'DO-1',
     siteId: 'SITE-1',
     siteLabel: 'Paris',
-    volumes: { received: 10, retained: 3, rejected: 7, arbitrated: 1 },
+    volumes: { received: 10, retained: 3, rejected: 7, enAttente: 0, decidedBySystem: 9, decidedByHuman: 1 },
     issue: 'recruited',
     recruitedCount: 1,
     generatedAt: null,

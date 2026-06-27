@@ -21,7 +21,11 @@ export function analysisToDatum(
     status: a.status,
     totalScore: a.totalScore,
     source: a.source,
-    humanIntervention: j.humanIntervention,
+    decisionZone: a.decisionZone,
+    decidedBy: a.decidedBy,
+    // HITL 3 zones : « intervention humaine » = un humain a tranché un gris
+    // (decidedBy='user'), pas la dérivation journal/hitlConfig héritée.
+    humanIntervention: a.decidedBy === 'user',
     recruited: j.final === 'retenu',
     // Contacté = a reçu une communication (invitation ou refus traité).
     contacted:

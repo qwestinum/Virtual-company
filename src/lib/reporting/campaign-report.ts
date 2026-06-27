@@ -13,7 +13,7 @@
  */
 
 import {
-  ARBITRATION_HIGH_RATE,
+  HUMAN_VALIDATION_HIGH_RATE,
   LOW_VOLUME_THRESHOLD,
   RGPD_RETENTION_MONTHS,
   TIME_TO_HIRE_REFERENCE_DAYS,
@@ -99,33 +99,12 @@ export function buildCampaignReportSummary(
   };
 }
 
-/**
- * NEUTRALISATION HITL 3 zones (lot 2c). Les recommandations calibrées sur le
- * modèle binaire (retenue / arbitrage) deviennent FAUSSES avec 3 zones : la
- * « retenue » est ambiguë (les gris en attente comptent provisoirement en
- * refusés) et l'« arbitrage » explose (toute validation grise = intervention
- * humaine). Tant que le reporting n'est pas recalibré (lot 3), on SUPPRIME ces
- * recos plutôt que d'affirmer des conclusions fausses. Repasser à `false` au
- * lot 3 après recalibrage des seuils.
- */
-export const HITL_ZONES_RECALIBRATION = true;
-
-/**
- * Bandeau affiché sur les surfaces KPI tant que `HITL_ZONES_RECALIBRATION` est
- * actif (lot 2c). Les chiffres « retenue / arbitrage / volumes » restent
- * calculés mais leur SENS a changé avec les 3 zones (gris en attente comptés en
- * refusés, validation grise = « arbitrage ») — on contextualise plutôt que de
- * laisser un nombre trompeur sans avertissement. Retiré au lot 3.
- */
-export const HITL_METRICS_RECALIBRATION_NOTICE =
-  'Métriques de décision (retenue, arbitrage, volumes) en cours de recalibrage — passage au modèle de validation à 3 zones. À interpréter avec prudence jusqu’à la mise à jour du reporting.';
-
 /** Recommandations par RÈGLES (3 à 5, priorisées). Toujours au moins une. */
 export function buildRecommendations(
   data: Omit<CampaignReportData, 'recommendations'>,
 ): string[] {
   const recs: string[] = [];
-  const { summary, performance, channels, scoring } = data;
+  const { summary, performance, channels } = data;
   const { volumes } = summary;
 
   if (summary.issue === 'no_hire') {
@@ -134,12 +113,7 @@ export function buildRecommendations(
     );
   }
   const top = channels[0];
-  if (
-    !HITL_ZONES_RECALIBRATION &&
-    top &&
-    volumes.retained > 0 &&
-    top.retained > 0
-  ) {
+  if (top && volumes.retained > 0 && top.retained > 0) {
     recs.push(
       `Le canal « ${top.channelLabel} » a produit ${pct(top.retained, volumes.retained)}% des candidats retenus — à privilégier pour une campagne similaire.`,
     );
@@ -152,17 +126,19 @@ export function buildRecommendations(
       `Time-to-hire de ${performance.timeToHireDays} jours, supérieur à la référence de ${TIME_TO_HIRE_REFERENCE_DAYS} jours — identifier les goulots d'étranglement (diffusion, validation, entretiens).`,
     );
   }
-  if (!HITL_ZONES_RECALIBRATION && scoring.arbitrationRate >= ARBITRATION_HIGH_RATE) {
+  // HITL 3 zones : trop de candidatures en zone grise = charge de validation
+  // élevée → suggérer de resserrer les deux seuils (automatiser davantage).
+  if (performance.humanValidationRate >= HUMAN_VALIDATION_HIGH_RATE) {
     recs.push(
-      `Taux d'arbitrage manuel de ${Math.round(scoring.arbitrationRate * 100)}% — la grille de scoring mériterait une recalibration (verdicts IA souvent corrigés).`,
+      `${Math.round(performance.humanValidationRate * 100)}% des candidatures passent en validation humaine — la zone grise est large ; resserrer les deux seuils de décision automatiserait davantage de cas évidents.`,
     );
   }
   const retentionRatio = volumes.received > 0 ? volumes.retained / volumes.received : 0;
-  if (!HITL_ZONES_RECALIBRATION && volumes.received > 0 && retentionRatio < RETENTION_LOW) {
+  if (volumes.received > 0 && retentionRatio < RETENTION_LOW) {
     recs.push(
       `Taux de retenue de ${performance.retentionRate}% très faible — critères possiblement trop stricts ou sourcing à revoir.`,
     );
-  } else if (!HITL_ZONES_RECALIBRATION && retentionRatio > RETENTION_HIGH) {
+  } else if (retentionRatio > RETENTION_HIGH) {
     recs.push(
       `Taux de retenue de ${performance.retentionRate}% élevé — resserrer les critères permettrait de concentrer l'effort sur les meilleurs profils.`,
     );
@@ -190,8 +166,12 @@ export function buildCampaignReportData(
   const { volumes } = summary;
   const scores = analyses.map((a) => a.totalScore);
   const channels = channelPerformance(analyses);
-  const arbitrationRate =
-    volumes.received > 0 ? volumes.arbitrated / volumes.received : 0;
+  // Taux de validation humaine = part des candidatures passées en zone grise
+  // (en attente OU déjà tranchées par l'humain) — mesure la charge de revue.
+  const humanValidationRate =
+    volumes.received > 0
+      ? (volumes.enAttente + volumes.decidedByHuman) / volumes.received
+      : 0;
   const contacted = analyses.filter((a) => a.contacted).length;
   const retentionMonths = opts?.retentionMonths ?? RGPD_RETENTION_MONTHS;
 
@@ -203,7 +183,7 @@ export function buildCampaignReportData(
         summary.recruitedCount > 0
           ? daysBetween(summary.launchedAt, summary.closedAt)
           : null,
-      arbitrationRate,
+      humanValidationRate,
       responseRate: pct(contacted, volumes.received),
     },
     channels,
@@ -215,7 +195,7 @@ export function buildCampaignReportData(
         scores.length > 0
           ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
           : null,
-      arbitrationRate,
+      humanValidationRate,
     },
     rgpd: {
       retentionMonths,

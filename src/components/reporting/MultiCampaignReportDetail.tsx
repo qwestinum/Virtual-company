@@ -127,7 +127,7 @@ function Body({ data }: { data: MultiCampaignReportData }) {
           <Kpi n={aggregateVolumes.received} label="Reçues" />
           <Kpi n={aggregateVolumes.retained} label="Retenus" />
           <Kpi n={aggregateVolumes.rejected} label="Écartés" />
-          <Kpi n={aggregateVolumes.arbitrated} label="Arbitrés" />
+          <Kpi n={aggregateVolumes.enAttente} label="En attente" />
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Kpi n={`${rates.retentionRate}%`} label="Taux de retenue" />
@@ -136,7 +136,7 @@ function Body({ data }: { data: MultiCampaignReportData }) {
             label="Time-to-hire moyen"
             note="campagnes ayant recruté"
           />
-          <Kpi n={`${Math.round(rates.arbitrationRate * 100)}%`} label="Arbitrage" />
+          <Kpi n={`${Math.round(rates.humanValidationRate * 100)}%`} label="Validation humaine" />
           <Kpi n={`${rates.responseRate}%`} label="Taux de réponse" />
         </div>
       </Section>
@@ -228,7 +228,7 @@ function Body({ data }: { data: MultiCampaignReportData }) {
         </div>
         <p className="mt-2 font-body text-[12px] text-stone-500">
           Score moyen : {scoring.average ?? '—'} · écart-type :{' '}
-          {scoring.stdDev ?? '—'} · arbitrage : {Math.round(scoring.arbitrationRate * 100)}%
+          {scoring.stdDev ?? '—'} · arbitrage : {Math.round(scoring.humanValidationRate * 100)}%
         </p>
       </Section>
 

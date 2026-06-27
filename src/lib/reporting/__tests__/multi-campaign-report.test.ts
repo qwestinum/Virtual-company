@@ -9,15 +9,21 @@ import {
 import type { CampaignAnalysisDatum } from '@/types/reporting';
 
 function datum(p: Partial<CampaignAnalysisDatum>): CampaignAnalysisDatum {
-  return {
+  const d: CampaignAnalysisDatum = {
     status: 'accepted',
     totalScore: 80,
     source: 'email',
+    decisionZone: null,
+    decidedBy: 'auto',
     humanIntervention: false,
     recruited: false,
     contacted: false,
     ...p,
   };
+  if (d.humanIntervention && d.decidedBy === 'auto') {
+    return { ...d, decisionZone: 'gray', decidedBy: 'user' };
+  }
+  return d;
 }
 
 function unit(p: {
@@ -73,7 +79,14 @@ describe('buildMultiCampaignReportData — agrégats', () => {
       unit({ id: 'A', closedAt: '2026-04-01T00:00:00Z', analyses: [datum({}), datum({ status: 'rejected' })] }),
       unit({ id: 'B', closedAt: '2026-06-01T00:00:00Z', analyses: [datum({ recruited: true, contacted: true })] }),
     ]);
-    expect(data.aggregateVolumes).toEqual({ received: 3, retained: 2, rejected: 1, arbitrated: 0 });
+    expect(data.aggregateVolumes).toEqual({
+      received: 3,
+      retained: 2,
+      rejected: 1,
+      enAttente: 0,
+      decidedBySystem: 3,
+      decidedByHuman: 0,
+    });
     expect(data.campaignCount).toBe(2);
     expect(data.totalRecruited).toBe(1);
     expect(data.rates.retentionRate).toBe(67); // 2/3
@@ -117,8 +130,8 @@ describe('recommandations transverses (règles)', () => {
         ],
       }),
     ]);
-    // Reco « canal dominant » NEUTRALISÉE (HITL 3 zones, lot 2c) — retenue ambiguë.
-    expect(data.recommendations.join(' ')).not.toMatch(/LinkedIn/);
+    // LinkedIn = 3/4 retenus (≥ 40%) → reco canal dominant émise.
+    expect(data.recommendations.join(' ')).toMatch(/LinkedIn/);
   });
 
   it('≥ 2 campagnes lentes (time-to-hire > 45 j)', () => {
@@ -133,7 +146,7 @@ describe('recommandations transverses (règles)', () => {
     expect(data.recommendations.join(' ')).toMatch(/time-to-hire supérieur à 45/i);
   });
 
-  it('arbitrage manuel global élevé (≥ 20%)', () => {
+  it('validation humaine globale élevée (≥ 50%) → reco resserrer les seuils', () => {
     const data = build([
       unit({
         id: 'A',
@@ -145,9 +158,8 @@ describe('recommandations transverses (règles)', () => {
         ],
       }),
     ]);
-    // Donnée calculée (lot 3 recalibrera) mais reco NEUTRALISÉE (lot 2c).
-    expect(data.rates.arbitrationRate).toBe(0.5);
-    expect(data.recommendations.join(' ')).not.toMatch(/arbitrage manuel/i);
+    expect(data.rates.humanValidationRate).toBe(0.5);
+    expect(data.recommendations.join(' ')).toMatch(/validation humaine/i);
   });
 
   it('divergence de taux de retenue entre sites (> 20 pts)', () => {
@@ -155,9 +167,9 @@ describe('recommandations transverses (règles)', () => {
       unit({ id: 'A', siteLabel: 'Paris', analyses: [datum({ status: 'accepted' }), datum({ status: 'accepted' })] }),
       unit({ id: 'B', siteLabel: 'Lyon', analyses: [datum({ status: 'rejected' }), datum({ status: 'rejected' })] }),
     ]);
-    // Reco « divergence sites » NEUTRALISÉE (HITL 3 zones, lot 2c) — taux ambigu.
+    // Paris 100% vs Lyon 0% retenue → écart > 20 pts → reco harmonisation émise.
     const joined = data.recommendations.join(' ');
-    expect(joined).not.toMatch(/harmonisation/i);
+    expect(joined).toMatch(/harmonisation/i);
   });
 
   it('canaux sans aucun retenu signalés', () => {
@@ -170,10 +182,9 @@ describe('recommandations transverses (règles)', () => {
         ],
       }),
     ]);
-    // La donnée reste calculée…
     expect(data.underperformingChannelLabels).toContain('Indeed');
-    // … mais la reco est NEUTRALISÉE (HITL 3 zones, lot 2c).
-    expect(data.recommendations.join(' ')).not.toMatch(/Indeed/);
+    // Canal sans aucun retenu → reco émise.
+    expect(data.recommendations.join(' ')).toMatch(/Indeed/);
   });
 
   it('plafonne à 5 recommandations', () => {

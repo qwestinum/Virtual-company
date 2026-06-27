@@ -11,7 +11,7 @@
  */
 
 import {
-  ARBITRATION_HIGH_RATE,
+  HUMAN_VALIDATION_HIGH_RATE,
   CHANNEL_DOMINANT_SHARE,
   RGPD_RETENTION_MONTHS,
   SITE_RETENTION_GAP_PTS,
@@ -23,7 +23,6 @@ import {
   scoreDistribution,
   stdDev,
 } from '@/lib/reporting/aggregations';
-import { HITL_ZONES_RECALIBRATION } from '@/lib/reporting/campaign-report';
 import type {
   CampaignAnalysisDatum,
   CampaignReportSummary,
@@ -98,9 +97,8 @@ export function buildMultiCampaignRecommendations(
   const { aggregateVolumes, channels, perCampaign, rates } = data;
 
   // 1. Canal dominant (≥ CHANNEL_DOMINANT_SHARE des retenus).
-  // NEUTRALISÉ (lot 2c) : « retenus » ambigu avec 3 zones — cf. HITL_ZONES_RECALIBRATION.
   const top = channels[0];
-  if (!HITL_ZONES_RECALIBRATION && top && top.retained > 0 && aggregateVolumes.retained > 0) {
+  if (top && top.retained > 0 && aggregateVolumes.retained > 0) {
     const share = top.retained / aggregateVolumes.retained;
     if (share >= CHANNEL_DOMINANT_SHARE) {
       recs.push(
@@ -119,31 +117,30 @@ export function buildMultiCampaignRecommendations(
     );
   }
 
-  // 3-5. NEUTRALISÉS (lot 2c) : arbitrage / retenue par site / canaux sans
-  // retenu reposent sur des métriques binaires faussées par les 3 zones (gris
-  // en attente comptés en refusés, validation grise = « arbitrage »). Repassent
-  // au lot 3 après recalibrage — cf. HITL_ZONES_RECALIBRATION.
-  if (!HITL_ZONES_RECALIBRATION) {
-    if (rates.arbitrationRate >= ARBITRATION_HIGH_RATE) {
+  // 3. Charge de validation humaine élevée (zone grise large sur la période).
+  if (rates.humanValidationRate >= HUMAN_VALIDATION_HIGH_RATE) {
+    recs.push(
+      `${Math.round(rates.humanValidationRate * 100)}% des candidatures sont passées en validation humaine sur la période — resserrer les seuils de décision des campagnes automatiserait davantage de cas évidents.`,
+    );
+  }
+
+  // 4. Divergence de taux de retenue entre sites.
+  const sites = siteRetentionStats(reports).sort((a, b) => b.rate - a.rate);
+  if (sites.length >= 2) {
+    const hi = sites[0]!;
+    const lo = sites[sites.length - 1]!;
+    if (hi.rate - lo.rate > SITE_RETENTION_GAP_PTS) {
       recs.push(
-        `Le taux d'arbitrage manuel est de ${Math.round(rates.arbitrationRate * 100)}%, supérieur au seuil de référence (${Math.round(ARBITRATION_HIGH_RATE * 100)}%) — possible décalage des grilles de scoring avec la réalité du marché.`,
+        `Le site « ${hi.label} » (${hi.rate}% de retenue) présente un taux significativement différent du site « ${lo.label} » (${lo.rate}%) — harmonisation des pratiques à envisager.`,
       );
     }
-    const sites = siteRetentionStats(reports).sort((a, b) => b.rate - a.rate);
-    if (sites.length >= 2) {
-      const hi = sites[0]!;
-      const lo = sites[sites.length - 1]!;
-      if (hi.rate - lo.rate > SITE_RETENTION_GAP_PTS) {
-        recs.push(
-          `Le site « ${hi.label} » (${hi.rate}% de retenue) présente un taux significativement différent du site « ${lo.label} » (${lo.rate}%) — harmonisation des pratiques à envisager.`,
-        );
-      }
-    }
-    if (data.underperformingChannelLabels.length > 0) {
-      recs.push(
-        `Canaux sans aucun retenu sur la période : ${data.underperformingChannelLabels.join(', ')} — réévaluer leur pertinence ou leur ciblage.`,
-      );
-    }
+  }
+
+  // 5. Canaux sans aucun retenu.
+  if (data.underperformingChannelLabels.length > 0) {
+    recs.push(
+      `Canaux sans aucun retenu sur la période : ${data.underperformingChannelLabels.join(', ')} — réévaluer leur pertinence ou leur ciblage.`,
+    );
   }
 
   if (recs.length === 0) {
@@ -164,9 +161,10 @@ export function buildMultiCampaignReportData(
   const contacted = allAnalyses.filter((a) => a.contacted).length;
   const channels = channelPerformance(allAnalyses);
   const scores = allAnalyses.map((a) => a.totalScore);
-  const arbitrationRate =
+  const humanValidationRate =
     aggregateVolumes.received > 0
-      ? aggregateVolumes.arbitrated / aggregateVolumes.received
+      ? (aggregateVolumes.enAttente + aggregateVolumes.decidedByHuman) /
+        aggregateVolumes.received
       : 0;
 
   const perCampaign = reports
@@ -190,7 +188,7 @@ export function buildMultiCampaignReportData(
     rates: {
       retentionRate: pct(aggregateVolumes.retained, aggregateVolumes.received),
       avgTimeToHireDays,
-      arbitrationRate,
+      humanValidationRate,
       responseRate: pct(contacted, aggregateVolumes.received),
     },
     perCampaign,
@@ -206,7 +204,7 @@ export function buildMultiCampaignReportData(
         scores.length > 0
           ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
           : null,
-      arbitrationRate,
+      humanValidationRate,
     },
     rgpd: {
       totalCandidates: aggregateVolumes.received,

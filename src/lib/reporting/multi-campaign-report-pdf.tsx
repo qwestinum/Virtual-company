@@ -15,10 +15,6 @@ import {
 } from '@react-pdf/renderer';
 
 import { formatFrDate, formatFrDateTime } from '@/lib/reporting/audit-display';
-import {
-  HITL_METRICS_RECALIBRATION_NOTICE,
-  HITL_ZONES_RECALIBRATION,
-} from '@/lib/reporting/campaign-report';
 import { CAMPAIGN_ISSUE_LABELS } from '@/lib/reporting/campaign-report-display';
 import { PDF_COLORS, pdfBaseStyles } from '@/lib/reporting/pdf-theme';
 import type { MultiCampaignReportData } from '@/types/reporting';
@@ -130,39 +126,32 @@ function MultiCampaignDocument({
           </View>
         </View>
 
-        {HITL_ZONES_RECALIBRATION ? (
-          <View
-            style={{
-              marginTop: 8,
-              padding: 8,
-              borderRadius: 4,
-              backgroundColor: '#fef3c7',
-              borderWidth: 1,
-              borderColor: '#f59e0b',
-            }}
-          >
-            <Text style={{ fontSize: 7.5, color: '#92400e' }}>
-              ⚠ {HITL_METRICS_RECALIBRATION_NOTICE}
-            </Text>
-          </View>
-        ) : null}
-
         {/* 2. Vue d'ensemble agrégée */}
         <Text style={pdfBaseStyles.sectionTitle}>Vue d&apos;ensemble agrégée</Text>
         <View style={s.kpiRow}>
           <Kpi value={String(aggregateVolumes.received)} label="Reçues" />
           <Kpi value={String(aggregateVolumes.retained)} label="Retenus" />
           <Kpi value={String(aggregateVolumes.rejected)} label="Écartés" />
-          <Kpi value={String(aggregateVolumes.arbitrated)} label="Arbitrés" />
+          <Kpi value={String(aggregateVolumes.enAttente)} label="En attente" />
         </View>
         <View style={[s.kpiRow, { marginTop: 6 }]}>
+          <Kpi
+            value={String(aggregateVolumes.decidedBySystem)}
+            label="Décidé par le système"
+          />
+          <Kpi
+            value={String(aggregateVolumes.decidedByHuman)}
+            label="Tranché par un humain"
+          />
           <Kpi value={`${rates.retentionRate}%`} label="Taux de retenue" />
+          <Kpi value={`${Math.round(rates.humanValidationRate * 100)}%`} label="Validation humaine" />
+        </View>
+        <View style={[s.kpiRow, { marginTop: 6 }]}>
           <Kpi
             value={rates.avgTimeToHireDays !== null ? `${rates.avgTimeToHireDays} j` : '—'}
             label="Time-to-hire moyen"
             note="calculé sur les campagnes ayant abouti à un recrutement"
           />
-          <Kpi value={`${Math.round(rates.arbitrationRate * 100)}%`} label="Arbitrage manuel" />
           <Kpi value={`${rates.responseRate}%`} label="Taux de réponse" />
         </View>
 
@@ -248,8 +237,8 @@ function MultiCampaignDocument({
         ))}
         <Text style={[pdfBaseStyles.paragraph, { marginTop: 4 }]}>
           Score moyen : {scoring.average ?? '—'} · écart-type :{' '}
-          {scoring.stdDev ?? '—'} · taux d&apos;arbitrage manuel :{' '}
-          {Math.round(scoring.arbitrationRate * 100)}%
+          {scoring.stdDev ?? '—'} · taux de validation humaine :{' '}
+          {Math.round(scoring.humanValidationRate * 100)}%
         </Text>
 
         {/* 6. Recommandations transverses */}
