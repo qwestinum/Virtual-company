@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 
 import { AgentDetailsPanel } from '@/components/agents/AgentDetailsPanel';
 import { HRDepartmentView } from '@/components/agents/HRDepartmentView';
+import { BureauPulse } from '@/components/bureau/BureauPulse';
 import { CampaignsWorkspace } from '@/components/campagnes/CampaignsWorkspace';
 import { CandidaturesWorkspace } from '@/components/candidatures/CandidaturesWorkspace';
-import { DashboardView } from '@/components/dashboard/DashboardView';
 import { ReportingHub } from '@/components/reporting/ReportingHub';
 import { ValidationsHub } from '@/components/validations/ValidationsHub';
 import { VivierValidationsWorklist } from '@/components/vivier/VivierValidationsWorklist';
@@ -16,7 +16,6 @@ type Tab =
   | 'rh'
   | 'campagnes'
   | 'candidatures'
-  | 'dashboard'
   | 'validations'
   | 'vivier'
   | 'reporting';
@@ -25,7 +24,6 @@ const TABS: { id: Tab; label: string; available: boolean }[] = [
   { id: 'rh', label: 'Bureau', available: true },
   { id: 'campagnes', label: 'Campagnes', available: true },
   { id: 'candidatures', label: 'Candidatures', available: true },
-  { id: 'dashboard', label: 'Dashboard', available: true },
   { id: 'validations', label: 'Validation suspendue', available: true },
   { id: 'vivier', label: 'Validations vivier', available: true },
   { id: 'reporting', label: 'Reporting', available: true },
@@ -91,16 +89,17 @@ export function WorkspacePane() {
       />
       <div className="relative flex-1 overflow-hidden">
         {tab === 'rh' ? (
-          <>
-            <HRDepartmentView />
-            <AgentDetailsPanel />
-          </>
+          <div className="flex h-full">
+            <BureauPulse />
+            <div className="relative flex-1 overflow-hidden">
+              <HRDepartmentView />
+              <AgentDetailsPanel />
+            </div>
+          </div>
         ) : tab === 'campagnes' ? (
           <CampaignsWorkspace />
         ) : tab === 'candidatures' ? (
           <CandidaturesWorkspace />
-        ) : tab === 'dashboard' ? (
-          <DashboardView />
         ) : tab === 'validations' ? (
           <div className="h-full overflow-auto px-6 py-6">
             <div className="mx-auto w-full max-w-6xl">

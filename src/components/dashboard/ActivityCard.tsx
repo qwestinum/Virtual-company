@@ -18,6 +18,11 @@ import { DASH_COLORS, type DashColor } from './tokens';
 
 export type ActivityCardProps = {
   activity: ActivityItem[];
+  /**
+   * Remplit son conteneur (flex:1) au lieu de la hauteur fixe 360px. Utilisé
+   * dans la colonne gauche du Bureau (fil pleine hauteur, défilant).
+   */
+  fill?: boolean;
 };
 
 const ICONS: Record<ActivityIconKey, string> = {
@@ -32,7 +37,7 @@ const ICONS: Record<ActivityIconKey, string> = {
   edit: '✏️',
 };
 
-export function ActivityCard({ activity }: ActivityCardProps) {
+export function ActivityCard({ activity, fill = false }: ActivityCardProps) {
   return (
     <section
       style={{
@@ -43,8 +48,9 @@ export function ActivityCard({ activity }: ActivityCardProps) {
         boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
         display: 'flex',
         flexDirection: 'column',
-        // Hauteur fixe → la liste scrolle indépendamment du reste du dashboard.
-        height: 360,
+        // `fill` (Bureau) : remplit la colonne (flex:1). Sinon hauteur fixe 360px
+        // (dashboard) → la liste scrolle indépendamment.
+        ...(fill ? { flex: 1, minHeight: 0 } : { height: 360 }),
       }}
     >
       <div

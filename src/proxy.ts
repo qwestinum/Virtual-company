@@ -6,8 +6,9 @@
  * `proxy` ou un `default`.
  *
  * Deux régimes :
- *  - PAGES protégées (`/app`, `/rh`, `/settings`, `/validations`) : pas de
- *    session valide → redirect vers `/login?next=<path>`.
+ *  - PAGES protégées (`/app`, `/rh`, `/settings`, `/validations`, `/admin`) :
+ *    pas de session valide → redirect vers `/login?next=<path>`. NB : `/admin`
+ *    n'a PAS encore de contrôle de RÔLE (session seule) — cf. docs/BACKLOG.md.
  *  - ROUTES `/api` : DENY-BY-DEFAULT. Toute route `/api` exige une session
  *    valide → sinon 401 JSON (jamais de redirect : un fetch d'API ne doit pas
  *    recevoir du HTML). SEULES exceptions : les routes à auth PROPRE (webhook
@@ -23,7 +24,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 import { getUserFromMiddleware } from '@/lib/auth/middleware-helper';
 
-const PROTECTED_PREFIXES = ['/app', '/rh', '/settings', '/validations'];
+const PROTECTED_PREFIXES = ['/app', '/rh', '/settings', '/validations', '/admin'];
 
 /**
  * Routes `/api` à auth PROPRE (pas de session) — à NE PAS gater, sinon on

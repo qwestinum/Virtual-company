@@ -686,3 +686,28 @@ lecteurs (`rowToJobDescription`, recherche). La logique applicative est déjà p
 
 **Risque** : faible. Aucune perte de donnée (le JSON FDP reste la source canonique
 de la liste) ; la colonne n'est qu'un index dénormalisé.
+
+---
+
+## Accès admin du Dashboard (gaté session seule, sans rôles)
+
+**Statut** : le Dashboard de pilotage a été sorti de la navigation client et
+déplacé sur la route `/admin/dashboard`, gatée par la **session authentifiée**
+(`/admin` ajouté à `PROTECTED_PREFIXES` de `src/proxy.ts`), non listée dans le
+menu.
+
+**Dette / risque.** Il n'existe PAS de système de rôles aujourd'hui. Donc
+« admin » = **tout utilisateur authentifié qui connaît l'URL** `/admin/dashboard`.
+Or ce dashboard expose des données sensibles (**coût IA, marge, métriques
+internes**). Acceptable en pilote **mono-utilisateur** ; **inacceptable en
+multi-utilisateur**.
+
+**Quand le faire.** Avant tout passage multi-utilisateur / ouverture à des
+comptes clients :
+- soit un **vrai contrôle de rôle** (ex. `user.user_metadata.role === 'admin'`
+  via Supabase custom claims, vérifié dans `proxy.ts` sur le préfixe `/admin`) ;
+- soit, plus léger, un **`ADMIN_TOKEN` env** validé côté page `/admin/dashboard`
+  (pattern déjà utilisé par `/api/cron/imap-poll` avec `CRON_SECRET`).
+
+**Risque** : moyen (exposition de données business à un utilisateur authentifié
+non habilité). La protection « non listé + session » ne suffit qu'en mono-utilisateur.

@@ -22,6 +22,7 @@ import type {
   AgentMetric,
   CandidateRow,
   GlobalKPIs,
+  ZoneCounts,
 } from '@/lib/dashboard/derive-metrics';
 
 export type DashboardData = {
@@ -30,6 +31,8 @@ export type DashboardData = {
   agents: AgentMetric[];
   candidates: CandidateRow[];
   activity: ActivityItem[];
+  /** Répartition par zone de décision (Bureau « Process First »). */
+  zones: ZoneCounts;
 };
 
 export type DashboardState = {

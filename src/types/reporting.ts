@@ -310,6 +310,10 @@ export type CandidateAnalysisFilters = {
   campaignIds?: string[];
   /** Verdict de screening (filtré en SQL). */
   status?: CandidateStatus;
+  /** Zone de décision figée au scoring (filtré en SQL) — comptage 3+1 zones. */
+  decisionZone?: DecisionZone;
+  /** Acteur de la décision (filtré en SQL) — « validés par un humain ». */
+  decidedBy?: DecidedBy;
   /** Borne basse de période sur `received_at` (ISO 8601). */
   from?: string;
   /** Borne haute de période sur `received_at` (ISO 8601). */

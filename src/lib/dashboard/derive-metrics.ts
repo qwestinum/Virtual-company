@@ -118,6 +118,31 @@ export type ActivityItem = {
   createdAt: string;
 };
 
+/**
+ * Répartition des candidatures par décision (récit « Process First » du Bureau).
+ * EXHAUSTIF depuis `candidate_analyses.decision_zone` (pas le journal). Les 4
+ * champs sont DISJOINTS et somment à `total` :
+ *   - autoReject / autoAccept = zones auto (système)
+ *   - humanValidated = gris tranché par un humain (`decided_by='user'`)
+ *   - pending = gris pas encore tranché (déféré à l'humain)
+ */
+export type ZoneCounts = {
+  autoReject: number;
+  autoAccept: number;
+  humanValidated: number;
+  pending: number;
+  total: number;
+};
+
+/** ZoneCounts vide (mode offline / Supabase absent). */
+export const EMPTY_ZONE_COUNTS: ZoneCounts = {
+  autoReject: 0,
+  autoAccept: 0,
+  humanValidated: 0,
+  pending: 0,
+  total: 0,
+};
+
 export type ActivityIconKey =
   | 'cv'
   | 'mail'

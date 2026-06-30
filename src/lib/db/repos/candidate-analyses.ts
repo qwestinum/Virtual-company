@@ -312,6 +312,8 @@ export async function listCandidateAnalyses(
   if (filters.from) q = q.gte('received_at', filters.from);
   if (filters.to) q = q.lte('received_at', filters.to);
   if (filters.fromVivier) q = q.eq('from_vivier', true);
+  if (filters.decisionZone) q = q.eq('decision_zone', filters.decisionZone);
+  if (filters.decidedBy) q = q.eq('decided_by', filters.decidedBy);
   const orClause = searchOrClause(filters.search);
   if (orClause) q = q.or(orClause);
 
@@ -333,6 +335,8 @@ export async function countCandidateAnalyses(
   if (filters.from) q = q.gte('received_at', filters.from);
   if (filters.to) q = q.lte('received_at', filters.to);
   if (filters.fromVivier) q = q.eq('from_vivier', true);
+  if (filters.decisionZone) q = q.eq('decision_zone', filters.decisionZone);
+  if (filters.decidedBy) q = q.eq('decided_by', filters.decidedBy);
   const orClause = searchOrClause(filters.search);
   if (orClause) q = q.or(orClause);
 

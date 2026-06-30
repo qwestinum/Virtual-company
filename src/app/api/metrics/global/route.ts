@@ -16,11 +16,13 @@
 import { NextResponse } from 'next/server';
 
 import {
+  EMPTY_ZONE_COUNTS,
   journalToActivityFeed,
   journalToAgentMetrics,
   journalToCandidatesList,
   journalToGlobalKPIs,
 } from '@/lib/dashboard/derive-metrics';
+import { zoneDistribution } from '@/lib/dashboard/zone-counts';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { fetchMetricsRows } from '@/lib/db/repos/metrics';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
@@ -47,6 +49,7 @@ export async function GET(): Promise<NextResponse> {
       agents: journalToAgentMetrics([], agentIds),
       candidates: [],
       activity: [],
+      zones: EMPTY_ZONE_COUNTS,
     });
   }
 
@@ -79,6 +82,10 @@ export async function GET(): Promise<NextResponse> {
     }),
   );
 
+  // Répartition par zone (récit Bureau) — EXHAUSTIF depuis candidate_analyses.
+  // Best-effort : un échec retombe sur des zones vides, le reste du payload tient.
+  const zones = await zoneDistribution().catch(() => EMPTY_ZONE_COUNTS);
+
   return NextResponse.json({
     offline: false,
     kpis: {
@@ -87,6 +94,8 @@ export async function GET(): Promise<NextResponse> {
     },
     agents: journalToAgentMetrics(result.rows, agentIds),
     candidates,
-    activity: journalToActivityFeed(result.rows, 20),
+    // Cap relevé (20 → 50) : le Bureau veut un fil « qui défile » dense.
+    activity: journalToActivityFeed(result.rows, 50),
+    zones,
   });
 }
