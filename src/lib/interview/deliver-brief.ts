@@ -304,6 +304,8 @@ export async function deliverBriefForBooking(
     candidate,
     questions,
     delivery: delivery(send.messageId),
+    // Rattache le RDV à l'analyse rapprochée par email → tag « RDV pris » fiable.
+    uid: analysis.uid,
   });
   return {
     ok: true,

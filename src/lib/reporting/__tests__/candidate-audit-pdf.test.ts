@@ -45,6 +45,8 @@ const DETAIL: CandidateAnalysisDetail & { journey: CandidateJourney } = {
   decisionZone: 'auto_accept',
   decidedBy: 'auto',
   decidedByUser: null,
+  fromVivier: false,
+  vivierCandidateId: null,
   journey: JOURNEY,
   application: {
     candidate: {

@@ -34,6 +34,8 @@ const ROW: CandidateAnalysisRow = {
   status: 'accepted',
   criteria_version: 'unversioned',
   computed_at: '2026-06-06T09:05:00.000Z',
+  from_vivier: false,
+  vivier_candidate_id: null,
   application: {
     candidate: {
       fullName: 'Jean Test',
@@ -90,6 +92,8 @@ describe('rowToSummary', () => {
       decisionZone: 'auto_accept',
       decidedBy: 'auto',
       decidedByUser: null,
+      fromVivier: false,
+      vivierCandidateId: null,
     });
     expect('application' in s).toBe(false);
   });

@@ -37,7 +37,7 @@ const TABLE = 'candidate_analyses';
 
 /** Colonnes du résumé (sans le jsonb `application`). */
 const SUMMARY_COLUMNS =
-  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, hitl_config, decision_zone, decided_by, decided_by_user_id, decided_by_user_email, created_at';
+  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, hitl_config, decision_zone, decided_by, decided_by_user_id, decided_by_user_email, from_vivier, vivier_candidate_id, created_at';
 
 /**
  * Repli déterministe statut→zone (binaire, sans `gray`) — utilisé UNIQUEMENT
@@ -75,6 +75,10 @@ export function rowToSummary(row: SummaryRow): CandidateAnalysisSummary {
     decidedByUser: row.decided_by_user_id
       ? { userId: row.decided_by_user_id, email: row.decided_by_user_email ?? null }
       : null,
+    // Origine vivier dénormalisée. Repli `false` pour les rows antérieures à la
+    // colonne (migration douce, jamais NULL grâce au défaut SQL).
+    fromVivier: row.from_vivier ?? false,
+    vivierCandidateId: row.vivier_candidate_id ?? null,
   };
 }
 
@@ -273,35 +277,112 @@ export async function updateCandidateAnalysisDecision(params: {
   }
 }
 
+/**
+ * Construit la clause `.or(...)` de recherche libre (nom, email, id) ou null si
+ * la saisie est vide après assainissement. Mutualise listes + comptage.
+ */
+function searchOrClause(search?: string): string | null {
+  const clean = search ? sanitizePostgrestSearch(search) : '';
+  if (!clean) return null;
+  // Joker PostgREST dans `.or(...)` = `*` (pas `%`, non interprété).
+  // `sanitizePostgrestSearch` a retiré tout `*`/`%` → joker maîtrisé.
+  return `candidate_name.ilike.*${clean}*,candidate_email.ilike.*${clean}*,id.ilike.*${clean}*`;
+}
+
+/**
+ * Liste paginée des analyses (sélection audit + menu Candidatures). `limit`
+ * (défaut 200, plafond 1000) + `offset` (défaut 0) → vraie pagination serveur
+ * (`.range`), jamais un chargement de tout le jeu. Les plus récentes d'abord.
+ */
 export async function listCandidateAnalyses(
   filters: CandidateAnalysisFilters = {},
 ): Promise<CandidateAnalysisSummary[]> {
   const supabase = requireServerSupabase();
   const cappedLimit = Math.min(Math.max(filters.limit ?? 200, 1), 1000);
+  const offset = Math.max(filters.offset ?? 0, 0);
   let q = supabase
     .from(TABLE)
     .select(SUMMARY_COLUMNS)
     .order('created_at', { ascending: false })
-    .limit(cappedLimit);
-
-  if (filters.campaignId) q = q.eq('campaign_id', filters.campaignId);
+    .range(offset, offset + cappedLimit - 1);
+  if (filters.campaignIds && filters.campaignIds.length > 0)
+    q = q.in('campaign_id', filters.campaignIds);
+  else if (filters.campaignId) q = q.eq('campaign_id', filters.campaignId);
   if (filters.status) q = q.eq('status', filters.status);
   if (filters.from) q = q.gte('received_at', filters.from);
   if (filters.to) q = q.lte('received_at', filters.to);
-
-  const search = filters.search ? sanitizePostgrestSearch(filters.search) : '';
-  if (search) {
-    // Joker PostgREST dans `.or(...)` = `*` (pas `%` — celui-ci n'est pas
-    // interprété et la recherche ne matche jamais). `sanitizePostgrestSearch` a
-    // déjà retiré tout `*`/`%` de la saisie, donc le joker reste maîtrisé.
-    q = q.or(
-      `candidate_name.ilike.*${search}*,candidate_email.ilike.*${search}*,id.ilike.*${search}*`,
-    );
-  }
+  if (filters.fromVivier) q = q.eq('from_vivier', true);
+  const orClause = searchOrClause(filters.search);
+  if (orClause) q = q.or(orClause);
 
   const { data, error } = await q;
   if (error) throw new Error(`listCandidateAnalyses: ${error.message}`);
   return (data ?? []).map((r) => rowToSummary(r as SummaryRow));
+}
+
+/** Compte EXACT des analyses du périmètre (total pagination + scope ruban). */
+export async function countCandidateAnalyses(
+  filters: CandidateAnalysisFilters = {},
+): Promise<number> {
+  const supabase = requireServerSupabase();
+  let q = supabase.from(TABLE).select('id', { count: 'exact', head: true });
+  if (filters.campaignIds && filters.campaignIds.length > 0)
+    q = q.in('campaign_id', filters.campaignIds);
+  else if (filters.campaignId) q = q.eq('campaign_id', filters.campaignId);
+  if (filters.status) q = q.eq('status', filters.status);
+  if (filters.from) q = q.gte('received_at', filters.from);
+  if (filters.to) q = q.lte('received_at', filters.to);
+  if (filters.fromVivier) q = q.eq('from_vivier', true);
+  const orClause = searchOrClause(filters.search);
+  if (orClause) q = q.or(orClause);
+
+  const { count, error } = await q;
+  if (error) throw new Error(`countCandidateAnalyses: ${error.message}`);
+  return count ?? 0;
+}
+
+/**
+ * Charge TOUT le périmètre filtré en paginant en interne (pages de 1000). Sert
+ * le calcul EXHAUSTIF des compteurs du ruban : on dérive l'étape de chaque
+ * candidat, jamais un sous-ensemble tronqué. Volume borné par le périmètre
+ * (campagne + période) — la recherche texte ne doit PAS être passée ici.
+ */
+export async function listAllCandidateAnalyses(
+  filters: CandidateAnalysisFilters = {},
+): Promise<CandidateAnalysisSummary[]> {
+  const PAGE = 1000;
+  const out: CandidateAnalysisSummary[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const page = await listCandidateAnalyses({ ...filters, limit: PAGE, offset });
+    out.push(...page);
+    if (page.length < PAGE) break;
+  }
+  return out;
+}
+
+/**
+ * Fige l'origine vivier sur une analyse (rapprochement email exact réussi).
+ * Best-effort, idempotent. Appelée par `matchVivierApplication` au call-site
+ * qui détient l'id de l'analyse (poller / cv-analyzer).
+ */
+export async function markAnalysisFromVivier(
+  analysisId: string,
+  vivierCandidateId: string,
+): Promise<void> {
+  try {
+    const supabase = requireServerSupabase();
+    const { error } = await supabase
+      .from(TABLE)
+      .update({ from_vivier: true, vivier_candidate_id: vivierCandidateId })
+      .eq('id', analysisId);
+    if (error) {
+      console.error('[candidate-analyses] markAnalysisFromVivier failed', error.message);
+    }
+  } catch (err) {
+    if (!(err instanceof SupabaseNotConfiguredError)) {
+      console.error('[candidate-analyses] markAnalysisFromVivier failed', err);
+    }
+  }
 }
 
 export async function getCandidateAnalysis(

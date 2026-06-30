@@ -370,8 +370,14 @@ export function deriveJourneyFor(
   isPendingValidation = false,
 ): CandidateJourney {
   const gated = decisionZone === 'gray';
+  // Un GRIS a PASSÉ le screening (score dans la bande de validation) : son
+  // statut binaire 'rejected' est PROVISOIRE. Le montrer « Écarté » en
+  // présélection est faux — il n'est éventuellement écarté qu'à la VALIDATION
+  // (refus humain). On traite donc son screening comme « retenu » ; le rejet
+  // remonte alors à la phase Validation RH (et non à la présélection).
+  const effectiveScreening: CandidateStatus = gated ? 'accepted' : screeningStatus;
   const j = deriveCandidateJourney({
-    screeningStatus,
+    screeningStatus: effectiveScreening,
     isPendingValidation,
     dashboardStatus: markers?.dashboardStatus ?? 'analyzed',
     interviewMarked: markers?.interviewMarked ?? null,

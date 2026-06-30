@@ -138,7 +138,7 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
   const autoReject = makeCV('auto_reject', 'Bob');
   const gray = makeCV('gray', 'Gris');
 
-  it('tout GRIS : tout en FILE (brouillons), aucun envoi ni brief', async () => {
+  it('tout GRIS : tout en FILE (SANS brouillon pré-rédigé), aucun envoi ni brief', async () => {
     await dispatchPostAnalysisOutreach({
       campaignId: 'CAMP-1',
       jobTitle: 'Dev',
@@ -149,7 +149,9 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
     });
 
     expect(at('/api/validations')).toHaveLength(2); // les 2 gris mis en file
-    expect(mailDrafts()).toHaveLength(2); // brouillons composés
+    // Un gris n'a AUCUNE direction décidée → aucun brouillon pré-rédigé. La carte
+    // de validation compose le mail À LA DEMANDE quand l'humain tranche.
+    expect(mailDrafts()).toHaveLength(0);
     expect(mailSends()).toHaveLength(0); // AUCUN envoi réel
     expect(at('/api/scheduler')).toHaveLength(0); // pas de brief (rien d'accepté)
     const uids = at('/api/validations').map(
@@ -186,10 +188,12 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
     });
 
     expect(at('/api/validations')).toHaveLength(1); // le gris
-    // Direction PROVISOIRE du gris = refus (statut provisoire 'rejected').
+    // `decision` = placeholder DB (la carte est neutre ; l'humain tranche).
     expect(at('/api/validations')[0]?.body?.decision).toBe('reject');
+    // mailDraftArtifactId null en file : pas de pré-rédaction pour un gris.
+    expect(at('/api/validations')[0]?.body?.mailDraftArtifactId).toBeNull();
     expect(mailSends()).toHaveLength(1); // l'auto_accept envoyé
-    expect(mailDrafts()).toHaveLength(1); // brouillon du gris en file
+    expect(mailDrafts()).toHaveLength(0); // AUCUN brouillon pré-rédigé pour le gris
     expect(at('/api/scheduler')).toHaveLength(1); // brief de l'auto_accept
   });
 });

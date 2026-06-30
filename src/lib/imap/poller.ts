@@ -611,10 +611,12 @@ async function processEmailAttachment(args: {
     cvContent: buffer,
     cvMimeType: mime,
   });
-  // Rapprochement opportuniste (§6.3) — hors campagne (tâche) : no-op.
+  // Rapprochement opportuniste (§6.3) — hors campagne (tâche) : no-op. L'id
+  // d'analyse permet de figer l'origine vivier (from_vivier) si repêchage.
   void matchVivierApplication(
     isTaskOwner ? null : campaign.id,
     application.candidate.email,
+    `can_imap_${mailbox.id}_${uid}`,
   );
 
   // Round 5 fix — déclenche le mail au candidat (refus ou invitation)

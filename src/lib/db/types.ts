@@ -123,6 +123,10 @@ export type CandidateAnalysisRow = {
   decided_by_user_id: string | null;
   /** Email snapshot du valideur humain (auto-suffisant pour le reporting). */
   decided_by_user_email: string | null;
+  /** Origine vivier figée au rapprochement (email exact). Défaut false. */
+  from_vivier: boolean;
+  /** Dossier vivier source (sans FK) ou null. */
+  vivier_candidate_id: string | null;
   created_at: string;
 };
 
@@ -140,6 +144,8 @@ export type InterviewBriefRow = {
   candidate_email: string | null;
   candidate_name: string;
   job_title: string | null;
+  /** uid de l'analyse candidat à l'origine du brief (rattachement fiable). */
+  uid: string | null;
   status: 'awaiting_booking' | 'scheduled';
   questions: Array<{ theme: string; question: string }>;
   candidate_snapshot: MailCandidate;

@@ -669,6 +669,22 @@ do $$ begin
   end if;
 end $$;
 
+-- Origine vivier DÉNORMALISÉE (menu Candidatures). La trace « issu du vivier »
+-- existe déjà via vivier_preselections (jointure email), mais on la FIGE ici au
+-- rapprochement (recordApplied) pour : (1) un filtre/badge en LISTE sans N
+-- jointures, (2) une origine stable même si la présélection évolue ensuite.
+-- Posée par matchVivierApplication quand un dossier vivier CONTACTÉ correspond
+-- (email exact). NULL/false = candidature hors vivier ou antérieure au backfill.
+-- Migration douce : nullable + défaut false, jamais bloquante. vivier_candidate_id
+-- garde le lien vers le dossier source (sans FK : le vivier peut être purgé).
+alter table public.candidate_analyses
+  add column if not exists from_vivier boolean not null default false;
+alter table public.candidate_analyses
+  add column if not exists vivier_candidate_id uuid;
+
+create index if not exists candidate_analyses_from_vivier_idx
+  on public.candidate_analyses (from_vivier) where from_vivier;
+
 -- ──────────────────────────────────────────────────────────────────────
 -- Vivier de candidats (Session V1 — socle)
 -- Spec : docs/specs/vivier.md
@@ -1113,6 +1129,17 @@ create table if not exists public.interview_briefs (
   booked_at            timestamptz,
   updated_at           timestamptz not null default now()
 );
+
+-- uid de l'ANALYSE candidat à l'origine du brief (rattachement FIABLE par
+-- candidature, ≠ email). Permet à « RDV pris » de ne s'afficher que pour LA
+-- candidature réellement réservée (l'email seul collisionne entre analyses /
+-- ré-tests). Nullable : briefs historiques + repli webhook sans uid.
+alter table public.interview_briefs
+  add column if not exists uid text;
+
+create index if not exists interview_briefs_uid_scheduled_idx
+  on public.interview_briefs (uid)
+  where status = 'scheduled' and uid is not null;
 
 -- Lookup au webhook : la plus récente candidature EN ATTENTE pour un email.
 create index if not exists interview_briefs_pending_email_idx

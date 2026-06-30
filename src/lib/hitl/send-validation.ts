@@ -70,6 +70,7 @@ export async function sendValidation(
   //    Il sera délivré (mail + CV) à la réservation Cal.com du candidat.
   if (v.decision === 'accept') {
     try {
+      const uid = typeof v.payload?.uid === 'string' ? v.payload.uid : undefined;
       await fetch('/api/scheduler', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -77,6 +78,7 @@ export async function sendValidation(
           campaignId: v.campaignId,
           jobTitle,
           candidate,
+          uid, // rattache le brief à CETTE candidature (tag « RDV pris » fiable)
         }),
       });
     } catch {

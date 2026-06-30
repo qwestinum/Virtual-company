@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { sendValidation } from '@/lib/hitl/send-validation';
+import { decideGrayValidation } from '@/lib/hitl/decide-gray-validation';
 import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import { formatDateTimeFr } from '@/lib/format/datetime';
 import {
@@ -131,20 +131,13 @@ export function ValidationCard({
     setSending(true);
     setSendError(null);
     try {
-      // Persiste la décision TRANCHÉE avant l'envoi : le brief Scheduler (accept)
-      // et la propagation vers candidate_analyses (route /send) lisent la décision
-      // EN BASE, pas le payload client.
-      if (chosen !== v.decision) {
-        await fetch(`/api/validations/${encodeURIComponent(v.id)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ decision: chosen, confirmed: true }),
-        });
-      }
-      const result = await sendValidation(
-        { ...v, decision: chosen },
-        { subject, html: body },
-      );
+      // Mécanique PARTAGÉE (persiste la décision tranchée + confirme, puis
+      // envoie par le même chemin que l'auto). Identique au menu Candidatures —
+      // un seul chemin, pas de divergence.
+      const result = await decideGrayValidation(v, chosen, {
+        subject,
+        html: body,
+      });
       if (result.ok) onSent(v, result.message);
       else setSendError(result.message);
     } finally {

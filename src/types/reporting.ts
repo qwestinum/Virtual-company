@@ -11,6 +11,7 @@
  */
 
 import type { CandidateJourney } from '@/lib/reporting/candidate-journey';
+import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
 import type {
@@ -63,6 +64,15 @@ export type CandidateAnalysisSummary = {
   /** Identité du valideur humain (id + email snapshot) — null si auto/historique. */
   decidedByUser: HumanDecider | null;
   /**
+   * Origine vivier DÉNORMALISÉE (menu Candidatures). `true` = candidature
+   * rapprochée d'un dossier vivier CONTACTÉ (email exact), figée au
+   * rapprochement. Sert le filtre « Issues du vivier » + le badge ★ sans
+   * jointure par ligne. Repli `false` pour l'historique non backfillé.
+   */
+  fromVivier: boolean;
+  /** Dossier vivier source (sans FK) ou null. */
+  vivierCandidateId: string | null;
+  /**
    * Parcours dérivé du journal (étape + intervention humaine). Présent
    * uniquement quand l'endpoint a enrichi le résumé ; absent sinon.
    */
@@ -76,6 +86,21 @@ export type CandidateAnalysisSummary = {
  */
 export type CandidateAnalysisDetail = CandidateAnalysisSummary & {
   application: CVApplication;
+};
+
+/**
+ * Ligne du menu Candidatures : résumé + étape courante du pipeline (dérivée
+ * serveur via le helper partagé). `stage` alimente la pastille de ligne ET le
+ * filtre par chip du ruban.
+ */
+export type CandidateListItem = CandidateAnalysisSummary & {
+  stage: CandidateStage;
+};
+
+/** Réponse paginée de la liste Candidatures. */
+export type CandidateListPage = {
+  rows: CandidateListItem[];
+  total: number;
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -278,11 +303,20 @@ export type CandidateAnalysisFilters = {
   /** Recherche libre : nom, email, ou identifiant d'analyse. */
   search?: string;
   campaignId?: string;
+  /**
+   * Restreint à un ENSEMBLE de campagnes (ex. « campagnes actives »). Prioritaire
+   * sur `campaignId` quand non vide. `.in(campaign_id, …)`.
+   */
+  campaignIds?: string[];
   /** Verdict de screening (filtré en SQL). */
   status?: CandidateStatus;
   /** Borne basse de période sur `received_at` (ISO 8601). */
   from?: string;
   /** Borne haute de période sur `received_at` (ISO 8601). */
   to?: string;
+  /** Restreint aux candidatures issues du vivier (filtre menu Candidatures). */
+  fromVivier?: boolean;
   limit?: number;
+  /** Décalage de pagination serveur (0 par défaut). */
+  offset?: number;
 };

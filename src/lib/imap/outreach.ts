@@ -175,88 +175,13 @@ async function enqueueImapPendingValidation(args: {
   const campaignIdForJournal = isTaskOwner ? null : input.campaignId;
   const taskIdForJournal = isTaskOwner ? input.campaignId : null;
 
-  // 1. Brouillon du mail (composé, persisté pour la carte, PAS envoyé).
-  let composed: { subject: string; html: string };
-  try {
-    const out = await buildInterviewMail({
-      mode,
-      candidate,
-      jobTitle: input.jobTitle,
-      campaignId: input.campaignId,
-    });
-    composed = out.mail;
-  } catch (err) {
-    await appendJournalEntry({
-      action: 'imap_outreach_failed',
-      actor: 'imap_poller',
-      campaignId: campaignIdForJournal,
-      payload: {
-        stage: 'compose_draft',
-        mode,
-        candidate: candidate.candidateName,
-        uid: input.uid,
-        error: err instanceof Error ? err.message : String(err),
-      },
-    }).catch(() => {});
-    // Pas de brouillon → on ne peut pas mettre en file proprement → defer.
-    return false;
-  }
-
-  // 2. Artefact brouillon (best-effort — sa perte n'empêche pas la file ;
-  //    la carte recompose depuis le template au besoin).
-  const fileName = `${mode === 'reject' ? 'refus' : 'invitation'}-brouillon-${slug(candidate.candidateName)}-${input.uid}.md`;
-  const artifactId = `art_imap_draft_${input.uid}_${mode}_${Math.random().toString(36).slice(2, 6)}`;
-  let publicUrl: string | null = null;
-  let storagePath: string | null = null;
-  let storageBucket: string | null = null;
-  let draftPersisted = false;
-  try {
-    const upload = await uploadArtifact({
-      owner: isTaskOwner
-        ? { kind: 'task', id: input.campaignId }
-        : { kind: 'campaign', id: input.campaignId },
-      name: fileName,
-      content: renderDraftTrace({
-        mode,
-        candidate,
-        jobTitle: input.jobTitle,
-        campaignId: input.campaignId,
-        subject: composed.subject,
-        html: composed.html,
-      }),
-    });
-    storageBucket = upload.bucket;
-    storagePath = upload.path;
-    publicUrl = upload.publicUrl;
-    await insertArtifactMeta({
-      id: artifactId,
-      campaignId: campaignIdForJournal,
-      taskId: taskIdForJournal,
-      kind: 'other',
-      name: fileName,
-      mime: 'text/markdown',
-      storageBucket,
-      storagePath,
-      publicUrl,
-      metadata: {
-        source: 'imap',
-        mode,
-        draft: true,
-        candidate: candidate.candidateName,
-        candidateEmail: candidate.email,
-        uid: input.uid,
-      },
-    });
-    draftPersisted = true;
-  } catch (err) {
-    if (!(err instanceof SupabaseNotConfiguredError)) {
-      console.error('[imap-outreach] draft artifact failed', err);
-    }
-  }
-
-  // 3. Validation suspendue PERSISTÉE — c'est CE write qui décide du booléen.
-  //    Id déterministe (mailbox + uid + décision) ⇒ upsert idempotent si le
-  //    message est re-polled après une panne.
+  // Zone GRISE (cette fonction n'est appelée QUE pour un gris) : AUCUNE
+  // direction décidée. On NE pré-rédige PAS de brouillon (de refus NI
+  // d'invitation) — la carte de validation compose le mail À LA DEMANDE quand
+  // l'humain tranche. Pré-rédiger un refus laissait croire (à tort) que le
+  // candidat était refusé. Le booléen de retour est décidé par CE seul write
+  // (persisté ou non → le gate retombe sur 'deferred', jamais envoi à l'aveugle).
+  // Id déterministe (mailbox + uid + décision) ⇒ upsert idempotent si re-polled.
   const nowIso = new Date().toISOString();
   try {
     await upsertPendingValidation({
@@ -268,7 +193,7 @@ async function enqueueImapPendingValidation(args: {
       decision,
       cvArtifactId: input.cvArtifactId,
       reportArtifactId: input.reportArtifactId,
-      mailDraftArtifactId: draftPersisted ? artifactId : null,
+      mailDraftArtifactId: null,
       confirmed: false,
       status: 'pending',
       payload: {
@@ -276,9 +201,6 @@ async function enqueueImapPendingValidation(args: {
         candidate,
         jobTitle: input.jobTitle,
         summary: candidate.summary,
-        mailDraftUrl: publicUrl,
-        mailSubject: composed.subject,
-        mailBody: composed.html,
       },
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -478,34 +400,6 @@ async function composeAndSendCandidateMail(args: {
 
 
 // ─── Helpers de rendu (markdown + HTML email) ─────────────────────────
-
-/** Trace markdown d'un mail mis EN ATTENTE de validation (pas encore envoyé). */
-function renderDraftTrace(args: {
-  mode: 'reject' | 'invite';
-  candidate: MailCandidate;
-  jobTitle: string | null;
-  campaignId: string;
-  subject: string;
-  html: string;
-}): string {
-  return [
-    `# Brouillon ${args.mode === 'reject' ? 'de refus' : "d'invitation"} — ${args.candidate.candidateName}`,
-    '',
-    `Statut : **en attente de validation humaine (HITL)**`,
-    `Campagne : ${args.campaignId}`,
-    args.jobTitle ? `Poste : ${args.jobTitle}` : '',
-    `Score CV : ${args.candidate.score}/100`,
-    `Source : IMAP`,
-    '',
-    `## Objet`,
-    args.subject,
-    '',
-    `## Corps`,
-    args.html,
-  ]
-    .filter((l) => l !== '')
-    .join('\n');
-}
 
 function renderMailTrace(args: {
   mode: 'reject' | 'invite';

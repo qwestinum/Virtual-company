@@ -46,6 +46,34 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* ── Palette ORQA (menu Candidatures) ───────────────────────────────────
+     Tokens enregistrés dans @theme → utilitaires Tailwind `bg-orqa-*`,
+     `text-orqa-*`, `border-orqa-*`. Source unique, jamais de hex dispersé. */
+  --color-orqa-nuit: #0a1f3f;
+  --color-orqa-nuit2: #0e2a52;
+  --color-orqa-ciel: #2b9fd8;
+  --color-orqa-ciel-clair: #5fbdec;
+  --color-orqa-cielbg: #e6f4fb;
+  --color-orqa-brume: #f4f7fb;
+  --color-orqa-brume2: #e9eef5;
+  --color-orqa-encre: #16263b;
+  --color-orqa-gris: #64748b;
+  --color-orqa-gris-clair: #94a3b8;
+  --color-orqa-ligne: #e2e9f1;
+  --color-orqa-rouge: #e5484d;
+  --color-orqa-rouge-bg: #fdecec;
+  --color-orqa-ambre: #e08700;
+  --color-orqa-ambre-bg: #fcf3e3;
+  --color-orqa-vert: #16a34a;
+  --color-orqa-vert-bg: #e8f6ed;
+  --color-orqa-violet: #7c5cd6;
+  --color-orqa-violet-bg: #f0ecfb;
+
+  /* Ombres ORQA (légères) → utilitaires `shadow-orqa`, `shadow-orqa-lg`. */
+  --shadow-orqa: 0 1px 2px rgba(10, 31, 63, 0.04),
+    0 4px 16px rgba(10, 31, 63, 0.05);
+  --shadow-orqa-lg: 0 6px 28px rgba(10, 31, 63, 0.12);
 }
 
 :root {
@@ -336,6 +364,14 @@
   font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular,
     Menlo, Consolas, monospace;
   font-feature-settings: "tnum", "ss01";
+}
+/* Identité ORQA (menu Candidatures) : titres + corps. `.font-data` (JetBrains)
+   reste la police des données/scores/références. */
+.font-fraunces {
+  font-family: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
+}
+.font-inter {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
 /*

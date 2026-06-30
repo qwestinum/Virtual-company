@@ -61,22 +61,59 @@ export async function listJournalEntries(args: {
   if (args.actionPrefix) q = q.like('action', `${args.actionPrefix}%`);
   const { data, error } = await q;
   if (error) throw new Error(`listJournalEntries: ${error.message}`);
-  return (data ?? []).map((r) => {
-    const row = r as {
-      id: number;
-      campaign_id: string | null;
-      actor: string;
-      action: string;
-      payload: Record<string, unknown>;
-      created_at: string;
-    };
-    return {
-      id: row.id,
-      campaignId: row.campaign_id,
-      actor: row.actor,
-      action: row.action,
-      payload: row.payload,
-      createdAt: row.created_at,
-    };
-  });
+  return (data ?? []).map(mapJournalRow);
+}
+
+type JournalRow = {
+  id: number;
+  campaign_id: string | null;
+  actor: string;
+  action: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+function mapJournalRow(r: unknown): JournalEntry {
+  const row = r as JournalRow;
+  return {
+    id: row.id,
+    campaignId: row.campaign_id,
+    actor: row.actor,
+    action: row.action,
+    payload: row.payload,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * Liste EXHAUSTIVE des entrées du journal pour un ENSEMBLE d'actions données,
+ * paginée en interne (pages de 1000) — SANS le plafond 500 de
+ * `listJournalEntries`. Réservée aux marqueurs BAS VOLUME (entretien /
+ * validation) du calcul d'étape : le volume est borné par les candidats arrivés
+ * en phase entretien, jamais par tout le journal. Les compteurs du menu
+ * Candidatures EN DÉPENDENT pour ne pas mentir au-delà de 500 entrées.
+ */
+export async function listJournalEntriesByActions(
+  actions: string[],
+  args: { campaignId?: string } = {},
+): Promise<JournalEntry[]> {
+  if (actions.length === 0) return [];
+  const supabase = requireServerSupabase();
+  const PAGE = 1000;
+  const out: JournalEntry[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    let q = supabase
+      .from('journal')
+      .select('id, campaign_id, actor, action, payload, created_at')
+      .in('action', actions)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + PAGE - 1);
+    if (args.campaignId) q = q.eq('campaign_id', args.campaignId);
+    const { data, error } = await q;
+    if (error) throw new Error(`listJournalEntriesByActions: ${error.message}`);
+    const rows = (data ?? []).map(mapJournalRow);
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
 }

@@ -68,6 +68,7 @@ export async function queueInterviewBrief(args: {
       jobTitle: args.jobTitle,
       candidate: args.candidate,
       questions,
+      uid: args.uid ?? null,
     });
     await appendJournalEntry({
       action: 'interview_brief_queued',

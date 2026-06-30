@@ -23,6 +23,8 @@ const RequestSchema = z.object({
   campaignId: z.string().min(1),
   jobTitle: z.string().nullable(),
   candidate: MailCandidateSchema,
+  /** uid de l'analyse → rattache le brief à CETTE candidature (tag « RDV pris »). */
+  uid: z.string().optional(),
   /** Legacy (ignorés) — conservés pour compat des appelants existants. */
   artifactId: z.string().optional(),
   bookingUrl: z.string().url().optional(),
@@ -47,6 +49,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     campaignId: parsed.campaignId,
     jobTitle: parsed.jobTitle,
     candidate: parsed.candidate,
+    uid: parsed.uid,
     actor: 'scheduler_api',
   });
 

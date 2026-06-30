@@ -27,6 +27,8 @@ const DETAIL: CandidateAnalysisDetail = {
   decisionZone: 'auto_accept',
   decidedBy: 'auto',
   decidedByUser: null,
+  fromVivier: false,
+  vivierCandidateId: null,
   application: {
     candidate: {
       fullName: 'Jean Müller',

@@ -200,7 +200,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       // Rapprochement opportuniste (§6.3) : si cet email a été contacté au
       // titre du vivier pour cette campagne, on note « a postulé ».
       after(() =>
-        matchVivierApplication(campaignId ?? null, application.candidate.email),
+        matchVivierApplication(
+          campaignId ?? null,
+          application.candidate.email,
+          taskId,
+        ),
       );
     } catch (vivierErr) {
       console.error('[vivier] planification alimentation auto échouée', vivierErr);

@@ -557,8 +557,9 @@ export async function dispatchPostAnalysisOutreach(args: {
     }
     // HITL 3 zones (lot 2) — la ZONE pilote le gate (source unique :
     // `scoringResult.decisionZone`). Repli sur le statut binaire pour les
-    // analyses antérieures sans zone. Direction PROVISOIRE du gris = refus
-    // (statut provisoire) ; l'humain bascule dans la file si besoin.
+    // analyses antérieures sans zone. IMPORTANT : un GRIS n'a AUCUNE direction
+    // décidée (ni refus ni invitation) — `mode` ne sert qu'aux zones AUTO
+    // (envoi immédiat) ; pour le gris, l'enqueue est neutre et l'humain tranche.
     const zone: DecisionZone =
       cv.scoringResult.decisionZone ??
       (cv.scoringResult.status === 'accepted' ? 'auto_accept' : 'auto_reject');
@@ -583,7 +584,6 @@ export async function dispatchPostAnalysisOutreach(args: {
           cv,
           uid,
           decision,
-          mode,
           campaignId: args.campaignId,
           jobTitle: args.jobTitle,
           cvArtifactId: args.cvArtifactIds[index] ?? null,
@@ -609,6 +609,7 @@ export async function dispatchPostAnalysisOutreach(args: {
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
         candidate: cv,
+        uid,
       });
     }
   }
@@ -749,16 +750,20 @@ async function sendChatCandidateMail(args: {
 }
 
 /**
- * HITL — rédige le mail en BROUILLON (sans envoyer) et crée une validation
- * suspendue persistée. L'envoi (et le brief Scheduler pour un accept) est
- * différé jusqu'à la validation humaine (P5).
+ * HITL — met un candidat de ZONE GRISE en file de validation (persistée). Cette
+ * fonction n'est appelée QUE pour un gris (le gate n'enqueue que `gray`).
+ *
+ * NEUTRALITÉ : un gris n'a AUCUNE direction décidée. On ne pré-rédige donc
+ * AUCUN brouillon (ni refus ni invitation) — la carte de validation compose le
+ * mail À LA DEMANDE quand l'humain choisit « Accepter » ou « Refuser ». Pré-
+ * rédiger un refus laissait croire (à tort) que le candidat était refusé.
  */
 async function enqueuePendingValidation(args: {
   cv: CVApplication;
   /** UID de l'analyse — rattache la validation à CE traitement précis. */
   uid: string;
+  /** Direction PROVISOIRE (placeholder DB) ; l'humain tranche dans la carte. */
   decision: HitlDecision;
-  mode: 'invite' | 'reject';
   campaignId: string;
   jobTitle: string | null;
   /** Rapport d'analyse du lot (accès depuis la carte de validation). */
@@ -767,61 +772,11 @@ async function enqueuePendingValidation(args: {
   cvArtifactId: string | null;
 }): Promise<void> {
   const chat = useChatStore.getState();
-  const artifacts = useArtifactsStore.getState();
   const candidate = cvApplicationToMailCandidate(args.cv);
   const validationId = nowTaskId('val');
-  const artifactId = `art_draft_${args.decision}_${Date.now().toString(36)}_${Math.random()
-    .toString(36)
-    .slice(2, 6)}`;
-  const isReject = args.decision === 'reject';
 
-  // 1. Brouillon du mail (draft:true → composé, persisté, PAS envoyé).
-  let mailDraftArtifactId: string | null = null;
-  let mailDraftUrl: string | null = null;
-  let mailSubject: string | null = null;
-  let mailBody: string | null = null;
-  let fileName = `${isReject ? 'refus' : 'invitation'}-brouillon.md`;
-  try {
-    const res = await fetch('/api/mail-composer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        artifactId,
-        campaignId: args.campaignId,
-        jobTitle: args.jobTitle,
-        mode: args.mode,
-        candidate,
-        draft: true,
-      }),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as {
-        fileName: string;
-        publicUrl: string | null;
-        subject: string;
-        html: string;
-      };
-      fileName = data.fileName;
-      mailDraftUrl = data.publicUrl;
-      mailSubject = data.subject;
-      mailBody = data.html;
-      mailDraftArtifactId = artifactId;
-      artifacts.hydrateArtifact({
-        id: artifactId,
-        name: data.fileName,
-        mime: 'text/markdown',
-        createdAt: new Date().toISOString(),
-        campaignId: args.campaignId.startsWith('TASK-') ? null : args.campaignId,
-        taskId: args.campaignId.startsWith('TASK-') ? args.campaignId : null,
-        kind: 'other',
-        publicUrl: data.publicUrl,
-      });
-    }
-  } catch (err) {
-    console.error('[hitl] draft compose failed', err);
-  }
-
-  // 2. Crée la validation suspendue (persistée — survit au refresh).
+  // Crée la validation suspendue (persistée — survit au refresh). Pas de
+  // brouillon pré-rédigé : `mailDraftArtifactId` null, la carte composera.
   try {
     await fetch('/api/validations', {
       method: 'POST',
@@ -833,7 +788,7 @@ async function enqueuePendingValidation(args: {
         candidateEmail: candidate.email ?? null,
         score: args.cv.scoringResult.totalScore,
         decision: args.decision,
-        mailDraftArtifactId,
+        mailDraftArtifactId: null,
         reportArtifactId: args.reportArtifactId,
         cvArtifactId: args.cvArtifactId,
         payload: {
@@ -842,9 +797,6 @@ async function enqueuePendingValidation(args: {
           jobTitle: args.jobTitle,
           // Synthèse exposée directement pour la carte (évite de fouiller candidate).
           summary: candidate.summary,
-          mailDraftUrl,
-          mailSubject,
-          mailBody,
         },
       }),
     });
@@ -852,19 +804,11 @@ async function enqueuePendingValidation(args: {
     console.error('[hitl] enqueue failed', err);
   }
 
-  // 3. Bulle Manager : EN ATTENTE de validation (jamais « envoyé »).
+  // Bulle Manager NEUTRE : en zone de validation, à trancher (jamais « refus »).
   chat.appendMessage({
     role: 'manager',
     source: 'text',
-    content: `${isReject ? 'Refus' : 'Acceptation'} préparé(e) pour ${args.cv.candidate.fullName} — en attente de votre validation avant envoi.`,
-    attachment: mailDraftArtifactId
-      ? {
-          artifactId: mailDraftArtifactId,
-          label: `${isReject ? 'Refus' : 'Invitation'} (brouillon) — ${args.cv.candidate.fullName}`,
-          fileName,
-          mime: 'text/markdown',
-        }
-      : undefined,
+    content: `${args.cv.candidate.fullName} est en zone de validation (score ${args.cv.scoringResult.totalScore}/100) — à accepter ou refuser dans « Validation suspendue ».`,
   });
 }
 
@@ -872,6 +816,8 @@ async function dispatchSchedulerBrief(args: {
   campaignId: string;
   jobTitle: string | null;
   candidate: CVApplication;
+  /** uid de l'analyse → rattache le brief à CETTE candidature (tag « RDV pris »). */
+  uid: string;
 }): Promise<void> {
   const chat = useChatStore.getState();
   const agents = useAgentsStore.getState();
@@ -893,6 +839,7 @@ async function dispatchSchedulerBrief(args: {
         campaignId: args.campaignId,
         jobTitle: args.jobTitle,
         candidate: cvApplicationToMailCandidate(args.candidate),
+        uid: args.uid,
       }),
     });
     const data = (await res.json()) as {

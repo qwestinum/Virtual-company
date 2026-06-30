@@ -229,10 +229,24 @@ describe('deriveJourneyFor — HITL 3 zones', () => {
     expect(j.screening).toBe('ecarte');
     expect(j.final).toBe('ecarte');
   });
-  it('zone grise non tranchée → écarté au screening PROVISOIRE (final en attente)', () => {
+  it('zone grise non tranchée → RETENU au screening (passé en validation), en attente', () => {
     const j = deriveJourneyFor('rejected', 'gray', 'auto');
-    expect(j.screening).toBe('ecarte');
+    // Un gris a PASSÉ le screening (bande de validation) → PAS « écarté » en
+    // présélection. Le statut binaire 'rejected' est provisoire.
+    expect(j.screening).toBe('retenu');
+    expect(j.validation).toBe('en_attente');
     expect(j.final).toBe('na'); // pas définitif tant qu'un humain n'a pas tranché
+  });
+  it('zone grise REFUSÉE (refus envoyé) → rejet à la VALIDATION, pas à la présélection', () => {
+    const j = deriveJourneyFor('rejected', 'gray', 'user', {
+      dashboardStatus: 'rejected',
+      interviewMarked: null,
+      validationMarked: null,
+      recommendation: 'no-go',
+    });
+    expect(j.screening).toBe('retenu'); // a bien passé le screening
+    expect(j.validation).toBe('ecarte'); // écarté à la VALIDATION (humain)
+    expect(j.final).toBe('ecarte');
   });
   it('humanIntervention = decidedBy user (gris tranché par un humain)', () => {
     expect(deriveJourneyFor('accepted', 'gray', 'user').humanIntervention).toBe(true);

@@ -23,6 +23,8 @@ export type InterviewBrief = {
   candidateEmail: string | null;
   candidateName: string;
   jobTitle: string | null;
+  /** uid de l'analyse candidat à l'origine (rattachement fiable, ≠ email). */
+  uid: string | null;
   status: InterviewBriefStatus;
   /** Trame d'entretien (6-8 questions ciblées). */
   questions: InterviewQuestion[];
