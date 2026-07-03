@@ -169,6 +169,20 @@ export type CalcomWebhookEventRow = {
   processed_at: string;
 };
 
+/**
+ * Idempotence de l'outreach IMAP (table `imap_outreach_claims`). Clé =
+ * (mailbox, uid, mode). Sa présence = mail candidat déjà envoyé pour ce
+ * message → une invocation cron CONCURRENTE (Vercel, instance isolée)
+ * n'envoie rien. Claim posé juste avant `sendEmail`, relâché si l'envoi
+ * n'aboutit pas.
+ */
+export type ImapOutreachClaimRow = {
+  mailbox_id: string;
+  uid: string;
+  mode: string;
+  created_at: string;
+};
+
 export type FdpArchivedRow = {
   campaign_id: string;
   job_title: string;

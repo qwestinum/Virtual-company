@@ -27,7 +27,12 @@ import type { DecisionZone } from '@/types/hitl';
 export type SendResult =
   | { kind: 'sent' }
   | { kind: 'skipped'; reason: 'no_email' | 'no_config' }
-  | { kind: 'send_failed'; reason: string };
+  | { kind: 'send_failed'; reason: string }
+  // Idempotence cross-instance : une passe CONCURRENTE (invocation cron Vercel
+  // isolée) a déjà réservé/envoyé ce mail. CE process n'envoie rien — et
+  // l'appelant ne doit PAS non plus enchaîner les effets post-envoi (ex. brief
+  // d'entretien), la passe gagnante s'en charge. Cf. `imap_outreach_claims`.
+  | { kind: 'duplicate' };
 
 /** Issue de la décision de gating. */
 export type GateOutcome =

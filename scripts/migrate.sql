@@ -1172,3 +1172,24 @@ create table if not exists public.calcom_webhook_events (
   trigger_event text not null,
   processed_at  timestamptz not null default now()
 );
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Idempotence outreach IMAP — un mail candidat (invitation/refus) envoyé
+-- une seule fois, même sous invocations cron CONCURRENTES
+-- ──────────────────────────────────────────────────────────────────────
+-- Sur Vercel, chaque hit du cron `/api/cron/imap-poll` est une INSTANCE
+-- isolée : la garde anti-réentrance du poller (`__imapPollInFlight__`, en
+-- mémoire de process) ne sérialise PAS deux invocations concurrentes. Elles
+-- lisent le même `last_uid_seen`, retraitent le même message et envoyaient le
+-- mail candidat DEUX fois. La seule chose partagée entre deux instances = la
+-- base. Le sender CLAIM (mailbox, uid, mode) juste avant `sendEmail` ; si
+-- l'envoi n'aboutit pas, le claim est RELÂCHÉ (un re-poll pourra renvoyer,
+-- jamais de candidat muet). Présence de la clé = déjà envoyé ⇒ la passe
+-- concurrente n'envoie rien. Même pattern que `calcom_webhook_events`.
+create table if not exists public.imap_outreach_claims (
+  mailbox_id text        not null,
+  uid        text        not null,
+  mode       text        not null,
+  created_at timestamptz not null default now(),
+  primary key (mailbox_id, uid, mode)
+);

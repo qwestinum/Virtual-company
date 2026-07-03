@@ -57,4 +57,13 @@ describe('gateCandidateOutreach — HITL 3 zones', () => {
     const out = await gateCandidateOutreach('auto_reject', p);
     expect(out).toEqual({ kind: 'skipped', reason: 'no_email' });
   });
+
+  it('propage `duplicate` (idempotence cross-instance) tel quel sur une zone auto', async () => {
+    // Une passe cron CONCURRENTE a déjà réservé l'envoi (imap_outreach_claims) :
+    // le port renvoie `duplicate`, le gate NE le transforme pas — l'appelant
+    // doit pouvoir sauter les effets post-envoi (brief) là-dessus.
+    const { ports: p } = ports({ send: async () => ({ kind: 'duplicate' }) });
+    const out = await gateCandidateOutreach('auto_accept', p);
+    expect(out).toEqual({ kind: 'duplicate' });
+  });
 });

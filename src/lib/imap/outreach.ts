@@ -28,6 +28,10 @@ import {
   getResolvedAgendaLink,
 } from '@/lib/agents/server/interview-mail';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
+import {
+  claimOutreach,
+  releaseOutreachClaim,
+} from '@/lib/db/repos/imap-outreach-claims';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { upsertPendingValidation } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -141,7 +145,13 @@ export async function dispatchImapCandidateOutreach(
   // contactés). Si l'invitation a été mise en file de validation ('queued'),
   // le brief sera posé à la validation humaine (via /api/scheduler dans
   // sendValidation), pas ici. Délivré au candidat à la réservation Cal.com.
-  if (mode === 'invite' && outcome.kind !== 'queued') {
+  // `duplicate` = une passe concurrente a déjà envoyé l'invitation ET mis le
+  // brief en file : ne pas le refaire (sinon double briefing).
+  if (
+    mode === 'invite' &&
+    outcome.kind !== 'queued' &&
+    outcome.kind !== 'duplicate'
+  ) {
     await queueInterviewBrief({
       campaignId: input.campaignId,
       jobTitle: input.jobTitle,
@@ -274,6 +284,28 @@ async function composeAndSendCandidateMail(args: {
     return { kind: 'send_failed', reason: 'compose_failed' };
   }
 
+  // ─── Idempotence cross-instance (Vercel : invocations cron concurrentes) ──
+  // On RÉSERVE l'envoi (mailbox, uid, mode) juste avant `sendEmail` — fenêtre
+  // de collision réduite au minimum. Réservation perdue ⇒ une autre passe a
+  // déjà (ou est en train d')envoyé ce mail : on ne renvoie PAS, on ne relance
+  // pas non plus le brief en aval (l'appelant saute sur `kind: 'duplicate'`).
+  const claimKey = { mailboxId: input.mailboxId, uid: input.uid, mode } as const;
+  const won = await claimOutreach(claimKey);
+  if (!won) {
+    await appendJournalEntry({
+      action: 'imap_outreach_duplicate_skipped',
+      actor: 'imap_poller',
+      campaignId: campaignIdForJournal,
+      payload: {
+        mode,
+        candidate: candidate.candidateName,
+        uid: input.uid,
+        taskId: taskIdForJournal ?? undefined,
+      },
+    }).catch(() => {});
+    return { kind: 'duplicate' };
+  }
+
   let sentTo: string | null = null;
   let providerMessageId: string | null = null;
   let status:
@@ -303,6 +335,13 @@ async function composeAndSendCandidateMail(args: {
       status = 'send_failed';
       sendError = sendResult.error;
     }
+  }
+
+  // Envoi NON abouti (échec transitoire, email/config manquant) → on relâche la
+  // réservation pour qu'un re-poll puisse renvoyer. Un claim orphelin bloquerait
+  // à jamais l'envoi (candidat muet) — anti-perte silencieuse.
+  if (status !== 'sent') {
+    await releaseOutreachClaim(claimKey);
   }
 
   // Artefact texte avec la trace.
