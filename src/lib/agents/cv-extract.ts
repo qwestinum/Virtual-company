@@ -218,7 +218,7 @@ function ensureNonEmpty(extracted: ExtractedCV): ExtractedCV {
   return { ...extracted, text: trimmed };
 }
 
-function guessMimeFromName(name: string): string {
+export function guessMimeFromName(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith('.pdf')) return 'application/pdf';
   if (lower.endsWith('.docx'))

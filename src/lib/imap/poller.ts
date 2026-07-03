@@ -27,7 +27,11 @@
 import { simpleParser } from 'mailparser';
 
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
-import { CVExtractError, extractCVText } from '@/lib/agents/cv-extract';
+import {
+  CVExtractError,
+  extractCVText,
+  guessMimeFromName,
+} from '@/lib/agents/cv-extract';
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import {
@@ -53,28 +57,12 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { feedVivierFromApplication } from '@/lib/vivier/ingest-application';
 import { matchVivierApplication } from '@/lib/vivier/match-application';
 import { openConnection } from '@/lib/imap/client';
+import {
+  isSupportedCvAttachment,
+  isUnsupportedCvAttachment,
+} from '@/lib/imap/cv-attachment';
 import { uploadArtifact, uploadArtifactBinary } from '@/lib/storage/blob';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
-
-/**
- * MIME types acceptés par le poller. Alignés sur ce que
- * `extractCVText` sait réellement parser — pas la liste plus large
- * acceptée par la route /api/cv-analyzer (qui plante au moment de
- * l'extraction sur .doc binaire). Inclure des formats non extractables
- * créerait des entrées imap_cv_failed inutiles à chaque mail.
- *
- * Étendre cette liste : ajouter le format dans extractCVText d'abord,
- * sinon les CV seront marqués comme reçus puis échoués.
- */
-const PDF_MIMES = new Set([
-  'application/pdf',
-  'application/x-pdf',
-]);
-
-function isCvMime(mime: string | undefined | null): boolean {
-  if (!mime) return false;
-  return PDF_MIMES.has(mime.toLowerCase());
-}
 
 function matchCampaignInSubject(
   subject: string,
@@ -334,12 +322,40 @@ async function pollMailboxImpl(
           continue;
         }
 
-        // Extraction des PJ exploitables.
+        // Extraction des PJ exploitables : PDF + DOCX (extractibles par
+        // extractCVText). Détection MIME OU extension — cf. cv-attachment.ts.
         const allAttachments = parsed.attachments ?? [];
         const cvAttachments = allAttachments.filter((a) =>
-          isCvMime(a.contentType),
+          isSupportedCvAttachment(a.contentType, a.filename),
         );
         if (cvAttachments.length === 0) {
+          // Un CV Word ANCIEN (.doc) est un vrai CV mais non extractible : il
+          // ne doit PAS s'évaporer dans 'imap_email_no_cv'. Trace DÉDIÉE et
+          // explicite (« renvoyez en PDF ou .docx ») — jamais d'échec
+          // silencieux (beaucoup de CV arrivent en Word en recrutement).
+          const unsupportedCv = allAttachments.filter((a) =>
+            isUnsupportedCvAttachment(a.contentType, a.filename),
+          );
+          if (unsupportedCv.length > 0) {
+            await appendJournalEntry({
+              action: 'imap_cv_unsupported_format',
+              actor: 'imap_poller',
+              campaignId: matchedCampaignId,
+              payload: {
+                mailboxId: mailbox.id,
+                uid,
+                subject,
+                from: parsed.from?.text ?? null,
+                attachments: unsupportedCv.map((a) => ({
+                  filename: a.filename ?? null,
+                  mime: a.contentType ?? null,
+                })),
+                reason:
+                  'format Word ancien (.doc) non exploitable — demande au candidat un renvoi en PDF ou .docx',
+              },
+            }).catch(() => {});
+            continue;
+          }
           await appendJournalEntry({
             action: 'imap_email_no_cv',
             actor: 'imap_poller',
@@ -350,9 +366,9 @@ async function pollMailboxImpl(
               subject,
               from: parsed.from?.text ?? null,
               // Liste explicite des PJ rejetées : aide à diagnostiquer
-              // quand le DRH envoie un .doc et se demande pourquoi
-              // « rien ne se passe ». Le retour clair pointe vers
-              // « renvoyez en PDF ».
+              // quand le DRH envoie un format inattendu et se demande
+              // pourquoi « rien ne se passe ». Le retour clair pointe vers
+              // « renvoyez en PDF ou .docx ».
               rejectedAttachments: allAttachments.map((a) => ({
                 filename: a.filename ?? null,
                 mime: a.contentType ?? null,
@@ -370,7 +386,9 @@ async function pollMailboxImpl(
             mailbox,
             campaign,
             fileName,
-            mime: att.contentType ?? 'application/pdf',
+            // Repli filename-aware (DOCX sans contentType ⇒ ne pas le forcer en
+            // PDF, sinon extractCVText tente pdf-parse et échoue).
+            mime: att.contentType || guessMimeFromName(fileName),
             buffer: att.content,
             uid: String(uid),
             subject,
