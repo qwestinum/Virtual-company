@@ -711,3 +711,30 @@ comptes clients :
 
 **Risque** : moyen (exposition de données business à un utilisateur authentifié
 non habilité). La protection « non listé + session » ne suffit qu'en mono-utilisateur.
+
+---
+
+## Trace des mails IMAP sans campagne reconnue (`imap_no_campaign_match`)
+
+**Statut** : le poller rapproche un mail à une campagne via l'ID `CAMP-XXXX`
+dans le sujet puis, en repli, dans le corps (`resolveCampaignMatch`,
+`src/lib/imap/campaign-match.ts`). Quand AUCUNE campagne n'est reconnue, la
+résolution renvoie `none` et le poller fait `continue` **sans écrire au
+journal**.
+
+**Dette / risque.** Un mail **porteur d'un CV en PJ** mais dont l'ID de campagne
+est absent/mal orthographié disparaît **sans aucune trace** — exactement le type
+d'échec silencieux qu'on proscrit (cf. support .docx, formats non exploitables).
+Tolérable tant que le rapprochement se faisait sur le seul sujet ; plus gênant
+maintenant qu'on ajoute le corps comme filet (on « promet » plus de
+rattrapage). Le curseur `last_uid_seen` avance ⇒ le mail n'est pas rejoué.
+
+**Quand le faire.** Prochaine passe IMAP. Ajouter une trace
+`imap_no_campaign_match` **conditionnée à la présence d'une PJ de type CV**
+(`isSupportedCvAttachment` / `isUnsupportedCvAttachment`) pour NE PAS journaliser
+chaque newsletter/spam sans PJ. Charge : ~10 lignes dans `poller.ts` (branche
+`match.kind === 'none'`), un test. Optionnel : surfacer au DRH (menu
+Candidatures / bandeau) plutôt que journal seul.
+
+**Risque** : faible (visibilité), mais aligné sur la règle « pas d'échec
+silencieux » chère au DO.
