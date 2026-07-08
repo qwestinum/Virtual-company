@@ -58,22 +58,15 @@ import { feedVivierFromApplication } from '@/lib/vivier/ingest-application';
 import { matchVivierApplication } from '@/lib/vivier/match-application';
 import { openConnection } from '@/lib/imap/client';
 import {
+  emailBodyText,
+  resolveCampaignMatch,
+} from '@/lib/imap/campaign-match';
+import {
   isSupportedCvAttachment,
   isUnsupportedCvAttachment,
 } from '@/lib/imap/cv-attachment';
 import { uploadArtifact, uploadArtifactBinary } from '@/lib/storage/blob';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
-
-function matchCampaignInSubject(
-  subject: string,
-  candidateIds: string[],
-): string | null {
-  const haystack = subject.toLowerCase();
-  for (const id of candidateIds) {
-    if (haystack.includes(id.toLowerCase())) return id;
-  }
-  return null;
-}
 
 export type PollOutcome = {
   mailboxId: string;
@@ -277,37 +270,67 @@ async function pollMailboxImpl(
         }
 
         const subject = parsed.subject ?? '';
-        // On matche d'abord sur les campagnes ACTIVES uniquement. Si
-        // rien ne match là, on regarde aussi sur les inactives pour
-        // émettre un événement de visibilité (le DRH doit savoir
-        // qu'un CV est arrivé mais que la campagne n'écoutait pas).
-        const matchedCampaignId = matchCampaignInSubject(
+        // Rapprochement campagne : ID `CAMP-XXXX` dans le SUJET (signal fort,
+        // nominal) puis, EN REPLI, dans le CORPS (signal faible). Le corps
+        // refuse de deviner si plusieurs campagnes distinctes y figurent
+        // (`ambiguous`) — un mauvais rattachement silencieux est pire qu'un
+        // non-rattachement. Priorité active > inactive (l'inactif = visibilité).
+        const body = emailBodyText(parsed);
+        const match = resolveCampaignMatch({
           subject,
-          activeAssociatedIds,
-        );
-        if (!matchedCampaignId) {
-          const inactiveMatch = matchCampaignInSubject(subject, associatedIds);
-          if (inactiveMatch) {
-            const inactiveCamp = campaignsById.get(inactiveMatch);
-            await appendJournalEntry({
-              action: 'imap_match_inactive_campaign',
-              actor: 'imap_poller',
-              campaignId: inactiveCamp?.id.startsWith('TASK-')
-                ? null
-                : inactiveMatch,
-              payload: {
-                mailboxId: mailbox.id,
-                uid,
-                subject,
-                from: parsed.from?.text ?? null,
-                campaignStatus: inactiveCamp?.status ?? 'unknown',
-                reason:
-                  'campaign_not_active — réactive la campagne ou attends qu\'elle franchisse les jalons',
-              },
-            }).catch(() => {});
-          }
+          body,
+          activeIds: activeAssociatedIds,
+          associatedIds,
+        });
+
+        if (match.kind === 'ambiguous') {
+          // Plusieurs campagnes actives citées dans le corps : on NE rattache
+          // PAS (on ne devine pas). Trace dédiée pour que le DRH tranche.
+          await appendJournalEntry({
+            action: 'imap_ambiguous_body_match',
+            actor: 'imap_poller',
+            campaignId: null,
+            payload: {
+              mailboxId: mailbox.id,
+              uid,
+              subject,
+              from: parsed.from?.text ?? null,
+              campaignIds: match.campaignIds,
+              reason:
+                'plusieurs campagnes citées dans le corps — préciser l\'identifiant CAMP-XXXX dans le sujet',
+            },
+          }).catch(() => {});
           continue;
         }
+
+        if (match.kind === 'inactive') {
+          const inactiveCamp = campaignsById.get(match.campaignId);
+          await appendJournalEntry({
+            action: 'imap_match_inactive_campaign',
+            actor: 'imap_poller',
+            campaignId: inactiveCamp?.id.startsWith('TASK-')
+              ? null
+              : match.campaignId,
+            payload: {
+              mailboxId: mailbox.id,
+              uid,
+              subject,
+              from: parsed.from?.text ?? null,
+              matchSource: match.source,
+              campaignStatus: inactiveCamp?.status ?? 'unknown',
+              reason:
+                'campaign_not_active — réactive la campagne ou attends qu\'elle franchisse les jalons',
+            },
+          }).catch(() => {});
+          continue;
+        }
+
+        if (match.kind === 'none') {
+          continue;
+        }
+
+        const matchedCampaignId = match.campaignId;
+        const matchSource = match.source;
 
         const campaign = campaignsById.get(matchedCampaignId);
         if (!campaign) {
@@ -393,6 +416,7 @@ async function pollMailboxImpl(
             uid: String(uid),
             subject,
             from: parsed.from?.text ?? null,
+            matchSource,
           })
             .then(() => {
               outcome.processed += 1;
@@ -474,9 +498,20 @@ async function processEmailAttachment(args: {
   uid: string;
   subject: string;
   from: string | null;
+  /** Champ ayant matché l'ID de campagne : 'subject' (fort) ou 'body' (repli). */
+  matchSource: 'subject' | 'body';
 }): Promise<void> {
-  const { mailbox, campaign, fileName, mime, buffer, uid, subject, from } =
-    args;
+  const {
+    mailbox,
+    campaign,
+    fileName,
+    mime,
+    buffer,
+    uid,
+    subject,
+    from,
+    matchSource,
+  } = args;
   const isTaskOwner = campaign.id.startsWith('TASK-');
   // Comportement (a) — pas de scoring sans fiche de scoring validée.
   const sheet = campaign.scoringSheet?.isValidated
@@ -496,6 +531,7 @@ async function processEmailAttachment(args: {
       from,
       taskId: isTaskOwner ? campaign.id : undefined,
       pendingScoringSheet: sheet === null,
+      matchSource,
     },
   });
 
