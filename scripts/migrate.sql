@@ -1216,3 +1216,36 @@ create table if not exists public.imap_cv_retries (
   updated_at    timestamptz not null default now(),
   primary key (mailbox_id, uid)
 );
+
+-- ──────────────────────────────────────────────────────────────────────
+-- CV reçus sans campagne reconnue — correctif audit C11 (juil. 2026)
+-- ──────────────────────────────────────────────────────────────────────
+-- Un mail sans identifiant CAMP-XXXX reconnu mais portant un CV en PJ ne
+-- disparaît plus : binaire stocké dans le bucket sous `unmatched/…` (PAS dans
+-- artifacts_meta — le CHECK XOR y exige un owner campagne/tâche qu'un mail
+-- non rattaché n'a pas) + une ligne ici + journal `imap_no_campaign_match`.
+-- REJOUABLE via POST /api/imap/unmatched/[id]/replay {campaignId} : la
+-- réservation pending→replayed est conditionnelle (un seul gagnant), le rejeu
+-- réutilise processEmailAttachment tel quel (mêmes gardes, mêmes claims
+-- d'idempotence). Une ligne PAR pièce jointe : unique (mailbox, uid, fichier).
+-- Penser à recharger le cache de schéma PostgREST après création.
+create table if not exists public.imap_unmatched_cvs (
+  id                   uuid        primary key default gen_random_uuid(),
+  mailbox_id           text        not null,
+  uid                  text        not null,
+  from_addr            text,
+  subject              text,
+  file_name            text        not null,
+  mime                 text        not null,
+  storage_bucket       text,
+  storage_path         text,
+  status               text        not null default 'pending'
+                                   check (status in ('pending','replayed','dismissed')),
+  replayed_campaign_id text,
+  replayed_at          timestamptz,
+  received_at          timestamptz not null default now(),
+  unique (mailbox_id, uid, file_name)
+);
+
+create index if not exists imap_unmatched_cvs_status_idx
+  on public.imap_unmatched_cvs (status, received_at desc);

@@ -13,6 +13,7 @@
  */
 import { NextResponse } from 'next/server';
 
+import { countUnmatchedPending } from '@/lib/db/repos/imap-unmatched-cvs';
 import { listJournalEntries } from '@/lib/db/repos/journal';
 import {
   listCampaignsForMailbox,
@@ -44,10 +45,14 @@ export async function GET(): Promise<NextResponse> {
       actionPrefix: 'imap_',
       limit: 30,
     });
+    // C11 : CV reçus sans campagne reconnue, en attente de rejeu/écart
+    // (GET /api/imap/unmatched pour le détail).
+    const unmatchedPending = await countUnmatchedPending();
     return NextResponse.json({
       scheduler,
       mailboxes: enriched,
       recentJournal,
+      unmatchedPending,
     });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

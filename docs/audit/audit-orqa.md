@@ -24,7 +24,7 @@
 | C8 | 🔴 | Vivier aveugle >1000 (listes non paginées + RPC cappées) | 1 | À faire |
 | C9 | 🔴 | Exclusion « déjà postulé » cap 200 → réinvitation de candidats | 1 | À faire |
 | C10 | 🔴 | Rapports clôturés : cap global 1000 + journal 500 → PDF client faux | 5 | À faire |
-| C11 | 🔴 | Trou `none` : mail avec CV skippé sans trace | 2 | À faire |
+| C11 | 🔴 | Trou `none` : mail avec CV skippé sans trace | 2 | **En cours** — correctif codé le 09/07/2026 (trace `imap_no_campaign_match` + stockage `imap_unmatched_cvs` + rejeu API) ; reste : migration + déploiement prod |
 | I1 | 🟠 | `send_failed`/agenda absent : jamais re-tenté (+ brief en file quand même) | 2 | À faire |
 | I2 | 🟠 | Couche d'audit poller en `.catch(() => {})` | 2 | À faire |
 | I3 | 🟠 | Multi-CV même mail : collisions de clés par uid | 6 | À faire |

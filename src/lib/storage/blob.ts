@@ -128,6 +128,35 @@ export async function uploadArtifactBinary(input: {
 }
 
 /**
+ * Upload BINAIRE d'un CV NON RATTACHÉ à une campagne (C11 — trou `none`).
+ * Chemin neutre `unmatched/…` SANS owner : `artifacts_meta` exige un owner
+ * campagne/tâche (CHECK XOR) qu'un mail non rattaché n'a pas — la trace vit
+ * dans `imap_unmatched_cvs`, pas dans `artifacts_meta`. Même bucket privé,
+ * accès par lien signé / `downloadArtifact` au rejeu.
+ */
+export async function uploadUnmatchedCvBinary(input: {
+  mailboxId: string;
+  uid: string;
+  name: string;
+  content: Buffer;
+  mimeType: string;
+}): Promise<UploadArtifactResult> {
+  const supabase = requireServerSupabase();
+  const path = `unmatched/${input.mailboxId}/${input.uid}/${input.name}`;
+  const { error: uploadError } = await supabase.storage
+    .from(ARTIFACTS_BUCKET)
+    .upload(path, input.content, {
+      contentType: input.mimeType,
+      // Idempotence : un re-poll concurrent re-dépose le même octet.
+      upsert: true,
+    });
+  if (uploadError) {
+    throw new Error(`uploadUnmatchedCvBinary: ${uploadError.message}`);
+  }
+  return { bucket: ARTIFACTS_BUCKET, path, publicUrl: null };
+}
+
+/**
  * Télécharge le contenu binaire d'un artefact depuis Storage. Sert au cache
  * stable du rapport de campagne (re-sert le PDF mis en cache). Retourne null
  * si l'objet est absent (cache invalidé / jamais généré).

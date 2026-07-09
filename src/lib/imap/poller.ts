@@ -60,6 +60,7 @@ import {
   listCvRetryStates,
   upsertCvRetryState,
 } from '@/lib/db/repos/imap-cv-retries';
+import { insertUnmatchedCv } from '@/lib/db/repos/imap-unmatched-cvs';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
   listCampaignsForMailbox,
@@ -79,7 +80,11 @@ import {
   isSupportedCvAttachment,
   isUnsupportedCvAttachment,
 } from '@/lib/imap/cv-attachment';
-import { uploadArtifact, uploadArtifactBinary } from '@/lib/storage/blob';
+import {
+  uploadArtifact,
+  uploadArtifactBinary,
+  uploadUnmatchedCvBinary,
+} from '@/lib/storage/blob';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 
 export type PollOutcome = {
@@ -348,6 +353,96 @@ async function pollMailboxImpl(
         }
 
         if (match.kind === 'none') {
+          // C11 (trou `none`) : un mail SANS rattachement mais PORTEUR d'un
+          // CV ne s'évapore plus. Binaire stocké (rejouable via
+          // POST /api/imap/unmatched/[id]/replay) + trace journal explicite.
+          // Un mail sans PJ CV (newsletter, réponse…) reste skippé sans bruit.
+          const allNoneAtts = parsed.attachments ?? [];
+          const noneCvAtts = allNoneAtts.filter((a) =>
+            isSupportedCvAttachment(a.contentType, a.filename),
+          );
+          const noneUnsupportedAtts = allNoneAtts.filter((a) =>
+            isUnsupportedCvAttachment(a.contentType, a.filename),
+          );
+          if (noneCvAtts.length === 0 && noneUnsupportedAtts.length === 0) {
+            continue;
+          }
+          // Stockage best-effort PAR PJ exploitable (les .doc non extractibles
+          // sont tracés mais pas stockés : non rejouables par extractCVText).
+          const storedFiles: Array<{
+            fileName: string;
+            stored: boolean;
+            storageError: string | null;
+          }> = [];
+          for (const att of noneCvAtts) {
+            const fileName = att.filename ?? `cv-${uid}.pdf`;
+            let storagePath: string | null = null;
+            let storageBucket: string | null = null;
+            let storageError: string | null = null;
+            try {
+              const up = await uploadUnmatchedCvBinary({
+                mailboxId: mailbox.id,
+                uid: String(uid),
+                name: fileName,
+                content: att.content,
+                mimeType: att.contentType || guessMimeFromName(fileName),
+              });
+              storagePath = up.path;
+              storageBucket = up.bucket;
+            } catch (upErr) {
+              storageError =
+                upErr instanceof Error ? upErr.message : String(upErr);
+              console.error('[imap-poller] stockage CV non rattaché KO', upErr);
+            }
+            const inserted = await insertUnmatchedCv({
+              mailboxId: mailbox.id,
+              uid: String(uid),
+              fromAddr: parsed.from?.text ?? null,
+              subject,
+              fileName,
+              mime: att.contentType || guessMimeFromName(fileName),
+              storageBucket,
+              storagePath,
+            });
+            storedFiles.push({
+              fileName,
+              stored: inserted && storagePath !== null,
+              storageError,
+            });
+          }
+          // La TRACE journal est l'ÉTAT FINAL qui autorise le curseur à
+          // avancer (principe : jamais d'avancée sans état final explicite).
+          // Si elle échoue (panne Supabase), on GÈLE le curseur — le mail
+          // sera re-présenté au prochain poll.
+          try {
+            await appendJournalEntry({
+              action: 'imap_no_campaign_match',
+              actor: 'imap_poller',
+              campaignId: null,
+              payload: {
+                mailboxId: mailbox.id,
+                uid: String(uid),
+                subject,
+                from: parsed.from?.text ?? null,
+                storedFiles,
+                unsupportedFiles: noneUnsupportedAtts.map(
+                  (a) => a.filename ?? null,
+                ),
+                reason:
+                  'CV reçu sans campagne reconnue (aucun identifiant CAMP-XXXX dans le sujet ni le corps) — rejouable via /api/imap/unmatched une fois la campagne choisie',
+              },
+            });
+          } catch (jErr) {
+            console.error(
+              '[imap-poller] journal imap_no_campaign_match KO — curseur gelé',
+              jErr,
+            );
+            if (typeof uid === 'number') {
+              minRetryUid =
+                minRetryUid === null ? uid : Math.min(minRetryUid, uid);
+              break;
+            }
+          }
           continue;
         }
 
@@ -477,10 +572,23 @@ async function pollMailboxImpl(
               const errorMessage =
                 err instanceof Error ? err.message : String(err);
               if (classifyProcessingError(err) === 'permanent') {
-                // Défaut prouvé du DOCUMENT (PDF corrompu, texte vide…) :
-                // re-tenter le même fichier échouera pareil — trace et le
-                // curseur avance.
+                // Défaut PROUVÉ du DOCUMENT (PDF corrompu, texte vide…) :
+                // re-tenter le même fichier échouera pareil — pas de réessais,
+                // mais le MÊME état final que l'épuisement : binaire sauvegardé
+                // + trace « traitement manuel requis ». Deux seuls chemins
+                // d'avancée du curseur sur échec, tous deux stockés et tracés.
+                // (Classification CONSERVATRICE : en cas de doute sur
+                // l'origine, l'erreur est classée transitoire — cf.
+                // classifyProcessingError.)
                 outcome.errors += 1;
+                const failedArtifactId = await persistAbandonedCv({
+                  mailbox,
+                  campaign,
+                  fileName,
+                  mime: att.contentType || guessMimeFromName(fileName),
+                  buffer: att.content,
+                  uid: String(uid),
+                });
                 await appendJournalEntry({
                   action: 'imap_cv_failed',
                   actor: 'imap_poller',
@@ -489,12 +597,19 @@ async function pollMailboxImpl(
                     mailboxId: mailbox.id,
                     uid: String(uid),
                     fileName,
+                    from: parsed.from?.text ?? null,
                     error: errorMessage,
                     errorClass: 'permanent',
+                    artifactId: failedArtifactId,
+                    reason:
+                      'défaut du fichier (corruption/illisible) — traitement manuel requis, demander un renvoi ; aucun mail envoyé au candidat',
                   },
                 }).catch((jErr) =>
                   console.error('[imap-poller] journal imap_cv_failed KO', jErr),
                 );
+                // Purge un éventuel compteur de réessais antérieur (le même
+                // uid a pu échouer en transitoire avant le défaut avéré).
+                void clearCvRetryState(mailbox.id, String(uid));
                 return;
               }
               // Échec RE-TENTABLE (panne LLM/rate limit/timeout, hoquet DB,
@@ -618,7 +733,14 @@ async function pollMailboxImpl(
   return outcome;
 }
 
-async function processEmailAttachment(args: {
+/**
+ * Cœur du traitement d'une PJ CV : extraction → analyse → persistance →
+ * outreach gaté HITL. Exporté pour le REJEU d'un CV non rattaché (C11,
+ * `POST /api/imap/unmatched/[id]/replay`) — le rejeu réutilise EXACTEMENT ce
+ * chemin (mêmes gardes fiche validée, mêmes claims d'idempotence par
+ * (mailbox, uid) : jamais de double mail), aucun chemin parallèle.
+ */
+export async function processEmailAttachment(args: {
   mailbox: MailboxRow;
   campaign: ActiveCampaign;
   fileName: string;
@@ -627,8 +749,11 @@ async function processEmailAttachment(args: {
   uid: string;
   subject: string;
   from: string | null;
-  /** Champ ayant matché l'ID de campagne : 'subject' (fort) ou 'body' (repli). */
-  matchSource: 'subject' | 'body';
+  /**
+   * Origine du rattachement campagne : 'subject' (fort) / 'body' (repli) /
+   * 'replay' (rejeu humain d'un CV non rattaché, C11).
+   */
+  matchSource: 'subject' | 'body' | 'replay';
 }): Promise<void> {
   const {
     mailbox,
@@ -868,12 +993,13 @@ async function processEmailAttachment(args: {
 }
 
 /**
- * Sauvegarde le binaire d'un CV dont l'analyse est ABANDONNÉE (plafond de
- * réessais atteint) : le fichier doit rester récupérable pour un traitement
- * manuel — un abandon signalé n'est jamais un CV évaporé (audit C2/C3). Id
- * dédié (`cvabandon`) pour ne pas entrer en collision avec l'artefact `cv`
- * nominal si une passe précédente était allée plus loin. Best-effort :
- * `null` si le storage échoue (le journal d'abandon reste la trace).
+ * Sauvegarde le binaire d'un CV en ÉCHEC FINAL — plafond de réessais atteint
+ * OU défaut permanent prouvé du fichier : dans les deux cas, le fichier doit
+ * rester récupérable pour un traitement manuel — un échec signalé n'est
+ * jamais un CV évaporé (audit C2/C3). Id dédié (`cvabandon`) pour ne pas
+ * entrer en collision avec l'artefact `cv` nominal si une passe précédente
+ * était allée plus loin. Best-effort : `null` si le storage échoue (le
+ * journal reste la trace).
  */
 async function persistAbandonedCv(args: {
   mailbox: MailboxRow;
