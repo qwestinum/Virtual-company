@@ -7,7 +7,7 @@ vi.mock('@/lib/ai/provider', () => ({
   DETERMINISTIC_SEED: 42,
 }));
 
-import { AIValidationError } from '@/lib/ai/errors';
+import { AIValidationError, AnalysisUnavailableError } from '@/lib/ai/errors';
 import { remapVerdictsToCriteria } from '@/lib/agents/server/cv-application-analyze';
 import { buildCriterion, type ScoringSheet } from '@/types/scoring';
 
@@ -120,7 +120,6 @@ describe('analyzeCVApplication', () => {
     expect(out.llmFailures).toEqual({
       candidate: false,
       ledger: false,
-      verdicts: false,
       narration: false,
     });
   });
@@ -170,28 +169,25 @@ describe('analyzeCVApplication', () => {
     expect(out.application.candidate.email).toBe('jean.test@mail.com');
   });
 
-  it('échec extraction décisions (AIValidationError) → fallback non_verifiable + llmFailure → rejected', async () => {
+  it('échec extraction décisions (AIValidationError) → AnalysisUnavailableError, AUCUN score produit (audit C2)', async () => {
+    // Comportement VOLONTAIREMENT changé (correctif audit C2) : l'ancien
+    // fallback fabriquait des verdicts `non_verifiable` ⇒ score 0 ⇒ REFUS
+    // AUTO envoyé au candidat pour une panne technique. Désormais : sans
+    // verdicts, pas d'analyse — l'appelant re-tente (poller) ou remonte
+    // l'échec (chat 503). Jamais de score fantôme, jamais de mail.
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
       .mockResolvedValueOnce(jsonResult(LEDGER_OK))
-      .mockRejectedValueOnce(new AIValidationError('invalide', 3, null))
-      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+      .mockRejectedValueOnce(new AIValidationError('invalide', 3, null));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
-    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
 
-    expect(out.llmFailures.verdicts).toBe(true);
-    // Tous non vérifiables → knockout (ko) → score 0, rejected. exp/s1/s2 sont
-    // SOFT (plus de cap) → un seul échec DUR : ko.
-    expect(out.application.scoringResult.totalScore).toBe(0);
-    expect(out.application.scoringResult.status).toBe('rejected');
-    const hf = out.application.scoringResult.hardFailures;
-    expect(hf.map((h) => h.criterionId).sort()).toEqual(['ko']);
-    expect(hf.every((h) => h.reason === 'unverifiable')).toBe(true);
-    // Le breakdown reflète le fallback.
-    expect(
-      out.application.scoringResult.breakdown.every((b) => b.llmDecision === 'non_verifiable'),
-    ).toBe(true);
+    await expect(
+      analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() }),
+    ).rejects.toBeInstanceOf(AnalysisUnavailableError);
+    // La narration (4e appel) n'est jamais tentée : analyse abandonnée
+    // avant tout scoring.
+    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(3);
   });
 
   it('échec extraction candidat (AIValidationError) → candidat dégradé, email tout de même résolu du CV', async () => {
@@ -222,7 +218,6 @@ describe('analyzeCVApplication', () => {
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet: sheet() });
     // Le relevé a échoué mais les verdicts tournent quand même (texte du CV seul).
     expect(out.llmFailures.ledger).toBe(true);
-    expect(out.llmFailures.verdicts).toBe(false);
     expect(out.application.scoringResult.status).toBe('accepted');
   });
 

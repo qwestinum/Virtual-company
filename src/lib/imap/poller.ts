@@ -14,7 +14,12 @@
  *      - extraction des pièces jointes PDF
  *      - pour chaque PJ matchée : insert journal `imap_cv_received`,
  *        analyse via analyzeCVApplication, upload artifact, journal
- *        `imap_cv_analyzed` ou `imap_cv_failed`
+ *        `imap_cv_analyzed` ou, selon la classe d'erreur (poll-retry.ts) :
+ *        `imap_cv_failed` (défaut prouvé du document — le curseur avance),
+ *        `imap_cv_retry_scheduled` (échec re-tentable : panne LLM/DB —
+ *        curseur GELÉ, backoff durable `imap_cv_retries`), ou
+ *        `imap_cv_analysis_abandoned` (plafond de tentatives : binaire
+ *        sauvegardé pour traitement manuel, JAMAIS de refus auto)
  *   4. Mise à jour last_uid_seen + last_polled_at + last_error
  *
  * Le poller est appelé par le scheduler toutes les 30s. Une exécution
@@ -39,13 +44,22 @@ import {
   renderCVBatchMarkdown,
 } from '@/lib/agents/cv-report-render';
 import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
+import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
 import {
-  dispatchImapCandidateOutreach,
-  RetryableOutreachError,
-} from '@/lib/imap/outreach';
+  classifyProcessingError,
+  computeNextRetryAt,
+  isInBackoffWindow,
+  MAX_CV_ANALYSIS_ATTEMPTS,
+  RetryablePollError,
+} from '@/lib/imap/poll-retry';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import {
+  clearCvRetryState,
+  listCvRetryStates,
+  upsertCvRetryState,
+} from '@/lib/db/repos/imap-cv-retries';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
   listCampaignsForMailbox,
@@ -187,6 +201,13 @@ async function pollMailboxImpl(
     return c?.status === 'active';
   });
 
+  // Réessais d'analyse en cours pour cette boîte (correctif audit C2/C3) :
+  // compteur + backoff DURABLES — la mémoire de process ne survit ni entre
+  // polls ni entre instances serverless. Une requête par poll (lignes rares :
+  // uniquement les échecs). Fail-safe : map vide si table absente ⇒ réessai
+  // sans plafond, on ne consomme jamais un CV faute de migration.
+  const retryStates = await listCvRetryStates(mailbox.id);
+
   let client;
   try {
     client = await openConnection({
@@ -218,9 +239,10 @@ async function pollMailboxImpl(
         : 0;
       let maxUidSeen = previousLastUid;
       // Plus petit UID dont le traitement a été DIFFÉRÉ (état HITL non
-      // confirmable). On plafonnera `last_uid_seen` juste en deçà pour que ce
-      // message — et tous ceux après lui — soient re-fetchés au prochain poll
-      // plutôt que perdus. null = aucun différé.
+      // confirmable, échec d'analyse re-tentable, fenêtre de backoff). On
+      // plafonnera `last_uid_seen` juste en deçà pour que ce message — et
+      // tous ceux après lui — soient re-fetchés au prochain poll plutôt que
+      // perdus. null = aucun différé.
       let minRetryUid: number | null = null;
 
       // Garde-fou : si la mailbox est neuve (last_uid_seen null) et
@@ -403,6 +425,20 @@ async function pollMailboxImpl(
 
         outcome.matched += 1;
 
+        // Fenêtre de backoff d'un échec re-tentable précédent : on ne
+        // re-tente pas encore (zéro coût LLM) et on gèle le curseur ICI —
+        // mêmes rails que le différé HITL : ce message et les suivants seront
+        // re-fetchés à un prochain poll, après l'échéance.
+        const retryState = retryStates.get(String(uid));
+        if (
+          retryState &&
+          isInBackoffWindow(retryState.nextRetryAt, new Date()) &&
+          typeof uid === 'number'
+        ) {
+          minRetryUid = minRetryUid === null ? uid : Math.min(minRetryUid, uid);
+          break;
+        }
+
         for (const att of cvAttachments) {
           const fileName = att.filename ?? `cv-${uid}.pdf`;
           await processEmailAttachment({
@@ -420,31 +456,124 @@ async function pollMailboxImpl(
           })
             .then(() => {
               outcome.processed += 1;
+              // Analyse aboutie après échec(s) précédent(s) : purge le
+              // compteur durable de réessais (best-effort).
+              if (retryStates.has(String(uid))) {
+                void clearCvRetryState(mailbox.id, String(uid));
+              }
             })
             .catch(async (err) => {
-              // Différé (HITL non confirmable) : ce N'EST PAS un échec. On
-              // marque l'UID pour réessai et on ne le compte pas en erreur —
-              // l'événement `imap_outreach_deferred` est déjà journalisé en
-              // amont. Le candidat reste à traiter au prochain poll.
-              if (err instanceof RetryableOutreachError) {
+              // Différé (HITL non confirmable, échec d'analyse déjà qualifié…) :
+              // ce N'EST PAS un échec définitif. On marque l'UID pour réessai
+              // et on ne le compte pas en erreur. Le candidat reste à traiter
+              // au prochain poll.
+              if (err instanceof RetryablePollError) {
                 if (typeof uid === 'number') {
                   minRetryUid =
                     minRetryUid === null ? uid : Math.min(minRetryUid, uid);
                 }
                 return;
               }
-              outcome.errors += 1;
+              const errorMessage =
+                err instanceof Error ? err.message : String(err);
+              if (classifyProcessingError(err) === 'permanent') {
+                // Défaut prouvé du DOCUMENT (PDF corrompu, texte vide…) :
+                // re-tenter le même fichier échouera pareil — trace et le
+                // curseur avance.
+                outcome.errors += 1;
+                await appendJournalEntry({
+                  action: 'imap_cv_failed',
+                  actor: 'imap_poller',
+                  campaignId: matchedCampaignId,
+                  payload: {
+                    mailboxId: mailbox.id,
+                    uid: String(uid),
+                    fileName,
+                    error: errorMessage,
+                    errorClass: 'permanent',
+                  },
+                }).catch((jErr) =>
+                  console.error('[imap-poller] journal imap_cv_failed KO', jErr),
+                );
+                return;
+              }
+              // Échec RE-TENTABLE (panne LLM/rate limit/timeout, hoquet DB,
+              // verdicts inexploitables) : AUCUNE décision, AUCUN mail —
+              // compteur durable + gel du curseur (mêmes rails que le différé
+              // HITL). Audit C2/C3 : un incident technique ne consomme plus
+              // un CV et ne refuse plus un candidat.
+              const attemptsBefore = retryStates.get(String(uid))?.attempts ?? 0;
+              const attempts = attemptsBefore + 1;
+              const nextRetryAt = computeNextRetryAt(attempts, new Date());
+              const persisted = await upsertCvRetryState({
+                mailboxId: mailbox.id,
+                uid: String(uid),
+                attempts,
+                nextRetryAt,
+                lastError: errorMessage,
+              });
+              if (persisted && attempts >= MAX_CV_ANALYSIS_ATTEMPTS) {
+                // Plafond atteint : ABANDON SIGNALÉ, jamais de refus auto.
+                // Le binaire est sauvegardé pour un traitement manuel, la
+                // boîte est débloquée (pas de minRetryUid → le curseur peut
+                // avancer au-delà de ce message « poison »).
+                outcome.errors += 1;
+                const abandonArtifactId = await persistAbandonedCv({
+                  mailbox,
+                  campaign,
+                  fileName,
+                  mime: att.contentType || guessMimeFromName(fileName),
+                  buffer: att.content,
+                  uid: String(uid),
+                });
+                await appendJournalEntry({
+                  action: 'imap_cv_analysis_abandoned',
+                  actor: 'imap_poller',
+                  campaignId: matchedCampaignId,
+                  payload: {
+                    mailboxId: mailbox.id,
+                    uid: String(uid),
+                    fileName,
+                    from: parsed.from?.text ?? null,
+                    attempts,
+                    error: errorMessage,
+                    artifactId: abandonArtifactId,
+                    reason:
+                      'analyse impossible après plusieurs tentatives — traitement manuel requis, aucun mail envoyé au candidat',
+                  },
+                }).catch((jErr) =>
+                  console.error(
+                    '[imap-poller] journal imap_cv_analysis_abandoned KO',
+                    jErr,
+                  ),
+                );
+                void clearCvRetryState(mailbox.id, String(uid));
+                return;
+              }
+              // Réessai programmé : trace explicite + gel du curseur.
               await appendJournalEntry({
-                action: 'imap_cv_failed',
+                action: 'imap_cv_retry_scheduled',
                 actor: 'imap_poller',
                 campaignId: matchedCampaignId,
                 payload: {
                   mailboxId: mailbox.id,
                   uid: String(uid),
                   fileName,
-                  error: err instanceof Error ? err.message : String(err),
+                  attempt: attempts,
+                  nextRetryAt,
+                  persisted,
+                  error: errorMessage,
                 },
-              }).catch(() => {});
+              }).catch((jErr) =>
+                console.error(
+                  '[imap-poller] journal imap_cv_retry_scheduled KO',
+                  jErr,
+                ),
+              );
+              if (typeof uid === 'number') {
+                minRetryUid =
+                  minRetryUid === null ? uid : Math.min(minRetryUid, uid);
+              }
             });
         }
 
@@ -733,8 +862,61 @@ async function processEmailAttachment(args: {
     // comme vu (réessai au prochain poll). Tout le reste est avalé : l'outreach
     // orchestre déjà ses propres journals d'erreur, on ne tue pas le poller
     // pour une erreur métier/réseau ponctuelle.
-    if (err instanceof RetryableOutreachError) throw err;
+    if (err instanceof RetryablePollError) throw err;
     console.error('[imap-poller] outreach failed', err);
+  }
+}
+
+/**
+ * Sauvegarde le binaire d'un CV dont l'analyse est ABANDONNÉE (plafond de
+ * réessais atteint) : le fichier doit rester récupérable pour un traitement
+ * manuel — un abandon signalé n'est jamais un CV évaporé (audit C2/C3). Id
+ * dédié (`cvabandon`) pour ne pas entrer en collision avec l'artefact `cv`
+ * nominal si une passe précédente était allée plus loin. Best-effort :
+ * `null` si le storage échoue (le journal d'abandon reste la trace).
+ */
+async function persistAbandonedCv(args: {
+  mailbox: MailboxRow;
+  campaign: ActiveCampaign;
+  fileName: string;
+  mime: string;
+  buffer: Buffer;
+  uid: string;
+}): Promise<string | null> {
+  const isTaskOwner = args.campaign.id.startsWith('TASK-');
+  try {
+    const up = await uploadArtifactBinary({
+      owner: isTaskOwner
+        ? { kind: 'task', id: args.campaign.id }
+        : { kind: 'campaign', id: args.campaign.id },
+      name: args.fileName,
+      content: args.buffer,
+      mimeType: args.mime,
+    });
+    const id = `art_imap_cvabandon_${args.mailbox.id}_${args.uid}`;
+    await insertArtifactMeta({
+      id,
+      campaignId: isTaskOwner ? null : args.campaign.id,
+      taskId: isTaskOwner ? args.campaign.id : null,
+      kind: 'cv',
+      name: args.fileName,
+      mime: args.mime,
+      storageBucket: up.bucket,
+      storagePath: up.path,
+      publicUrl: up.publicUrl,
+      metadata: {
+        source: 'imap',
+        mailboxId: args.mailbox.id,
+        uid: args.uid,
+        abandonedAnalysis: true,
+      },
+    });
+    return id;
+  } catch (err) {
+    if (!(err instanceof SupabaseNotConfiguredError)) {
+      console.error('[imap-poller] sauvegarde CV abandonné échouée', err);
+    }
+    return null;
   }
 }
 

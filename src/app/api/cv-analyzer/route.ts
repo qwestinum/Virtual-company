@@ -6,7 +6,7 @@ import { matchVivierApplication } from '@/lib/vivier/match-application';
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { ScoringError } from '@/lib/scoring';
-import { AIProviderError } from '@/lib/ai/errors';
+import { AIProviderError, AnalysisUnavailableError } from '@/lib/ai/errors';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { uploadArtifactBinary } from '@/lib/storage/blob';
@@ -269,6 +269,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json(
         { error: err.code, message: err.message },
         { status: 422 },
+      );
+    }
+    if (err instanceof AnalysisUnavailableError) {
+      // Verdicts LLM inexploitables : AUCUNE décision n'a été prise ni
+      // persistée (audit C2 — jamais d'analyse dégradée silencieuse). Le
+      // message est affiché tel quel dans la bulle Manager (readError côté
+      // client) : métier, pas technique.
+      return NextResponse.json(
+        {
+          error: err.code,
+          retryable: true,
+          message:
+            "l'analyse n'a pas pu aboutir — incident technique momentané, aucune décision n'a été prise. Réessaie dans quelques minutes",
+        },
+        { status: 503 },
       );
     }
     if (err instanceof AIProviderError) {

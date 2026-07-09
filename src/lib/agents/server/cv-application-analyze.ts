@@ -7,9 +7,14 @@
  *   3. `scoreCandidat` (code pur) calcule le `ScoreResult`.
  *
  * Tout passe par `chatCompleteJson` (déterministe seed/temperature, validation
- * Zod, retry × 3). Une `AIValidationError` (échec après retry) dégrade
- * proprement : décisions → toutes `non_verifiable` + `llmFailure` ; candidat →
- * fiche minimale (l'email reste résolu déterministe depuis le texte du CV).
+ * Zod, retry × 3). Gestion d'une `AIValidationError` (échec après retry) PAR
+ * PHASE : candidat → fiche minimale (l'email reste résolu déterministe depuis
+ * le texte du CV) ; ledger → relevé vide ; narration → fallback déterministe
+ * (toutes erreurs confondues, transport compris — cosmétique, jamais fatal) ;
+ * VERDICTS → `AnalysisUnavailableError` : SANS verdicts il n'y a pas
+ * d'analyse — on ne fabrique JAMAIS de score fantôme (l'ancien fallback
+ * `non_verifiable` produisait un refus auto envoyé à tort, audit C2). Les
+ * erreurs transport (`AIProviderError`) remontent telles quelles.
  *
  * Seul chemin d'analyse CV depuis 6d (l'ancien `cv-analyzer-execute.ts` est
  * supprimé). `ScoringSheet` est OBLIGATOIRE — le mode tâche isolée (analyse
@@ -32,7 +37,7 @@ import {
   buildNarrationSystemPrompt,
   buildNarrationUserPrompt,
 } from '@/lib/agents/cv-narration';
-import { AIValidationError } from '@/lib/ai/errors';
+import { AIValidationError, AnalysisUnavailableError } from '@/lib/ai/errors';
 import { chatCompleteJson } from '@/lib/ai/provider';
 import {
   findMatchedKeywords,
@@ -180,11 +185,15 @@ export type AnalyzeCVApplicationInput = {
 export type AnalyzeCVApplicationOutput = {
   application: CVApplication;
   metrics: { durationMs: number; tokensUsed: number; costEstimate: number };
-  /** Observabilité : quelle(s) phase(s) LLM a/ont échoué (fallback appliqué). */
+  /**
+   * Observabilité : quelle(s) phase(s) LLM DÉGRADABLE(S) a/ont échoué
+   * (fallback appliqué). La phase verdicts n'y figure plus : son échec ne
+   * dégrade pas, il ABANDONNE l'analyse (`AnalysisUnavailableError`) — jamais
+   * de score fantôme (audit C2).
+   */
   llmFailures: {
     candidate: boolean;
     ledger: boolean;
-    verdicts: boolean;
     narration: boolean;
   };
 };
@@ -277,7 +286,6 @@ export async function analyzeCVApplication(
       llmFailures: {
         candidate: candidateFailed,
         ledger: false,
-        verdicts: false,
         narration: false,
       },
     };
@@ -315,7 +323,6 @@ export async function analyzeCVApplication(
   }
 
   let ledgerFailed = false;
-  let verdictsFailed = false;
   let llmVerdicts: LlmCriterionVerdict[] = [];
 
   if (llmCriteria.length > 0) {
@@ -368,17 +375,16 @@ export async function analyzeCVApplication(
       accumulate(r.raw);
     } catch (err) {
       if (!(err instanceof AIValidationError)) throw err;
-      verdictsFailed = true;
-      // Fallback : aucune décision exploitable ⇒ critères LLM non vérifiables,
-      // marqués llmFailure pour traçabilité. scoreCandidat appliquera knockout/cap.
-      llmVerdicts = llmCriteria.map((c) => ({
-        criterionId: c.id,
-        llmDecision: 'non_verifiable',
-        llmJustification:
-          'Décision indisponible : échec de l’extraction LLM après plusieurs tentatives.',
-        llmCVQuote: '',
-        llmFailure: true,
-      }));
+      // SANS verdicts, il n'y a PAS d'analyse. L'ancien fallback fabriquait
+      // des `non_verifiable` ⇒ score ≈ 0 (voire knockout sur un rédhibitoire)
+      // ⇒ REFUS AUTO envoyé au candidat pour une panne technique (audit C2).
+      // Principe : sous incertitude LLM, ne jamais décider ni envoyer —
+      // l'appelant re-tente (poller : rails minRetryUid) ou remonte l'échec
+      // (chat : 503 explicite).
+      throw new AnalysisUnavailableError(
+        'Verdicts LLM inexploitables après plusieurs tentatives — analyse abandonnée, aucun score produit.',
+        err,
+      );
     }
   }
 
@@ -436,8 +442,15 @@ export async function analyzeCVApplication(
     narration = r.data;
     accumulate(r.raw);
   } catch (err) {
-    if (!(err instanceof AIValidationError)) throw err;
+    // TOUTES les erreurs (validation ET transport) : la narration est
+    // cosmétique — une panne ici ne doit JAMAIS faire échouer une analyse
+    // dont le score est déjà figé (un CV bien analysé ne se perd pas pour un
+    // texte raté — audit C2, exigence 3). Trace explicite, jamais muet.
     narrationFailed = true;
+    console.error(
+      '[cv-analyze] narration LLM échouée — fallback déterministe appliqué',
+      err,
+    );
     // Fallback déterministe dérivé du même ScoreResult (narration depuis le score).
     narration = buildFallbackNarration(scoringResult);
   }
@@ -454,7 +467,6 @@ export async function analyzeCVApplication(
     llmFailures: {
       candidate: candidateFailed,
       ledger: ledgerFailed,
-      verdicts: verdictsFailed,
       narration: narrationFailed,
     },
   };

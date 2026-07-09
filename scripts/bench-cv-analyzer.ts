@@ -35,7 +35,7 @@ type RunResult = {
   durationMs: number;
   tokensUsed: number;
   costEstimate: number;
-  llmFailures: { candidate: boolean; ledger: boolean; verdicts: boolean; narration: boolean };
+  llmFailures: { candidate: boolean; ledger: boolean; narration: boolean };
   decisions: Array<{
     criterionId: string;
     label: string;

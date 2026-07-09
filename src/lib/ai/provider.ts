@@ -29,6 +29,16 @@ if (typeof window !== 'undefined') {
 // étant figé au démarrage, un redémarrage du serveur dev est requis.
 const DEFAULT_CHAT_MODEL = process.env.OPENAI_CHAT_MODEL?.trim() || 'gpt-4o-mini';
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1';
+
+// Retries TRANSPORT du SDK (backoff exponentiel + respect de `Retry-After`) :
+// le défaut (2) était insuffisant sur un dépassement TPM soutenu — les 429
+// remontaient en AIProviderError('rate_limit') et consommaient les CV du poll
+// (audit C3). 4 retries absorbent les bursts courts ; la saturation LONGUE est
+// couverte par les rails de réessai du poller (imap_cv_retries, backoff en
+// minutes/heures). Budget temps : timeout 30 s par tentative sous maxDuration
+// 60 s du cron — un dépassement tue l'invocation SANS committer le curseur,
+// donc sans perte (re-poll).
+const DEFAULT_TRANSPORT_MAX_RETRIES = 4;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 // Modèle Anthropic par défaut pour le chemin JSON (analyse CV). Surchargeable
@@ -54,7 +64,11 @@ function getClient(): OpenAI {
       'OPENAI_API_KEY is not set in the environment.',
     );
   }
-  cachedClient = new OpenAI({ apiKey, timeout: DEFAULT_TIMEOUT_MS });
+  cachedClient = new OpenAI({
+    apiKey,
+    timeout: DEFAULT_TIMEOUT_MS,
+    maxRetries: DEFAULT_TRANSPORT_MAX_RETRIES,
+  });
   return cachedClient;
 }
 
@@ -67,7 +81,11 @@ function getAnthropicClient(): Anthropic {
       'ANTHROPIC_API_KEY is not set in the environment.',
     );
   }
-  cachedAnthropic = new Anthropic({ apiKey, timeout: DEFAULT_TIMEOUT_MS });
+  cachedAnthropic = new Anthropic({
+    apiKey,
+    timeout: DEFAULT_TIMEOUT_MS,
+    maxRetries: DEFAULT_TRANSPORT_MAX_RETRIES,
+  });
   return cachedAnthropic;
 }
 

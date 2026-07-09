@@ -1193,3 +1193,26 @@ create table if not exists public.imap_outreach_claims (
   created_at timestamptz not null default now(),
   primary key (mailbox_id, uid, mode)
 );
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Réessais d'analyse CV du poller IMAP — correctif audit C2/C3 (juil. 2026)
+-- ──────────────────────────────────────────────────────────────────────
+-- Un échec RE-TENTABLE d'analyse (panne LLM/rate limit/timeout, hoquet DB,
+-- verdicts inexploitables) ne consomme plus le CV : le curseur last_uid_seen
+-- est gelé et le message re-tenté avec backoff (1, 15, 60, 360 min). Cette
+-- table porte le compteur DURABLE par (mailbox, uid) — la mémoire de process
+-- ne survit pas au serverless. Au plafond (5 tentatives réelles, ~7 h de
+-- couverture) : abandon SIGNALÉ (journal `imap_cv_analysis_abandoned` +
+-- binaire du CV sauvegardé en artefact, JAMAIS de refus auto) et la ligne est
+-- purgée — la boîte n'est plus bloquée par un CV « poison ». Fail-safe si la
+-- table manque : réessai sans plafond (on ne perd jamais un CV faute de
+-- migration). Penser à recharger le cache de schéma PostgREST après création.
+create table if not exists public.imap_cv_retries (
+  mailbox_id    text        not null,
+  uid           text        not null,
+  attempts      integer     not null default 0,
+  next_retry_at timestamptz,
+  last_error    text,
+  updated_at    timestamptz not null default now(),
+  primary key (mailbox_id, uid)
+);

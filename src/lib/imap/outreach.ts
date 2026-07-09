@@ -37,6 +37,7 @@ import { upsertPendingValidation } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { getSynthesisEmail } from '@/lib/email/addresses';
 import { sendEmail } from '@/lib/email/client';
+import { RetryablePollError } from '@/lib/imap/poll-retry';
 import { uploadArtifact } from '@/lib/storage/blob';
 import { queueInterviewBrief } from '@/lib/interview/queue-brief';
 import {
@@ -51,8 +52,11 @@ import type { MailCandidate } from '@/types/mail-candidate';
  * injoignable) ni mettre en file. Remonte jusqu'à la boucle du poller pour
  * empêcher l'avancée de `last_uid_seen` au-delà de ce message : le candidat
  * sera re-fetché au prochain poll plutôt que perdu silencieusement.
+ *
+ * Hérite de `RetryablePollError` : le poller teste la CLASSE DE BASE — même
+ * rail de gel du curseur que les échecs d'analyse re-tentables (audit C2/C3).
  */
-export class RetryableOutreachError extends Error {
+export class RetryableOutreachError extends RetryablePollError {
   constructor(public readonly reason: string) {
     super(`retryable_outreach: ${reason}`);
     this.name = 'RetryableOutreachError';

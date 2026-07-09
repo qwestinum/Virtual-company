@@ -22,9 +22,9 @@ export class AIProviderError extends Error {
  * Échec de validation d'une sortie LLM censée être un JSON conforme à un schéma
  * Zod, après épuisement des tentatives (`chatCompleteJson`). Distinct de
  * `AIProviderError` (erreur transport/API) : c'est le LLM qui n'a pas produit
- * une sortie exploitable. L'extraction (C4) attrape cette erreur et marque le
- * critère `non_verifiable` + `llmFailure: true` plutôt que de laisser entrer une
- * sortie non validée dans le scoring.
+ * une sortie exploitable. Selon la phase, l'appelant dégrade proprement
+ * (extraction candidat, ledger, narration) ou ABANDONNE l'analyse
+ * (`AnalysisUnavailableError` sur la phase verdicts — jamais de score fantôme).
  */
 export class AIValidationError extends Error {
   readonly code = 'validation_failed' as const;
@@ -36,5 +36,26 @@ export class AIValidationError extends Error {
     this.name = 'AIValidationError';
     this.attempts = attempts;
     this.lastError = lastError;
+  }
+}
+
+/**
+ * Analyse de CV IMPOSSIBLE : la phase VERDICTS (la seule qui porte la décision)
+ * n'a pas produit de sortie exploitable après retries. Correctif audit C2 —
+ * l'ancien fallback fabriquait des verdicts `non_verifiable` ⇒ score ≈ 0 ⇒
+ * refus AUTOMATIQUE envoyé au candidat pour une panne technique. Principe :
+ * SOUS INCERTITUDE LLM, NE JAMAIS DÉCIDER NI ENVOYER. Cette erreur signifie
+ * « aucune analyse, aucun score, aucune décision » — l'appelant re-tente
+ * (poller IMAP : rails `minRetryUid`) ou remonte l'échec à l'utilisateur
+ * (chat : 503 explicite).
+ */
+export class AnalysisUnavailableError extends Error {
+  readonly code = 'analysis_unavailable' as const;
+  readonly cause?: unknown;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'AnalysisUnavailableError';
+    this.cause = cause;
   }
 }

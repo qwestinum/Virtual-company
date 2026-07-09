@@ -117,7 +117,6 @@ describe('analyzeCVApplication — dispatcher hybride', () => {
     expect(byId.get('a')!.verificationMethodUsed).toBe('keywords_exact');
     expect(byId.get('a')!.matchedKeywords).toEqual(['React']);
     expect(byId.get('b')!.matchedKeywords).toEqual([]); // cherché, rien trouvé
-    expect(out.llmFailures.verdicts).toBe(false);
   });
 });
 
