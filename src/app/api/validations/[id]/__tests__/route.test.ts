@@ -5,14 +5,19 @@ vi.mock('@/lib/auth/require-api-user', () => ({
 }));
 vi.mock('@/lib/db/repos/pending-validations', () => ({
   patchPendingValidation: vi.fn(),
+  patchPendingValidationDecision: vi.fn(),
 }));
 
 import { PATCH } from '@/app/api/validations/[id]/route';
 import { getApiUser } from '@/lib/auth/require-api-user';
-import { patchPendingValidation } from '@/lib/db/repos/pending-validations';
+import {
+  patchPendingValidation,
+  patchPendingValidationDecision,
+} from '@/lib/db/repos/pending-validations';
 
 const getApiUserMock = vi.mocked(getApiUser);
 const patchMock = vi.mocked(patchPendingValidation);
+const patchDecisionMock = vi.mocked(patchPendingValidationDecision);
 
 function patchRequest(body: unknown): Request {
   return new Request('http://localhost/api/validations/PV-1', {
@@ -27,9 +32,11 @@ const ctx = { params: Promise.resolve({ id: 'PV-1' }) };
 describe('PATCH /api/validations/[id] — capture du valideur', () => {
   beforeEach(() => {
     patchMock.mockReset();
+    patchDecisionMock.mockReset();
     getApiUserMock.mockReset();
     // Renvoi non-null pour un 200 ; le contenu n'importe pas pour ces tests.
     patchMock.mockResolvedValue({ id: 'PV-1' } as never);
+    patchDecisionMock.mockResolvedValue({ id: 'PV-1' } as never);
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -74,11 +81,28 @@ describe('PATCH /api/validations/[id] — capture du valideur', () => {
     });
   });
 
-  it('confirmed absent (ex. flip de décision) : ne capture aucun valideur', async () => {
+  it('confirmed absent (ex. flip de décision) : ne capture aucun valideur, passe par le patch VERROUILLÉ', async () => {
     await PATCH(patchRequest({ decision: 'reject' }), ctx);
 
     expect(getApiUserMock).not.toHaveBeenCalled();
-    expect(patchMock).toHaveBeenCalledWith('PV-1', { decision: 'reject' });
+    // Audit C6 : toute modification de DÉCISION passe par le patch
+    // conditionnel `where status='pending'` — jamais le patch inconditionnel.
+    expect(patchDecisionMock).toHaveBeenCalledWith('PV-1', {
+      decision: 'reject',
+    });
+    expect(patchMock).not.toHaveBeenCalled();
+  });
+
+  it('décision VERROUILLÉE (envoi engagé) : 409 decision_locked, rien ne change', async () => {
+    patchDecisionMock.mockResolvedValue('locked');
+
+    const res = await PATCH(patchRequest({ decision: 'reject' }), ctx);
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({
+      error: 'decision_locked',
+    });
+    expect(patchMock).not.toHaveBeenCalled();
   });
 
   it("confirmed=true sans session : decided_by='user' mais identité null", async () => {

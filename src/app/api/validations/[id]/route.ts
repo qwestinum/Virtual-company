@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { getApiUser } from '@/lib/auth/require-api-user';
 import {
   patchPendingValidation,
+  patchPendingValidationDecision,
   type PendingValidationPatch,
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -59,6 +60,28 @@ export async function PATCH(
   }
 
   try {
+    // Audit C6 : re-trancher la DÉCISION n'est permis que sur une validation
+    // encore `pending`. Dès la réservation d'envoi (`sending`) et a fortiori
+    // après `sent`, la décision est verrouillée POUR DE BON — un second onglet
+    // qui « refuserait finalement » après le départ de l'invitation est refusé
+    // (409) : « invitation + refus » impossible par construction.
+    if (parsed.decision !== undefined) {
+      const result = await patchPendingValidationDecision(id, patch);
+      if (result === null) {
+        return NextResponse.json({ error: 'not_found' }, { status: 404 });
+      }
+      if (result === 'locked') {
+        return NextResponse.json(
+          {
+            error: 'decision_locked',
+            message:
+              'L’envoi de cette validation est déjà engagé — la décision ne peut plus être modifiée.',
+          },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ validation: result });
+    }
     const updated = await patchPendingValidation(id, patch);
     if (!updated) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });

@@ -18,8 +18,8 @@
 | C2 | 🔴 | Panne LLM ⇒ refus auto envoyé au candidat (`llmFailures` sans consommateur) | 2 | **En cours** — correctif codé le 09/07/2026 (verdicts KO ⇒ `AnalysisUnavailableError`, jamais de score fantôme) ; reste : migration `imap_cv_retries` + déploiement prod |
 | C3 | 🔴 | Curseur IMAP avance sur échecs transitoires → CV consommés | 2 | **En cours** — correctif codé le 09/07/2026 (rails `minRetryUid` unifiés + backoff durable + abandon signalé) ; reste : migration + déploiement prod |
 | C4 | 🔴 | CV sans fiche validée : binaire jamais stocké, pas de rescoring | 2 | À faire |
-| C5 | 🔴 | Claim outreach orphelin (pas de TTL) → candidat muet définitif | 2 | À faire |
-| C6 | 🔴 | Double décision grise concurrente → deux mails contradictoires possibles | 3 | À faire |
+| C5 | 🔴 | Claim outreach orphelin (pas de TTL) → candidat muet définitif | 2 | **En cours** — correctif codé le 10/07/2026 (claims deux-phases `confirmed_at` + release garanti + reprise TTL 5 min ; `in_flight` → rails minRetryUid) ; reste : migration + déploiement prod |
+| C6 | 🔴 | Double décision grise concurrente → deux mails contradictoires possibles | 3 | **En cours** — correctif codé le 10/07/2026 (machine d'états `pending→sending→sent`, décision immuable dès réservation, claim humain dans mail-composer, journal `mailStatus` + `hitl_mail_not_sent`) ; reste : migration + déploiement prod |
 | C7 | 🔴 | Sync optimiste tasks + artifacts (pertes silencieuses UI) | 4 | À faire |
 | C8 | 🔴 | Vivier aveugle >1000 (listes non paginées + RPC cappées) | 1 | À faire |
 | C9 | 🔴 | Exclusion « déjà postulé » cap 200 → réinvitation de candidats | 1 | À faire |
@@ -31,7 +31,7 @@
 | I4 | 🟠 | uid brut cross-boîte : décision humaine sur la mauvaise analyse | 7 | À faire |
 | I5 | 🟠 | Claim ne couvre que le mail : journal/artefacts/LLM doublés | 6 | À faire |
 | I6 | 🟠 | `last_uid_seen` last-writer-wins + commit tout-ou-rien | 2 | À faire |
-| I7 | 🟠 | Claim Cal.com orphelin sur kill → brief jamais livré | 2 | À faire |
+| I7 | 🟠 | Claim Cal.com orphelin sur kill → brief jamais livré | 2 | **En cours** — correctif codé le 10/07/2026 (deux-phases `confirmed_at`, `in_flight` → 500 = retry Cal.com) ; reste : migration + déploiement prod |
 | I8 | 🟠 | `interview_briefs` : doublons `awaiting_booking` possibles | 3 | À faire |
 | I9 | 🟠 | Invitation vivier : mail envoyé avant la garde d'état | 3 | À faire |
 | I10 | 🟠 | Vivier `indexed` sans embedding : invisible, non réparable | 6 | À faire |

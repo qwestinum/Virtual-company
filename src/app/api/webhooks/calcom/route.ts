@@ -23,6 +23,7 @@ import {
 } from '@/lib/calcom/signature';
 import {
   claimBookingEvent,
+  confirmBookingEvent,
   releaseBookingEvent,
 } from '@/lib/db/repos/interview-briefs';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
@@ -71,18 +72,30 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    // Idempotence : on réserve le booking AVANT de livrer.
-    const claimed = await claimBookingEvent(
+    // Idempotence DEUX PHASES (audit I7) : on réserve AVANT de livrer, on
+    // confirme APRÈS. Verdicts précis :
+    //   - already_delivered : livraison PROUVÉE (confirmée) → vrai rejeu ;
+    //   - in_flight : claim jeune non confirmé (livraison peut-être en cours,
+    //     ou kill récent) → 500 : Cal.com re-essaiera, et le prochain passage
+    //     verra confirmé (replay) ou périmé (reprise). Le brief n'est plus
+    //     jamais perdu sur un kill entre claim et livraison.
+    const claimVerdict = await claimBookingEvent(
       booking.bookingUid,
       booking.triggerEvent,
     );
-    if (!claimed) {
+    if (claimVerdict === 'already_delivered') {
       await appendJournalEntry({
         action: 'calcom_webhook_replayed',
         actor: 'calcom_webhook',
-        payload: { bookingUid: booking.bookingUid },
+        payload: { bookingUid: booking.bookingUid, confirmed: true },
       }).catch(() => {});
       return NextResponse.json({ status: 'replay' });
+    }
+    if (claimVerdict === 'in_flight') {
+      return NextResponse.json(
+        { error: 'delivery_in_flight', retryable: true },
+        { status: 500 },
+      );
     }
 
     const result = await deliverBriefForBooking({
@@ -122,6 +135,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 500 },
       );
     }
+
+    // Phase 2 : livraison aboutie (ou issue terminale non-retryable, ex.
+    // unmatched) → CONFIRME le claim. C'est la preuve « déjà traité » que
+    // liront les retries Cal.com futurs.
+    await confirmBookingEvent(booking.bookingUid);
 
     return NextResponse.json({ status: result.status });
   } catch (err) {

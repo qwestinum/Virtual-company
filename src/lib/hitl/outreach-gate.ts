@@ -28,11 +28,16 @@ export type SendResult =
   | { kind: 'sent' }
   | { kind: 'skipped'; reason: 'no_email' | 'no_config' }
   | { kind: 'send_failed'; reason: string }
-  // Idempotence cross-instance : une passe CONCURRENTE (invocation cron Vercel
-  // isolée) a déjà réservé/envoyé ce mail. CE process n'envoie rien — et
-  // l'appelant ne doit PAS non plus enchaîner les effets post-envoi (ex. brief
-  // d'entretien), la passe gagnante s'en charge. Cf. `imap_outreach_claims`.
-  | { kind: 'duplicate' };
+  // Idempotence cross-instance : le claim est CONFIRMÉ — une passe concurrente
+  // a envoyé ce mail (PROUVÉ, claims deux-phases). CE process n'envoie rien —
+  // et l'appelant ne doit PAS non plus enchaîner les effets post-envoi (ex.
+  // brief d'entretien), la passe gagnante s'en charge. Cf. `imap_outreach_claims`.
+  | { kind: 'duplicate' }
+  // Claim posé par une autre passe mais NON confirmé et non périmé : l'envoi
+  // est peut-être EN COURS. Ni final ni échec — l'appelant doit DIFFÉRER
+  // (IMAP : geler le curseur et re-présenter le message ; le prochain passage
+  // verra soit un claim confirmé → duplicate, soit périmé → reprise). Audit C5.
+  | { kind: 'in_flight' };
 
 /** Issue de la décision de gating. */
 export type GateOutcome =

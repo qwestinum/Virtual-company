@@ -1249,3 +1249,47 @@ create table if not exists public.imap_unmatched_cvs (
 
 create index if not exists imap_unmatched_cvs_status_idx
   on public.imap_unmatched_cvs (status, received_at desc);
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Idempotence des envois HITL + claims deux-phases — audit C5/C6/I7 (juil. 2026)
+-- ──────────────────────────────────────────────────────────────────────
+-- C6 : machine d'états pending → sending → sent sur pending_validations.
+-- La réservation `sending` (posée AVANT tout envoi, conditionnelle sur
+-- status='pending' — un seul gagnant) rend impossible le double envoi et le
+-- « invitation + refus » par onglets concurrents. `sending_at` = ancre du TTL :
+-- un 'sending' plus vieux que 5 min (crash en plein envoi) redevient
+-- re-réservable — jamais un piège définitif. La décision est IMMUABLE dès la
+-- réservation (PATCH decision gardé par status='pending').
+alter table public.pending_validations
+  add column if not exists sending_at timestamptz;
+
+do $$
+declare c text;
+begin
+  if exists (select 1 from pg_constraint where conname = 'pending_validations_status_chk') then
+    return; -- déjà migré
+  end if;
+  select conname into c from pg_constraint
+   where conrelid = 'public.pending_validations'::regclass
+     and contype = 'c'
+     and pg_get_constraintdef(oid) like '%status%';
+  if c is not null then
+    execute format('alter table public.pending_validations drop constraint %I', c);
+  end if;
+  alter table public.pending_validations
+    add constraint pending_validations_status_chk
+    check (status in ('pending', 'sending', 'sent'));
+end $$;
+
+-- C5/I7 : claims DEUX PHASES. `confirmed_at` distingue « réservé ET envoyé »
+-- (prouvé — ne jamais renvoyer) de « réservé mais jamais parti » (orphelin
+-- après crash — repris après le TTL de 5 min, le candidat/brief n'est jamais
+-- muet). Fenêtre résiduelle assumée : crash entre l'envoi réussi et la pose de
+-- confirmed_at ⇒ rare doublon possible à la reprise — trade-off projet
+-- « mieux un rare doublon qu'un candidat muet ». Les claims historiques (non
+-- confirmés) ne sont repris QUE sur un nouveau conflit — sans effet sinon ;
+-- pour calcom_webhook_events, Cal.com ne rejoue pas les bookings anciens.
+alter table public.imap_outreach_claims
+  add column if not exists confirmed_at timestamptz;
+alter table public.calcom_webhook_events
+  add column if not exists confirmed_at timestamptz;

@@ -11,6 +11,7 @@
  * DO NOTHING` — retourne `true` au premier passage, `false` sur un rejeu.
  */
 
+import { resolveClaimConflict } from '@/lib/db/claims-policy';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { InterviewBriefRow } from '@/lib/db/types';
 import { normalizeEmail } from '@/lib/vivier/candidates';
@@ -286,10 +287,25 @@ export async function createScheduledBrief(input: {
  * `false` sur un rejeu (clé déjà présente). Le webhook ne délivre que si
  * `true` — garantit qu'un même booking ne déclenche qu'un seul envoi.
  */
+export type BookingClaimVerdict = 'won' | 'in_flight' | 'already_delivered';
+
+/**
+ * Claim DEUX PHASES (audit I7, même durcissement que `imap_outreach_claims`) :
+ * un claim posé ne prouve pas une livraison — un kill entre claim et envoi du
+ * brief laissait un claim orphelin, et le retry Cal.com était absorbé en
+ * `replay` ⇒ brief jamais livré. Désormais : `confirmBookingEvent` pose
+ * `confirmed_at` après livraison réussie, et un conflit rend un verdict :
+ *   - `already_delivered` : confirmé — vrai rejeu, ne rien refaire ;
+ *   - `in_flight` : claim jeune non confirmé — livraison peut-être en cours →
+ *     la route répond 500 et Cal.com re-essaiera (son mécanisme de retry) ;
+ *   - `won` : la main (insert gagné ou reprise d'un claim périmé non confirmé).
+ * Claims historiques (pré-migration, non confirmés) : reprenables en théorie,
+ * sans effet en pratique — Cal.com ne rejoue pas des bookings anciens.
+ */
 export async function claimBookingEvent(
   bookingUid: string,
   triggerEvent: string,
-): Promise<boolean> {
+): Promise<BookingClaimVerdict> {
   const supabase = requireServerSupabase();
   const { data, error } = await supabase
     .from(EVENTS_TABLE)
@@ -299,7 +315,59 @@ export async function claimBookingEvent(
     )
     .select('booking_uid');
   if (error) throw new Error(`claimBookingEvent: ${error.message}`);
-  return (data?.length ?? 0) > 0;
+  if ((data?.length ?? 0) > 0) return 'won';
+
+  const { data: existing, error: readError } = await supabase
+    .from(EVENTS_TABLE)
+    .select('processed_at, confirmed_at')
+    .eq('booking_uid', bookingUid)
+    .maybeSingle();
+  if (readError) throw new Error(`claimBookingEvent: ${readError.message}`);
+  if (!existing) return 'in_flight'; // release concurrent — Cal.com re-essaiera
+  const verdict = resolveClaimConflict(
+    {
+      confirmedAt: (existing as { confirmed_at: string | null }).confirmed_at,
+      // `processed_at` = date de pose du claim (pas de created_at dédié).
+      createdAt: (existing as { processed_at: string | null }).processed_at,
+    },
+    new Date(),
+  );
+  if (verdict === 'already_confirmed') return 'already_delivered';
+  if (verdict === 'in_flight') return 'in_flight';
+
+  // Claim périmé non confirmé : reprise conditionnelle (un seul gagnant).
+  const { data: takeover, error: takeoverError } = await supabase
+    .from(EVENTS_TABLE)
+    .update({ processed_at: new Date().toISOString() })
+    .eq('booking_uid', bookingUid)
+    .is('confirmed_at', null)
+    .eq(
+      'processed_at',
+      (existing as { processed_at: string }).processed_at,
+    )
+    .select('booking_uid');
+  if (takeoverError) {
+    throw new Error(`claimBookingEvent: ${takeoverError.message}`);
+  }
+  return (takeover?.length ?? 0) > 0 ? 'won' : 'in_flight';
+}
+
+/**
+ * CONFIRME la livraison du brief (phase 2). Best-effort : un échec laisse un
+ * claim non confirmé qui expirera — rare double brief possible au retry
+ * Cal.com, assumé (mieux qu'un brief jamais livré).
+ */
+export async function confirmBookingEvent(bookingUid: string): Promise<void> {
+  try {
+    const supabase = requireServerSupabase();
+    const { error } = await supabase
+      .from(EVENTS_TABLE)
+      .update({ confirmed_at: new Date().toISOString() })
+      .eq('booking_uid', bookingUid);
+    if (error) console.error('[calcom-claim] confirm failed', error.message);
+  } catch (err) {
+    console.error('[calcom-claim] confirm failed', err);
+  }
 }
 
 /**

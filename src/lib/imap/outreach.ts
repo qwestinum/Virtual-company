@@ -30,6 +30,7 @@ import {
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import {
   claimOutreach,
+  confirmOutreachClaim,
   releaseOutreachClaim,
 } from '@/lib/db/repos/imap-outreach-claims';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
@@ -143,6 +144,26 @@ export async function dispatchImapCandidateOutreach(
     }).catch(() => {});
     // Remonte : la boucle du poller ne doit pas marquer ce message comme vu.
     throw new RetryableOutreachError(outcome.reason);
+  }
+
+  if (outcome.kind === 'in_flight') {
+    // Claim non confirmé posé par une autre passe : l'envoi est PEUT-ÊTRE en
+    // cours — ni « déjà envoyé » (non prouvé) ni échec. On DIFFÈRE comme un
+    // deferred : curseur gelé, le prochain poll verra un claim confirmé
+    // (→ duplicate final) ou périmé (→ reprise et envoi). Audit C5 : c'est ce
+    // qui remplace l'ancien « duplicate » menteur sur claim orphelin.
+    await appendJournalEntry({
+      action: 'imap_outreach_deferred',
+      actor: 'imap_poller',
+      campaignId: isTaskOwner ? null : input.campaignId,
+      payload: {
+        reason: 'outreach_claim_in_flight',
+        mode,
+        candidate: candidate.candidateName,
+        uid: input.uid,
+      },
+    }).catch(() => {});
+    throw new RetryableOutreachError('outreach_claim_in_flight');
   }
 
   // ─── Briefing DRH MIS EN FILE (seulement pour les acceptés RÉELLEMENT
@@ -288,14 +309,18 @@ async function composeAndSendCandidateMail(args: {
     return { kind: 'send_failed', reason: 'compose_failed' };
   }
 
-  // ─── Idempotence cross-instance (Vercel : invocations cron concurrentes) ──
-  // On RÉSERVE l'envoi (mailbox, uid, mode) juste avant `sendEmail` — fenêtre
-  // de collision réduite au minimum. Réservation perdue ⇒ une autre passe a
-  // déjà (ou est en train d')envoyé ce mail : on ne renvoie PAS, on ne relance
-  // pas non plus le brief en aval (l'appelant saute sur `kind: 'duplicate'`).
+  // ─── Idempotence cross-instance, claims DEUX PHASES (audit C5) ───────────
+  // On RÉSERVE l'envoi (mailbox, uid, mode) juste avant `sendEmail`, on
+  // CONFIRME après envoi réussi. Le verdict d'un conflit est précis :
+  //   - already_sent : claim CONFIRMÉ — l'envoi a eu lieu, PROUVÉ. Final.
+  //   - in_flight    : claim jeune non confirmé — une autre passe envoie
+  //                    peut-être. On DIFFÈRE (l'appelant gèle le curseur) : le
+  //                    prochain poll verra soit confirmé, soit périmé (reprise).
+  //   - won          : ce process a la main (insert gagné ou reprise d'un
+  //                    claim orphelin de crash après TTL).
   const claimKey = { mailboxId: input.mailboxId, uid: input.uid, mode } as const;
-  const won = await claimOutreach(claimKey);
-  if (!won) {
+  const claimVerdict = await claimOutreach(claimKey);
+  if (claimVerdict === 'already_sent') {
     await appendJournalEntry({
       action: 'imap_outreach_duplicate_skipped',
       actor: 'imap_poller',
@@ -305,9 +330,16 @@ async function composeAndSendCandidateMail(args: {
         candidate: candidate.candidateName,
         uid: input.uid,
         taskId: taskIdForJournal ?? undefined,
+        // Le journal dit ce qu'il SAIT : la réservation est CONFIRMÉE (envoi
+        // prouvé par une autre passe), pas une supposition.
+        reason: 'reservation_confirmee_par_une_autre_passe',
+        confirmed: true,
       },
     }).catch(() => {});
     return { kind: 'duplicate' };
+  }
+  if (claimVerdict === 'in_flight') {
+    return { kind: 'in_flight' };
   }
 
   let sentTo: string | null = null;
@@ -319,32 +351,44 @@ async function composeAndSendCandidateMail(args: {
     | 'send_failed' = 'skipped_no_config';
   let sendError: string | undefined;
 
-  if (!candidate.email) {
-    status = 'skipped_no_email';
-  } else {
-    const synthesisAddress = await getSynthesisEmail();
-    const sendResult = await sendEmail({
-      to: candidate.email,
-      subject: composed.subject,
-      html: composed.html,
-      replyTo: synthesisAddress || undefined,
-    });
-    if (sendResult.ok) {
-      status = 'sent';
-      sentTo = candidate.email;
-      providerMessageId = sendResult.messageId;
-    } else if (sendResult.error === 'email_not_configured') {
-      status = 'skipped_no_config';
+  try {
+    if (!candidate.email) {
+      status = 'skipped_no_email';
     } else {
-      status = 'send_failed';
-      sendError = sendResult.error;
+      const synthesisAddress = await getSynthesisEmail();
+      const sendResult = await sendEmail({
+        to: candidate.email,
+        subject: composed.subject,
+        html: composed.html,
+        replyTo: synthesisAddress || undefined,
+      });
+      if (sendResult.ok) {
+        status = 'sent';
+        sentTo = candidate.email;
+        providerMessageId = sendResult.messageId;
+      } else if (sendResult.error === 'email_not_configured') {
+        status = 'skipped_no_config';
+      } else {
+        status = 'send_failed';
+        sendError = sendResult.error;
+      }
     }
+  } catch (err) {
+    // Release GARANTI sur exception entre claim et envoi (ex. lecture des
+    // settings qui lève) — sinon claim orphelin = candidat muet (audit C5).
+    // Le kill de process, lui, est couvert par le TTL + reprise.
+    await releaseOutreachClaim(claimKey);
+    throw err;
   }
 
-  // Envoi NON abouti (échec transitoire, email/config manquant) → on relâche la
-  // réservation pour qu'un re-poll puisse renvoyer. Un claim orphelin bloquerait
-  // à jamais l'envoi (candidat muet) — anti-perte silencieuse.
-  if (status !== 'sent') {
+  if (status === 'sent') {
+    // Phase 2 du claim : la PREUVE « déjà envoyé » pour les passes futures.
+    // Fenêtre résiduelle assumée : crash ICI (entre envoi et confirmation) ⇒
+    // reprise après TTL = rare doublon — mieux qu'un candidat muet.
+    await confirmOutreachClaim(claimKey);
+  } else {
+    // Envoi NON abouti (échec transitoire, email/config manquant) → on relâche
+    // la réservation pour qu'un réessai puisse renvoyer.
     await releaseOutreachClaim(claimKey);
   }
 

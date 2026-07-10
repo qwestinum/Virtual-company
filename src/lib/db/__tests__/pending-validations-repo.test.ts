@@ -65,16 +65,18 @@ describe('pending-validations repo', () => {
   beforeEach(() => requireServerSupabaseMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
-  it('liste les validations pending mappées en domaine', async () => {
+  it('liste les validations EN ATTENTE (pending + sending) mappées en domaine', async () => {
     const order = vi.fn().mockResolvedValue({ data: [ROW], error: null });
-    const eq = vi.fn().mockReturnValue({ order });
-    const select = vi.fn().mockReturnValue({ eq });
+    const inFilter = vi.fn().mockReturnValue({ order });
+    const select = vi.fn().mockReturnValue({ in: inFilter });
     const from = vi.fn().mockReturnValue({ select });
     requireServerSupabaseMock.mockReturnValue({ from } as never);
 
     const result = await listPendingValidations();
     expect(from).toHaveBeenCalledWith('pending_validations');
-    expect(eq).toHaveBeenCalledWith('status', 'pending');
+    // `sending` = réservation d'envoi en cours (audit C6) : encore « en
+    // attente » pour TOUS les lecteurs, jamais un état terminal.
+    expect(inFilter).toHaveBeenCalledWith('status', ['pending', 'sending']);
     expect(result).toHaveLength(1);
     expect(result[0]!.campaignId).toBe('CAMP-1');
     expect(result[0]!.decision).toBe('accept');
@@ -85,8 +87,8 @@ describe('pending-validations repo', () => {
     const order = vi
       .fn()
       .mockResolvedValue({ data: null, error: { code: '42P01' } });
-    const eq = vi.fn().mockReturnValue({ order });
-    const select = vi.fn().mockReturnValue({ eq });
+    const inFilter = vi.fn().mockReturnValue({ order });
+    const select = vi.fn().mockReturnValue({ in: inFilter });
     requireServerSupabaseMock.mockReturnValue({
       from: vi.fn().mockReturnValue({ select }),
     } as never);

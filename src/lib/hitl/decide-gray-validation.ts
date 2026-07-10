@@ -33,6 +33,18 @@ export async function decideGrayValidation(
         body: JSON.stringify({ decision, confirmed: true }),
       });
       if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        // Audit C6 : décision verrouillée dès que l'envoi est engagé — ne pas
+        // inviter à « réessayer » un re-tranchage qui sera toujours refusé.
+        if (data.error === 'decision_locked') {
+          return {
+            ok: false,
+            message:
+              'L’envoi de cette validation est déjà engagé — la décision ne peut plus être modifiée. Recharge la liste.',
+          };
+        }
         return {
           ok: false,
           message: `Décision non enregistrée (HTTP ${res.status}). Réessaie.`,

@@ -62,7 +62,14 @@ export type HumanDecider = {
   email: string | null;
 };
 
-export const PendingValidationStatusSchema = z.enum(['pending', 'sent']);
+// `sending` (audit C6) : réservation d'envoi posée AVANT tout mail — état de
+// quelques secondes (≤ TTL 5 min après un crash, puis re-réservable). Pour
+// tous les lecteurs, un `sending` est « encore en attente », jamais terminal.
+export const PendingValidationStatusSchema = z.enum([
+  'pending',
+  'sending',
+  'sent',
+]);
 export type PendingValidationStatus = z.infer<
   typeof PendingValidationStatusSchema
 >;

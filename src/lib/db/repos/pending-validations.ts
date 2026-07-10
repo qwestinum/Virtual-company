@@ -7,6 +7,7 @@
  * volatile si Supabase absent (table manquante → liste vide, pas de 500).
  */
 
+import { CLAIM_TTL_MS } from '@/lib/db/claims-policy';
 import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
@@ -40,6 +41,8 @@ type PendingValidationRow = {
   decided_by: DecidedBy | null;
   decided_by_user_id: string | null;
   decided_by_user_email: string | null;
+  /** Ancre TTL de l'état `sending` (audit C6). Absent des writes domainToRow. */
+  sending_at?: string | null;
 };
 
 function rowToDomain(row: PendingValidationRow): PendingValidation {
@@ -104,14 +107,20 @@ function isTableMissing(err: { code?: string; message?: string }): boolean {
   );
 }
 
-/** Validations en attente (status = 'pending'), les plus anciennes d'abord. */
+/**
+ * Validations en attente, les plus anciennes d'abord. Inclut `sending`
+ * (réservation d'envoi en cours, état de quelques secondes — ou ≤ TTL 5 min
+ * après un crash) : pour TOUS les lecteurs (compteurs zone grise, stage,
+ * métriques, liste UI), un `sending` est « encore en attente », jamais un état
+ * terminal — la carte reste visible jusqu'à la finalisation `sent`.
+ */
 export async function listPendingValidations(): Promise<PendingValidation[]> {
   try {
     const supabase = requireServerSupabase();
     const { data, error } = await supabase
       .from(TABLE)
       .select('*')
-      .eq('status', 'pending')
+      .in('status', ['pending', 'sending'])
       .order('created_at', { ascending: true });
     if (error) {
       if (isTableMissing(error)) return [];
@@ -173,6 +182,100 @@ export async function upsertPendingValidation(
   return rowToDomain(data as PendingValidationRow);
 }
 
+export type ReserveSendOutcome =
+  | 'reserved'
+  | 'already_sent'
+  | 'in_flight'
+  | 'not_found';
+
+/**
+ * RÉSERVE l'envoi d'une validation (audit C6) — LE verrou atomique posé AVANT
+ * tout envoi. Machine d'états `pending → sending → sent` :
+ *   1. `pending → sending` conditionnel : un seul gagnant (double-clic /
+ *      second onglet → `in_flight`).
+ *   2. Reprise d'un `sending` PÉRIMÉ (crash en plein envoi, `sending_at` plus
+ *      vieux que le TTL partagé de 5 min) : `sending` n'est JAMAIS un piège
+ *      définitif — et le claim d'envoi (mail-composer) garantit qu'une reprise
+ *      ne renverra pas un mail déjà parti.
+ * Dès la réservation, la DÉCISION est immuable (le PATCH decision exige
+ * `status='pending'`) : « invitation + refus » impossible par construction.
+ */
+export async function reserveValidationSend(
+  id: string,
+): Promise<ReserveSendOutcome> {
+  const supabase = requireServerSupabase();
+  const nowIso = new Date().toISOString();
+
+  // 1. Cas nominal : la validation est `pending` — un seul gagnant.
+  const { data: won, error: reserveError } = await supabase
+    .from(TABLE)
+    .update({ status: 'sending', sending_at: nowIso })
+    .eq('id', id)
+    .eq('status', 'pending')
+    .select('id');
+  if (reserveError) {
+    throw new Error(`reserveValidationSend: ${reserveError.message}`);
+  }
+  if ((won?.length ?? 0) > 0) return 'reserved';
+
+  // 2. Reprise d'un `sending` périmé (TTL partagé claims-policy).
+  const cutoff = new Date(Date.now() - CLAIM_TTL_MS).toISOString();
+  const { data: retaken, error: retakeError } = await supabase
+    .from(TABLE)
+    .update({ status: 'sending', sending_at: nowIso })
+    .eq('id', id)
+    .eq('status', 'sending')
+    .lt('sending_at', cutoff)
+    .select('id');
+  if (retakeError) {
+    throw new Error(`reserveValidationSend: ${retakeError.message}`);
+  }
+  if ((retaken?.length ?? 0) > 0) return 'reserved';
+
+  // 3. Perdu : rapporte l'état réel pour un message UX précis.
+  const { data: current, error: readError } = await supabase
+    .from(TABLE)
+    .select('status')
+    .eq('id', id)
+    .maybeSingle();
+  if (readError) {
+    throw new Error(`reserveValidationSend: ${readError.message}`);
+  }
+  if (!current) return 'not_found';
+  return (current as { status: string }).status === 'sent'
+    ? 'already_sent'
+    : 'in_flight';
+}
+
+/**
+ * PATCH de la DÉCISION, conditionné à `status='pending'` (audit C6) : une fois
+ * l'envoi réservé/engagé, la décision est verrouillée POUR DE BON — un retry
+ * renvoie le même mail au besoin (claims), il ne re-tranche jamais.
+ * `'locked'` = la validation n'est plus `pending`.
+ */
+export async function patchPendingValidationDecision(
+  id: string,
+  patch: PendingValidationPatch,
+): Promise<PendingValidation | 'locked' | null> {
+  const supabase = requireServerSupabase();
+  const row = patchToRow(patch);
+  if (Object.keys(row).length === 0) return null;
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(row)
+    .eq('id', id)
+    .eq('status', 'pending')
+    .select('*')
+    .maybeSingle();
+  if (error) {
+    throw new Error(`patchPendingValidationDecision: ${error.message}`);
+  }
+  if (data) return rowToDomain(data as PendingValidationRow);
+  // Aucune ligne touchée : inexistante, ou verrouillée (sending/sent).
+  const existing = await getPendingValidation(id);
+  return existing ? 'locked' : null;
+}
+
 export type PendingValidationPatch = {
   decision?: HitlDecision;
   confirmed?: boolean;
@@ -186,11 +289,9 @@ export type PendingValidationPatch = {
   decidedByUser?: HumanDecider | null;
 };
 
-export async function patchPendingValidation(
-  id: string,
+function patchToRow(
   patch: PendingValidationPatch,
-): Promise<PendingValidation | null> {
-  const supabase = requireServerSupabase();
+): Partial<PendingValidationRow> {
   const row: Partial<PendingValidationRow> = {};
   if (patch.decision !== undefined) row.decision = patch.decision;
   if (patch.confirmed !== undefined) row.confirmed = patch.confirmed;
@@ -204,6 +305,15 @@ export async function patchPendingValidation(
     row.decided_by_user_id = patch.decidedByUser?.userId ?? null;
     row.decided_by_user_email = patch.decidedByUser?.email ?? null;
   }
+  return row;
+}
+
+export async function patchPendingValidation(
+  id: string,
+  patch: PendingValidationPatch,
+): Promise<PendingValidation | null> {
+  const supabase = requireServerSupabase();
+  const row = patchToRow(patch);
   if (Object.keys(row).length === 0) return null;
   const { data, error } = await supabase
     .from(TABLE)

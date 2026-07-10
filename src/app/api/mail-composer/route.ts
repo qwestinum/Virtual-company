@@ -14,6 +14,11 @@ import { z } from 'zod';
 
 import { buildInterviewMail } from '@/lib/agents/server/interview-mail';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
+import {
+  claimOutreach,
+  confirmOutreachClaim,
+  releaseOutreachClaim,
+} from '@/lib/db/repos/imap-outreach-claims';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
@@ -53,6 +58,14 @@ const RequestSchema = z.object({
    * dans le html édité. Incompatible avec `draft`.
    */
   mail: z.object({ subject: z.string().min(1), html: z.string().min(1) }).optional(),
+  /**
+   * HITL (audit C6) — id de la validation d'origine. Quand présent, l'envoi
+   * est protégé par le claim d'idempotence deux-phases
+   * (`imap_outreach_claims`, scope `('hitl_validation', validationId, mode)` —
+   * la MÊME table que le chemin auto, aucun mécanisme parallèle) : un retry
+   * après un envoi réussi ne renverra JAMAIS un second mail (`duplicate`).
+   */
+  validationId: z.string().optional(),
 });
 
 type RequestBody = z.infer<typeof RequestSchema>;
@@ -62,7 +75,11 @@ type ComposeStatus =
   | 'draft'
   | 'skipped_no_email'
   | 'skipped_no_config'
-  | 'send_failed';
+  | 'send_failed'
+  // Claim déjà confirmé (mail parti lors d'une tentative précédente) ou envoi
+  // concurrent en cours : ce process n'envoie rien. Pour le client HITL c'est
+  // une issue TERMINALE non-erreur (il enchaîne sur la finalisation).
+  | 'duplicate';
 
 function buildMarkdownTrace(
   body: RequestBody,
@@ -79,6 +96,9 @@ function buildMarkdownTrace(
     skipped_no_email: 'non envoyé — email candidat manquant',
     skipped_no_config: 'non envoyé — service email non configuré',
     send_failed: `non envoyé — erreur (${error ?? 'inconnue'})`,
+    // Jamais tracé en pratique (court-circuit avant l'artefact) — présent pour
+    // l'exhaustivité du type.
+    duplicate: 'déjà envoyé lors d’une tentative précédente — aucun doublon',
   }[status];
   return [
     `# Mail ${body.mode === 'reject' ? 'de refus' : "d'invitation"} — ${body.candidate.candidateName}`,
@@ -197,29 +217,63 @@ async function finalizeSend(
   let status: ComposeStatus = 'skipped_no_config';
   let sendError: string | undefined;
 
+  // Claim d'idempotence du chemin HITL (audit C6) — posé juste avant l'envoi,
+  // confirmé après, relâché si l'envoi n'aboutit pas (échec propre OU
+  // exception). Même mécanisme deux-phases que le chemin auto IMAP.
+  const claimKey =
+    parsed.validationId && !parsed.draft
+      ? ({
+          mailboxId: 'hitl_validation',
+          uid: parsed.validationId,
+          mode: parsed.mode,
+        } as const)
+      : null;
+
   if (parsed.draft) {
     // HITL : on s'arrête à la rédaction. L'envoi sera fait à la validation.
     status = 'draft';
   } else if (!parsed.candidate.email) {
     status = 'skipped_no_email';
   } else {
-    const sendResult = await sendEmail({
-      to: parsed.candidate.email,
-      subject: composed.subject,
-      html: composed.html,
-      replyTo: process.env.EMAIL_DRH || undefined,
-    });
-    if (sendResult.ok) {
-      status = 'sent';
-      sentTo = parsed.candidate.email;
-      // Message-id Resend — clé d'interrogation de la livraison réelle. Persisté
-      // (trace + journal + réponse) pour rendre /api/email/status exploitable.
-      providerMessageId = sendResult.messageId;
-    } else if (sendResult.error === 'email_not_configured') {
-      status = 'skipped_no_config';
-    } else {
-      status = 'send_failed';
-      sendError = sendResult.error;
+    if (claimKey) {
+      const verdict = await claimOutreach(claimKey);
+      if (verdict === 'already_sent' || verdict === 'in_flight') {
+        // Mail déjà parti (prouvé) ou envoi concurrent en cours : ne rien
+        // renvoyer. Le client HITL traite `duplicate` comme un succès d'envoi
+        // (il enchaîne sur la finalisation) — c'est ce qui rend le RETRY sûr.
+        return NextResponse.json({
+          status: 'duplicate' as ComposeStatus,
+          providerMessageId: null,
+        });
+      }
+    }
+    try {
+      const sendResult = await sendEmail({
+        to: parsed.candidate.email,
+        subject: composed.subject,
+        html: composed.html,
+        replyTo: process.env.EMAIL_DRH || undefined,
+      });
+      if (sendResult.ok) {
+        status = 'sent';
+        sentTo = parsed.candidate.email;
+        // Message-id Resend — clé d'interrogation de la livraison réelle. Persisté
+        // (trace + journal + réponse) pour rendre /api/email/status exploitable.
+        providerMessageId = sendResult.messageId;
+      } else if (sendResult.error === 'email_not_configured') {
+        status = 'skipped_no_config';
+      } else {
+        status = 'send_failed';
+        sendError = sendResult.error;
+      }
+    } catch (err) {
+      // Release GARANTI sur exception entre claim et envoi (audit C5).
+      if (claimKey) await releaseOutreachClaim(claimKey);
+      throw err;
+    }
+    if (claimKey) {
+      if (status === 'sent') await confirmOutreachClaim(claimKey);
+      else await releaseOutreachClaim(claimKey);
     }
   }
 

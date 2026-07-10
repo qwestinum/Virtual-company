@@ -24,18 +24,28 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await context.params;
-  // Message-id Resend de l'envoi candidat (optionnel) — propagé par le client
-  // pour rendre la livraison vérifiable via /api/email/status. Corps tolérant
-  // au vide : un POST sans corps (rétro-compat) reste valide.
+  // Message-id Resend + STATUT D'ENVOI réel (audit C6, journal honnête) —
+  // propagés par le client. Corps tolérant au vide : un POST sans corps
+  // (rétro-compat) reste valide, mailStatus retombe sur 'unknown'.
   let providerMessageId: string | null = null;
+  let mailStatus = 'unknown';
   try {
-    const body = (await request.json()) as { providerMessageId?: unknown };
+    const body = (await request.json()) as {
+      providerMessageId?: unknown;
+      mailStatus?: unknown;
+    };
     if (typeof body?.providerMessageId === 'string') {
       providerMessageId = body.providerMessageId;
     }
+    if (typeof body?.mailStatus === 'string' && body.mailStatus.trim() !== '') {
+      mailStatus = body.mailStatus;
+    }
   } catch {
-    // pas de corps / JSON invalide → on ignore, l'id reste null.
+    // pas de corps / JSON invalide → on ignore, valeurs par défaut.
   }
+  // Le mail est réputé parti si l'envoi a réussi MAINTENANT ('sent') ou lors
+  // d'une tentative précédente ('duplicate' = claim confirmé, prouvé).
+  const mailWentOut = mailStatus === 'sent' || mailStatus === 'duplicate';
   try {
     const validation = await getPendingValidation(id);
     if (!validation) {
@@ -45,7 +55,11 @@ export async function POST(
       return NextResponse.json({ validation }); // idempotent
     }
 
-    // Journalise la décision RÉELLEMENT envoyée → comptabilisée au dashboard (P7).
+    // Journalise la décision tranchée → comptabilisée au dashboard (P7).
+    // JOURNAL HONNÊTE (audit C6) : le nom d'action est conservé (les lecteurs
+    // de métriques comptent les DÉCISIONS dessus), mais `mailStatus` dit la
+    // vérité sur l'ENVOI — la décision humaine vaut même si Resend est en
+    // panne, le journal ne doit juste pas prétendre qu'un mail est parti.
     await appendJournalEntry({
       action: 'hitl_validation_sent',
       campaignId: validation.campaignId,
@@ -61,11 +75,40 @@ export async function POST(
         candidateName: validation.candidateName,
         candidateEmail: validation.candidateEmail,
         score: validation.score,
+        // Statut d'envoi RÉEL ('sent' | 'duplicate' = déjà parti | 'send_failed'
+        // | 'skipped_no_email' | 'skipped_no_config' | 'network_error' | 'unknown').
+        mailStatus,
+        mailSent: mailWentOut,
         // Livraison vérifiable via GET /api/email/status?id=… (null si l'envoi
         // a échoué/été sauté — la décision reste enregistrée).
         providerMessageId,
       },
     });
+
+    // Action DÉDIÉE quand le mail n'est PAS parti : rend requêtable en une
+    // passe la liste des « décidés mais jamais contactés » (à recontacter).
+    if (!mailWentOut) {
+      await appendJournalEntry({
+        action: 'hitl_mail_not_sent',
+        campaignId: validation.campaignId,
+        actor: 'user',
+        payload: {
+          validationId: id,
+          uid:
+            typeof validation.payload?.uid === 'string'
+              ? validation.payload.uid
+              : null,
+          decision: validation.decision,
+          candidateName: validation.candidateName,
+          candidateEmail: validation.candidateEmail,
+          mailStatus,
+          reason:
+            'décision humaine enregistrée mais mail candidat NON parti — à recontacter manuellement',
+        },
+      }).catch((jErr) =>
+        console.error('[validations/send] journal hitl_mail_not_sent KO', jErr),
+      );
+    }
 
     const updated = await patchPendingValidation(id, {
       status: 'sent',

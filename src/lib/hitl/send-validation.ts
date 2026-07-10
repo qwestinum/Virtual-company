@@ -1,15 +1,24 @@
 /**
- * HITL — orchestration de l'ENVOI d'une validation suspendue (P5).
+ * HITL — orchestration de l'ENVOI d'une validation suspendue (P5, durci C6).
  * Spec : docs/specs/hitl-validation-suspendue.md
  *
- * Réutilise les routes d'envoi existantes :
- *   1. /api/mail-composer (override) → envoie le mail ÉDITÉ au candidat.
+ * Séquence EXACTLY-ONCE (audit C6) :
+ *   0. /api/validations/[id]/reserve-send → verrou atomique `pending→sending`
+ *      côté serveur AVANT tout envoi (double-clic / second onglet → 409, rien
+ *      ne part deux fois ; un `sending` périmé — crash — est repris après TTL).
+ *   1. /api/mail-composer (override + validationId) → envoie le mail ÉDITÉ au
+ *      candidat, sous claim d'idempotence deux-phases : un retry après un
+ *      envoi réussi reçoit `duplicate` et ne renvoie RIEN.
  *   2. /api/scheduler (si accept)    → trame d'entretien MISE EN FILE
  *                                       (délivrée au DRH à la réservation Cal.com).
- *   3. /api/validations/[id]/send    → marque `sent` + journalise.
+ *   3. /api/validations/[id]/send    → marque `sent` + journalise avec le
+ *      statut d'envoi RÉEL (`mailStatus` — journal honnête ; si le mail n'est
+ *      pas parti : action dédiée `hitl_mail_not_sent`, candidat à recontacter).
  *
  * Seul échec bloquant : l'envoi candidat (1). Si le brief (2) échoue, on
- * continue (le candidat a reçu son mail, c'est l'essentiel).
+ * continue (le candidat a reçu son mail, c'est l'essentiel). Un échec de la
+ * finalisation (3) est RE-TENTABLE SANS RISQUE : la réservation + le claim
+ * garantissent qu'aucun second mail ne partira.
  */
 
 import type { HitlDecision, PendingValidation } from '@/types/hitl';
@@ -33,6 +42,41 @@ export async function sendValidation(
   }
   const mode = v.decision === 'accept' ? 'invite' : 'reject';
 
+  // 0. RÉSERVATION (audit C6) — le verrou atomique AVANT tout envoi. Perdu ⇒
+  //    on n'envoie rien : soit déjà traité, soit un envoi est en cours.
+  try {
+    const res = await fetch(
+      `/api/validations/${encodeURIComponent(v.id)}/reserve-send`,
+      { method: 'POST' },
+    );
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (data.error === 'already_sent') {
+        return {
+          ok: false,
+          message:
+            'Cette validation a déjà été traitée — aucun nouvel envoi. Recharge la liste.',
+        };
+      }
+      if (data.error === 'send_in_flight') {
+        return {
+          ok: false,
+          message:
+            'Un envoi est déjà en cours pour cette validation — patiente quelques instants puis recharge.',
+        };
+      }
+      return {
+        ok: false,
+        message: `Impossible de réserver l’envoi (HTTP ${res.status}) — rien n’a été envoyé.`,
+      };
+    }
+  } catch {
+    return {
+      ok: false,
+      message: 'Erreur réseau avant l’envoi — rien n’a été envoyé. Réessaie.',
+    };
+  }
+
   // 1. Tentative d'envoi du mail candidat (best-effort). « Envoyer » EST la
   //    validation humaine de la décision → on FINALISE toujours (étape 3), même
   //    si l'email ne part pas (Resend non configuré, pas d'email candidat…). On
@@ -54,6 +98,9 @@ export async function sendValidation(
         mode,
         candidate,
         mail: edited,
+        // Claim d'idempotence deux-phases côté serveur (audit C6) : un retry
+        // après un envoi réussi reçoit `duplicate` — jamais de second mail.
+        validationId: v.id,
       }),
     });
     const data = (await res.json()) as {
@@ -86,27 +133,29 @@ export async function sendValidation(
     }
   }
 
-  // 3. FINALISE : marque la validation envoyée + journalise (le candidat
-  //    réapparaît au dashboard avec la bonne issue, compteurs à jour).
+  // 3. FINALISE : marque la validation envoyée + journalise avec le statut
+  //    d'envoi RÉEL (journal honnête — audit C6). Un échec ici est RE-TENTABLE
+  //    SANS RISQUE : réservation + claim garantissent zéro second mail.
   try {
     const res = await fetch(
       `/api/validations/${encodeURIComponent(v.id)}/send`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerMessageId }),
+        body: JSON.stringify({ providerMessageId, mailStatus }),
       },
     );
     if (!res.ok) {
       return {
         ok: false,
-        message: `Décision non enregistrée (HTTP ${res.status}). Réessaie.`,
+        message: `Le mail a été pris en compte, mais l'enregistrement de la décision n'a pas abouti (HTTP ${res.status}). Réessaie — aucun second mail ne partira.`,
       };
     }
   } catch {
     return {
       ok: false,
-      message: 'Erreur réseau — décision non enregistrée. Réessaie.',
+      message:
+        'Le mail a été pris en compte, mais l’enregistrement de la décision n’a pas abouti (réseau). Réessaie — aucun second mail ne partira.',
     };
   }
 
@@ -118,12 +167,16 @@ export async function sendValidation(
       v.decision === 'accept'
         ? '— invitation envoyée (le brief partira au DRH à la réservation du créneau).'
         : '— refus envoyé au candidat.';
+  } else if (mailStatus === 'duplicate') {
+    tail =
+      '— le mail était déjà parti lors d’une tentative précédente, aucun doublon envoyé.';
   } else if (mailStatus === 'skipped_no_email') {
     tail = '— pas d’email candidat, mail à transmettre manuellement.';
   } else if (mailStatus === 'skipped_no_config') {
-    tail = '— service email non configuré, mail non envoyé.';
+    tail = '— service email non configuré, mail NON envoyé (candidat listé à recontacter).';
   } else {
-    tail = '— l’email n’a pas pu partir, mais la décision est enregistrée.';
+    tail =
+      '— le mail n’est PAS parti (candidat listé à recontacter), mais la décision est enregistrée.';
   }
   return { ok: true, message: `${verb} ${tail}` };
 }
