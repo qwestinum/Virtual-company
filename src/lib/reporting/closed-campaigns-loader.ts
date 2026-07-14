@@ -10,7 +10,7 @@
  */
 
 import { listClosedCampaigns } from '@/lib/db/repos/campaigns';
-import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import { listDonneursOrdre } from '@/lib/db/repos/donneurs-ordre';
 import { listSites } from '@/lib/db/repos/sites';
 import { analysisToDatum } from '@/lib/reporting/analysis-datum';
@@ -47,9 +47,16 @@ export function donneurDisplayLabel(
 }
 
 export async function loadClosedCampaignReports(): Promise<ClosedCampaignReport[]> {
-  const [campaigns, analyses, signals, sites, donneurs] = await Promise.all([
-    listClosedCampaigns(),
-    listCandidateAnalyses({ limit: 1000 }),
+  // Les campagnes clôturées D'ABORD : les analyses sont ensuite scopées à LEURS
+  // ids et paginées exhaustivement (audit C8/A9). L'ancien
+  // `listCandidateAnalyses({ limit: 1000 })` GLOBAL toutes campagnes confondues
+  // donnait des volumes partiels/zéro aux campagnes anciennes dans un PDF client.
+  const campaigns = await listClosedCampaigns();
+  const closedIds = campaigns.map((c) => c.id);
+  const [analyses, signals, sites, donneurs] = await Promise.all([
+    closedIds.length > 0
+      ? listAllCandidateAnalyses({ campaignIds: closedIds })
+      : Promise.resolve([]),
     loadJourneySignals(),
     listSites({ includeArchived: true }),
     listDonneursOrdre({ includeArchived: true }),

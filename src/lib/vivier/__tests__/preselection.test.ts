@@ -12,7 +12,7 @@ const vivierRepo = {
   listDistinctEmbeddingModels: vi.fn(),
   listSkillEmbeddingsByCandidateIds: vi.fn(),
 };
-const analyses = { listCandidateAnalyses: vi.fn() };
+const analyses = { listAllCandidateAnalyses: vi.fn() };
 const presel = {
   replacePreselection: vi.fn(),
   listContactedEmailsSince: vi.fn(),
@@ -72,7 +72,7 @@ beforeEach(() => {
     Object.values(m).forEach((f) => f.mockReset()),
   );
   campaigns.getCampaign.mockResolvedValue(campaign());
-  analyses.listCandidateAnalyses.mockResolvedValue([]);
+  analyses.listAllCandidateAnalyses.mockResolvedValue([]);
   presel.replacePreselection.mockResolvedValue(undefined);
   presel.listContactedEmailsSince.mockResolvedValue([]);
   presel.listRejectedEmailsForCampaign.mockResolvedValue([]);
@@ -322,7 +322,7 @@ describe('runVivierPreselection — cascade titre', () => {
     vivierRepo.listIndexedVivierTitles.mockResolvedValue([
       cand('qaLead', { title: 'QA Lead' }),
     ]);
-    analyses.listCandidateAnalyses.mockResolvedValue([
+    analyses.listAllCandidateAnalyses.mockResolvedValue([
       { candidateEmail: 'QALEAD@x.com' },
     ]);
 

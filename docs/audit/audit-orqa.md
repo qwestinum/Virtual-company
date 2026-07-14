@@ -21,9 +21,9 @@
 | C5 | 🔴 | Claim outreach orphelin (pas de TTL) → candidat muet définitif | 2 | **En cours** — correctif codé le 10/07/2026 (claims deux-phases `confirmed_at` + release garanti + reprise TTL 5 min ; `in_flight` → rails minRetryUid) ; reste : migration + déploiement prod |
 | C6 | 🔴 | Double décision grise concurrente → deux mails contradictoires possibles | 3 | **En cours** — correctif codé le 10/07/2026 (machine d'états `pending→sending→sent`, décision immuable dès réservation, claim humain dans mail-composer, journal `mailStatus` + `hitl_mail_not_sent`) ; reste : migration + déploiement prod |
 | C7 | 🔴 | Sync optimiste tasks + artifacts (pertes silencieuses UI) | 4 | À faire |
-| C8 | 🔴 | Vivier aveugle >1000 (listes non paginées + RPC cappées) | 1 | À faire |
-| C9 | 🔴 | Exclusion « déjà postulé » cap 200 → réinvitation de candidats | 1 | À faire |
-| C10 | 🔴 | Rapports clôturés : cap global 1000 + journal 500 → PDF client faux | 5 | À faire |
+| C8 | 🔴 | Vivier aveugle >1000 (listes non paginées + RPC cappées) | 1 | **En cours** — keyset + chunking RPC codés le 14/07/2026 ; reste test à volume dev + prod |
+| C9 | 🔴 | Exclusion « déjà postulé » cap 200 → réinvitation de candidats | 1 | **En cours** — `loadExcludedEmails` exhaustif codé le 14/07/2026 ; reste test à volume + prod |
+| C10 | 🔴 | Rapports clôturés : cap global 1000 + journal 500 → PDF client faux | 5 | **En cours** — A9/A10/A14 codés le 14/07/2026 ; reste re-basage KPIs Bureau (surface b) + test à volume + prod |
 | C11 | 🔴 | Trou `none` : mail avec CV skippé sans trace | 2 | **En cours** — correctif codé le 09/07/2026 (trace `imap_no_campaign_match` + stockage `imap_unmatched_cvs` + rejeu API) ; reste : migration + déploiement prod |
 | I1 | 🟠 | `send_failed`/agenda absent : jamais re-tenté (+ brief en file quand même) | 2 | À faire |
 | I2 | 🟠 | Couche d'audit poller en `.catch(() => {})` | 2 | À faire |

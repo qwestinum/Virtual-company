@@ -12,6 +12,7 @@
  * pgvector (`[v1,v2,…]`).
  */
 
+import { chunk, fetchAllKeyset } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import { sanitizePostgrestSearch } from '@/lib/db/sanitize-search';
 import type { TitleAnchor } from '@/lib/vivier/title-anchors';
@@ -466,16 +467,42 @@ export async function listSkillEmbeddingsByCandidateIds(
   const map = new Map<string, CandidateSkillVector[]>();
   if (candidateIds.length === 0) return map;
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase
-    .from(SKILL_EMBEDDINGS_TABLE)
-    .select('candidate_id, skill, embedding')
-    .in('candidate_id', candidateIds);
-  if (error) throw new Error(`listSkillEmbeddingsByCandidateIds: ${error.message}`);
-  for (const row of (data ?? []) as {
-    candidate_id: string;
-    skill: string;
-    embedding: unknown;
-  }[]) {
+  // Retour = plusieurs lignes/candidat (une par compétence) → le `.in()`
+  // subissait le cap 1000 → couverture compétences silencieusement sous-évaluée
+  // (audit C8/A8). On CHUNK les ids (borne la liste IN) ET on keyset-pagine le
+  // RETOUR par `id` (PK de la table d'embeddings) : exhaustif quel que soit le
+  // nombre de compétences par candidat.
+  const rows: { candidate_id: string; skill: string; embedding: unknown }[] = [];
+  for (const ids of chunk(candidateIds, 500)) {
+    const page = await fetchAllKeyset<{
+      id: string;
+      candidate_id: string;
+      skill: string;
+      embedding: unknown;
+    }>({
+      cursorOf: (r) => r.id,
+      fetchPage: async (afterId, limit) => {
+        let qq = supabase
+          .from(SKILL_EMBEDDINGS_TABLE)
+          .select('id, candidate_id, skill, embedding')
+          .in('candidate_id', ids)
+          .order('id', { ascending: true })
+          .limit(limit);
+        if (afterId !== null) qq = qq.gt('id', afterId);
+        const { data, error } = await qq;
+        if (error)
+          throw new Error(`listSkillEmbeddingsByCandidateIds: ${error.message}`);
+        return (data ?? []) as {
+          id: string;
+          candidate_id: string;
+          skill: string;
+          embedding: unknown;
+        }[];
+      },
+    });
+    rows.push(...page);
+  }
+  for (const row of rows) {
     const vec = parseVectorLiteral(row.embedding);
     if (vec.length === 0) continue;
     const list = map.get(row.candidate_id) ?? [];
@@ -534,19 +561,31 @@ export async function matchVivierAnchors(
   const map = new Map<string, { depth: number; similarity: number }[]>();
   if (candidateIds.length === 0) return map;
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase.rpc('match_vivier_anchors', {
-    query_embedding: toVectorLiteral(queryEmbedding),
-    candidate_ids: candidateIds,
-  });
-  if (error) throw new Error(`matchVivierAnchors: ${error.message}`);
-  for (const row of (data ?? []) as {
-    candidate_id: string;
-    depth: number;
-    similarity: number;
-  }[]) {
-    const list = map.get(row.candidate_id) ?? [];
-    list.push({ depth: row.depth, similarity: row.similarity });
-    map.set(row.candidate_id, list);
+  const q = toVectorLiteral(queryEmbedding);
+  // CHUNK 300 (audit C8/A3) : la RPC rend jusqu'à 3 lignes/candidat (une par
+  // ancre) → 300×3 = 900 < cap PostgREST 1000. GARANTIE DURE d'exhaustivité
+  // indépendante du volume total (sinon, au-delà de ~334 survivants, les
+  // ancres étaient tronquées et des candidats faussement classés « sans
+  // signal »). Perf : chaque appel est O(ids du chunk) ; chunks parallélisés.
+  const results = await Promise.all(
+    chunk(candidateIds, 300).map((ids) =>
+      supabase.rpc('match_vivier_anchors', {
+        query_embedding: q,
+        candidate_ids: ids,
+      }),
+    ),
+  );
+  for (const { data, error } of results) {
+    if (error) throw new Error(`matchVivierAnchors: ${error.message}`);
+    for (const row of (data ?? []) as {
+      candidate_id: string;
+      depth: number;
+      similarity: number;
+    }[]) {
+      const list = map.get(row.candidate_id) ?? [];
+      list.push({ depth: row.depth, similarity: row.similarity });
+      map.set(row.candidate_id, list);
+    }
   }
   return map;
 }
@@ -660,12 +699,10 @@ export type IndexedVivierTitle = {
  */
 export async function listIndexedVivierTitles(): Promise<IndexedVivierTitle[]> {
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('id, nom, email, updated_at, title, title_variants, title_anchors')
-    .eq('indexing_status', 'indexed');
-  if (error) throw new Error(`listIndexedVivierTitles: ${error.message}`);
-  return ((data ?? []) as {
+  // KEYSET exhaustif (audit C8) : c'est l'UNIVERS ENTIER de la présélection —
+  // un cap 1000 silencieux rendait le vivier aveugle au-delà. Curseur = `id`
+  // (PK unique+stable). Cf. src/lib/db/paginate.ts.
+  type Row = {
     id: string;
     nom: string;
     email: string;
@@ -673,7 +710,25 @@ export async function listIndexedVivierTitles(): Promise<IndexedVivierTitle[]> {
     title: string | null;
     title_variants: string[] | null;
     title_anchors: unknown;
-  }[]).map((r) => ({
+  };
+  const rows = await fetchAllKeyset<Row>({
+    cursorOf: (r) => r.id,
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select(
+          'id, nom, email, updated_at, title, title_variants, title_anchors',
+        )
+        .eq('indexing_status', 'indexed')
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('id', afterId);
+      const { data, error } = await q;
+      if (error) throw new Error(`listIndexedVivierTitles: ${error.message}`);
+      return (data ?? []) as Row[];
+    },
+  });
+  return rows.map((r) => ({
     id: r.id,
     nom: r.nom,
     email: r.email,
@@ -762,29 +817,38 @@ export async function listIndexedVivierEntities(): Promise<
   IndexedVivierCandidate[]
 > {
   const supabase = requireServerSupabase();
-  const { data: cands, error } = await supabase
-    .from(TABLE)
-    .select('id, nom, email, updated_at')
-    .eq('indexing_status', 'indexed');
-  if (error) throw new Error(`listIndexedVivierEntities: ${error.message}`);
-  const rows = (cands ?? []) as {
-    id: string;
-    nom: string;
-    email: string;
-    updated_at: string;
-  }[];
+  // KEYSET exhaustif (audit C8) : même univers que listIndexedVivierTitles.
+  type CandRow = { id: string; nom: string; email: string; updated_at: string };
+  const rows = await fetchAllKeyset<CandRow>({
+    cursorOf: (r) => r.id,
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('id, nom, email, updated_at')
+        .eq('indexing_status', 'indexed')
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('id', afterId);
+      const { data, error } = await q;
+      if (error) throw new Error(`listIndexedVivierEntities: ${error.message}`);
+      return (data ?? []) as CandRow[];
+    },
+  });
   if (rows.length === 0) return [];
 
-  const ids = rows.map((r) => r.id);
-  const { data: ents, error: entErr } = await supabase
-    .from(ENTITIES_TABLE)
-    .select('*')
-    .in('candidate_id', ids);
-  if (entErr)
-    throw new Error(`listIndexedVivierEntities(entités): ${entErr.message}`);
+  // Entités par chunk d'ids (le `.in(...)` subit AUSSI le cap 1000 sur son
+  // retour ; ici 1 ligne/candidat, mais on borne pour être robuste au volume).
   const byId = new Map<string, VivierEntities>();
-  for (const e of (ents ?? []) as VivierEntitiesRow[]) {
-    byId.set(e.candidate_id, vivierEntitiesRowToDomain(e));
+  for (const ids of chunk(rows.map((r) => r.id), 500)) {
+    const { data: ents, error: entErr } = await supabase
+      .from(ENTITIES_TABLE)
+      .select('*')
+      .in('candidate_id', ids);
+    if (entErr)
+      throw new Error(`listIndexedVivierEntities(entités): ${entErr.message}`);
+    for (const e of (ents ?? []) as VivierEntitiesRow[]) {
+      byId.set(e.candidate_id, vivierEntitiesRowToDomain(e));
+    }
   }
 
   return rows.map((r) => ({
@@ -824,16 +888,30 @@ export async function matchVivierCandidates(
   return map;
 }
 
-/** Liste tous les ids du vivier (script de réindexation). Optionnel : statut. */
+/**
+ * Liste TOUS les ids du vivier (script de réindexation). Optionnel : statut.
+ * KEYSET exhaustif (audit C8) : le reindex « complet » s'arrêtait à 1000
+ * dossiers en silence — obligatoire après tout changement de modèle. Ordre par
+ * `id` (curseur), pas `entered_at` (non unique ⇒ trous/doublons aux frontières).
+ */
 export async function listVivierCandidateIds(filters?: {
   status?: VivierIndexingStatus;
 }): Promise<string[]> {
   const supabase = requireServerSupabase();
-  let q = supabase.from(TABLE).select('id').order('entered_at', {
-    ascending: true,
+  const rows = await fetchAllKeyset<{ id: string }>({
+    cursorOf: (r) => r.id,
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('id')
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (filters?.status) q = q.eq('indexing_status', filters.status);
+      if (afterId !== null) q = q.gt('id', afterId);
+      const { data, error } = await q;
+      if (error) throw new Error(`listVivierCandidateIds: ${error.message}`);
+      return (data ?? []) as { id: string }[];
+    },
   });
-  if (filters?.status) q = q.eq('indexing_status', filters.status);
-  const { data, error } = await q;
-  if (error) throw new Error(`listVivierCandidateIds: ${error.message}`);
-  return (data ?? []).map((r) => (r as { id: string }).id);
+  return rows.map((r) => r.id);
 }

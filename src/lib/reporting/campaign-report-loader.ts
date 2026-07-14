@@ -7,7 +7,7 @@
  */
 
 import { getCampaign } from '@/lib/db/repos/campaigns';
-import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import { getDonneurOrdre } from '@/lib/db/repos/donneurs-ordre';
 import { listJournalEntries } from '@/lib/db/repos/journal';
 import { getSite } from '@/lib/db/repos/sites';
@@ -50,7 +50,9 @@ export async function assembleCampaignReport(
   if (!campaign || campaign.status !== 'closed') return null;
 
   const [analyses, signals, sentJournal, vivierCounts] = await Promise.all([
-    listCandidateAnalyses({ campaignId, limit: 1000 }),
+    // EXHAUSTIF (audit C8/A10) : un rapport de campagne à > 1000 candidatures
+    // était tronqué et présenté comme définitif au client.
+    listAllCandidateAnalyses({ campaignId }),
     loadJourneySignals({ campaignId }),
     listJournalEntries({
       actionPrefix: 'campaign_report_sent',

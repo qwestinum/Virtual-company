@@ -20,7 +20,7 @@ import { embedText } from '@/lib/ai/embeddings';
 import { runTitleVariantsSuggestion } from '@/lib/agents/server/title-variants-execute';
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
-import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
   listDistinctEmbeddingModels,
   listIndexedVivierTitles,
@@ -317,9 +317,14 @@ export type PreselectionResult = {
   meta: PreselectionMeta;
 };
 
-/** Emails déjà candidats sur la campagne (rapprochement exact, §6.3). */
+/**
+ * Emails déjà candidats sur la campagne (rapprochement exact, §6.3).
+ * EXHAUSTIF (audit C8/C9) : `listCandidateAnalyses` sans limit plafonnait à
+ * 200 → au-delà, des candidats ayant DÉJÀ postulé étaient re-proposés depuis
+ * le vivier. `listAllCandidateAnalyses` pagine tout le périmètre campagne.
+ */
 async function loadExcludedEmails(campaignId: string): Promise<Set<string>> {
-  const analyses = await listCandidateAnalyses({ campaignId });
+  const analyses = await listAllCandidateAnalyses({ campaignId });
   const set = new Set<string>();
   for (const a of analyses) {
     if (a.candidateEmail) set.add(normalizeEmail(a.candidateEmail));

@@ -18,7 +18,21 @@ import {
   journalToCandidatesList,
   type CandidateRow,
 } from '@/lib/dashboard/derive-metrics';
-import { listJournalEntries } from '@/lib/db/repos/journal';
+import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
+
+/**
+ * Actions dont `journalToCandidatesList` dérive la liste + les marqueurs de
+ * parcours. Set BORNÉ (événements liés aux candidats), donc `listJournalEntries
+ * ByActions` reste efficace tout en étant exhaustif (pas de cap 500).
+ */
+const CANDIDATE_MARKER_ACTIONS: string[] = [
+  'imap_cv_analyzed',
+  'imap_outreach_mail',
+  'imap_outreach_brief',
+  'hitl_validation_sent',
+  'candidate_interview_marked',
+  'candidate_validation_marked',
+];
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import {
   deriveJourneyFor,
@@ -39,7 +53,13 @@ export async function loadJourneySignals(opts?: {
 }): Promise<JourneySignals> {
   try {
     const [rows, pending] = await Promise.all([
-      listJournalEntries({ campaignId: opts?.campaignId, limit: 500 }),
+      // EXHAUSTIF (audit C8/A14) : l'ancien `listJournalEntries({limit:500})`
+      // tronquait les marqueurs entretien/**recruté** → time-to-hire et
+      // « recrutés par canal » faux à volume dans les PDF. On cible les seules
+      // actions dont `journalToCandidatesList` dérive, paginées SANS cap.
+      listJournalEntriesByActions(CANDIDATE_MARKER_ACTIONS, {
+        campaignId: opts?.campaignId,
+      }),
       listPendingValidations(),
     ]);
     // Pas de pendingUids passé ici → les candidats en attente RESTENT dans

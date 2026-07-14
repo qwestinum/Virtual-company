@@ -8,6 +8,7 @@
  * persistée jointe au dossier (nom/email/fraîcheur) pour l'affichage.
  */
 
+import { fetchAllKeyset } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { VivierPreselectionRow } from '@/lib/db/types';
 import {
@@ -88,14 +89,28 @@ export async function listPreselection(
   campaignId: string,
 ): Promise<ShortlistEntry[]> {
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('*, vivier_candidates(nom, email, updated_at)')
-    .eq('campaign_id', campaignId)
-    .order('rank', { ascending: true });
-  if (error) throw new Error(`listPreselection: ${error.message}`);
+  // KEYSET exhaustif (audit C8) : la short-list était bornée en pratique par
+  // le plafond config, sans garantie DURE contre le cap 1000. On pagine sur
+  // `candidate_id` (unique à campaign_id fixe) puis on RE-TRIE par `rank` en
+  // mémoire (le tri d'affichage, indépendant de l'ordre de pagination).
+  const data = await fetchAllKeyset<PreselectionJoinedRow>({
+    cursorOf: (r) => r.candidate_id,
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('*, vivier_candidates(nom, email, updated_at)')
+        .eq('campaign_id', campaignId)
+        .order('candidate_id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('candidate_id', afterId);
+      const { data, error } = await q;
+      if (error) throw new Error(`listPreselection: ${error.message}`);
+      return (data ?? []) as PreselectionJoinedRow[];
+    },
+  });
+  data.sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
 
-  return ((data ?? []) as PreselectionJoinedRow[]).map((row) => ({
+  return data.map((row) => ({
     candidateId: row.candidate_id,
     nom: row.vivier_candidates?.nom ?? '',
     email: row.vivier_candidates?.email ?? '',
@@ -357,8 +372,11 @@ export async function findContactedProposalByEmail(
   return { contactedAt: row.contacted_at, appliedAt: row.applied_at };
 }
 
-/** Email joint depuis le dossier (lecture cooldown). */
-type EmailJoinRow = { vivier_candidates: { email: string } | null };
+/** Email joint depuis le dossier (lecture cooldown) + curseur keyset. */
+type EmailJoinRow = {
+  candidate_id: string;
+  vivier_candidates: { email: string } | null;
+};
 
 function emailsOf(rows: EmailJoinRow[]): string[] {
   const out: string[] = [];
@@ -454,13 +472,28 @@ export async function listContactedEmailsSince(
   sinceIso: string,
 ): Promise<string[]> {
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('vivier_candidates(email)')
-    .eq('state', 'contacted')
-    .gte('contacted_at', sinceIso);
-  if (error) throw new Error(`listContactedEmailsSince: ${error.message}`);
-  return emailsOf((data ?? []) as unknown as EmailJoinRow[]);
+  // KEYSET exhaustif (audit C8) : le cooldown se trouait au-delà de 1000
+  // contactés. Curseur = `candidate_id`. Set d'emails ⇒ un candidat contacté
+  // sur 2 campagnes qui straddle une frontière de page est inoffensif (son
+  // email est déjà capturé à la 1ʳᵉ occurrence — le `.gt` strict ne perd que
+  // la ligne dupliquée, pas l'email).
+  const rows = await fetchAllKeyset<EmailJoinRow>({
+    cursorOf: (r) => r.candidate_id,
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('candidate_id, vivier_candidates(email)')
+        .eq('state', 'contacted')
+        .gte('contacted_at', sinceIso)
+        .order('candidate_id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('candidate_id', afterId);
+      const { data, error } = await q;
+      if (error) throw new Error(`listContactedEmailsSince: ${error.message}`);
+      return (data ?? []) as unknown as EmailJoinRow[];
+    },
+  });
+  return emailsOf(rows);
 }
 
 /**
@@ -471,11 +504,24 @@ export async function listRejectedEmailsForCampaign(
   campaignId: string,
 ): Promise<string[]> {
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('vivier_candidates(email)')
-    .eq('campaign_id', campaignId)
-    .eq('state', 'rejected');
-  if (error) throw new Error(`listRejectedEmailsForCampaign: ${error.message}`);
-  return emailsOf((data ?? []) as unknown as EmailJoinRow[]);
+  // KEYSET exhaustif (audit C8). campaign_id fixe ⇒ `candidate_id` est unique
+  // sur ce périmètre (PK composite), curseur idéal — zéro trou/doublon.
+  const rows = await fetchAllKeyset<EmailJoinRow>({
+    cursorOf: (r) => r.candidate_id,
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('candidate_id, vivier_candidates(email)')
+        .eq('campaign_id', campaignId)
+        .eq('state', 'rejected')
+        .order('candidate_id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('candidate_id', afterId);
+      const { data, error } = await q;
+      if (error)
+        throw new Error(`listRejectedEmailsForCampaign: ${error.message}`);
+      return (data ?? []) as unknown as EmailJoinRow[];
+    },
+  });
+  return emailsOf(rows);
 }
