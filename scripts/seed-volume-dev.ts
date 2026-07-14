@@ -101,7 +101,7 @@ async function clean(supabase: SupabaseClient): Promise<void> {
   // Les embeddings/entités partent en CASCADE avec le candidat.
   await supabase.from('vivier_candidates').delete().like('email', `%${SEED_DOMAIN}`);
   await supabase.from('candidate_analyses').delete().like('candidate_email', `%${SEED_DOMAIN}`);
-  await supabase.from('journal').delete().like('id', `${SEED_TAG}_%`);
+  await supabase.from('journal').delete().eq('actor', SEED_TAG);
   console.log('  ✓ Nettoyé (candidats, analyses, journal du seed).');
 }
 
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
         nom: `Volume${i}`,
         prenom: 'Test',
         cv_text: `Développeur logiciel. Expérience ${i % 15} ans. React, Node, SQL.`,
-        source: 'import',
+        source: 'manual_upload',
         tags: [SEED_TAG],
         title: 'Développeur',
         title_variants: ['Developpeur', 'Ingénieur logiciel'],
@@ -202,8 +202,12 @@ async function main(): Promise<void> {
       campaign_id: args.campaign,
       candidate_name: `App ${i}`,
       candidate_email: email,
+      file_name: `cv-${i}.pdf`,
+      source: 'email',
       total_score: 50 + (i % 40),
       status: i % 3 === 0 ? 'accepted' : 'rejected',
+      criteria_version: 'seed',
+      computed_at: new Date(2026, 0, 1 + (i % 180)).toISOString(),
       decision_zone: i % 3 === 0 ? 'auto_accept' : i % 3 === 1 ? 'gray' : 'auto_reject',
       application: {},
       received_at: new Date(2026, 0, 1 + (i % 180)).toISOString(),
@@ -217,10 +221,11 @@ async function main(): Promise<void> {
 
   // 3. Journal : 600 entrées > fenêtre 500.
   console.log(`  Insertion de ${JOURNAL_COUNT} entrées journal (> 500)…`);
+  // id = bigserial (auto). Nettoyage par `actor` distinctif (le journal n'a
+  // pas d'id text ; les compteurs filtrent par `action`, pas `actor`).
   const journalRows = Array.from({ length: JOURNAL_COUNT }, (_, i) => ({
-    id: `${SEED_TAG}_j_${i}`,
     campaign_id: args.campaign,
-    actor: 'imap_poller',
+    actor: SEED_TAG,
     action: 'imap_cv_analyzed',
     payload: { uid: `${SEED_TAG}_uid_${i}`, seed: true },
   }));
