@@ -24,7 +24,10 @@ import {
 } from '@/lib/dashboard/derive-metrics';
 import { zoneDistribution } from '@/lib/dashboard/zone-counts';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
-import { fetchMetricsRows } from '@/lib/db/repos/metrics';
+import {
+  fetchCandidateTotalRows,
+  fetchMetricsRows,
+} from '@/lib/db/repos/metrics';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { ensureSchedulerStarted } from '@/lib/imap/scheduler';
@@ -75,7 +78,14 @@ export async function GET(): Promise<NextResponse> {
       .filter((u): u is string => u !== null),
   );
 
-  const candidates = journalToCandidatesList(result.rows, pendingUids).map(
+  // TOTAUX (KPIs, liste, coût) — EXHAUSTIFS (audit C10 surface b) : dérivés
+  // des actions candidat/coût sans cap 500, sinon le récit « Process First »
+  // du Bureau mentait au-delà de 500 événements. Même dérivation pure, input
+  // complet. Repli sur la fenêtre récente si le fetch exhaustif échoue.
+  const totalRows =
+    (await fetchCandidateTotalRows().catch(() => null))?.rows ?? result.rows;
+
+  const candidates = journalToCandidatesList(totalRows, pendingUids).map(
     (c) => ({
       ...c,
       role: c.campaignId ? (campaignNameById.get(c.campaignId) ?? null) : null,
@@ -89,12 +99,14 @@ export async function GET(): Promise<NextResponse> {
   return NextResponse.json({
     offline: false,
     kpis: {
-      ...journalToGlobalKPIs(result.rows, pendingUids),
+      ...journalToGlobalKPIs(totalRows, pendingUids),
       awaitingValidation: pending.length,
     },
+    // Agents + activité = fenêtre RÉCENTE assumée (durée/tokens/coût récents,
+    // fil « qui défile ») — limite légitime, pas un total. Reste sur la
+    // fenêtre 500 (`result.rows`).
     agents: journalToAgentMetrics(result.rows, agentIds),
     candidates,
-    // Cap relevé (20 → 50) : le Bureau veut un fil « qui défile » dense.
     activity: journalToActivityFeed(result.rows, 50),
     zones,
   });

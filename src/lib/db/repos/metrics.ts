@@ -9,16 +9,58 @@
 
 import {
   listJournalEntries,
+  listJournalEntriesByActions,
   type JournalEntry,
 } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 
 /**
- * Hard-cap sur le nombre d'entrées lues pour calculer les métriques.
- * En démo, on plafonne à 500 (la limite supabase du repo journal) ;
- * au-delà il faudra une vraie vue agrégée Postgres. Cf. backlog.
+ * Fenêtre « activité RÉCENTE » : le feed et les métriques agents (durée/
+ * tokens/coût récents) sont par nature une fenêtre, pas un total — limite
+ * LÉGITIME (cf. la timeline candidat). Ne PAS l'utiliser pour un compteur
+ * présenté comme total (audit C10, surface b : ceux-ci passent par
+ * `fetchCandidateTotalRows`, exhaustif sur les actions candidat/coût).
  */
 const METRICS_WINDOW = 500;
+
+/**
+ * Actions candidat + coûtées dont dérivent les TOTAUX du Bureau (KPIs,
+ * liste, coût, métrique par campagne). Set BORNÉ (événements liés aux
+ * candidats + rendu d'annonce) ⇒ `listJournalEntriesByActions` reste efficace
+ * tout en étant EXHAUSTIF (pas de cap 500). C'est l'union de ce que
+ * consomment `journalToGlobalKPIs`, `journalToCandidatesList`,
+ * `journalToCampaignMetric` et `COST_PER_ACTION`.
+ */
+const CANDIDATE_TOTAL_ACTIONS = [
+  'imap_cv_received',
+  'imap_cv_analyzed',
+  'imap_outreach_mail',
+  'imap_outreach_brief',
+  'hitl_validation_sent',
+  'candidate_interview_marked',
+  'candidate_validation_marked',
+  'job_writer_rendered',
+];
+
+/**
+ * Rangées EXHAUSTIVES pour les totaux du Bureau (audit C10 surface b) :
+ * les compteurs présentés comme totaux ne doivent JAMAIS mentir au-delà de
+ * 500. Même dérivation pure qu'avant, mais input complet (via
+ * `listJournalEntriesByActions`, paginé sans cap). `null` si Supabase absent.
+ */
+export async function fetchCandidateTotalRows(
+  campaignId?: string,
+): Promise<MetricsRowsResult | null> {
+  try {
+    const rows = await listJournalEntriesByActions(CANDIDATE_TOTAL_ACTIONS, {
+      campaignId,
+    });
+    return { rows };
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return null;
+    throw err;
+  }
+}
 
 export type MetricsRowsResult = {
   rows: JournalEntry[];

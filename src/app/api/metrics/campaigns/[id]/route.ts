@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server';
 import {
   journalToCampaignMetric,
 } from '@/lib/dashboard/derive-metrics';
-import { fetchMetricsRowsForCampaign } from '@/lib/db/repos/metrics';
+import { fetchCandidateTotalRows } from '@/lib/db/repos/metrics';
 
 export const runtime = 'nodejs';
 
@@ -30,7 +30,9 @@ export async function GET(
     );
   }
 
-  const result = await fetchMetricsRowsForCampaign(id);
+  // EXHAUSTIF (audit C10 surface b) : les chiffres de la carte campagne
+  // (CV reçus, shortlistés, entretiens, GO…) sont des totaux → pas de cap 500.
+  const result = await fetchCandidateTotalRows(id);
   if (!result) {
     return NextResponse.json({
       offline: true,
