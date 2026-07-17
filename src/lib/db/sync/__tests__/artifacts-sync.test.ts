@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   hydrateArtifactsForCampaign,
   pushArtifact,
+  retryFailedArtifactPushes,
 } from '@/lib/db/sync/artifacts-sync';
 import { useArtifactsStore } from '@/stores/artifacts-store';
+import { useSyncStatusStore } from '@/stores/sync-status-store';
 
 const fetchMock = vi.fn();
 
@@ -12,6 +14,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
   useArtifactsStore.setState({ byId: {} });
+  useSyncStatusStore.getState().reset();
 });
 
 afterEach(() => {
@@ -99,7 +102,7 @@ describe('pushArtifact', () => {
     );
   });
 
-  it('swallows network errors silently', async () => {
+  it('marque l’échec réseau au registre de synchro (audit C7), sans crash', async () => {
     useArtifactsStore.setState({
       byId: {
         art_1: {
@@ -120,8 +123,66 @@ describe('pushArtifact', () => {
         content: '# FDP',
       }),
     ).resolves.toBeUndefined();
-    // publicUrl reste null — pas de crash.
+    // publicUrl reste null — pas de crash — mais l'échec est SIGNALÉ.
     expect(useArtifactsStore.getState().byId.art_1!.publicUrl).toBeNull();
+    expect(
+      useSyncStatusStore.getState().failedArtifacts.art_1,
+    ).toMatchObject({ content: '# FDP' });
+  });
+
+  it('503 (Supabase non configuré) = démo volatile, PAS un échec', async () => {
+    useArtifactsStore.setState({
+      byId: {
+        art_1: {
+          id: 'art_1',
+          name: 'fdp.md',
+          mime: 'text/markdown',
+          createdAt: '2026-05-12T00:00:00Z',
+          campaignId: 'CAMP-1',
+          kind: 'fdp',
+          publicUrl: null,
+        },
+      },
+    });
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
+    await pushArtifact({
+      artifact: useArtifactsStore.getState().byId.art_1!,
+      content: '# FDP',
+    });
+    expect(useSyncStatusStore.getState().failedArtifacts).toEqual({});
+  });
+
+  it('retryFailedArtifactPushes rejoue le CONTENU et lève le drapeau au succès', async () => {
+    useArtifactsStore.setState({
+      byId: {
+        art_1: {
+          id: 'art_1',
+          name: 'fdp.md',
+          mime: 'text/markdown',
+          createdAt: '2026-05-12T00:00:00Z',
+          campaignId: 'CAMP-1',
+          kind: 'fdp',
+          publicUrl: null,
+        },
+      },
+    });
+    // 1er push : 500 → marqué.
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
+    await pushArtifact({
+      artifact: useArtifactsStore.getState().byId.art_1!,
+      content: '# FDP',
+    });
+    expect(useSyncStatusStore.getState().failedArtifacts.art_1).toBeDefined();
+    // Retry : 200 → repoussé avec le même contenu, drapeau levé.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ artifact: { publicUrl: 'u', storagePath: 'p' } }),
+    });
+    await retryFailedArtifactPushes();
+    expect(useSyncStatusStore.getState().failedArtifacts).toEqual({});
+    const retryBody = JSON.parse(fetchMock.mock.calls[1]![1].body as string);
+    expect(retryBody.content).toBe('# FDP');
   });
 
   it('does not back-update on non-OK HTTP', async () => {

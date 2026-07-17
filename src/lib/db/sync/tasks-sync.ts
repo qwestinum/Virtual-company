@@ -1,10 +1,15 @@
 /**
  * Sync client ↔ serveur pour `tasks-store` (Session 5, round 1).
  *
- * Symétrique de campaigns-sync.ts pour les sollicitations TASK-XXXX.
+ * Symétrique de campaigns-sync.ts pour les sollicitations TASK-XXXX — y
+ * compris (audit C7) la remontée d'échec de push : une clôture de
+ * sollicitation qui ne s'enregistre pas marque la tâche « non enregistrée »
+ * (bannière + réessai) au lieu de revenir en arrière au reload sans signal.
  */
 'use client';
 
+import type { PersistOutcome } from '@/lib/db/sync/campaigns-sync';
+import { useSyncStatusStore } from '@/stores/sync-status-store';
 import type { ArchivedTask } from '@/stores/tasks-store';
 import { useTasksStore } from '@/stores/tasks-store';
 
@@ -92,16 +97,55 @@ function schedulePush(id: string, snapshot: ArchivedTask): void {
   pushTimers.set(id, timer);
 }
 
-async function pushTask(snapshot: ArchivedTask): Promise<void> {
+/**
+ * Persiste une tâche et REND le résultat (même contrat que `persistCampaign`) :
+ * vérifie `res.ok` (un 4xx/5xx renvoie une réponse — `fetch` ne rejette PAS
+ * dessus), 503 = démo volatile assumée (pas un échec).
+ */
+export async function persistTask(
+  snapshot: ArchivedTask,
+): Promise<PersistOutcome> {
+  let res: Response;
   try {
-    await fetch('/api/tasks', {
+    res = await fetch('/api/tasks', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(snapshot),
       cache: 'no-store',
     });
-  } catch {
-    // silencieux.
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Erreur réseau.',
+    };
+  }
+  if (res.status === 503) return { ok: true, demo: true };
+  if (!res.ok) {
+    let error = `HTTP ${res.status}`;
+    try {
+      const data = (await res.json()) as { message?: string; error?: string };
+      error = data.message ?? data.error ?? error;
+    } catch {
+      // Réponse non-JSON : on garde le code HTTP comme message.
+    }
+    return { ok: false, status: res.status, error };
+  }
+  return { ok: true, demo: false };
+}
+
+/** Push de fond (subscriber) — l'échec est REMONTÉ au registre de synchro. */
+async function pushTask(snapshot: ArchivedTask): Promise<void> {
+  const outcome = await persistTask(snapshot);
+  const sync = useSyncStatusStore.getState();
+  if (outcome.ok) sync.clearTaskFailed(snapshot.id);
+  else sync.markTaskFailed(snapshot);
+}
+
+/** Rejoue les push de tâches en échec (bannière « réessayer »). Séquentiel. */
+export async function retryFailedTaskPushes(): Promise<void> {
+  const failed = useSyncStatusStore.getState().failedTaskList();
+  for (const snapshot of failed) {
+    await pushTask(snapshot);
   }
 }
 

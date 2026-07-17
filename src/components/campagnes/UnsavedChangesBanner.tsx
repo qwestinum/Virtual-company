@@ -3,40 +3,50 @@
 /**
  * Bannière « modifications non enregistrées » (anti-perte silencieuse).
  *
- * Les éditions de campagne sont en autosave : un push de fond peut échouer
- * (réseau/serveur). Plutôt que de perdre la modif en silence au reload, on la
- * signale ici et on offre un réessai. Affichée seulement s'il y a au moins une
- * campagne en échec de synchro.
+ * Les éditions de campagne/tâche sont en autosave et les artefacts poussés en
+ * fire-and-forget : un push de fond peut échouer (réseau/serveur). Plutôt que
+ * de perdre la modif en silence au reload, on la signale ici et on offre un
+ * réessai. Couvre les TROIS registres du store de synchro (audit C7) :
+ * campagnes, sollicitations, artefacts. Affichée seulement s'il y a au moins
+ * une entité en échec de synchro.
  */
 
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { retryFailedArtifactPushes } from '@/lib/db/sync/artifacts-sync';
 import { retryFailedCampaignPushes } from '@/lib/db/sync/campaigns-sync';
+import { retryFailedTaskPushes } from '@/lib/db/sync/tasks-sync';
 import { useSyncStatusStore } from '@/stores/sync-status-store';
 
 export function UnsavedChangesBanner() {
-  const failed = useSyncStatusStore(
-    useShallow((s) => Object.values(s.failedCampaigns)),
+  const names = useSyncStatusStore(
+    useShallow((s) => [
+      ...Object.values(s.failedCampaigns).map((c) => c.name),
+      ...Object.values(s.failedTasks).map((t) => t.name),
+      ...Object.values(s.failedArtifacts).map((a) => a.artifact.name),
+    ]),
   );
   const [retrying, setRetrying] = useState(false);
 
-  if (failed.length === 0) return null;
+  if (names.length === 0) return null;
 
   const onRetry = async () => {
     setRetrying(true);
     try {
       await retryFailedCampaignPushes();
+      await retryFailedTaskPushes();
+      await retryFailedArtifactPushes();
     } finally {
       setRetrying(false);
     }
   };
 
-  const names = failed
-    .map((c) => `« ${c.name} »`)
+  const shown = names
+    .map((n) => `« ${n} »`)
     .slice(0, 3)
     .join(', ');
-  const extra = failed.length > 3 ? ` et ${failed.length - 3} autre(s)` : '';
+  const extra = names.length > 3 ? ` et ${names.length - 3} autre(s)` : '';
 
   return (
     <div
@@ -62,9 +72,9 @@ export function UnsavedChangesBanner() {
           className="font-display"
           style={{ fontSize: 13, fontWeight: 700, color: 'var(--dash-red)' }}
         >
-          {failed.length === 1
+          {names.length === 1
             ? 'Une modification n’a pas pu être enregistrée'
-            : `${failed.length} modifications n’ont pas pu être enregistrées`}
+            : `${names.length} modifications n’ont pas pu être enregistrées`}
         </div>
         <div
           style={{
@@ -73,7 +83,7 @@ export function UnsavedChangesBanner() {
             marginTop: 1,
           }}
         >
-          {names}
+          {shown}
           {extra}. Vos changements risquent d’être perdus au rechargement —
           réessayez l’enregistrement.
         </div>

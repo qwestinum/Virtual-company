@@ -11,12 +11,19 @@
  * Le push est non-bloquant (fire-and-forget) : l'UI affiche déjà
  * l'attachment avec le Blob local, l'URL Supabase arrive en
  * back-update via `updateArtifactStorage` quand la promesse résout.
+ *
+ * Anti-perte silencieuse (audit C7) : un POST qui échoue (réseau, 4xx/5xx)
+ * n'est plus avalé — l'artefact (avec son CONTENU, indispensable au rejeu)
+ * est marqué « non enregistré » dans le registre de synchro : la bannière le
+ * signale et le réessai le repousse. Un 503 (Supabase non configuré) reste un
+ * mode démo volatile assumé, pas un échec.
  */
 'use client';
 
 import type { ArtifactKind } from '@/lib/db/types';
 import type { Artifact } from '@/stores/artifacts-store';
 import { useArtifactsStore } from '@/stores/artifacts-store';
+import { useSyncStatusStore } from '@/stores/sync-status-store';
 
 export type PushArtifactInput = {
   artifact: Artifact;
@@ -41,6 +48,7 @@ export async function pushArtifact(input: PushArtifactInput): Promise<void> {
     mime: artifact.mime,
   };
 
+  const sync = useSyncStatusStore.getState();
   try {
     const res = await fetch('/api/artifacts', {
       method: 'POST',
@@ -48,7 +56,15 @@ export async function pushArtifact(input: PushArtifactInput): Promise<void> {
       body: JSON.stringify(body),
       cache: 'no-store',
     });
-    if (!res.ok) return;
+    if (res.status === 503) {
+      // Supabase non configuré : démo volatile assumée, rien à enregistrer.
+      sync.clearArtifactFailed(artifact.id);
+      return;
+    }
+    if (!res.ok) {
+      sync.markArtifactFailed(input);
+      return;
+    }
     const json = (await res.json()) as {
       artifact?: { publicUrl: string | null; storagePath: string | null };
     };
@@ -58,11 +74,20 @@ export async function pushArtifact(input: PushArtifactInput): Promise<void> {
         storagePath: json.artifact.storagePath,
       });
     }
+    sync.clearArtifactFailed(artifact.id);
   } catch {
-    // Réseau coupé / Supabase down / quota dépassé : on swallow.
-    // L'UI continue avec le Blob local, le DRH peut toujours
-    // télécharger. La prochaine session pourra re-pousser si on
-    // ajoute un retry — hors scope round 3.
+    // Réseau coupé / Supabase down : l'UI continue avec le Blob local (le DRH
+    // peut toujours télécharger), mais l'échec est SIGNALÉ — le Blob ne
+    // survivra pas au reload.
+    sync.markArtifactFailed(input);
+  }
+}
+
+/** Rejoue les push d'artefacts en échec (bannière « réessayer »). Séquentiel. */
+export async function retryFailedArtifactPushes(): Promise<void> {
+  const failed = useSyncStatusStore.getState().failedArtifactList();
+  for (const input of failed) {
+    await pushArtifact(input);
   }
 }
 
