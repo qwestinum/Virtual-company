@@ -11,11 +11,15 @@
  * `503 supabase_not_configured`. Le client interprète ça comme un
  * signal pour rester volatile, sans crash.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 
 import { reconcileLifecycle } from '@/lib/campaign/lifecycle';
 import { listCampaigns, upsertCampaign } from '@/lib/db/repos/campaigns';
+import {
+  canReceiveReplay,
+  drainPendingSheetCvs,
+} from '@/lib/imap/unmatched-replay';
 import { archiveFdp } from '@/lib/db/repos/fdps-archived';
 import { archiveScoringSheet } from '@/lib/db/repos/scoring-sheets';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -145,6 +149,11 @@ export async function PUT(request: Request): Promise<NextResponse> {
     // trace).
     if (saved.scoringSheet?.isValidated) {
       await archiveScoringSheet(saved.scoringSheet);
+    }
+    // C4 : campagne active + fiche validée ⇒ draine les CV reçus « en attente
+    // de fiche » (fire-and-forget, idempotent — no-op si la file est vide).
+    if (canReceiveReplay(saved)) {
+      after(() => drainPendingSheetCvs(saved));
     }
     return NextResponse.json({ campaign: saved });
   } catch (err) {

@@ -1,20 +1,26 @@
 /**
- * CV reçus par IMAP SANS campagne reconnue (table `imap_unmatched_cvs`).
- * Correctif audit C11 (trou `none`), juillet 2026.
+ * CV reçus par IMAP mais NON TRAITÉS, rejouables (table `imap_unmatched_cvs`).
+ * Correctifs audit C11 (trou `none`) + C4 (fiche non validée), juillet 2026.
  *
- * Avant : un mail sans identifiant `CAMP-XXXX` reconnu était skippé sans
- * trace, même avec un CV en PJ, et `last_uid_seen` avançait — corriger
- * l'association ne rejouait rien, le CV était perdu (il fallait demander un
- * renvoi). Désormais : le binaire est stocké (`unmatched/…` dans le bucket) +
- * une ligne ici + journal `imap_no_campaign_match` → REJOUABLE via
- * `POST /api/imap/unmatched/[id]/replay` une fois la campagne choisie par
- * l'humain.
+ * Deux origines, distinguées par `reason` :
+ *   - `none` (C11) : aucune campagne reconnue (pas de `CAMP-XXXX` dans le
+ *     sujet ni le corps) — `campaign_id` inconnu, l'HUMAIN choisit la campagne
+ *     au rejeu (`POST /api/imap/unmatched/[id]/replay`).
+ *   - `pending_sheet` (C4) : campagne CONNUE (`campaign_id` renseigné) mais
+ *     fiche de scoring pas encore validée à la réception — avant, le binaire
+ *     n'était jamais stocké et la première vague d'une campagne était perdue.
+ *     Drain AUTOMATIQUE à la validation de la fiche (hook PUT/PATCH campagnes,
+ *     `drainPendingSheetCvs`).
+ *
+ * Dans les deux cas : binaire stocké (`unmatched/…` dans le bucket) + une
+ * ligne ici + trace journal.
  *
  * Cycle : `pending` → `replayed` (rejeu abouti, campagne mémorisée) ou
  * `dismissed` (écarté manuellement). La réservation du rejeu est
  * CONDITIONNELLE (`where status='pending'`) — un seul gagnant sous double
  * POST, conformément au pattern « réserver l'état d'abord, envoyer ensuite ».
  */
+import { fetchAllKeyset } from '@/lib/db/paginate';
 import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
@@ -23,6 +29,8 @@ import {
 const TABLE = 'imap_unmatched_cvs';
 
 export type UnmatchedCvStatus = 'pending' | 'replayed' | 'dismissed';
+
+export type UnmatchedCvReason = 'none' | 'pending_sheet';
 
 export type UnmatchedCvRow = {
   id: string;
@@ -35,16 +43,25 @@ export type UnmatchedCvRow = {
   storage_bucket: string | null;
   storage_path: string | null;
   status: UnmatchedCvStatus;
+  /** Campagne d'origine — connue pour un `pending_sheet`, null pour un `none`. */
+  campaign_id: string | null;
+  reason: UnmatchedCvReason;
   replayed_campaign_id: string | null;
   replayed_at: string | null;
   received_at: string;
 };
 
 /**
- * Enregistre un CV non rattaché (une ligne PAR pièce jointe). Idempotent sur
+ * Enregistre un CV non traité (une ligne PAR pièce jointe). Idempotent sur
  * `(mailbox_id, uid, file_name)` — un re-poll concurrent ne crée pas de
  * doublon. Retourne `false` si non persisté (base absente / erreur) : la
  * TRACE journal reste l'état final, la ligne est le support du rejeu.
+ *
+ * Repli legacy : si la migration C4 (`campaign_id`/`reason`) n'est pas encore
+ * appliquée (colonne absente du cache PostgREST), on ré-essaie SANS ces
+ * colonnes — la ligne existe alors en `reason='none'` (défaut base), toujours
+ * rejouable par un humain qui choisit la campagne. Dégradation bruyante,
+ * jamais silencieuse.
  */
 export async function insertUnmatchedCv(args: {
   mailboxId: string;
@@ -55,6 +72,8 @@ export async function insertUnmatchedCv(args: {
   mime: string;
   storageBucket: string | null;
   storagePath: string | null;
+  campaignId?: string | null;
+  reason?: UnmatchedCvReason;
 }): Promise<boolean> {
   let supabase;
   try {
@@ -63,21 +82,38 @@ export async function insertUnmatchedCv(args: {
     if (err instanceof SupabaseNotConfiguredError) return false;
     throw err;
   }
+  const legacyPayload = {
+    mailbox_id: args.mailboxId,
+    uid: args.uid,
+    from_addr: args.fromAddr,
+    subject: args.subject,
+    file_name: args.fileName,
+    mime: args.mime,
+    storage_bucket: args.storageBucket,
+    storage_path: args.storagePath,
+  };
+  const upsertOpts = {
+    onConflict: 'mailbox_id,uid,file_name',
+    ignoreDuplicates: true,
+  } as const;
   const { error } = await supabase.from(TABLE).upsert(
     {
-      mailbox_id: args.mailboxId,
-      uid: args.uid,
-      from_addr: args.fromAddr,
-      subject: args.subject,
-      file_name: args.fileName,
-      mime: args.mime,
-      storage_bucket: args.storageBucket,
-      storage_path: args.storagePath,
+      ...legacyPayload,
+      campaign_id: args.campaignId ?? null,
+      reason: args.reason ?? 'none',
     },
-    { onConflict: 'mailbox_id,uid,file_name', ignoreDuplicates: true },
+    upsertOpts,
   );
-  if (error) {
-    console.error('[imap-unmatched] insert failed', error.message);
+  if (!error) return true;
+  console.error(
+    '[imap-unmatched] insert failed — retry legacy sans campaign_id/reason (migration C4 appliquée ?)',
+    error.message,
+  );
+  const { error: legacyError } = await supabase
+    .from(TABLE)
+    .upsert(legacyPayload, upsertOpts);
+  if (legacyError) {
+    console.error('[imap-unmatched] insert legacy failed', legacyError.message);
     return false;
   }
   return true;
@@ -95,6 +131,34 @@ export async function listUnmatchedCvs(
     .order('received_at', { ascending: false });
   if (error) throw new Error(`listUnmatchedCvs: ${error.message}`);
   return (data ?? []) as UnmatchedCvRow[];
+}
+
+/**
+ * Les CV « en attente de fiche » (C4) d'une campagne, EXHAUSTIF (keyset sur la
+ * PK — jamais de cap PostgREST silencieux). C'est la file que draine
+ * `drainPendingSheetCvs` à la validation de la fiche de scoring.
+ */
+export async function listPendingSheetCvs(
+  campaignId: string,
+): Promise<UnmatchedCvRow[]> {
+  const supabase = requireServerSupabase();
+  return fetchAllKeyset<UnmatchedCvRow>({
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('*')
+        .eq('status', 'pending')
+        .eq('reason', 'pending_sheet')
+        .eq('campaign_id', campaignId)
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('id', afterId);
+      const { data, error } = await q;
+      if (error) throw new Error(`listPendingSheetCvs: ${error.message}`);
+      return (data ?? []) as UnmatchedCvRow[];
+    },
+    cursorOf: (row) => row.id,
+  });
 }
 
 export async function getUnmatchedCv(

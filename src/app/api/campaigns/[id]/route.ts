@@ -9,10 +9,14 @@
  * Pour les changements lourds (FDP, scoringSheet), passer par PUT
  * /api/campaigns avec le snapshot complet.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 
 import { patchCampaign } from '@/lib/db/repos/campaigns';
+import {
+  canReceiveReplay,
+  drainPendingSheetCvs,
+} from '@/lib/imap/unmatched-replay';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { CampaignStatusSchema } from '@/types/campaign-status';
 import { PublicationChannelSchema } from '@/types/publication-channel';
@@ -48,6 +52,11 @@ export async function PATCH(
     const updated = await patchCampaign(id, parsed);
     if (!updated) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+    // C4 : une (ré)activation d'une campagne à fiche validée draine les CV
+    // reçus « en attente de fiche » (fire-and-forget, idempotent).
+    if (parsed.status === 'active' && canReceiveReplay(updated)) {
+      after(() => drainPendingSheetCvs(updated));
     }
     return NextResponse.json({ campaign: updated });
   } catch (err) {

@@ -1293,3 +1293,31 @@ alter table public.imap_outreach_claims
   add column if not exists confirmed_at timestamptz;
 alter table public.calcom_webhook_events
   add column if not exists confirmed_at timestamptz;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- C4 : CV reçu SANS fiche de scoring validée — stocké + rejouable (juil. 2026)
+-- ──────────────────────────────────────────────────────────────────────
+-- Avant : `processEmailAttachment` journalisait `pendingScoringSheet:true`
+-- puis retournait AVANT tout stockage du binaire, UID avancé — toute la
+-- première vague d'une campagne dont la fiche est validée en retard était
+-- perdue (seul recours : renvoi par le candidat). Désormais la file
+-- `imap_unmatched_cvs` (infrastructure C11) porte AUSSI ces CV « en attente
+-- de fiche » : `reason` distingue les deux origines, `campaign_id` est connu
+-- pour un `pending_sheet` (contrairement au trou `none`). Le drain est
+-- automatique à la validation de la fiche (hook PUT/PATCH campagnes).
+alter table public.imap_unmatched_cvs
+  add column if not exists campaign_id text,
+  add column if not exists reason text not null default 'none';
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'imap_unmatched_cvs_reason_chk'
+  ) then
+    alter table public.imap_unmatched_cvs
+      add constraint imap_unmatched_cvs_reason_chk
+      check (reason in ('none', 'pending_sheet'));
+  end if;
+end $$;
+create index if not exists imap_unmatched_cvs_campaign_idx
+  on public.imap_unmatched_cvs (campaign_id, status)
+  where campaign_id is not null;

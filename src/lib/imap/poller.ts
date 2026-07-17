@@ -772,7 +772,65 @@ export async function processEmailAttachment(args: {
     ? campaign.scoringSheet
     : null;
 
-  // Journal — received (analyse en cours, ou en attente de fiche).
+  if (!sheet) {
+    // C4 : reçu AVANT la validation de la fiche de scoring → le binaire est
+    // STOCKÉ + mis en file `pending_sheet` (infrastructure C11), drainée
+    // AUTOMATIQUEMENT à la validation de la fiche (`drainPendingSheetCvs`).
+    // Avant : return sec après le journal, binaire jamais stocké, UID avancé —
+    // toute la première vague d'une campagne à fiche tardive était perdue.
+    // Un échec de stockage/insert LÈVE : classé re-tentable par les rails
+    // (curseur gelé + backoff) — on ne consomme jamais un CV sans état final
+    // rejouable. NB : ce branchement est inatteignable en `matchSource:
+    // 'replay'` (le rejeu exige une fiche validée côté route/drain), sinon
+    // l'upsert `(mailbox, uid, file_name)` no-operait sur la ligne déjà
+    // consommée.
+    const up = await uploadUnmatchedCvBinary({
+      mailboxId: mailbox.id,
+      uid: String(uid),
+      name: fileName,
+      content: buffer,
+      mimeType: mime || guessMimeFromName(fileName),
+    });
+    const inserted = await insertUnmatchedCv({
+      mailboxId: mailbox.id,
+      uid: String(uid),
+      fromAddr: from,
+      subject,
+      fileName,
+      mime: mime || guessMimeFromName(fileName),
+      storageBucket: up.bucket,
+      storagePath: up.path,
+      campaignId: campaign.id,
+      reason: 'pending_sheet',
+    });
+    if (!inserted) {
+      throw new Error(
+        'pending_sheet_row_not_persisted — ligne imap_unmatched_cvs non écrite, CV re-présenté au prochain poll',
+      );
+    }
+    await appendJournalEntry({
+      action: 'imap_cv_received',
+      actor: 'imap_poller',
+      campaignId: isTaskOwner ? null : campaign.id,
+      payload: {
+        mailboxId: mailbox.id,
+        uid,
+        fileName,
+        subject,
+        from,
+        taskId: isTaskOwner ? campaign.id : undefined,
+        pendingScoringSheet: true,
+        stored: true,
+        storagePath: up.path,
+        matchSource,
+        reason:
+          'fiche de scoring non validée — CV stocké, analysé automatiquement à la validation de la fiche',
+      },
+    });
+    return;
+  }
+
+  // Journal — received (analyse en cours).
   await appendJournalEntry({
     action: 'imap_cv_received',
     actor: 'imap_poller',
@@ -784,17 +842,10 @@ export async function processEmailAttachment(args: {
       subject,
       from,
       taskId: isTaskOwner ? campaign.id : undefined,
-      pendingScoringSheet: sheet === null,
+      pendingScoringSheet: false,
       matchSource,
     },
   });
-
-  if (!sheet) {
-    // Reçu mais NON analysé : la campagne n'a pas de fiche de scoring validée.
-    // Le CV est compté comme reçu, marqué « en attente de fiche » (re-scorable
-    // en C7). Pas d'extraction ni d'analyse.
-    return;
-  }
 
   // Convertit le Buffer en File pour extractCVText (qui attend File).
   const file = new File([new Uint8Array(buffer)], fileName, { type: mime });
