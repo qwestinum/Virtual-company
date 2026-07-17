@@ -49,6 +49,7 @@ export function VivierKeywordSearch({ campaignId }: { campaignId: string }) {
   const [query, setQuery] = useState('');
   const [lastQuery, setLastQuery] = useState('');
   const [results, setResults] = useState<VivierKeywordResult[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
@@ -66,13 +67,16 @@ export function VivierKeywordSearch({ campaignId }: { campaignId: string }) {
       });
       const data = (await res.json()) as {
         results?: VivierKeywordResult[];
+        total?: number;
         message?: string;
       };
       if (!res.ok) {
         setError(data.message ?? 'La recherche a échoué.');
         return;
       }
-      setResults(data.results ?? []);
+      const next = data.results ?? [];
+      setResults(next);
+      setTotal(data.total ?? next.length);
       setLastQuery(q);
     } catch {
       setError('La recherche a échoué (réseau).');
@@ -154,6 +158,12 @@ export function VivierKeywordSearch({ campaignId }: { campaignId: string }) {
             : `Aucun CV ne contient « ${lastQuery} ».`}
         </p>
       ) : (
+        <>
+          {total > results.length ? (
+            <p className="font-body text-[12px] font-semibold text-amber-700">
+              {`Les ${results.length} dossiers les plus récents affichés sur ${total} contenant « ${lastQuery} » — affinez le mot-clé pour tout voir.`}
+            </p>
+          ) : null}
         <ul className="flex flex-col gap-2">
           {results.map((r) => (
             <li
@@ -193,6 +203,7 @@ export function VivierKeywordSearch({ campaignId }: { campaignId: string }) {
             </li>
           ))}
         </ul>
+        </>
       )}
     </section>
   );

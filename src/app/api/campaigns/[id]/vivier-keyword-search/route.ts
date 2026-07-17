@@ -42,7 +42,7 @@ export async function POST(
   }
 
   try {
-    const hits = await searchVivierFulltext(query);
+    const { hits, total } = await searchVivierFulltext(query);
     const states = await getPreselectionStatesForCandidates(
       campaignId,
       hits.map((h) => h.candidateId),
@@ -55,7 +55,9 @@ export async function POST(
       snippet: h.snippet,
       membership: states.get(h.candidateId) ?? 'none',
     }));
-    return NextResponse.json({ results });
+    // `total` = count exact du set complet : l'UI annonce « X sur N » quand la
+    // borne de 200 tronque (jamais de troncature silencieuse, audit C10/A13).
+    return NextResponse.json({ results, total });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json({ error: 'supabase_not_configured' }, { status: 503 });

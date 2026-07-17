@@ -163,21 +163,38 @@ export type VivierFulltextResult = {
 };
 
 /**
+ * Borne EXPLICITE de la recherche plein-texte (audit C10/A13) : la RPC est
+ * set-returning sans LIMIT, PostgREST la cappait silencieusement à 1000. On
+ * borne à 200 via `.range()` MAIS on rapporte `total` (count exact du set
+ * complet) pour que l'UI annonce « 200 sur N — affinez » au lieu de laisser
+ * croire que tout est là.
+ */
+const FULLTEXT_LIMIT = 200;
+
+export type VivierFulltextSearch = {
+  /** Les FULLTEXT_LIMIT dossiers les plus récents contenant le mot. */
+  hits: VivierFulltextResult[];
+  /** Nombre TOTAL de dossiers contenant le mot (peut dépasser hits.length). */
+  total: number;
+};
+
+/**
  * Recherche plein-texte EXACTE sur le CV intégral (RPC `search_vivier_fulltext`,
  * full-text Postgres). Mot ENTIER, pas de similarité ni de seuil — strictement
- * distincte de la présélection sémantique. Retourne tous les dossiers du vivier
+ * distincte de la présélection sémantique. Retourne les dossiers du vivier
  * (org-level) contenant le(s) mot(s), avec un extrait surligné, triés par
- * fraîcheur. Liste vide = réponse valide (le mot n'est nulle part).
+ * fraîcheur — bornés à FULLTEXT_LIMIT, avec le total exact à côté. Liste vide =
+ * réponse valide (le mot n'est nulle part).
  */
 export async function searchVivierFulltext(
   query: string,
-): Promise<VivierFulltextResult[]> {
+): Promise<VivierFulltextSearch> {
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase.rpc('search_vivier_fulltext', {
-    p_query: query,
-  });
+  const { data, error, count } = await supabase
+    .rpc('search_vivier_fulltext', { p_query: query }, { count: 'exact' })
+    .range(0, FULLTEXT_LIMIT - 1);
   if (error) throw new Error(`searchVivierFulltext: ${error.message}`);
-  return ((data ?? []) as {
+  const hits = ((data ?? []) as {
     candidate_id: string;
     email: string;
     nom: string;
@@ -192,6 +209,7 @@ export async function searchVivierFulltext(
     title: r.title,
     snippet: r.snippet,
   }));
+  return { hits, total: count ?? hits.length };
 }
 
 /** Dossier + entités jointes (vue détail). */

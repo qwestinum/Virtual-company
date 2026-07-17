@@ -347,9 +347,12 @@ export async function countCandidateAnalyses(
 
 /**
  * Charge TOUT le périmètre filtré en paginant en interne (pages de 1000). Sert
- * le calcul EXHAUSTIF des compteurs du ruban : on dérive l'étape de chaque
- * candidat, jamais un sous-ensemble tronqué. Volume borné par le périmètre
- * (campagne + période) — la recherche texte ne doit PAS être passée ici.
+ * les surfaces EXHAUSTIVES : compteurs du ruban, sélection d'audit candidat —
+ * on dérive l'étape de chaque candidat, jamais un sous-ensemble tronqué.
+ * Volume borné par le périmètre (campagne + période). NB compteurs du ruban :
+ * ne pas passer la recherche texte (le scope des compteurs n'en dépend pas) ;
+ * pour une liste dont la recherche EST le périmètre (audit), la passer est
+ * légitime.
  */
 export async function listAllCandidateAnalyses(
   filters: CandidateAnalysisFilters = {},

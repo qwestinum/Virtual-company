@@ -6,7 +6,7 @@
  */
 import { NextResponse } from 'next/server';
 
-import { listCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
   JOURNEY_FILTER_STATES,
   journeyFilterKey,
@@ -53,7 +53,12 @@ export async function GET(request: Request): Promise<NextResponse> {
     : null;
 
   try {
-    const candidates = await listCandidateAnalyses(filters);
+    // EXHAUSTIF (audit C10/A11) : l'ancien appel héritait du défaut 200 de
+    // `listCandidateAnalyses` — au-delà, des candidats disparaissaient de la
+    // sélection d'audit sans aucun signal. Le filtre d'étape étant dérivé
+    // post-enrichissement, toute borne en amont serait une troncature cachée ;
+    // `loadJourneySignals` scanne déjà tout le journal, même ordre de coût.
+    const candidates = await listAllCandidateAnalyses(filters);
     // Enrichit chaque candidat avec son parcours dérivé du journal + file HITL.
     // Un seul scan (toutes campagnes) → signaux partagés.
     const signals = await loadJourneySignals();
