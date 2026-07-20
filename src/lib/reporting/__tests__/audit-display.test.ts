@@ -4,6 +4,7 @@ import {
   auditCandidatFileName,
   buildCandidateHistory,
   formatFrDate,
+  formatFrDateTimeShort,
   slugForFileName,
   sortByCriticality,
 } from '@/lib/reporting/audit-display';
@@ -129,5 +130,20 @@ describe('formatFrDate', () => {
   });
   it('renvoie « — » pour le sentinel epoch (1970)', () => {
     expect(formatFrDate('1970-01-01T00:00:00.000Z')).toBe('—');
+  });
+});
+
+describe('formatFrDateTimeShort', () => {
+  it('formate compact « JJ/MM/AA, HH:MM » (fuseau local)', () => {
+    // Milieu de journée : le jour local est le même quel que soit le fuseau
+    // de la machine de test (±12 h) — l'assertion sur la date reste stable.
+    const out = formatFrDateTimeShort('2026-07-18T12:32:00.000Z');
+    expect(out).toMatch(/^18\/07\/26, \d{2}:\d{2}$/);
+  });
+  it('renvoie « — » si date invalide', () => {
+    expect(formatFrDateTimeShort('pas-une-date')).toBe('—');
+  });
+  it('renvoie « — » pour le sentinel epoch (1970)', () => {
+    expect(formatFrDateTimeShort('1970-01-01T00:00:00.000Z')).toBe('—');
   });
 });

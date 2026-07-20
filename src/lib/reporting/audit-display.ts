@@ -113,6 +113,26 @@ export function formatFrDateTime(iso: string): string {
 }
 
 /**
+ * Date+heure FR COMPACTE : « 18/07/26, 14:32 » — pour les surfaces denses
+ * (fil d'activité). Même objet `Date` pour la date et l'heure (fuseau local,
+ * pas de décalage de jour à cheval sur minuit UTC). Date inconnue → « — ».
+ */
+export function formatFrDateTimeShort(iso: string): string {
+  if (isUnknownDate(iso)) return '—';
+  const d = new Date(iso);
+  const date = new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  }).format(d);
+  const time = new Intl.DateTimeFormat('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+  return `${date}, ${time}`;
+}
+
+/**
  * Slug pour les noms de fichier PDF : « Jean Dupont » → « jean-dupont ».
  * ASCII-only, sans accents ni caractères spéciaux.
  */
