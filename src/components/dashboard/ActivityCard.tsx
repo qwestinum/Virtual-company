@@ -13,6 +13,7 @@ import type {
   ActivityIconKey,
   ActivityItem,
 } from '@/lib/dashboard/derive-metrics';
+import { formatFrDateTime } from '@/lib/reporting/audit-display';
 
 import { DASH_COLORS, type DashColor } from './tokens';
 
@@ -169,7 +170,10 @@ function ActivityRow({
           flexShrink: 0,
         }}
       >
-        {item.time}
+        {/* Date + heure complètes (fuseau LOCAL, même conversion pour les
+            deux — un évènement à cheval sur minuit UTC affiche le bon jour).
+            Format partagé du produit : « 15 juin 2026 à 14:32 ». */}
+        {formatFrDateTime(item.createdAt)}
       </span>
     </div>
   );
