@@ -15,11 +15,13 @@ import {
 } from '@/lib/ai/errors';
 import { RetryableOutreachError } from '@/lib/imap/outreach';
 import {
+  buildFetchSet,
   classifyProcessingError,
   computeNextRetryAt,
   isInBackoffWindow,
   MAX_CV_ANALYSIS_ATTEMPTS,
   RetryablePollError,
+  shouldProcessUid,
 } from '@/lib/imap/poll-retry';
 
 describe('classifyProcessingError', () => {
@@ -64,26 +66,61 @@ describe('classifyProcessingError', () => {
   });
 });
 
-describe('computeNextRetryAt — backoff 1, 15, 60, 360 min puis plafond', () => {
+describe('computeNextRetryAt — backoff 1, 5, 15 min puis plafond 3', () => {
   const now = new Date('2026-07-09T10:00:00.000Z');
   const minutesFromNow = (m: number) =>
     new Date(now.getTime() + m * 60_000).toISOString();
 
   it('programme la bonne échéance après chaque tentative échouée', () => {
     expect(computeNextRetryAt(1, now)).toBe(minutesFromNow(1));
-    expect(computeNextRetryAt(2, now)).toBe(minutesFromNow(15));
-    expect(computeNextRetryAt(3, now)).toBe(minutesFromNow(60));
-    expect(computeNextRetryAt(4, now)).toBe(minutesFromNow(360));
+    expect(computeNextRetryAt(2, now)).toBe(minutesFromNow(5));
   });
 
-  it('plafond atteint → null (abandon signalé, jamais de refus auto)', () => {
+  it('plafond atteint (3) → null (abandon signalé, jamais de refus auto)', () => {
+    expect(MAX_CV_ANALYSIS_ATTEMPTS).toBe(3);
     expect(computeNextRetryAt(MAX_CV_ANALYSIS_ATTEMPTS, now)).toBeNull();
     expect(computeNextRetryAt(MAX_CV_ANALYSIS_ATTEMPTS + 3, now)).toBeNull();
   });
 
-  it('couverture totale ≈ 7 h (une saturation TPM longue ne consomme aucun CV)', () => {
-    const totalMinutes = [1, 15, 60, 360].reduce((a, b) => a + b, 0);
-    expect(totalMinutes).toBeGreaterThanOrEqual(7 * 60);
+  it('couverture totale ≈ 21 min — jamais des heures de file immobilisée', () => {
+    const totalMinutes = [1, 5, 15].reduce((a, b) => a + b, 0);
+    expect(totalMinutes).toBeLessThanOrEqual(30);
+  });
+});
+
+describe('buildFetchSet / shouldProcessUid — la file n’est JAMAIS bloquée', () => {
+  it('sans curseur → plage complète (boîte neuve)', () => {
+    expect(buildFetchSet(null, [])).toBe('1:*');
+  });
+
+  it('sans retry échu → plage des nouveaux messages seulement', () => {
+    expect(buildFetchSet(1623, [])).toBe('1624:*');
+  });
+
+  it('retries échus derrière le curseur → re-fetchés NOMMÉMENT + plage', () => {
+    expect(buildFetchSet(1700, [1624, 1650])).toBe('1624,1650,1701:*');
+  });
+
+  it('dédup + tri + exclusion des uids déjà couverts par la plage', () => {
+    expect(buildFetchSet(1700, [1650, 1624, 1650, 1800])).toBe(
+      '1624,1650,1701:*',
+    );
+  });
+
+  it('un uid ≤ curseur ne passe QUE s’il est un retry échu (anti re-fetch parasite)', () => {
+    const due = new Set([1624]);
+    expect(shouldProcessUid(1624, 1700, due)).toBe(true); // retry échu
+    expect(shouldProcessUid(1600, 1700, due)).toBe(false); // parasite Gmail
+    expect(shouldProcessUid(1701, 1700, due)).toBe(true); // nouveau message
+  });
+
+  it('scénario incident : docx en retry (1624) — le PDF 1625+ est fetché et traité', () => {
+    // Le set fetché contient à la fois le retry ET la plage des suivants :
+    // aucun uid valide n'attend derrière le CV en échec.
+    const set = buildFetchSet(1623, [1624]);
+    // 1624 ≤ curseur+1 : couvert par la plage 1624:* → pas de doublon nommé.
+    expect(set).toBe('1624:*');
+    expect(shouldProcessUid(1625, 1623, new Set([1624]))).toBe(true);
   });
 });
 
@@ -98,7 +135,7 @@ describe('isInBackoffWindow', () => {
     expect(isInBackoffWindow('2026-07-09T09:59:00.000Z', now)).toBe(false);
   });
 
-  it('échéance future → fenêtre ouverte (curseur gelé, zéro coût LLM)', () => {
+  it('échéance future → fenêtre ouverte (uid non re-fetché, zéro coût LLM)', () => {
     expect(isInBackoffWindow('2026-07-09T10:01:00.000Z', now)).toBe(true);
   });
 

@@ -32,11 +32,7 @@
 import { simpleParser } from 'mailparser';
 
 import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
-import {
-  CVExtractError,
-  extractCVText,
-  guessMimeFromName,
-} from '@/lib/agents/cv-extract';
+import { extractCVText, guessMimeFromName } from '@/lib/agents/cv-extract';
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import {
@@ -46,11 +42,13 @@ import {
 import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
 import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
 import {
+  buildFetchSet,
   classifyProcessingError,
   computeNextRetryAt,
   isInBackoffWindow,
   MAX_CV_ANALYSIS_ATTEMPTS,
   RetryablePollError,
+  shouldProcessUid,
 } from '@/lib/imap/poll-retry';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
@@ -233,21 +231,33 @@ async function pollMailboxImpl(
   try {
     const lock = await client.getMailboxLock('INBOX');
     try {
-      // Range "fromUid:*" pour ne récupérer que ce qui dépasse le
-      // dernier UID vu. Si jamais vu, on part de "1:*" mais on
-      // borne l'analyse à un volume raisonnable (cf. break ci-dessous).
-      const fromUid = mailbox.last_uid_seen
-        ? `${Number(mailbox.last_uid_seen) + 1}:*`
-        : '1:*';
+      // DÉCOUPLAGE curseur / retry (incident 07/2026) : le set fetché = les
+      // retries ÉCHUS re-fetchés NOMMÉMENT (ils sont derrière le curseur)
+      // + la plage des nouveaux messages. Un uid en fenêtre de backoff n'est
+      // PAS fetché : il attend dans `imap_cv_retries` sans geler la file.
       const previousLastUid = mailbox.last_uid_seen
         ? Number(mailbox.last_uid_seen)
         : 0;
+      const dueRetryUids = new Set<number>();
+      for (const [uidStr, st] of retryStates) {
+        const n = Number(uidStr);
+        if (
+          Number.isFinite(n) &&
+          n <= previousLastUid &&
+          !isInBackoffWindow(st.nextRetryAt, new Date())
+        ) {
+          dueRetryUids.add(n);
+        }
+      }
+      const fromUid = buildFetchSet(
+        mailbox.last_uid_seen ? previousLastUid : null,
+        [...dueRetryUids],
+      );
       let maxUidSeen = previousLastUid;
-      // Plus petit UID dont le traitement a été DIFFÉRÉ (état HITL non
-      // confirmable, échec d'analyse re-tentable, fenêtre de backoff). On
-      // plafonnera `last_uid_seen` juste en deçà pour que ce message — et
-      // tous ceux après lui — soient re-fetchés au prochain poll plutôt que
-      // perdus. null = aucun différé.
+      // Plus petit UID dont l'ÉTAT FINAL n'a pas pu être écrit (ex. journal
+      // `imap_no_campaign_match` KO — panne DB) : avancer le consommerait
+      // sans trace. C'est le frein « DB down », PLUS JAMAIS le frein « CV en
+      // retry » (les retries vivent dans leur table, la file continue).
       let minRetryUid: number | null = null;
 
       // Garde-fou : si la mailbox est neuve (last_uid_seen null) et
@@ -269,11 +279,12 @@ async function pollMailboxImpl(
         // Garde-fou anti-retraitement (Round 5 fix) : Gmail renvoie le
         // dernier message même si le range start dépasse uidNext
         // (sémantique IMAP du `*` quand la borne basse dépasse le
-        // max). Sans ce filtre, on retraite le même UID à chaque poll
-        // jusqu'à ce qu'un nouveau message arrive. On compare
-        // strictement à l'UID que l'on avait AVANT ce poll.
+        // max). Un uid ≤ curseur n'est traité QUE s'il est un retry échu
+        // re-fetché nommément (`dueRetryUids`) — et un retry ancien ne fait
+        // JAMAIS reculer ni stagner le curseur (`maxUidSeen` ne bouge que sur
+        // les uids nouveaux).
         if (typeof uid === 'number') {
-          if (uid <= previousLastUid) continue;
+          if (!shouldProcessUid(uid, previousLastUid, dueRetryUids)) continue;
           if (uid > maxUidSeen) maxUidSeen = uid;
         }
 
@@ -520,18 +531,14 @@ async function pollMailboxImpl(
 
         outcome.matched += 1;
 
-        // Fenêtre de backoff d'un échec re-tentable précédent : on ne
-        // re-tente pas encore (zéro coût LLM) et on gèle le curseur ICI —
-        // mêmes rails que le différé HITL : ce message et les suivants seront
-        // re-fetchés à un prochain poll, après l'échéance.
+        // Fenêtre de backoff d'un échec re-tentable précédent : normalement
+        // pas fetché (exclu du set) — s'il se présente quand même (curseur
+        // non commité au poll précédent, re-fetch parasite), on SKIPPE sans
+        // coût LLM. La ligne `imap_cv_retries` porte l'échéance, la file
+        // CONTINUE — plus aucun gel de curseur ici.
         const retryState = retryStates.get(String(uid));
-        if (
-          retryState &&
-          isInBackoffWindow(retryState.nextRetryAt, new Date()) &&
-          typeof uid === 'number'
-        ) {
-          minRetryUid = minRetryUid === null ? uid : Math.min(minRetryUid, uid);
-          break;
+        if (retryState && isInBackoffWindow(retryState.nextRetryAt, new Date())) {
+          continue;
         }
 
         for (const att of cvAttachments) {
@@ -548,6 +555,7 @@ async function pollMailboxImpl(
             subject,
             from: parsed.from?.text ?? null,
             matchSource,
+            retryAttempt: retryStates.get(String(uid))?.attempts ?? 0,
           })
             .then(() => {
               outcome.processed += 1;
@@ -558,17 +566,11 @@ async function pollMailboxImpl(
               }
             })
             .catch(async (err) => {
-              // Différé (HITL non confirmable, échec d'analyse déjà qualifié…) :
-              // ce N'EST PAS un échec définitif. On marque l'UID pour réessai
-              // et on ne le compte pas en erreur. Le candidat reste à traiter
-              // au prochain poll.
-              if (err instanceof RetryablePollError) {
-                if (typeof uid === 'number') {
-                  minRetryUid =
-                    minRetryUid === null ? uid : Math.min(minRetryUid, uid);
-                }
-                return;
-              }
+              // Différé HITL (`RetryablePollError`) et échecs re-tentables
+              // empruntent le MÊME rail : ligne `imap_cv_retries` + échéance,
+              // la file continue (plus de gel de curseur). Le différé compte
+              // dans le plafond (validé DRH) : non résolu en ~21 min ⇒
+              // abandon signalé, jamais une attente invisible.
               const errorMessage =
                 err instanceof Error ? err.message : String(err);
               if (classifyProcessingError(err) === 'permanent') {
@@ -627,11 +629,13 @@ async function pollMailboxImpl(
                 nextRetryAt,
                 lastError: errorMessage,
               });
-              if (persisted && attempts >= MAX_CV_ANALYSIS_ATTEMPTS) {
-                // Plafond atteint : ABANDON SIGNALÉ, jamais de refus auto.
-                // Le binaire est sauvegardé pour un traitement manuel, la
-                // boîte est débloquée (pas de minRetryUid → le curseur peut
-                // avancer au-delà de ce message « poison »).
+              if (!persisted || attempts >= MAX_CV_ANALYSIS_ATTEMPTS) {
+                // Plafond atteint OU réessai non mémorisable (fail-safe
+                // INVERSÉ : impossible de mémoriser ⇒ on ne réessaie pas —
+                // l'ancien « réessai sans plafond » gelait la file sans fin
+                // quand la table manquait) : ABANDON SIGNALÉ, jamais de refus
+                // auto. Binaire sauvegardé pour traitement manuel, la file
+                // continue — le curseur avance au-delà du message « poison ».
                 outcome.errors += 1;
                 const abandonArtifactId = await persistAbandonedCv({
                   mailbox,
@@ -665,7 +669,9 @@ async function pollMailboxImpl(
                 void clearCvRetryState(mailbox.id, String(uid));
                 return;
               }
-              // Réessai programmé : trace explicite + gel du curseur.
+              // Réessai programmé : trace explicite, la FILE CONTINUE (le
+              // curseur avance — l'uid attend son échéance dans
+              // `imap_cv_retries` et sera re-fetché nommément).
               await appendJournalEntry({
                 action: 'imap_cv_retry_scheduled',
                 actor: 'imap_poller',
@@ -685,27 +691,21 @@ async function pollMailboxImpl(
                   jErr,
                 ),
               );
-              if (typeof uid === 'number') {
-                minRetryUid =
-                  minRetryUid === null ? uid : Math.min(minRetryUid, uid);
-              }
             });
         }
 
-        // Un message DIFFÉRÉ arrête le poll ICI. On traite en UID croissant :
-        // continuer enverrait des mails à des UID SUPÉRIEURS qui seraient
-        // ensuite re-traités (et renvoyés) au prochain poll, puisqu'on va
-        // rembobiner `last_uid_seen` sous le message différé. Stopper garantit
-        // qu'aucun mail au-delà du différé ne part deux fois. Le différé et la
-        // suite sont repris au prochain passage.
+        // Frein « DB down » uniquement : un ÉTAT FINAL inécrivable (journal
+        // KO) arrête le poll — continuer consommerait des mails sans trace,
+        // et la panne frappera pareil les suivants. Les retries d'analyse ne
+        // passent PLUS par ici (découplage — la file ne s'arrête jamais
+        // derrière un CV en retry ; le re-traitement est couvert par les
+        // claims deux-phases, aucun mail ne part deux fois).
         if (minRetryUid !== null) break;
       }
 
-      // Plafonne au plus petit UID différé moins 1 : on committe la
-      // progression jusqu'au dernier message RÉELLEMENT traité, mais on
-      // re-fetchera le message différé (et la suite) au prochain poll. Anti
-      // perte silencieuse : un candidat non traité pour cause de panne n'est
-      // jamais marqué « vu ».
+      // Plafonne au plus petit UID dont l'état final n'a pas pu être écrit
+      // (frein « DB down ») moins 1. Anti perte silencieuse : un mail sans
+      // état final n'est jamais marqué « vu ».
       let committedUid = maxUidSeen;
       if (minRetryUid !== null) {
         committedUid = Math.min(committedUid, minRetryUid - 1);
@@ -754,6 +754,12 @@ export async function processEmailAttachment(args: {
    * 'replay' (rejeu humain d'un CV non rattaché, C11).
    */
   matchSource: 'subject' | 'body' | 'replay';
+  /**
+   * Nombre de tentatives DÉJÀ échouées pour cet uid (rail `imap_cv_retries`).
+   * Tracé en `attempt` dans `imap_cv_received` — une entrée par tentative est
+   * une trace HONNÊTE du re-traitement, pas un doublon à supprimer.
+   */
+  retryAttempt?: number;
 }): Promise<void> {
   const {
     mailbox,
@@ -765,6 +771,7 @@ export async function processEmailAttachment(args: {
     subject,
     from,
     matchSource,
+    retryAttempt = 0,
   } = args;
   const isTaskOwner = campaign.id.startsWith('TASK-');
   // Comportement (a) — pas de scoring sans fiche de scoring validée.
@@ -823,6 +830,7 @@ export async function processEmailAttachment(args: {
         stored: true,
         storagePath: up.path,
         matchSource,
+        attempt: retryAttempt,
         reason:
           'fiche de scoring non validée — CV stocké, analysé automatiquement à la validation de la fiche',
       },
@@ -844,18 +852,17 @@ export async function processEmailAttachment(args: {
       taskId: isTaskOwner ? campaign.id : undefined,
       pendingScoringSheet: false,
       matchSource,
+      attempt: retryAttempt,
     },
   });
 
   // Convertit le Buffer en File pour extractCVText (qui attend File).
+  // Un échec d'extraction remonte TEL QUEL (surtout pas ré-enveloppé dans un
+  // `new Error(...)` : cause de l'incident 07/2026 — le wrap détruisait le
+  // type `CVExtractError` avant `classifyProcessingError`, un docx illisible
+  // partait en retry au lieu d'être classé PERMANENT et mis de côté).
   const file = new File([new Uint8Array(buffer)], fileName, { type: mime });
-  let extracted;
-  try {
-    extracted = await extractCVText(file);
-  } catch (err) {
-    const code = err instanceof CVExtractError ? err.code : 'extract_failed';
-    throw new Error(`extract_failed: ${code} — ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const extracted = await extractCVText(file);
 
   // Pipeline extraction → scoring (code) → narration. Le LLM ne note jamais.
   const { application } = await analyzeCVApplication({

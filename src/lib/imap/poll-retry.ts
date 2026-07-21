@@ -26,10 +26,11 @@
 import { CVExtractError } from '@/lib/agents/cv-extract';
 
 /**
- * Classe de base des erreurs qui GÈLENT le curseur `last_uid_seen` : le
- * message courant (et tous ceux après lui) seront re-fetchés au prochain poll
- * plutôt que perdus. Le poller la teste par `instanceof` — un seul rail pour
- * le différé HITL et les échecs d'analyse re-tentables.
+ * Classe de base des erreurs DIFFÉRABLES (différé HITL, claim `in_flight`) :
+ * l'uid est mis de côté dans `imap_cv_retries` avec son échéance et re-fetché
+ * nommément — la file continue, le curseur avance (découplage, cf.
+ * `buildFetchSet`). Compte dans le plafond (validé DRH) : un différé qui ne se
+ * résout pas en ~21 min finit en abandon signalé, jamais en attente invisible.
  */
 export class RetryablePollError extends Error {
   constructor(message: string) {
@@ -64,18 +65,22 @@ export function classifyProcessingError(err: unknown): ProcessingErrorClass {
 /**
  * Plafond de tentatives RÉELLES d'analyse par (mailbox, uid). Au-delà :
  * abandon signalé (journal `imap_cv_analysis_abandoned` + binaire sauvegardé
- * en artefact pour traitement manuel), le curseur peut avancer — la boîte
- * n'est plus bloquée par un CV « poison ».
+ * en artefact pour traitement manuel). Resserré 5 → 3 (validé DRH, incident
+ * 07/2026) : l'objectif du rail est d'absorber un aléa PASSAGER, pas de
+ * couvrir une panne de plusieurs heures au prix d'un CV immobilisé.
  */
-export const MAX_CV_ANALYSIS_ATTEMPTS = 5;
+export const MAX_CV_ANALYSIS_ATTEMPTS = 3;
 
 /**
  * Backoff entre tentatives (minutes), indexé par le numéro de la tentative qui
- * vient d'échouer (1-based). Couverture totale ≈ 7 h 15 : une panne OpenAI ou
- * une saturation TPM de plusieurs heures ne consomme aucun CV. Pendant la
- * fenêtre, le poller gèle le curseur SANS re-tenter (zéro coût LLM).
+ * vient d'échouer (1-based). Couverture totale ≈ 21 min (resserré depuis
+ * 1/15/60/360 ≈ 7 h 15, validé DRH) : un rate limit qui se calme ou un réseau
+ * qui revient est couvert ; au-delà, abandon SIGNALÉ (binaire sauvegardé,
+ * rejouable) plutôt qu'une file immobilisée des heures. Pendant la fenêtre,
+ * l'uid n'est simplement PAS re-fetché (zéro coût LLM) — il attend dans
+ * `imap_cv_retries` SANS geler le curseur (découplage, cf. `buildFetchSet`).
  */
-const RETRY_BACKOFF_MINUTES = [1, 15, 60, 360] as const;
+const RETRY_BACKOFF_MINUTES = [1, 5, 15] as const;
 
 /**
  * Prochaine échéance de réessai après la `attempts`-ième tentative échouée.
@@ -91,7 +96,8 @@ export function computeNextRetryAt(attempts: number, now: Date): string | null {
 
 /**
  * Vrai si le message est encore dans sa fenêtre de backoff : ne pas re-tenter
- * (zéro coût LLM), geler le curseur ici. PURE.
+ * (zéro coût LLM) — l'uid attend dans `imap_cv_retries`, la file continue.
+ * PURE.
  */
 export function isInBackoffWindow(
   nextRetryAt: string | null,
@@ -100,4 +106,47 @@ export function isInBackoffWindow(
   if (!nextRetryAt) return false;
   const t = Date.parse(nextRetryAt);
   return Number.isFinite(t) && t > now.getTime();
+}
+
+/**
+ * DÉCOUPLAGE curseur / retry (correctif incident 07/2026 — « un CV en retry
+ * paralysait toute la file »). Le curseur `last_uid_seen` avance sur tous les
+ * uids vus ; un uid en retry passe DERRIÈRE lui, mémorisé dans
+ * `imap_cv_retries`, et est re-fetché NOMMÉMENT à son échéance via le set UID
+ * IMAP construit ici : `"1624,1626,1701:*"` = les retries échus (≤ curseur)
+ * + la plage des nouveaux messages. PURE.
+ *
+ * Sûreté anti-double-envoi : le re-traitement d'un uid est couvert par les
+ * claims deux-phases `(mailbox, uid, mode)` — la contrainte historique qui
+ * imposait le « min bloquant + break » (rembobiner re-présentait les uids
+ * suivants et les re-mailait) a sauté, et le curseur ne rembobinant plus, les
+ * uids SUIVANTS ne sont plus jamais re-présentés.
+ */
+export function buildFetchSet(
+  lastUidSeen: number | null,
+  dueRetryUids: number[],
+): string {
+  if (lastUidSeen === null) return '1:*';
+  const range = `${lastUidSeen + 1}:*`;
+  // Seuls les uids ≤ curseur ont besoin d'un fetch nommé — les autres sont
+  // déjà couverts par la plage (un set qui se recouvre reste un set, mais
+  // autant rester univoque). Tri + dédup pour un set IMAP propre.
+  const named = [...new Set(dueRetryUids.filter((u) => u <= lastUidSeen))].sort(
+    (a, b) => a - b,
+  );
+  if (named.length === 0) return range;
+  return `${named.join(',')},${range}`;
+}
+
+/**
+ * Garde de boucle du poll : un uid ≤ curseur n'est traité QUE s'il fait
+ * partie des retries échus re-fetchés nommément (sinon c'est un re-fetch
+ * parasite du serveur IMAP — ex. sémantique Gmail du `*`). PURE.
+ */
+export function shouldProcessUid(
+  uid: number,
+  previousLastUid: number,
+  dueRetryUids: ReadonlySet<number>,
+): boolean {
+  return uid > previousLastUid || dueRetryUids.has(uid);
 }
