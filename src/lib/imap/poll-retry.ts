@@ -150,3 +150,22 @@ export function shouldProcessUid(
 ): boolean {
   return uid > previousLastUid || dueRetryUids.has(uid);
 }
+
+/**
+ * Cible du COMMIT PAR MESSAGE du curseur (durcissement Vercel : la fonction
+ * cron est tuée net à `maxDuration` — seul ce qui est déjà écrit survit).
+ * `maxUidSeen` = plus haut uid NOUVEAU dont le traitement est résolu (ou en
+ * cours — l'appelant committe AVANT d'inclure le message courant), clampé
+ * sous le frein « état final inécrivable » (`minRetryUid`), et on n'écrit
+ * que si ça AVANCE (`committedSoFar`) — le curseur ne recule jamais.
+ * `null` = rien à committer. PURE.
+ */
+export function nextCommitTarget(
+  maxUidSeen: number,
+  minRetryUid: number | null,
+  committedSoFar: number,
+): number | null {
+  let target = maxUidSeen;
+  if (minRetryUid !== null) target = Math.min(target, minRetryUid - 1);
+  return target > committedSoFar ? target : null;
+}

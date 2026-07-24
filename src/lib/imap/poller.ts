@@ -54,6 +54,7 @@ import {
   computeNextRetryAt,
   isInBackoffWindow,
   MAX_CV_ANALYSIS_ATTEMPTS,
+  nextCommitTarget,
   RetryablePollError,
   shouldProcessUid,
 } from '@/lib/imap/poll-retry';
@@ -311,10 +312,37 @@ async function pollMailboxImpl(
   // qui fige la boîte).
   let crashError: string | null = null;
   let currentUid: number | null = null;
+
+  // COMMIT PAR MESSAGE (durcissement Vercel) : `maxDuration` tue la fonction
+  // cron NET, sans laisser le moindre code s'exécuter — un commit unique en
+  // fin de relève serait perdu et un lot de plusieurs CV (> 60 s d'analyses)
+  // re-partirait de zéro à chaque cron, indéfiniment. On committe donc dès
+  // qu'un message est résolu : même tuée, l'invocation a définitivement
+  // acquis ce qu'elle a traité, la suivante reprend APRÈS. Un échec d'écriture
+  // n'est pas fatal (re-tenté au message suivant et en fin de poll).
+  let committedSoFar = previousLastUid;
+  const commitProgress = async (): Promise<void> => {
+    const target = nextCommitTarget(maxUidSeen, minRetryUid, committedSoFar);
+    if (target === null) return;
+    try {
+      await updateMailboxPollState(mailbox.id, { lastUidSeen: String(target) });
+      committedSoFar = target;
+      outcome.newLastUid = String(target);
+    } catch (err) {
+      console.error(
+        `[imap-poller] commit curseur ${target} KO pour ${mailbox.id} (re-tenté au message suivant)`,
+        err,
+      );
+    }
+  };
+
   try {
     for (const message of fetchedMessages) {
       const uid = message.uid;
       if (typeof uid === 'number') currentUid = uid;
+      // Arriver ici = tous les messages PRÉCÉDENTS ont un état final : on
+      // committe AVANT d'entamer celui-ci (maxUidSeen ne l'inclut pas encore).
+      await commitProgress();
       // Garde-fou anti-retraitement (Round 5 fix) : Gmail renvoie le
       // dernier message même si le range start dépasse uidNext
       // (sémantique IMAP du `*` quand la borne basse dépasse le
@@ -762,21 +790,14 @@ async function pollMailboxImpl(
     outcome.errors += 1;
   }
 
-  // Plafonne au plus petit UID dont l'état final n'a pas pu être écrit
-  // (frein « DB down ») moins 1. Anti perte silencieuse : un mail sans
-  // état final n'est jamais marqué « vu ».
-  let committedUid = maxUidSeen;
-  if (minRetryUid !== null) {
-    committedUid = Math.min(committedUid, minRetryUid - 1);
-  }
-  // N'avance que si on dépasse réellement l'UID déjà committé (sinon on
-  // garde `outcome.newLastUid` = last_uid_seen courant, donc pas d'avance).
-  if (committedUid > previousLastUid) {
-    outcome.newLastUid = String(committedUid);
-  }
+  // Commit FINAL : couvre le dernier message résolu (le commit par message
+  // n'écrit qu'en début d'itération SUIVANTE). Même clamps : frein « DB
+  // down » (`minRetryUid` − 1), jamais de recul (`committedSoFar`) — après
+  // un crash, `maxUidSeen` a été ramené au message précédent (filet
+  // ci-dessus), le message interrompu sera re-présenté.
+  await commitProgress();
 
   await updateMailboxPollState(mailbox.id, {
-    lastUidSeen: outcome.newLastUid ?? undefined,
     lastError: crashError,
   });
   return outcome;

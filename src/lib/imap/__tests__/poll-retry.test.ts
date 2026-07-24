@@ -20,6 +20,7 @@ import {
   computeNextRetryAt,
   isInBackoffWindow,
   MAX_CV_ANALYSIS_ATTEMPTS,
+  nextCommitTarget,
   RetryablePollError,
   shouldProcessUid,
 } from '@/lib/imap/poll-retry';
@@ -141,6 +142,25 @@ describe('isInBackoffWindow', () => {
 
   it('date illisible → fail-safe fenêtre close', () => {
     expect(isInBackoffWindow('pas-une-date', now)).toBe(false);
+  });
+});
+
+describe('nextCommitTarget — commit par message, jamais de recul', () => {
+  it('progression résolue → cible = maxUidSeen', () => {
+    expect(nextCommitTarget(1628, null, 1624)).toBe(1628);
+  });
+
+  it('rien de nouveau résolu → null (pas d’écriture inutile)', () => {
+    expect(nextCommitTarget(1624, null, 1624)).toBeNull();
+  });
+
+  it('frein « état final inécrivable » → clampé à minRetryUid − 1', () => {
+    expect(nextCommitTarget(1628, 1626, 1624)).toBe(1625);
+  });
+
+  it('le curseur ne recule JAMAIS (clamp sous le déjà-committé → null)', () => {
+    expect(nextCommitTarget(1628, 1624, 1626)).toBeNull();
+    expect(nextCommitTarget(1620, null, 1626)).toBeNull();
   });
 });
 
