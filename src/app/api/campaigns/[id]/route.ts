@@ -12,7 +12,7 @@
 import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 
-import { patchCampaign } from '@/lib/db/repos/campaigns';
+import { getCampaign, patchCampaign } from '@/lib/db/repos/campaigns';
 import {
   canReceiveReplay,
   drainPendingSheetCvs,
@@ -49,6 +49,27 @@ export async function PATCH(
   }
 
   try {
+    // INVARIANT SERVEUR « active ⇒ fiche de scoring validée » : le verrou ne
+    // vivait que côté client (campaigns-store.activateCampaign) — or c'est la
+    // prémisse de tout le pipeline de réception (C4, drain, scoring). Un client
+    // direct de l'API ne doit pas pouvoir activer une campagne non scorable.
+    if (parsed.status === 'active') {
+      const existing = await getCampaign(id);
+      if (!existing) {
+        return NextResponse.json({ error: 'not_found' }, { status: 404 });
+      }
+      if (existing.scoringSheet?.isValidated !== true) {
+        return NextResponse.json(
+          {
+            error: 'scoring_sheet_not_validated',
+            message:
+              'Impossible d’activer la campagne : la fiche de scoring doit être validée.',
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const updated = await patchCampaign(id, parsed);
     if (!updated) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });

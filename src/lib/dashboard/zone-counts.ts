@@ -55,11 +55,21 @@ export function combineZoneCounts(raw: {
  * Compte les analyses REJETÉES dont l'uid figure dans la file HITL — le
  * « en attente » vu depuis les analyses (pas depuis la file). Chunké pour
  * rester sous le cap PostgREST quel que soit le volume de la file.
+ *
+ * Les analyses DÉJÀ tranchées par un humain sont EXCLUES du rapproché : elles
+ * appartiennent à « Validés par un humain » — les compter aussi « en attente »
+ * les soustrayait DEUX fois du refus auto (double décompte observé sur des
+ * lignes legacy où la validation était restée `pending` après décision,
+ * séquelle de l'incident de re-analyses 07/2026).
  */
 async function countPendingMatched(uids: string[]): Promise<number> {
   let matched = 0;
   for (const part of chunk(uids, 300)) {
-    matched += await countCandidateAnalyses({ status: 'rejected', uidIn: part });
+    const [all, human] = await Promise.all([
+      countCandidateAnalyses({ status: 'rejected', uidIn: part }),
+      countCandidateAnalyses({ status: 'rejected', uidIn: part, decidedBy: 'user' }),
+    ]);
+    matched += Math.max(0, all - human);
   }
   return matched;
 }

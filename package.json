@@ -15,7 +15,8 @@
     "import:vivier": "tsx scripts/import-vivier.ts",
     "vivier:title-distribution": "tsx scripts/vivier-title-distribution.ts",
     "backfill:from-vivier": "tsx scripts/backfill-from-vivier.ts",
-    "seed:volume": "tsx scripts/seed-volume-dev.ts"
+    "seed:volume": "tsx scripts/seed-volume-dev.ts",
+    "test:regression": "vitest run --config vitest.regression.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",

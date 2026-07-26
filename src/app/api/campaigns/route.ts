@@ -95,6 +95,20 @@ export async function PUT(request: Request): Promise<NextResponse> {
     );
   }
 
+  // INVARIANT SERVEUR « active ⇒ fiche de scoring validée » (miroir du PATCH
+  // /api/campaigns/[id]) : un snapshot qui arrive déjà `active` doit porter une
+  // fiche validée — prémisse du pipeline de réception (C4, drain, scoring).
+  if (parsed.status === 'active' && parsed.scoringSheet?.isValidated !== true) {
+    return NextResponse.json(
+      {
+        error: 'scoring_sheet_not_validated',
+        message:
+          'Impossible d’enregistrer une campagne active sans fiche de scoring validée.',
+      },
+      { status: 409 },
+    );
+  }
+
   // Cohérence de la fiche de scoring hybride (cf. scoring-hybrid.md §7.1) :
   // refus de persister une fiche VALIDÉE dont un critère déterministe/hybride
   // n'a aucun mot-clé. Les brouillons non validés ne sont pas bloqués.
