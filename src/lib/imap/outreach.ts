@@ -34,18 +34,26 @@ import {
   releaseOutreachClaim,
 } from '@/lib/db/repos/imap-outreach-claims';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
-import { upsertPendingValidation } from '@/lib/db/repos/pending-validations';
+import {
+  getPendingValidation,
+  upsertPendingValidation,
+} from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { getSynthesisEmail } from '@/lib/email/addresses';
 import { sendEmail } from '@/lib/email/client';
 import { RetryablePollError } from '@/lib/imap/poll-retry';
 import { uploadArtifact } from '@/lib/storage/blob';
 import { queueInterviewBrief } from '@/lib/interview/queue-brief';
+import { mergePendingValidationEnqueue } from '@/lib/hitl/enqueue-merge';
 import {
   gateCandidateOutreach,
   type SendResult,
 } from '@/lib/hitl/outreach-gate';
-import type { DecisionZone, HitlDecision } from '@/types/hitl';
+import type {
+  DecisionZone,
+  HitlDecision,
+  PendingValidation,
+} from '@/types/hitl';
 import type { MailCandidate } from '@/types/mail-candidate';
 
 /**
@@ -216,35 +224,46 @@ async function enqueueImapPendingValidation(args: {
   // l'humain tranche. Pré-rédiger un refus laissait croire (à tort) que le
   // candidat était refusé. Le booléen de retour est décidé par CE seul write
   // (persisté ou non → le gate retombe sur 'deferred', jamais envoi à l'aveugle).
-  // Id déterministe (mailbox + uid + décision) ⇒ upsert idempotent si re-polled.
+  // Id déterministe (mailbox + uid + décision) ⇒ upsert idempotent si re-polled,
+  // NON DESTRUCTIF via mergePendingValidationEnqueue : une re-passe ne remplace
+  // jamais un lien d'artefact non-null par null ni ne ré-ouvre un `sent`.
+  const validationId = `val_imap_${input.mailboxId}_${input.uid}_${decision}`;
   const nowIso = new Date().toISOString();
+  const fresh: PendingValidation = {
+    id: validationId,
+    campaignId: input.campaignId,
+    candidateName: candidate.candidateName,
+    candidateEmail: candidate.email ?? null,
+    score: candidate.score,
+    decision,
+    cvArtifactId: input.cvArtifactId,
+    reportArtifactId: input.reportArtifactId,
+    mailDraftArtifactId: null,
+    confirmed: false,
+    status: 'pending',
+    payload: {
+      uid: input.uid,
+      candidate,
+      jobTitle: input.jobTitle,
+      summary: candidate.summary,
+    },
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    decidedAt: null,
+    // Enqueue auto (poller) : personne n'a encore confirmé. La confirmation
+    // humaine posera decidedBy='user' + identité côté serveur.
+    decidedBy: null,
+    decidedByUser: null,
+  };
   try {
-    await upsertPendingValidation({
-      id: `val_imap_${input.mailboxId}_${input.uid}_${decision}`,
-      campaignId: input.campaignId,
-      candidateName: candidate.candidateName,
-      candidateEmail: candidate.email ?? null,
-      score: candidate.score,
-      decision,
-      cvArtifactId: input.cvArtifactId,
-      reportArtifactId: input.reportArtifactId,
-      mailDraftArtifactId: null,
-      confirmed: false,
-      status: 'pending',
-      payload: {
-        uid: input.uid,
-        candidate,
-        jobTitle: input.jobTitle,
-        summary: candidate.summary,
-      },
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      decidedAt: null,
-      // Enqueue auto (poller) : personne n'a encore confirmé. La confirmation
-      // humaine posera decidedBy='user' + identité côté serveur.
-      decidedBy: null,
-      decidedByUser: null,
-    });
+    const existing = await getPendingValidation(validationId);
+    const merged = mergePendingValidationEnqueue(existing, fresh);
+    if (!merged.write) {
+      // Déjà engagée (`sending`) ou tranchée (`sent`) : la validation existe
+      // durablement, l'humain a la main — cette re-passe n'a rien à écrire.
+      return true;
+    }
+    await upsertPendingValidation(merged.value);
   } catch (err) {
     if (!(err instanceof SupabaseNotConfiguredError)) {
       console.error('[imap-outreach] enqueue pending failed', err);
@@ -263,7 +282,7 @@ async function enqueueImapPendingValidation(args: {
       candidate: candidate.candidateName,
       candidateEmail: candidate.email,
       uid: input.uid,
-      validationId: `val_imap_${input.mailboxId}_${input.uid}_${decision}`,
+      validationId,
       taskId: taskIdForJournal ?? undefined,
     },
   }).catch(() => {});

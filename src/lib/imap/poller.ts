@@ -59,7 +59,10 @@ import {
   shouldProcessUid,
 } from '@/lib/imap/poll-retry';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
-import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
+import {
+  insertArtifactMeta,
+  upsertArtifactMeta,
+} from '@/lib/db/repos/artifacts';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
 import {
   clearCvRetryState,
@@ -1077,7 +1080,9 @@ export async function processEmailAttachment(args: {
       mimeType: mime,
     });
     const cvId = `art_imap_cvfile_${mailbox.id}_${uid}`;
-    await insertArtifactMeta({
+    // Id déterministe → UPSERT obligatoire : une re-passe (retry) re-persiste
+    // le même artefact ; un INSERT brut échouait en doublon et perdait le lien.
+    await upsertArtifactMeta({
       id: cvId,
       campaignId: isTaskOwner ? null : campaign.id,
       taskId: isTaskOwner ? campaign.id : null,
@@ -1148,7 +1153,8 @@ async function persistAbandonedCv(args: {
       mimeType: args.mime,
     });
     const id = `art_imap_cvabandon_${args.mailbox.id}_${args.uid}`;
-    await insertArtifactMeta({
+    // Même règle que le CV nominal : id déterministe ⇒ upsert (re-passe sûre).
+    await upsertArtifactMeta({
       id,
       campaignId: isTaskOwner ? null : args.campaign.id,
       taskId: isTaskOwner ? args.campaign.id : null,

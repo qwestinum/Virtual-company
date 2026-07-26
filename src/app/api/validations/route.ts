@@ -11,11 +11,13 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import {
+  getPendingValidation,
   listPendingValidations,
   listSentValidations,
   upsertPendingValidation,
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { mergePendingValidationEnqueue } from '@/lib/hitl/enqueue-merge';
 import { HitlDecisionSchema, type PendingValidation } from '@/types/hitl';
 
 export const runtime = 'nodejs';
@@ -88,7 +90,15 @@ export async function POST(request: Request): Promise<NextResponse> {
   };
 
   try {
-    const saved = await upsertPendingValidation(validation);
+    // Enqueue NON DESTRUCTIF (cf. mergePendingValidationEnqueue) : un retry
+    // client sur le même id ne remplace jamais un lien d'artefact non-null
+    // par null et ne ré-ouvre jamais une validation déjà engagée/tranchée.
+    const existing = await getPendingValidation(validation.id);
+    const merged = mergePendingValidationEnqueue(existing, validation);
+    if (!merged.write) {
+      return NextResponse.json({ validation: existing });
+    }
+    const saved = await upsertPendingValidation(merged.value);
     return NextResponse.json({ validation: saved });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

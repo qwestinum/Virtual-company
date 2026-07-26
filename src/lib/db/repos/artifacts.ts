@@ -72,37 +72,63 @@ export type ArtifactMetaInsert = {
   metadata?: Record<string, unknown>;
 };
 
+function assertSingleOwner(input: ArtifactMetaInsert, fn: string): void {
+  if (input.campaignId && input.taskId) {
+    throw new Error(`${fn}: provide either campaignId OR taskId, not both`);
+  }
+  if (!input.campaignId && !input.taskId) {
+    throw new Error(`${fn}: at least one of campaignId or taskId is required`);
+  }
+}
+
+function metaInsertToRow(input: ArtifactMetaInsert) {
+  return {
+    id: input.id,
+    campaign_id: input.campaignId,
+    task_id: input.taskId,
+    kind: input.kind,
+    name: input.name,
+    mime: input.mime ?? 'text/markdown',
+    storage_bucket: input.storageBucket ?? null,
+    storage_path: input.storagePath ?? null,
+    public_url: input.publicUrl ?? null,
+    metadata: input.metadata ?? {},
+  };
+}
+
 export async function insertArtifactMeta(
   input: ArtifactMetaInsert,
 ): Promise<ArtifactMeta> {
-  if (input.campaignId && input.taskId) {
-    throw new Error(
-      'insertArtifactMeta: provide either campaignId OR taskId, not both',
-    );
-  }
-  if (!input.campaignId && !input.taskId) {
-    throw new Error(
-      'insertArtifactMeta: at least one of campaignId or taskId is required',
-    );
-  }
+  assertSingleOwner(input, 'insertArtifactMeta');
   const supabase = requireServerSupabase();
   const { data, error } = await supabase
     .from(TABLE)
-    .insert({
-      id: input.id,
-      campaign_id: input.campaignId,
-      task_id: input.taskId,
-      kind: input.kind,
-      name: input.name,
-      mime: input.mime ?? 'text/markdown',
-      storage_bucket: input.storageBucket ?? null,
-      storage_path: input.storagePath ?? null,
-      public_url: input.publicUrl ?? null,
-      metadata: input.metadata ?? {},
-    })
+    .insert(metaInsertToRow(input))
     .select('*')
     .single();
   if (error) throw new Error(`insertArtifactMeta: ${error.message}`);
+  return rowToMeta(data as ArtifactMetaRow);
+}
+
+/**
+ * Variante UPSERT (par id) pour les artefacts à id DÉTERMINISTE re-persistés
+ * à chaque passe (CV binaire du poller IMAP : `art_imap_cvfile_<mailbox>_<uid>`).
+ * L'INSERT brut échouait en doublon de PK à toute re-passe (retry des rails,
+ * re-analyse) → le catch best-effort laissait `cvArtifactId` null et la
+ * validation perdait son lien CV (incident 07/2026). Le binaire Storage est
+ * déjà upserté (`upsert: true`) — la métadonnée doit l'être aussi.
+ */
+export async function upsertArtifactMeta(
+  input: ArtifactMetaInsert,
+): Promise<ArtifactMeta> {
+  assertSingleOwner(input, 'upsertArtifactMeta');
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .upsert(metaInsertToRow(input), { onConflict: 'id' })
+    .select('*')
+    .single();
+  if (error) throw new Error(`upsertArtifactMeta: ${error.message}`);
   return rowToMeta(data as ArtifactMetaRow);
 }
 
