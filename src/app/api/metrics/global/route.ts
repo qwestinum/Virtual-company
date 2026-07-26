@@ -69,8 +69,9 @@ export async function GET(): Promise<NextResponse> {
   }
 
   // HITL — file des validations en attente, rattachées à l'analyse PAR UID.
-  // Sert à (a) compter « À valider », (b) EXCLURE ces analyses du dashboard
-  // tant que l'envoi n'a pas eu lieu.
+  // Sert à (a) compter « À valider », (b) MARQUER ces analyses
+  // (`awaitingValidation`) : les cartes campagne les comptent en « CV reçus »,
+  // le dashboard résiduel et les KPIs dérivés les écartent jusqu'à l'envoi.
   const pending = await listPendingValidations();
   const pendingUids = new Set(
     pending

@@ -106,6 +106,14 @@ export type CandidateRow = {
    */
   interviewMarked: 'realized' | 'missed' | null;
   validationMarked: 'validated' | 'rejected' | null;
+  /**
+   * HITL — l'analyse est EN FILE de validation (zone grise, mail non envoyé).
+   * La ligne reste dans la liste (un CV reçu EST un CV reçu — compteur
+   * « CV reçus » des cartes campagne) mais chaque lecteur décide : le
+   * dashboard résiduel et les KPIs shortlisté/entretiens/GO l'écartent
+   * tant que l'humain n'a pas tranché.
+   */
+  awaitingValidation: boolean;
 };
 
 export type ActivityItem = {
@@ -195,12 +203,14 @@ export function journalToGlobalKPIs(
   }
 
   // Dérive l'état candidat depuis le journal (HITL-aware : les analyses en
-  // attente de validation sont exclues → pas comptées en shortlisté).
+  // attente de validation sont MARQUÉES `awaitingValidation` — on les écarte
+  // ici des compteurs shortlisté/entretiens/GO, l'humain n'a pas tranché).
   const candidates = journalToCandidatesList(rows, pendingUids);
   let shortlisted = 0;
   let interviews = 0;
   let go = 0;
   for (const c of candidates) {
+    if (c.awaitingValidation) continue;
     // « Shortlisté » est un fait figé à l'analyse (CV au-dessus du seuil) :
     // il ne doit PAS varier selon les décisions DRH ultérieures (entretien,
     // GO, refus). On compte donc tous les candidats recommandés, point.
@@ -334,6 +344,11 @@ export function journalToCampaignMetric(
  * Pour l'instant on n'a pas de signal « réservation Cal.com confirmée »
  * dans le journal, donc on n'expose pas `scheduled` dynamiquement (on
  * réserve la valeur dans le type pour quand le signal arrivera).
+ *
+ * `pendingUids` (file HITL) ne FILTRE plus la liste : les analyses en attente
+ * de validation sont retournées avec `awaitingValidation: true` — c'est le
+ * lecteur qui décide (cartes campagne : comptées en « CV reçus » ; dashboard
+ * résiduel + compteurs shortlisté/entretiens/GO : écartées jusqu'à l'envoi).
  */
 export function journalToCandidatesList(
   rows: JournalEntry[],
@@ -447,14 +462,6 @@ export function journalToCandidatesList(
   }
 
   return Array.from(byUid.values())
-    .filter((entry) => {
-      // HITL — analyse EN ATTENTE de validation (en file, pas encore envoyée) :
-      // exclue du dashboard candidats (et du compteur shortlisté) jusqu'à
-      // l'envoi. Elle ne vit que dans « Validation suspendue » + le KPI
-      // « À valider ». Une fois envoyée (hitlDecision ≠ null), elle réapparaît.
-      if (entry.hitlDecision !== null) return true;
-      return !pendingUids.has(entry.uid);
-    })
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
     .map<CandidateRow>((entry) => {
       // Statut affiché — pris dans l'ordre, EXCLUSIVEMENT piloté par
@@ -509,6 +516,12 @@ export function journalToCandidatesList(
         receivedAt: entry.receivedAt,
         interviewMarked: entry.interviewMarked,
         validationMarked: entry.validationMarked,
+        // HITL — en file de validation, mail non envoyé : la ligne n'est plus
+        // EXCLUE (un CV reçu doit compter dans « CV reçus » des cartes
+        // campagne) mais MARQUÉE — chaque lecteur choisit de l'afficher ou
+        // non. Une fois envoyée (hitlDecision ≠ null), le flag retombe.
+        awaitingValidation:
+          entry.hitlDecision === null && pendingUids.has(entry.uid),
       };
     });
 }

@@ -101,10 +101,17 @@ export function CampaignsList({
   // a déjà tout chargé).
   //
   // Sémantique alignée sur derive-metrics (KPIs globaux) :
+  //   - candidates  : TOUTES les analyses de la campagne, y compris celles en
+  //                   attente de validation humaine (`awaitingValidation`) —
+  //                   un CV reçu est un CV reçu, la file HITL n'est pas un
+  //                   trou dans le compteur « CV reçus » ;
   //   - shortlisted : aboveThreshold (recommendation === 'go'). Fait figé à
-  //                   l'analyse — ne varie PAS selon les décisions DRH ;
+  //                   l'analyse — ne varie PAS selon les décisions DRH ; une
+  //                   ligne en attente de validation n'y compte jamais (zone
+  //                   grise ⇒ recommendation null tant que rien n'est envoyé) ;
   //   - invited     : a au moins reçu une invitation — proxy par
-  //                   « statut !== analyzed » (analysé = pre-invite) ;
+  //                   « statut !== analyzed » (analysé = pre-invite ; une
+  //                   ligne en attente reste `analyzed`, donc non comptée) ;
   //   - interviews  : DRH a cliqué « Entretien réalisé » ;
   //   - goCount     : DRH a cliqué « Validation définitive ».
   //

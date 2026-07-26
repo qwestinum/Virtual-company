@@ -464,13 +464,35 @@ describe('HITL — candidats & shortlisté (validation suspendue)', () => {
       },
     });
 
-  it('une analyse en attente de validation est exclue (liste + shortlisté)', () => {
+  it('une analyse en attente de validation est MARQUÉE, pas exclue (CV reçus des cartes campagne)', () => {
     const rows = [analyzed('u1', 'Imad', 'imad@x.fr', true, 1)];
     const pending = new Set(['u1']); // uid en file
-    expect(journalToCandidatesList(rows, pending)).toHaveLength(0);
+    // La ligne reste dans la liste (un CV reçu EST un CV reçu — c'est elle
+    // que les cartes campagne comptent en « CV reçus »), flaggée pour que
+    // les autres lecteurs (dashboard résiduel) puissent l'écarter.
+    const list = journalToCandidatesList(rows, pending);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.awaitingValidation).toBe(true);
+    expect(list[0]!.status).toBe('analyzed');
+    // Les KPIs dérivés (shortlisté/entretiens/GO) l'écartent tant que
+    // l'humain n'a pas tranché.
     expect(journalToGlobalKPIs(rows, pending).shortlisted).toBe(0);
     // Sans pending (toggle OFF / déjà envoyé), il compte normalement.
     expect(journalToGlobalKPIs(rows).shortlisted).toBe(1);
+    expect(journalToCandidatesList(rows)[0]!.awaitingValidation).toBe(false);
+  });
+
+  it('le flag retombe une fois la décision ENVOYÉE (hitl_validation_sent)', () => {
+    const rows = [
+      analyzed('u1', 'Imad', 'imad@x.fr', false, 1),
+      sent('u1', 'accept', 2),
+    ];
+    // Même si la file n'est pas encore purgée (uid toujours listé pending),
+    // l'envoi prime : la ligne redevient une candidature ordinaire.
+    const list = journalToCandidatesList(rows, new Set(['u1']));
+    expect(list).toHaveLength(1);
+    expect(list[0]!.awaitingValidation).toBe(false);
+    expect(list[0]!.status).toBe('invited');
   });
 
   it('envoi ACCEPTÉ (même switché depuis un refus système) → invité + shortlisté', () => {

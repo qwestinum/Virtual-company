@@ -39,7 +39,13 @@ export function DashboardView() {
     costEstimate: 0,
     awaitingValidation: 0,
   };
-  const candidates = data?.candidates ?? [];
+  // HITL — une analyse en file de validation ne vit que dans « Validation
+  // suspendue » + le KPI « À valider » : on l'écarte de la liste candidats du
+  // dashboard tant que l'humain n'a pas tranché (le flag remplace l'ancienne
+  // exclusion serveur — les cartes campagne, elles, la comptent en CV reçus).
+  const candidates = (data?.candidates ?? []).filter(
+    (c) => !c.awaitingValidation,
+  );
   const agents = data?.agents ?? [];
   const activity = data?.activity ?? [];
 
