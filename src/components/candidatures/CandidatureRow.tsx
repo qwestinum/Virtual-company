@@ -6,6 +6,7 @@ import {
 } from '@/lib/reporting/candidate-stage';
 import type { CandidateListItem } from '@/types/reporting';
 
+import { JobTitleChip } from './JobTitleChip';
 import {
   STAGE_DOT_CLASS,
   STAGE_PILL_CLASS,
@@ -17,12 +18,15 @@ import {
 export function CandidatureRow({
   item,
   campaignLabel,
+  jobTitle,
   selected,
   onClick,
 }: {
   item: CandidateListItem;
   /** « CAMP-098 · Program Manager » (résolu côté conteneur) ou null. */
   campaignLabel: string | null;
+  /** Intitulé du poste seul (résolu côté conteneur) — mis en évidence en chip. */
+  jobTitle: string | null;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -49,10 +53,21 @@ export function CandidatureRow({
             </span>
           ) : null}
         </span>
-        <span className="mt-0.5 block truncate font-inter text-[12px] text-orqa-gris">
-          {campaignLabel ?? (item.campaignId ?? 'Sans campagne')} ·{' '}
-          {formatSmartDate(item.receivedAt)}
-        </span>
+        {jobTitle ? (
+          // Poste en chip (lecture rapide multi-campagnes) + méta en gris.
+          <span className="mt-1 flex min-w-0 items-center gap-2">
+            <JobTitleChip title={jobTitle} />
+            <span className="shrink-0 truncate font-inter text-[12px] text-orqa-gris">
+              {item.campaignId ?? 'Sans campagne'} ·{' '}
+              {formatSmartDate(item.receivedAt)}
+            </span>
+          </span>
+        ) : (
+          <span className="mt-0.5 block truncate font-inter text-[12px] text-orqa-gris">
+            {campaignLabel ?? (item.campaignId ?? 'Sans campagne')} ·{' '}
+            {formatSmartDate(item.receivedAt)}
+          </span>
+        )}
       </span>
 
       <StageProgress stage={item.stage} />

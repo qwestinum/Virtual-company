@@ -41,15 +41,28 @@ export function CandidaturesWorkspace() {
   // appel → sans comparaison superficielle, useSyncExternalStore boucle à
   // l'infini (« Maximum update depth exceeded »). Même pattern que CandidatesCard.
   const campaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
-  const { campaignOptions, labelOf, activeIds } = useMemo(() => {
+  const { campaignOptions, labelOf, titleOf, activeIds } = useMemo(() => {
     const opts = campaigns.map((c) => ({
       id: c.id,
       label: `${c.id} · ${c.fdp.fields.job_title?.value ?? 'Poste non précisé'}`,
     }));
     const map = new Map(opts.map((o) => [o.id, o.label]));
+    // Intitulé du poste SEUL (chip de mise en évidence dans la ligne et le
+    // panneau) — null si absent/vide : le lecteur retombe sur le libellé
+    // combiné « CAMP · Poste non précisé ».
+    const titles = new Map(
+      campaigns.map((c) => {
+        const v = c.fdp.fields.job_title?.value;
+        return [
+          c.id,
+          typeof v === 'string' && v.trim().length > 0 ? v.trim() : null,
+        ] as const;
+      }),
+    );
     return {
       campaignOptions: opts,
       labelOf: (id: string | null) => (id ? map.get(id) ?? id : null),
+      titleOf: (id: string | null) => (id ? titles.get(id) ?? null : null),
       activeIds: campaigns.filter((c) => c.status === 'active').map((c) => c.id),
     };
   }, [campaigns]);
@@ -147,6 +160,7 @@ export function CandidaturesWorkspace() {
                   <CandidatureRow
                     item={item}
                     campaignLabel={labelOf(item.campaignId)}
+                    jobTitle={titleOf(item.campaignId)}
                     selected={panelItem?.id === item.id}
                     onClick={() => setPanelItem(item)}
                   />
@@ -185,6 +199,7 @@ export function CandidaturesWorkspace() {
         <CandidaturePanel
           item={panelItem}
           campaignLabel={labelOf(panelItem.campaignId)}
+          jobTitle={titleOf(panelItem.campaignId)}
           onClose={() => setPanelItem(null)}
           onOpenFull={() => setFullItem(panelItem)}
           onActed={onActed}

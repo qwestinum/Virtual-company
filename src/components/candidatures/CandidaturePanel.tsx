@@ -19,6 +19,7 @@ import type { CandidateAnalysisDetail, CandidateListItem } from '@/types/reporti
 
 import { CandidatureActions } from './CandidatureActions';
 import { DetailPieces, SectionLabel } from './CandidatureDetailBlocks';
+import { JobTitleChip } from './JobTitleChip';
 import { ScoreRing } from './ScoreRing';
 import { STAGE_PILL_CLASS, initials } from './stage-ui';
 import { ZonePill } from './ZonePill';
@@ -32,12 +33,15 @@ type DetailResponse = {
 export function CandidaturePanel({
   item,
   campaignLabel,
+  jobTitle,
   onClose,
   onOpenFull,
   onActed,
 }: {
   item: CandidateListItem;
   campaignLabel: string | null;
+  /** Intitulé du poste seul — mis en évidence en chip sous le nom. */
+  jobTitle: string | null;
   onClose: () => void;
   onOpenFull: () => void;
   onActed: () => void;
@@ -110,9 +114,19 @@ export function CandidaturePanel({
                 </span>
               ) : null}
             </div>
-            <p className="truncate font-inter text-[13px] text-orqa-gris">
-              {campaignLabel ?? (item.campaignId ?? 'Sans campagne')}
-            </p>
+            {jobTitle ? (
+              // Poste en chip (même mise en évidence que la ligne de liste).
+              <div className="mt-1 flex min-w-0 items-center gap-2">
+                <JobTitleChip title={jobTitle} />
+                <span className="shrink-0 font-inter text-[13px] text-orqa-gris">
+                  {item.campaignId ?? 'Sans campagne'}
+                </span>
+              </div>
+            ) : (
+              <p className="truncate font-inter text-[13px] text-orqa-gris">
+                {campaignLabel ?? (item.campaignId ?? 'Sans campagne')}
+              </p>
+            )}
             <p className="font-data text-[11.5px] text-orqa-ciel">{item.id}</p>
           </div>
         </div>
