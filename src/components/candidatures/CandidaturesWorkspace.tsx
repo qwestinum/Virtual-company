@@ -9,8 +9,10 @@
  * reste découplée et reçoit le libellé en prop).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+
+import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 
 import {
   selectActiveCampaigns,
@@ -36,7 +38,17 @@ function isoDayMinus(ref: Date, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function CandidaturesWorkspace() {
+export function CandidaturesWorkspace({
+  initialStage = null,
+}: {
+  /**
+   * Pré-filtre étape appliqué UNE fois au montage (navigation depuis une
+   * notification métier — ex. « Entretien fait »). Optionnel : null = aucun
+   * effet, les navigations existantes sont inchangées. L'utilisateur reste
+   * libre de changer/retirer le chip ensuite.
+   */
+  initialStage?: CandidateStage | null;
+} = {}) {
   // `useShallow` OBLIGATOIRE : `selectActiveCampaigns` recrée un tableau à chaque
   // appel → sans comparaison superficielle, useSyncExternalStore boucle à
   // l'infini (« Maximum update depth exceeded »). Même pattern que CandidatesCard.
@@ -83,6 +95,14 @@ export function CandidaturesWorkspace() {
   const [fullItem, setFullItem] = useState<CandidateListItem | null>(null);
   const [period, setPeriod] = useState<PeriodKey>('all');
   const referenceDate = useMemo(() => new Date(), []);
+
+  // Pré-filtre étape (navigation notification) — appliqué une seule fois au
+  // montage ; le composant remonte à chaque entrée dans l'onglet, et le parent
+  // remet initialStage à null sur toute navigation manuelle.
+  useEffect(() => {
+    if (initialStage) setFilters({ stage: initialStage });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sélecteur campagne : 'all' | 'active' (ensemble) | <id> (campagne précise).
   const campaignValue =

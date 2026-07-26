@@ -156,6 +156,56 @@ export async function listSentValidations(
   }
 }
 
+/**
+ * Signal métier « validations en retard » : nombre de validations ENCORE
+ * `pending` (strict : un `sending` a déjà été déclenché par l'humain) mises en
+ * file avant `cutoffIso`. `created_at` = date de PREMIÈRE mise en file
+ * (préservée par l'enqueue non destructif). Table absente / Supabase non
+ * configuré → 0 (pas de bruit en démo volatile).
+ */
+export async function countOverduePendingValidations(
+  cutoffIso: string,
+): Promise<number> {
+  try {
+    const supabase = requireServerSupabase();
+    const { count, error } = await supabase
+      .from(TABLE)
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+      .lt('created_at', cutoffIso);
+    if (error) {
+      if (isTableMissing(error)) return 0;
+      throw new Error(`countOverduePendingValidations: ${error.message}`);
+    }
+    return count ?? 0;
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return 0;
+    throw err;
+  }
+}
+
+/** Date de mise en file de la validation `pending` la plus ancienne (ou null). */
+export async function oldestPendingValidationCreatedAt(): Promise<string | null> {
+  try {
+    const supabase = requireServerSupabase();
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('created_at')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      if (isTableMissing(error)) return null;
+      throw new Error(`oldestPendingValidationCreatedAt: ${error.message}`);
+    }
+    return (data as { created_at: string } | null)?.created_at ?? null;
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return null;
+    throw err;
+  }
+}
+
 export async function getPendingValidation(
   id: string,
 ): Promise<PendingValidation | null> {

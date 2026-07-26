@@ -7,10 +7,17 @@ import { HRDepartmentView } from '@/components/agents/HRDepartmentView';
 import { BureauPulse } from '@/components/bureau/BureauPulse';
 import { CampaignsWorkspace } from '@/components/campagnes/CampaignsWorkspace';
 import { CandidaturesWorkspace } from '@/components/candidatures/CandidaturesWorkspace';
+import { BusinessToast } from '@/components/notifications/BusinessToast';
+import {
+  signalCount,
+  useBusinessSignals,
+} from '@/components/notifications/useBusinessSignals';
 import { ReportingHub } from '@/components/reporting/ReportingHub';
 import { ValidationsHub } from '@/components/validations/ValidationsHub';
 import { VivierValidationsWorklist } from '@/components/vivier/VivierValidationsWorklist';
+import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import { cn } from '@/lib/utils';
+import type { BusinessSignalTarget } from '@/types/notifications';
 
 type Tab =
   | 'rh'
@@ -77,15 +84,39 @@ function usePendingVivierCount(): number {
 
 export function WorkspacePane() {
   const [tab, setTab] = useState<Tab>('rh');
+  // Pré-filtre étape de l'onglet Candidatures — posé UNIQUEMENT par une
+  // navigation de notification, remis à null sur toute navigation manuelle
+  // (les parcours existants ne changent pas).
+  const [candidaturesStage, setCandidaturesStage] = useState<CandidateStage | null>(null);
   const pendingCount = usePendingValidationsCount();
   const vivierCount = usePendingVivierCount();
+  // Signaux métier : fetch au montage + re-fetch à chaque changement d'onglet
+  // (c'est ce re-fetch qui fait décrémenter les badges après une action).
+  const businessSignals = useBusinessSignals(tab);
+
+  const changeTab = (next: Tab) => {
+    setCandidaturesStage(null);
+    setTab(next);
+  };
+  const navigateToSignal = (target: BusinessSignalTarget) => {
+    if (target.tab === 'candidatures') {
+      setCandidaturesStage(target.stage);
+      setTab('candidatures');
+    } else {
+      setCandidaturesStage(null);
+      setTab(target.tab);
+    }
+  };
+
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden">
       <WorkspaceTabs
         current={tab}
-        onChange={setTab}
+        onChange={changeTab}
         pendingCount={pendingCount}
         vivierCount={vivierCount}
+        overdueValidations={signalCount(businessSignals, 'pending_validations_overdue')}
+        interviewsAwaiting={signalCount(businessSignals, 'interviews_awaiting_decision')}
       />
       <div className="relative flex-1 overflow-hidden">
         {tab === 'rh' ? (
@@ -99,7 +130,7 @@ export function WorkspacePane() {
         ) : tab === 'campagnes' ? (
           <CampaignsWorkspace />
         ) : tab === 'candidatures' ? (
-          <CandidaturesWorkspace />
+          <CandidaturesWorkspace initialStage={candidaturesStage} />
         ) : tab === 'validations' ? (
           <div className="h-full overflow-auto px-6 py-6">
             <div className="mx-auto w-full max-w-6xl">
@@ -133,6 +164,7 @@ export function WorkspacePane() {
             </div>
           </div>
         )}
+        <BusinessToast signals={businessSignals} onNavigate={navigateToSignal} />
       </div>
     </div>
   );
@@ -143,11 +175,17 @@ function WorkspaceTabs({
   onChange,
   pendingCount,
   vivierCount,
+  overdueValidations,
+  interviewsAwaiting,
 }: {
   current: Tab;
   onChange: (tab: Tab) => void;
   pendingCount: number;
   vivierCount: number;
+  /** Signal métier : validations en attente depuis trop longtemps (ambre). */
+  overdueValidations: number;
+  /** Signal métier : entretiens réalisés sans décision (ambre). */
+  interviewsAwaiting: number;
 }) {
   return (
     <nav
@@ -182,6 +220,20 @@ function WorkspaceTabs({
                 {pendingCount}
               </span>
             ) : null}
+            {/* Pastilles AMBRE = signal métier « ça traîne » (distinct du
+                volume) : rose = combien, ambre = depuis trop longtemps. */}
+            {tab.id === 'validations' && overdueValidations > 0 ? (
+              <OverdueBadge
+                count={overdueValidations}
+                title={`${overdueValidations} validation${overdueValidations > 1 ? 's' : ''} en attente depuis trop longtemps`}
+              />
+            ) : null}
+            {tab.id === 'candidatures' && interviewsAwaiting > 0 ? (
+              <OverdueBadge
+                count={interviewsAwaiting}
+                title={`${interviewsAwaiting} candidat${interviewsAwaiting > 1 ? 's' : ''} en attente de décision après entretien`}
+              />
+            ) : null}
             {tab.id === 'vivier' && vivierCount > 0 ? (
               <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-600 px-1 align-middle font-data text-[10px] font-bold text-white">
                 {vivierCount}
@@ -203,6 +255,22 @@ function WorkspaceTabs({
       })}
       <SettingsGearLink />
     </nav>
+  );
+}
+
+/**
+ * Pastille AMBRE d'un signal métier (rappel persistant, non intrusif) —
+ * relais du toast une-fois-par-session. Tokens ORQA ambre, tooltip natif.
+ */
+function OverdueBadge({ count, title }: { count: number; title: string }) {
+  return (
+    <span
+      title={title}
+      className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center gap-0.5 rounded-full border border-orqa-ambre/40 bg-orqa-ambre-bg px-1.5 align-middle font-data text-[10px] font-bold text-orqa-ambre"
+    >
+      <span aria-hidden className="text-[9px] leading-none">⏳</span>
+      {count}
+    </span>
   );
 }
 

@@ -40,6 +40,12 @@ export type StageSignals = {
   scheduledUids: Set<string>;
   /** uid → dernier marqueur entretien (journal, dernier-gagne). */
   interviewMarks: Map<string, 'realized' | 'missed'>;
+  /**
+   * uid → date (ISO) du marqueur entretien RETENU (le même que interviewMarks,
+   * même passe dernier-gagne). Sert au signal métier « entretien réalisé sans
+   * décision depuis N jours » — pas de relecture parallèle du journal.
+   */
+  interviewMarkedAt: Map<string, string>;
   /** uid → dernier marqueur validation finale (journal, dernier-gagne). */
   validationMarks: Map<string, 'validated' | 'rejected'>;
 };
@@ -83,6 +89,7 @@ export async function loadStageSignals(
   // Journal trié created_at DESC → la PREMIÈRE occurrence par uid est la plus
   // récente (dernier-gagne). On n'écrase donc jamais une entrée déjà posée.
   const interviewMarks = new Map<string, 'realized' | 'missed'>();
+  const interviewMarkedAt = new Map<string, string>();
   const validationMarks = new Map<string, 'validated' | 'rejected'>();
   for (const entry of markers) {
     const uid = payloadUid(entry.payload);
@@ -94,6 +101,7 @@ export async function loadStageSignals(
         (status === 'realized' || status === 'missed')
       ) {
         interviewMarks.set(uid, status);
+        interviewMarkedAt.set(uid, entry.createdAt);
       }
     } else if (entry.action === VALIDATION_ACTION) {
       if (
@@ -105,7 +113,13 @@ export async function loadStageSignals(
     }
   }
 
-  return { pendingUids, scheduledUids, interviewMarks, validationMarks };
+  return {
+    pendingUids,
+    scheduledUids,
+    interviewMarks,
+    interviewMarkedAt,
+    validationMarks,
+  };
 }
 
 /** Dérive l'étape courante d'un candidat à partir des signaux chargés. */

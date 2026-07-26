@@ -348,6 +348,7 @@ export async function listCandidateAnalyses(
   if (filters.fromVivier) q = q.eq('from_vivier', true);
   if (filters.decisionZone) q = q.eq('decision_zone', filters.decisionZone);
   if (filters.decidedBy) q = q.eq('decided_by', filters.decidedBy);
+  if (filters.uidIn && filters.uidIn.length > 0) q = q.in('uid', filters.uidIn);
   const orClause = searchOrClause(filters.search);
   if (orClause) q = q.or(orClause);
 
