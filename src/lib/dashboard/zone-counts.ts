@@ -5,11 +5,15 @@
  * du statut sur des analyses anciennes → un gris apparaît `auto_reject`). On NE
  * dépend donc PAS de `decision_zone` mais des signaux FIABLES :
  *   - `status` + `decided_by` sur `candidate_analyses` (count exacts) ;
- *   - la file `pending_validations` (status='pending') = vérité de l'app pour
- *     « en attente de validation » (même source que le menu « À valider »).
+ *   - la file `pending_validations` RAPPROCHÉE PAR UID des analyses rejetées —
+ *     jamais sa longueur brute. Une ligne de file ORPHELINE (analyse jamais
+ *     persistée — incohérence prod 26/07/2026 : Bureau 2 vs menu 4) faisait
+ *     sur-soustraire le refus auto et gonflait « en attente ». Même règle de
+ *     rapprochement que le menu Candidatures (`stage-signals.ts`) : les deux
+ *     surfaces racontent le même chiffre.
  *
  * Partition (somme = total des analyses) :
- *   - En attente            = file pending (gris pas encore tranchés)
+ *   - En attente            = gris en file ET rapprochés d'une analyse rejetée
  *   - Validés par un humain  = decided_by='user' (gris tranchés, accept OU refus)
  *   - Acceptés automatiquement = status accepted hors décision humaine
  *   - Refusés automatiquement  = status rejected hors décision humaine ET hors
@@ -18,6 +22,7 @@
 
 import { countCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
+import { chunk } from '@/lib/db/paginate';
 import { type ZoneCounts } from '@/lib/dashboard/derive-metrics';
 
 /** Combinaison PURE des comptes bruts → 4 zones. Testable (clamps inclus). */
@@ -26,20 +31,37 @@ export function combineZoneCounts(raw: {
   rejectedTotal: number;
   humanAccepted: number;
   humanRejected: number;
-  pending: number;
+  /** Gris en file RAPPROCHÉS d'une analyse rejetée (jamais la file brute). */
+  pendingMatched: number;
 }): ZoneCounts {
   const humanValidated = raw.humanAccepted + raw.humanRejected;
   const autoAccept = Math.max(0, raw.acceptedTotal - raw.humanAccepted);
   // Les gris EN ATTENTE ont status='rejected' provisoire + decided_by='auto' :
   // on les retire des refus AUTO (sinon double compte / refus auto gonflé).
-  const autoReject = Math.max(0, raw.rejectedTotal - raw.humanRejected - raw.pending);
+  const autoReject = Math.max(
+    0,
+    raw.rejectedTotal - raw.humanRejected - raw.pendingMatched,
+  );
   return {
     autoReject,
     autoAccept,
     humanValidated,
-    pending: raw.pending,
+    pending: raw.pendingMatched,
     total: raw.acceptedTotal + raw.rejectedTotal,
   };
+}
+
+/**
+ * Compte les analyses REJETÉES dont l'uid figure dans la file HITL — le
+ * « en attente » vu depuis les analyses (pas depuis la file). Chunké pour
+ * rester sous le cap PostgREST quel que soit le volume de la file.
+ */
+async function countPendingMatched(uids: string[]): Promise<number> {
+  let matched = 0;
+  for (const part of chunk(uids, 300)) {
+    matched += await countCandidateAnalyses({ status: 'rejected', uidIn: part });
+  }
+  return matched;
 }
 
 export async function zoneDistribution(): Promise<ZoneCounts> {
@@ -51,11 +73,19 @@ export async function zoneDistribution(): Promise<ZoneCounts> {
       countCandidateAnalyses({ status: 'rejected', decidedBy: 'user' }),
       listPendingValidations().catch(() => []),
     ]);
+  const pendingUids = [
+    ...new Set(
+      pendingList
+        .map((v) => (typeof v.payload?.uid === 'string' ? v.payload.uid : null))
+        .filter((u): u is string => u !== null),
+    ),
+  ];
+  const pendingMatched = await countPendingMatched(pendingUids);
   return combineZoneCounts({
     acceptedTotal,
     rejectedTotal,
     humanAccepted,
     humanRejected,
-    pending: pendingList.length,
+    pendingMatched,
   });
 }

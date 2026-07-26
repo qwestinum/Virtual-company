@@ -237,6 +237,40 @@ export async function persistCandidateAnalysis(
   }
 }
 
+export type PersistAnalysisOutcome =
+  | 'inserted'
+  | 'already_exists'
+  | 'skipped_no_db';
+
+/**
+ * Variante STRICTE pour le poller IMAP : une analyse non persistée LÈVE au
+ * lieu d'être avalée. Raison (incohérence prod 26/07/2026) : le pipeline
+ * enchaîne persist → mise en file de validation ; en best-effort, un échec
+ * silencieux du persist laissait une validation ORPHELINE (en file sans
+ * analyse) — le Bureau sur-soustrayait et divergeait du menu Candidatures.
+ * Une validation sans analyse est un état incohérent par construction : on
+ * remonte à l'appelant (rails re-tentables), on ne met PAS en file.
+ *
+ * Idempotence : un doublon de clé primaire (re-passe d'un uid déjà persisté)
+ * n'est PAS une erreur — la ligne existe, on ne l'écrase JAMAIS (un UPDATE
+ * piétinerait une décision humaine posée entre deux passes).
+ * `SupabaseNotConfiguredError` reste toléré (démo volatile sans base).
+ */
+export async function persistCandidateAnalysisStrict(
+  input: CandidateAnalysisInsert,
+): Promise<PersistAnalysisOutcome> {
+  try {
+    await insertCandidateAnalysis(input);
+    return 'inserted';
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return 'skipped_no_db';
+    if (err instanceof Error && err.message.includes('duplicate key')) {
+      return 'already_exists';
+    }
+    throw err;
+  }
+}
+
 /**
  * Propage la décision HUMAINE d'un candidat de zone grise (lot 2). UNIQUE
  * écriture UPDATE de cette table (insert-only partout ailleurs) : un humain a
@@ -337,6 +371,7 @@ export async function countCandidateAnalyses(
   if (filters.fromVivier) q = q.eq('from_vivier', true);
   if (filters.decisionZone) q = q.eq('decision_zone', filters.decisionZone);
   if (filters.decidedBy) q = q.eq('decided_by', filters.decidedBy);
+  if (filters.uidIn && filters.uidIn.length > 0) q = q.in('uid', filters.uidIn);
   const orClause = searchOrClause(filters.search);
   if (orClause) q = q.or(orClause);
 

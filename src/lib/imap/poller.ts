@@ -63,7 +63,7 @@ import {
   insertArtifactMeta,
   upsertArtifactMeta,
 } from '@/lib/db/repos/artifacts';
-import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import { persistCandidateAnalysisStrict } from '@/lib/db/repos/candidate-analyses';
 import {
   clearCvRetryState,
   listCvRetryStates,
@@ -1032,15 +1032,26 @@ export async function processEmailAttachment(args: {
 
   // Persiste l'analyse COMPLÈTE pour l'audit candidat (cf.
   // docs/specs/reporting.md §5.3). Id unique par CV reçu = mailbox + uid.
-  // Best-effort : avale Supabase non configuré, ne casse pas le poll.
-  await persistCandidateAnalysis({
-    id: `can_imap_${mailbox.id}_${uid}`,
-    // uid brut = clé des marqueurs de parcours du journal (cohérent avec
-    // le payload.uid de imap_cv_analyzed → dashboard).
-    uid: String(uid),
-    campaignId: isTaskOwner ? null : campaign.id,
-    application,
-  });
+  // STRICT (plus best-effort) : la suite du pipeline met en file une
+  // validation rattachée à CETTE analyse — un persist raté avalé produisait
+  // une validation ORPHELINE (incohérence Bureau/menu, prod 26/07/2026).
+  // Échec ⇒ re-tentable : le message entier repasse par les rails (les claims
+  // deux-phases couvrent le re-traitement, jamais de double mail). Un doublon
+  // (re-passe) est un succès ; Supabase absent reste toléré (démo volatile).
+  try {
+    await persistCandidateAnalysisStrict({
+      id: `can_imap_${mailbox.id}_${uid}`,
+      // uid brut = clé des marqueurs de parcours du journal (cohérent avec
+      // le payload.uid de imap_cv_analyzed → dashboard).
+      uid: String(uid),
+      campaignId: isTaskOwner ? null : campaign.id,
+      application,
+    });
+  } catch (err) {
+    throw new RetryablePollError(
+      `candidate_analysis_unpersisted: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   // Alimentation automatique du vivier (§3.1 porte 2). Fire-and-forget : ne
   // bloque pas la suite du poll (outreach), n'échoue jamais vers l'appelant.

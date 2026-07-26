@@ -9,7 +9,7 @@ describe('combineZoneCounts', () => {
       rejectedTotal: 20,
       humanAccepted: 2,
       humanRejected: 3,
-      pending: 7, // gris en attente (status rejected provisoire)
+      pendingMatched: 7, // gris en attente rapprochés (status rejected provisoire)
     });
     expect(z).toEqual({
       autoAccept: 8, // 10 - 2 (acceptés humains)
@@ -26,7 +26,7 @@ describe('combineZoneCounts', () => {
       rejectedTotal: 33,
       humanAccepted: 5,
       humanRejected: 4,
-      pending: 9,
+      pendingMatched: 9,
     });
     expect(z.autoAccept + z.autoReject + z.humanValidated + z.pending).toBe(z.total);
   });
@@ -37,7 +37,7 @@ describe('combineZoneCounts', () => {
       rejectedTotal: 7,
       humanAccepted: 0,
       humanRejected: 0,
-      pending: 7,
+      pendingMatched: 7,
     });
     expect(z.pending).toBe(7);
     expect(z.autoReject).toBe(0); // 7 rejected sont tous en attente → 0 refus auto
@@ -49,9 +49,25 @@ describe('combineZoneCounts', () => {
       rejectedTotal: 5,
       humanAccepted: 0,
       humanRejected: 3,
-      pending: 7, // > rejected restants → clamp
+      pendingMatched: 7, // > rejected restants → clamp
     });
     expect(z.autoReject).toBe(0);
+  });
+
+  it('une file avec orpheline ne sur-soustrait plus (incohérence prod 26/07/2026)', () => {
+    // File HITL = 8 lignes dont 1 ORPHELINE (analyse jamais persistée) : seuls
+    // les 7 uids RAPPROCHÉS d'une analyse rejetée sont passés ici — le refus
+    // auto reste exact (15 − 5 − 7 = 3, pas 2) et « en attente » dit 7 (pas 8),
+    // aligné sur le ruban « À valider » du menu Candidatures.
+    const z = combineZoneCounts({
+      acceptedTotal: 0,
+      rejectedTotal: 15,
+      humanAccepted: 0,
+      humanRejected: 5,
+      pendingMatched: 7,
+    });
+    expect(z.autoReject).toBe(3);
+    expect(z.pending).toBe(7);
   });
 
   it('tout à zéro → propre', () => {
@@ -60,7 +76,7 @@ describe('combineZoneCounts', () => {
       rejectedTotal: 0,
       humanAccepted: 0,
       humanRejected: 0,
-      pending: 0,
+      pendingMatched: 0,
     });
     expect(z).toEqual({
       autoAccept: 0,

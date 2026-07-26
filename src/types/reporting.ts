@@ -320,6 +320,13 @@ export type CandidateAnalysisFilters = {
   to?: string;
   /** Restreint aux candidatures issues du vivier (filtre menu Candidatures). */
   fromVivier?: boolean;
+  /**
+   * Restreint aux analyses dont l'uid est dans cet ensemble (`.in(uid, …)`).
+   * Sert au Bureau (zones) : compter les rejetés RAPPROCHÉS de la file HITL,
+   * jamais la longueur brute de la file. Appelant responsable du chunking
+   * (≤ ~300 par appel, cf. `chunk` de paginate.ts).
+   */
+  uidIn?: string[];
   limit?: number;
   /** Décalage de pagination serveur (0 par défaut). */
   offset?: number;
