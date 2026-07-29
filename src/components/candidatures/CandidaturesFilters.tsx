@@ -3,8 +3,10 @@
 /**
  * Barre de filtres transversaux (menu Candidatures), identité ORQA.
  * Recherche · campagne (avec « Campagnes actives (N) ») · période · segment
- * d'origine (Toutes / Issues du vivier). Présentationnel : l'état + la
- * résolution des valeurs vivent dans le conteneur.
+ * Toutes / Issues du vivier. « Toutes » RÉINITIALISE LA VUE complète (étape,
+ * recherche, période, campagne → défaut) — pas seulement le segment vivier :
+ * c'est le bouton « revenir à la vue de départ ». Présentationnel : l'état +
+ * la résolution des valeurs vivent dans le conteneur.
  */
 
 export type PeriodKey = 'all' | '7' | '30';
@@ -23,6 +25,7 @@ export function CandidaturesFilters({
   onPeriod,
   fromVivier,
   onVivier,
+  onReset,
 }: {
   campaignOptions: { id: string; label: string }[];
   activeCount: number;
@@ -34,6 +37,8 @@ export function CandidaturesFilters({
   onPeriod: (value: PeriodKey) => void;
   fromVivier: boolean;
   onVivier: (value: boolean) => void;
+  /** « Toutes » : retour à la vue par défaut (tous filtres réinitialisés). */
+  onReset: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2.5">
@@ -72,7 +77,7 @@ export function CandidaturesFilters({
       </select>
 
       <div className="ml-auto flex gap-1.5">
-        <Segment active={!fromVivier} onClick={() => onVivier(false)}>
+        <Segment active={!fromVivier} onClick={onReset}>
           Toutes
         </Segment>
         <Segment active={fromVivier} onClick={() => onVivier(true)}>

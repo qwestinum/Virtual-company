@@ -94,20 +94,41 @@ export function CandidaturesWorkspace({
   const [panelItem, setPanelItem] = useState<CandidateListItem | null>(null);
   const [fullItem, setFullItem] = useState<CandidateListItem | null>(null);
   const [period, setPeriod] = useState<PeriodKey>('all');
+  // L'utilisateur a touché au sélecteur de campagne : la vue par défaut
+  // (campagnes actives) cesse de s'imposer.
+  const [campaignTouched, setCampaignTouched] = useState(false);
   const referenceDate = useMemo(() => new Date(), []);
 
   // Pré-filtre étape (navigation notification) — appliqué une seule fois au
   // montage ; le composant remonte à chaque entrée dans l'onglet, et le parent
-  // remet initialStage à null sur toute navigation manuelle.
+  // remet initialStage à null sur toute navigation manuelle. Le deep-link doit
+  // voir TOUTES les campagnes (le signal n'est pas scopé aux actives) → on
+  // fige le sélecteur sur « Toutes les campagnes ».
   useEffect(() => {
-    if (initialStage) setFilters({ stage: initialStage });
+    if (initialStage) {
+      setCampaignTouched(true);
+      setFilters({ stage: initialStage });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // VUE PAR DÉFAUT : candidatures des campagnes ACTIVES. Appliquée au montage
+  // et maintenue tant que l'utilisateur n'a pas choisi lui-même une campagne
+  // (le store se charge en asynchrone — activeIds arrive après le 1er rendu).
+  useEffect(() => {
+    if (campaignTouched || initialStage) return;
+    setFilters({
+      campaignId: '',
+      campaignIds: activeIds.length > 0 ? activeIds : NO_CAMPAIGN_IDS,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIds, campaignTouched]);
 
   // Sélecteur campagne : 'all' | 'active' (ensemble) | <id> (campagne précise).
   const campaignValue =
     filters.campaignIds.length > 0 ? 'active' : filters.campaignId || 'all';
   const onCampaign = (v: string) => {
+    setCampaignTouched(true);
     if (v === 'active') setFilters({ campaignId: '', campaignIds: activeIds });
     else if (v === 'all')
       setFilters({ campaignId: '', campaignIds: NO_CAMPAIGN_IDS });
@@ -117,6 +138,21 @@ export function CandidaturesWorkspace({
     setPeriod(v);
     if (v === 'all') setFilters({ from: '', to: '' });
     else setFilters({ from: isoDayMinus(referenceDate, Number(v)), to: '' });
+  };
+  // « Toutes » : RÉINITIALISATION complète de la vue — étape, recherche,
+  // période, origine vivier ET campagne (retour au défaut campagnes actives).
+  const onResetView = () => {
+    setCampaignTouched(false);
+    setPeriod('all');
+    setFilters({
+      campaignId: '',
+      campaignIds: activeIds.length > 0 ? activeIds : NO_CAMPAIGN_IDS,
+      from: '',
+      to: '',
+      search: '',
+      stage: null,
+      fromVivier: false,
+    });
   };
 
   // Une action ne ferme NI le panneau NI la page : on rafraîchit seulement la
@@ -150,6 +186,7 @@ export function CandidaturesWorkspace({
               onPeriod={onPeriod}
               fromVivier={filters.fromVivier}
               onVivier={(b) => setFilters({ fromVivier: b })}
+              onReset={onResetView}
             />
           </div>
           <div className="mt-4">
