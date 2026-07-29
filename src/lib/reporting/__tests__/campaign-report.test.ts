@@ -25,6 +25,7 @@ function datum(p: Partial<CampaignAnalysisDatum>): CampaignAnalysisDatum {
     humanIntervention: false,
     recruited: false,
     contacted: false,
+    dismissed: false,
     ...p,
   };
   // Cohérence : « intervention humaine » = gris tranché par l'humain.
@@ -63,6 +64,7 @@ describe('helpers numériques', () => {
       retained: 2,
       rejected: 1,
       enAttente: 0,
+      classeeSansSuite: 0,
       decidedBySystem: 2,
       decidedByHuman: 1,
     });

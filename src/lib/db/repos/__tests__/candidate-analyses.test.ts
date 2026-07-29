@@ -36,6 +36,11 @@ const ROW: CandidateAnalysisRow = {
   computed_at: '2026-06-06T09:05:00.000Z',
   from_vivier: false,
   vivier_candidate_id: null,
+  dismissed_at: null,
+  dismissal_reason: null,
+  dismissed_by: null,
+  dismissed_by_user_id: null,
+  dismissed_by_user_email: null,
   application: {
     candidate: {
       fullName: 'Jean Test',
@@ -94,6 +99,10 @@ describe('rowToSummary', () => {
       decidedByUser: null,
       fromVivier: false,
       vivierCandidateId: null,
+      dismissedAt: null,
+      dismissalReason: null,
+      dismissedBy: null,
+      dismissedByUser: null,
     });
     expect('application' in s).toBe(false);
   });

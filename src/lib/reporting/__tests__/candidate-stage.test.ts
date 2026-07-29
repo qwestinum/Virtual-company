@@ -18,6 +18,7 @@ function base(over: Partial<CandidateStageInput> = {}): CandidateStageInput {
     hasScheduledInterview: false,
     interviewMarked: null,
     validationMarked: null,
+    isDismissed: false,
     ...over,
   };
 }
@@ -147,9 +148,9 @@ describe('tallyStages', () => {
     expect(counts.a_valider).toBe(0);
   });
 
-  it('emptyStageCounts a bien 7 clés à zéro', () => {
+  it('emptyStageCounts a bien 8 clés à zéro', () => {
     const empty = emptyStageCounts();
-    expect(Object.values(empty)).toHaveLength(7);
+    expect(Object.values(empty)).toHaveLength(8);
     expect(Object.values(empty).every((n) => n === 0)).toBe(true);
   });
 });

@@ -6,6 +6,7 @@
  * vue détaillée (UI) et le PDF d'audit parlent EXACTEMENT le même langage.
  */
 
+import { DISMISSAL_REASON_LABELS } from '@/types/dismissal';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
   CANDIDATE_STATUS_LABELS,
@@ -199,5 +200,16 @@ export function buildCandidateHistory(
       detail: application.narration.justification,
     },
   ];
+  // Classement sans suite : événement daté, DISTINCT de la décision de
+  // screening (jamais une évaluation — raison externe).
+  if (detail.dismissedAt && detail.dismissalReason) {
+    events.push({
+      at: detail.dismissedAt,
+      label: 'Classée sans suite',
+      detail: `Motif : ${DISMISSAL_REASON_LABELS[detail.dismissalReason]}${
+        detail.dismissedBy === 'user' ? ' · décision humaine' : ' · automatique (flux campagne)'
+      }`,
+    });
+  }
   return events;
 }

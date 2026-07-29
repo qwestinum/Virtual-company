@@ -1321,3 +1321,93 @@ end $$;
 create index if not exists imap_unmatched_cvs_campaign_idx
   on public.imap_unmatched_cvs (campaign_id, status)
   where campaign_id is not null;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- « Classée sans suite » — fin de vie propre des candidatures (juil. 2026)
+-- ──────────────────────────────────────────────────────────────────────
+-- Un NOUVEAU terminal DISTINCT du refus : le verdict de screening (status)
+-- et la zone restent INTACTS — le classement est une dimension orthogonale
+-- (colonnes dismissed_*), jamais un 3e statut (un 3e statut contaminerait
+-- deriveDecisionZone, l'audit et le PDF en « Écarté »). Raison TYPÉE
+-- obligatoire, trace auto/humain + identité snapshot (pattern decided_by).
+alter table public.candidate_analyses
+  add column if not exists dismissed_at timestamptz,
+  add column if not exists dismissal_reason text,
+  add column if not exists dismissed_by text,
+  add column if not exists dismissed_by_user_id uuid,
+  add column if not exists dismissed_by_user_email text;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'candidate_analyses_dismissal_reason_chk'
+  ) then
+    alter table public.candidate_analyses
+      add constraint candidate_analyses_dismissal_reason_chk
+      check (dismissal_reason is null or dismissal_reason in
+        ('campagne_cloturee','poste_pourvu','candidat_retire','sans_reponse','doublon','invalide'));
+  end if;
+  if not exists (
+    select 1 from pg_constraint where conname = 'candidate_analyses_dismissed_by_chk'
+  ) then
+    alter table public.candidate_analyses
+      add constraint candidate_analyses_dismissed_by_chk
+      check (dismissed_by is null or dismissed_by in ('auto', 'user'));
+  end if;
+  -- Cohérence : classée ⇔ raison présente (jamais l'un sans l'autre).
+  if not exists (
+    select 1 from pg_constraint where conname = 'candidate_analyses_dismissal_coherence_chk'
+  ) then
+    alter table public.candidate_analyses
+      add constraint candidate_analyses_dismissal_coherence_chk
+      check ((dismissed_at is null) = (dismissal_reason is null));
+  end if;
+end $$;
+-- Compteurs Bureau/menu : exclusion des classées à volume (filtre partiel).
+create index if not exists candidate_analyses_dismissed_idx
+  on public.candidate_analyses (campaign_id, dismissed_at)
+  where dismissed_at is not null;
+
+-- pending_validations : nouvel état TERMINAL `void` (validation fermée par
+-- classement sans suite — jamais tranchée, jamais envoyée). Transition
+-- UNIQUEMENT depuis `pending` (un `sending` n'est jamais voidé : un mail part
+-- peut-être). CHECK recréé en deux temps (contrainte versionnée _chk2).
+do $$
+declare c text;
+begin
+  if exists (select 1 from pg_constraint where conname = 'pending_validations_status_chk2') then
+    return; -- déjà migré
+  end if;
+  select conname into c from pg_constraint
+   where conrelid = 'public.pending_validations'::regclass
+     and contype = 'c'
+     and pg_get_constraintdef(oid) like '%status%';
+  if c is not null then
+    execute format('alter table public.pending_validations drop constraint %I', c);
+  end if;
+  alter table public.pending_validations
+    add constraint pending_validations_status_chk2
+    check (status in ('pending', 'sending', 'sent', 'void'));
+end $$;
+
+-- interview_briefs : nouvel état `cancelled` (brief annulé par classement
+-- sans suite). Bloque le « booking posthume » : un candidat classé qui
+-- réserve via un lien Cal.com encore ouvert ne déclenche plus la livraison
+-- d'un brief (getPendingBriefByEmail / listScheduledInterviewUids ne lisent
+-- que awaiting_booking / scheduled).
+do $$
+declare c text;
+begin
+  if exists (select 1 from pg_constraint where conname = 'interview_briefs_status_chk2') then
+    return; -- déjà migré
+  end if;
+  select conname into c from pg_constraint
+   where conrelid = 'public.interview_briefs'::regclass
+     and contype = 'c'
+     and pg_get_constraintdef(oid) like '%status%';
+  if c is not null then
+    execute format('alter table public.interview_briefs drop constraint %I', c);
+  end if;
+  alter table public.interview_briefs
+    add constraint interview_briefs_status_chk2
+    check (status in ('awaiting_booking', 'scheduled', 'cancelled'));
+end $$;

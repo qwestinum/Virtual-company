@@ -137,6 +137,9 @@ export function stageFor(
     hasScheduledInterview: signals.scheduledUids.has(c.uid),
     interviewMarked: signals.interviewMarks.get(c.uid) ?? null,
     validationMarked: signals.validationMarks.get(c.uid) ?? null,
+    // Classement sans suite — colonne dénormalisée, pas un signal chargé :
+    // domine tout dans la dérivation (terminal).
+    isDismissed: c.dismissedAt !== null,
   });
 }
 

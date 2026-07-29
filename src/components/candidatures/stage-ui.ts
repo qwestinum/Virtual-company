@@ -18,6 +18,8 @@ export const STAGE_PILL_CLASS: Record<CandidateStage, string> = {
   rdv_pris: 'text-orqa-violet bg-orqa-violet-bg',
   invite: 'text-orqa-ciel bg-orqa-cielbg',
   a_valider: 'text-orqa-ambre bg-orqa-ambre-bg',
+  // Neutre (gris) : un sans-suite n'est ni un succès ni un refus.
+  sans_suite: 'text-stone-600 bg-stone-100',
   non_retenu: 'text-orqa-rouge bg-orqa-rouge-bg',
   refus_auto: 'text-orqa-rouge bg-orqa-rouge-bg',
 };
@@ -29,6 +31,7 @@ export const STAGE_DOT_CLASS: Record<CandidateStage, string> = {
   rdv_pris: 'bg-orqa-violet',
   invite: 'bg-orqa-ciel',
   a_valider: 'bg-orqa-ambre',
+  sans_suite: 'bg-stone-400',
   non_retenu: 'bg-orqa-rouge',
   refus_auto: 'bg-orqa-rouge',
 };
@@ -45,6 +48,7 @@ export const STAGE_STEP: Record<CandidateStage, number> = {
   retenu: 5,
   refus_auto: 0,
   non_retenu: 0,
+  sans_suite: 0,
 };
 
 /** Initiales (max 2) pour l'avatar. */
@@ -64,6 +68,7 @@ export const STAGE_TONE_COLOR: Record<CandidateStageTone, string> = {
   progress: '#4338ca', // indigo-700
   pending: '#b45309', // amber-700
   negative: '#b91c1c', // red-700
+  neutral: '#57534e', // stone-600
 };
 
 /** Fond pastille (clair) par tonalité. */
@@ -72,6 +77,7 @@ export const STAGE_TONE_BG: Record<CandidateStageTone, string> = {
   progress: '#e0e7ff',
   pending: '#fef3c7',
   negative: '#fee2e2',
+  neutral: '#f5f5f4', // stone-100
 };
 
 /**
@@ -110,7 +116,13 @@ export function formatSmartDate(iso: string, now: Date = new Date()): string {
   });
 }
 
-/** Les étapes terminales n'offrent aucune action (consultation seule). */
+/** Les étapes terminales n'offrent aucune action de PROGRESSION (le
+ * sans-suite garde une action de réouverture, gérée à part). */
 export function isTerminalStage(stage: CandidateStage): boolean {
-  return stage === 'retenu' || stage === 'non_retenu' || stage === 'refus_auto';
+  return (
+    stage === 'retenu' ||
+    stage === 'non_retenu' ||
+    stage === 'refus_auto' ||
+    stage === 'sans_suite'
+  );
 }

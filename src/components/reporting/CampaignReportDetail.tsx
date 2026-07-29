@@ -151,6 +151,7 @@ function CampaignReportBody({ data }: { data: CampaignReportData }) {
           <Kpi n={summary.volumes.retained} label="Retenues" />
           <Kpi n={summary.volumes.rejected} label="Écartées" />
           <Kpi n={summary.volumes.enAttente} label="En attente" />
+          <Kpi n={summary.volumes.classeeSansSuite} label="Sans suite" />
           <Kpi n={summary.volumes.decidedBySystem} label="Décidé par le système" />
           <Kpi n={summary.volumes.decidedByHuman} label="Tranché par un humain" />
         </div>

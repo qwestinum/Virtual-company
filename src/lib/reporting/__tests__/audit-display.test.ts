@@ -30,6 +30,10 @@ const DETAIL: CandidateAnalysisDetail = {
   decidedByUser: null,
   fromVivier: false,
   vivierCandidateId: null,
+  dismissedAt: null,
+  dismissalReason: null,
+  dismissedBy: null,
+  dismissedByUser: null,
   application: {
     candidate: {
       fullName: 'Jean Müller',

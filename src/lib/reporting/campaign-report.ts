@@ -133,8 +133,11 @@ export function buildRecommendations(
       `${Math.round(performance.humanValidationRate * 100)}% des candidatures passent en validation humaine — la zone grise est large ; resserrer les deux seuils de décision automatiserait davantage de cas évidents.`,
     );
   }
-  const retentionRatio = volumes.received > 0 ? volumes.retained / volumes.received : 0;
-  if (volumes.received > 0 && retentionRatio < RETENTION_LOW) {
+  // Taux sur les candidatures ÉVALUÉES (reçues − sans suite) : une classée
+  // sans suite n'a pas été examinée, elle ne dit rien de la sélectivité.
+  const evaluated = volumes.received - volumes.classeeSansSuite;
+  const retentionRatio = evaluated > 0 ? volumes.retained / evaluated : 0;
+  if (evaluated > 0 && retentionRatio < RETENTION_LOW) {
     recs.push(
       `Taux de retenue de ${performance.retentionRate}% très faible — critères possiblement trop stricts ou sourcing à revoir.`,
     );
@@ -166,25 +169,29 @@ export function buildCampaignReportData(
   const { volumes } = summary;
   const scores = analyses.map((a) => a.totalScore);
   const channels = channelPerformance(analyses);
+  // Dénominateur des taux = candidatures ÉVALUÉES (reçues − sans suite) :
+  // les classées sans suite n'ont jamais été examinées jusqu'au bout — les
+  // compter fausserait sélectivité et charge de revue (note PDF dédiée).
+  const evaluatedCount = volumes.received - volumes.classeeSansSuite;
   // Taux de validation humaine = part des candidatures passées en zone grise
   // (en attente OU déjà tranchées par l'humain) — mesure la charge de revue.
   const humanValidationRate =
-    volumes.received > 0
-      ? (volumes.enAttente + volumes.decidedByHuman) / volumes.received
+    evaluatedCount > 0
+      ? (volumes.enAttente + volumes.decidedByHuman) / evaluatedCount
       : 0;
-  const contacted = analyses.filter((a) => a.contacted).length;
+  const contacted = analyses.filter((a) => !a.dismissed && a.contacted).length;
   const retentionMonths = opts?.retentionMonths ?? RGPD_RETENTION_MONTHS;
 
   const partial: Omit<CampaignReportData, 'recommendations'> = {
     summary,
     performance: {
-      retentionRate: pct(volumes.retained, volumes.received),
+      retentionRate: pct(volumes.retained, evaluatedCount),
       timeToHireDays:
         summary.recruitedCount > 0
           ? daysBetween(summary.launchedAt, summary.closedAt)
           : null,
       humanValidationRate,
-      responseRate: pct(contacted, volumes.received),
+      responseRate: pct(contacted, evaluatedCount),
     },
     channels,
     topChannelLabels: channels.filter((c) => c.retained > 0).slice(0, 2).map((c) => c.channelLabel),

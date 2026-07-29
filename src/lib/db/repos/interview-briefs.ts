@@ -150,6 +150,73 @@ export async function getPendingBriefByEmail(
 }
 
 /**
+ * Annule les briefs OUVERTS (`awaiting_booking`/`scheduled`) d'une candidature
+ * classée sans suite — bloque le « booking posthume » (un candidat classé qui
+ * réserve via un lien Cal.com encore ouvert ne déclenche plus de livraison :
+ * `getPendingBriefByEmail` et `listScheduledInterviewUids` excluent
+ * `cancelled` par construction). Cible par uid (fiable) ET par
+ * (campagne, email) en repli — les briefs historiques n'ont pas d'uid.
+ * Best-effort côté appelant ; lève sur erreur DB.
+ */
+export async function cancelOpenBriefsForCandidate(params: {
+  uid: string;
+  campaignId: string | null;
+  email: string | null;
+}): Promise<number> {
+  const supabase = requireServerSupabase();
+  let cancelled = 0;
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ status: 'cancelled' })
+    .in('status', ['awaiting_booking', 'scheduled'])
+    .eq('uid', params.uid)
+    .select('id');
+  if (error) throw new Error(`cancelOpenBriefsForCandidate: ${error.message}`);
+  cancelled += (data ?? []).length;
+  if (params.campaignId && params.email) {
+    const { data: byEmail, error: emailError } = await supabase
+      .from(TABLE)
+      .update({ status: 'cancelled' })
+      .in('status', ['awaiting_booking', 'scheduled'])
+      .eq('campaign_id', params.campaignId)
+      .eq('candidate_email', normalizeEmail(params.email))
+      .select('id');
+    if (emailError)
+      throw new Error(`cancelOpenBriefsForCandidate: ${emailError.message}`);
+    cancelled += (byEmail ?? []).length;
+  }
+  return cancelled;
+}
+
+/** Réactive les briefs annulés d'une candidature rouverte : l'état d'origine
+ * est reconstruit depuis `booking_uid` (présent ⇒ un RDV avait été réservé ⇒
+ * `scheduled` ; absent ⇒ `awaiting_booking`). */
+export async function restoreCancelledBriefsForCandidate(params: {
+  uid: string;
+}): Promise<number> {
+  const supabase = requireServerSupabase();
+  const { data: rebooked, error: rebookedError } = await supabase
+    .from(TABLE)
+    .update({ status: 'scheduled' })
+    .eq('status', 'cancelled')
+    .eq('uid', params.uid)
+    .not('booking_uid', 'is', null)
+    .select('id');
+  if (rebookedError)
+    throw new Error(`restoreCancelledBriefsForCandidate: ${rebookedError.message}`);
+  const { data: awaiting, error: awaitingError } = await supabase
+    .from(TABLE)
+    .update({ status: 'awaiting_booking' })
+    .eq('status', 'cancelled')
+    .eq('uid', params.uid)
+    .is('booking_uid', null)
+    .select('id');
+  if (awaitingError)
+    throw new Error(`restoreCancelledBriefsForCandidate: ${awaitingError.message}`);
+  return (rebooked ?? []).length + (awaiting ?? []).length;
+}
+
+/**
  * UID d'analyse des candidats ayant une réservation Cal.com (`scheduled`).
  * Source du tag « RDV pris » du menu Candidatures. Rattachement par UID (≠
  * email) : un même email ré-analysé / ré-testé ne fait PLUS apparaître un faux

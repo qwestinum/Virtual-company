@@ -26,6 +26,8 @@ function facts(over: Partial<CandidateTimelineFacts> = {}): CandidateTimelineFac
     interviewMissedAt: null,
     finalValidatedAt: null,
     finalRejectedAt: null,
+    dismissedAt: null,
+    dismissalReasonLabel: null,
     ...over,
   };
 }

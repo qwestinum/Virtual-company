@@ -65,7 +65,12 @@ function perCampaignRow(s: CampaignReportSummary): MultiCampaignPerCampaignRow {
     closedAt: s.closedAt,
     durationDays: s.durationDays,
     received: s.volumes.received,
-    retentionRate: pct(s.volumes.retained, s.volumes.received),
+    // Taux sur les ÉVALUÉES (reçues − sans suite), cohérent avec le rapport
+    // de campagne unique.
+    retentionRate: pct(
+      s.volumes.retained,
+      s.volumes.received - s.volumes.classeeSansSuite,
+    ),
     timeToHireDays: s.recruitedCount > 0 ? s.durationDays : null,
     issue: s.issue,
   };
@@ -80,7 +85,7 @@ function siteRetentionStats(
     const label = summary.siteLabel;
     if (!label) continue;
     const acc = by.get(label) ?? { received: 0, retained: 0 };
-    acc.received += summary.volumes.received;
+    acc.received += summary.volumes.received - summary.volumes.classeeSansSuite;
     acc.retained += summary.volumes.retained;
     by.set(label, acc);
   }
@@ -158,13 +163,17 @@ export function buildMultiCampaignReportData(
   const allAnalyses = reports.flatMap((r) => r.analyses);
   const aggregateVolumes = computeVolumes(allAnalyses);
   const totalRecruited = allAnalyses.filter((a) => a.recruited).length;
-  const contacted = allAnalyses.filter((a) => a.contacted).length;
+  const contacted = allAnalyses.filter((a) => !a.dismissed && a.contacted).length;
   const channels = channelPerformance(allAnalyses);
   const scores = allAnalyses.map((a) => a.totalScore);
+  // Dénominateur des taux = candidatures ÉVALUÉES (reçues − sans suite),
+  // cohérent avec le rapport de campagne unique (note PDF dédiée).
+  const evaluatedCount =
+    aggregateVolumes.received - aggregateVolumes.classeeSansSuite;
   const humanValidationRate =
-    aggregateVolumes.received > 0
+    evaluatedCount > 0
       ? (aggregateVolumes.enAttente + aggregateVolumes.decidedByHuman) /
-        aggregateVolumes.received
+        evaluatedCount
       : 0;
 
   const perCampaign = reports
@@ -186,10 +195,10 @@ export function buildMultiCampaignReportData(
     aggregateVolumes,
     totalRecruited,
     rates: {
-      retentionRate: pct(aggregateVolumes.retained, aggregateVolumes.received),
+      retentionRate: pct(aggregateVolumes.retained, evaluatedCount),
       avgTimeToHireDays,
       humanValidationRate,
-      responseRate: pct(contacted, aggregateVolumes.received),
+      responseRate: pct(contacted, evaluatedCount),
     },
     perCampaign,
     channels,

@@ -14,6 +14,7 @@ import type { CandidateJourney } from '@/lib/reporting/candidate-journey';
 import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
+import type { DismissalReason } from '@/types/dismissal';
 import type {
   DecidedBy,
   DecisionZone,
@@ -73,6 +74,18 @@ export type CandidateAnalysisSummary = {
   /** Dossier vivier source (sans FK) ou null. */
   vivierCandidateId: string | null;
   /**
+   * Classement sans suite (dimension ORTHOGONALE au verdict de screening,
+   * cf. src/types/dismissal.ts). `null` = candidature non classée. Le statut
+   * et la zone restent intacts — l'audit garde « screening : X, puis classée
+   * sans suite (raison) ».
+   */
+  dismissedAt: string | null;
+  dismissalReason: DismissalReason | null;
+  /** Acteur du classement ('auto' | 'user') — même pattern que decidedBy. */
+  dismissedBy: DecidedBy | null;
+  /** Identité du classeur humain (snapshot) — null si auto / non classée. */
+  dismissedByUser: HumanDecider | null;
+  /**
    * Parcours dérivé du journal (étape + intervention humaine). Présent
    * uniquement quand l'endpoint a enrichi le résumé ; absent sinon.
    */
@@ -107,9 +120,9 @@ export type CandidateListPage = {
 // Sous-onglet « Rapport de campagne » (cf. docs/specs/reporting.md §3)
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Volumes traités d'une campagne (carte + PDF) — HITL 3 zones. */
+/** Volumes traités d'une campagne (carte + PDF) — HITL 3 zones + sans suite. */
 export type CampaignVolumes = {
-  /** Candidatures analysées (= lignes candidate_analyses). */
+  /** Candidatures analysées (= lignes candidate_analyses). TOTAL BRUT. */
   received: number;
   /** Retenues (status accepted : acceptation auto + gris accepté par l'humain). */
   retained: number;
@@ -117,9 +130,15 @@ export type CampaignVolumes = {
   rejected: number;
   /** En zone de validation, pas encore tranchées par l'humain. */
   enAttente: number;
-  /** Décidées automatiquement par le système (zones auto). */
+  /**
+   * Classées sans suite (jamais évaluées jusqu'au bout, raison externe).
+   * Catégorie PROPRE : ni retenue, ni écartée, ni en attente. La partition
+   * somme : received = retained + rejected + enAttente + classeeSansSuite.
+   */
+  classeeSansSuite: number;
+  /** Décidées automatiquement par le système (zones auto, hors sans suite). */
   decidedBySystem: number;
-  /** Tranchées par un humain (zone grise décidée). */
+  /** Tranchées par un humain (zone grise décidée, hors sans suite). */
   decidedByHuman: number;
 };
 
@@ -195,6 +214,8 @@ export type CampaignAnalysisDatum = {
   recruited: boolean;
   /** Le candidat a reçu une communication (invitation ou refus traité). */
   contacted: boolean;
+  /** Classée sans suite — exclue des catégories décisionnelles et des taux. */
+  dismissed: boolean;
 };
 
 /** Données complètes du rapport de campagne (alimente le PDF). */
@@ -320,6 +341,12 @@ export type CandidateAnalysisFilters = {
   to?: string;
   /** Restreint aux candidatures issues du vivier (filtre menu Candidatures). */
   fromVivier?: boolean;
+  /**
+   * Filtre sur le classement sans suite : `true` = uniquement les classées,
+   * `false` = uniquement les NON classées (`dismissed_at is null`). Absent =
+   * pas de filtre.
+   */
+  dismissed?: boolean;
   /**
    * Restreint aux analyses dont l'uid est dans cet ensemble (`.in(uid, …)`).
    * Sert au Bureau (zones) : compter les rejetés RAPPROCHÉS de la file HITL,

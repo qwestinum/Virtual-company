@@ -11,7 +11,9 @@
 
 import type { MailCandidate } from './mail-candidate';
 
-export type InterviewBriefStatus = 'awaiting_booking' | 'scheduled';
+/** `cancelled` : brief annulé par classement sans suite de la candidature —
+ * exclu de tous les lecteurs actifs (booking posthume bloqué). */
+export type InterviewBriefStatus = 'awaiting_booking' | 'scheduled' | 'cancelled';
 
 export type InterviewQuestion = { theme: string; question: string };
 

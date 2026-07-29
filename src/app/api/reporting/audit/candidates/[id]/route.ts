@@ -61,6 +61,7 @@ export async function GET(
       candidate.status,
       candidate.decisionZone,
       candidate.decidedBy,
+      candidate.dismissedAt !== null,
     );
     // Annotation factuelle « issu du vivier » (§6.3), dérivée du proposal —
     // visible par le recruteur. Rapprochement EXACT par email.

@@ -154,6 +154,10 @@ function CampaignReportDocument({
           <Kpi value={String(summary.volumes.retained)} label="Retenues" />
           <Kpi value={String(summary.volumes.rejected)} label="Écartées" />
           <Kpi value={String(summary.volumes.enAttente)} label="En attente" />
+          <Kpi
+            value={String(summary.volumes.classeeSansSuite)}
+            label="Sans suite"
+          />
         </View>
         <View style={[s.kpiRow, { marginTop: 6 }]}>
           <Kpi
@@ -189,6 +193,12 @@ function CampaignReportDocument({
           />
           <Kpi value={`${performance.responseRate}%`} label="Taux de réponse" />
         </View>
+        {summary.volumes.classeeSansSuite > 0 ? (
+          <Text style={[pdfBaseStyles.footnote, { marginTop: 4 }]}>
+            Taux calculés sur les candidatures évaluées (reçues hors classées
+            sans suite).
+          </Text>
+        ) : null}
 
         {/* 4. Performance par canal */}
         <Text style={pdfBaseStyles.sectionTitle}>

@@ -88,6 +88,9 @@ export function CampaignReportCard({
         <Vol label="Retenus" n={volumes.retained} />
         <Vol label="Écartés" n={volumes.rejected} />
         <Vol label="En attente" n={volumes.enAttente} />
+        {volumes.classeeSansSuite > 0 ? (
+          <Vol label="Sans suite" n={volumes.classeeSansSuite} />
+        ) : null}
       </div>
 
       {(sent || generated) && (

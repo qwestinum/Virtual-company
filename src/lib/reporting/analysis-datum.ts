@@ -16,7 +16,14 @@ export function analysisToDatum(
   a: CandidateAnalysisSummary,
   signals: JourneySignals,
 ): CampaignAnalysisDatum {
-  const j = journeyFromSignals(signals, a.uid, a.status, a.decisionZone, a.decidedBy);
+  const j = journeyFromSignals(
+    signals,
+    a.uid,
+    a.status,
+    a.decisionZone,
+    a.decidedBy,
+    a.dismissedAt !== null,
+  );
   return {
     status: a.status,
     totalScore: a.totalScore,
@@ -32,5 +39,7 @@ export function analysisToDatum(
       j.final !== 'na' ||
       j.validation === 'retenu_entretien' ||
       j.interview !== 'na',
+    // Classée sans suite — exclue des catégories décisionnelles et des taux.
+    dismissed: a.dismissedAt !== null,
   };
 }

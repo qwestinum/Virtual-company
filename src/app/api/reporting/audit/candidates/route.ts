@@ -64,7 +64,14 @@ export async function GET(request: Request): Promise<NextResponse> {
     const signals = await loadJourneySignals();
     const enriched = candidates.map((c) => ({
       ...c,
-      journey: journeyFromSignals(signals, c.uid, c.status, c.decisionZone, c.decidedBy),
+      journey: journeyFromSignals(
+        signals,
+        c.uid,
+        c.status,
+        c.decisionZone,
+        c.decidedBy,
+        c.dismissedAt !== null,
+      ),
     }));
     const filtered = stageFilter
       ? enriched.filter((c) => journeyFilterKey(c.journey) === stageFilter)

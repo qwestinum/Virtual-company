@@ -128,6 +128,7 @@ function Body({ data }: { data: MultiCampaignReportData }) {
           <Kpi n={aggregateVolumes.retained} label="Retenus" />
           <Kpi n={aggregateVolumes.rejected} label="Écartés" />
           <Kpi n={aggregateVolumes.enAttente} label="En attente" />
+          <Kpi n={aggregateVolumes.classeeSansSuite} label="Sans suite" />
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Kpi n={`${rates.retentionRate}%`} label="Taux de retenue" />

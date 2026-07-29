@@ -12,6 +12,7 @@ import type { CampaignPrefill } from '@/types/campaign-prefill';
 import type { CampaignStatus } from '@/types/campaign-status';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
+import type { DismissalReason } from '@/types/dismissal';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { DecidedBy, DecisionZone, HitlConfig } from '@/types/hitl';
 import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
@@ -127,6 +128,15 @@ export type CandidateAnalysisRow = {
   from_vivier: boolean;
   /** Dossier vivier source (sans FK) ou null. */
   vivier_candidate_id: string | null;
+  /** Classement sans suite (null = non classée) — dimension orthogonale au statut. */
+  dismissed_at: string | null;
+  /** Raison typée du classement (CHECK SQL, cf. src/types/dismissal.ts). */
+  dismissal_reason: DismissalReason | null;
+  /** Acteur du classement ('auto' | 'user'). */
+  dismissed_by: DecidedBy | null;
+  /** Identité du classeur humain (snapshot, sans FK). */
+  dismissed_by_user_id: string | null;
+  dismissed_by_user_email: string | null;
   created_at: string;
 };
 
@@ -146,7 +156,7 @@ export type InterviewBriefRow = {
   job_title: string | null;
   /** uid de l'analyse candidat à l'origine du brief (rattachement fiable). */
   uid: string | null;
-  status: 'awaiting_booking' | 'scheduled';
+  status: 'awaiting_booking' | 'scheduled' | 'cancelled';
   questions: Array<{ theme: string; question: string }>;
   candidate_snapshot: MailCandidate;
   booking_uid: string | null;

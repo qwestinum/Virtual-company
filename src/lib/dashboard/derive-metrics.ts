@@ -128,17 +128,19 @@ export type ActivityItem = {
 
 /**
  * Répartition des candidatures par décision (récit « Process First » du Bureau).
- * EXHAUSTIF depuis `candidate_analyses.decision_zone` (pas le journal). Les 4
+ * EXHAUSTIF depuis `candidate_analyses.decision_zone` (pas le journal). Les 5
  * champs sont DISJOINTS et somment à `total` :
  *   - autoReject / autoAccept = zones auto (système)
  *   - humanValidated = gris tranché par un humain (`decided_by='user'`)
  *   - pending = gris pas encore tranché (déféré à l'humain)
+ *   - sansSuite = classées sans suite (raison externe, jamais une évaluation)
  */
 export type ZoneCounts = {
   autoReject: number;
   autoAccept: number;
   humanValidated: number;
   pending: number;
+  sansSuite: number;
   total: number;
 };
 
@@ -148,6 +150,7 @@ export const EMPTY_ZONE_COUNTS: ZoneCounts = {
   autoAccept: 0,
   humanValidated: 0,
   pending: 0,
+  sansSuite: 0,
   total: 0,
 };
 

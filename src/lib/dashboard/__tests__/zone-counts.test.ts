@@ -10,12 +10,14 @@ describe('combineZoneCounts', () => {
       humanAccepted: 2,
       humanRejected: 3,
       pendingMatched: 7, // gris en attente rapprochés (status rejected provisoire)
+      sansSuite: 0,
     });
     expect(z).toEqual({
       autoAccept: 8, // 10 - 2 (acceptés humains)
       autoReject: 10, // 20 - 3 (refus humains) - 7 (en attente)
       humanValidated: 5, // 2 + 3
       pending: 7,
+      sansSuite: 0,
       total: 30,
     });
   });
@@ -27,6 +29,7 @@ describe('combineZoneCounts', () => {
       humanAccepted: 5,
       humanRejected: 4,
       pendingMatched: 9,
+      sansSuite: 0,
     });
     expect(z.autoAccept + z.autoReject + z.humanValidated + z.pending).toBe(z.total);
   });
@@ -38,6 +41,7 @@ describe('combineZoneCounts', () => {
       humanAccepted: 0,
       humanRejected: 0,
       pendingMatched: 7,
+      sansSuite: 0,
     });
     expect(z.pending).toBe(7);
     expect(z.autoReject).toBe(0); // 7 rejected sont tous en attente → 0 refus auto
@@ -50,6 +54,7 @@ describe('combineZoneCounts', () => {
       humanAccepted: 0,
       humanRejected: 3,
       pendingMatched: 7, // > rejected restants → clamp
+      sansSuite: 0,
     });
     expect(z.autoReject).toBe(0);
   });
@@ -65,6 +70,7 @@ describe('combineZoneCounts', () => {
       humanAccepted: 0,
       humanRejected: 5,
       pendingMatched: 7,
+      sansSuite: 0,
     });
     expect(z.autoReject).toBe(3);
     expect(z.pending).toBe(7);
@@ -77,12 +83,14 @@ describe('combineZoneCounts', () => {
       humanAccepted: 0,
       humanRejected: 0,
       pendingMatched: 0,
+      sansSuite: 0,
     });
     expect(z).toEqual({
       autoAccept: 0,
       autoReject: 0,
       humanValidated: 0,
       pending: 0,
+      sansSuite: 0,
       total: 0,
     });
   });

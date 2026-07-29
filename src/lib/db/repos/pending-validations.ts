@@ -133,6 +133,99 @@ export async function listPendingValidations(): Promise<PendingValidation[]> {
   }
 }
 
+export type VoidValidationOutcome =
+  | 'voided'
+  | 'in_flight'
+  | 'already_sent'
+  | 'already_void'
+  | 'not_found';
+
+/**
+ * Ferme une validation par classement sans suite : transition UNIQUEMENT
+ * `pending → void` (conditionnelle, un seul gagnant). Un `sending` n'est
+ * JAMAIS voidé (un mail part peut-être) → `in_flight`, l'appelant diffère.
+ * Un `sent` est final → `already_sent` (la décision a été prise et envoyée).
+ */
+export async function voidPendingValidation(
+  id: string,
+): Promise<VoidValidationOutcome> {
+  try {
+    const supabase = requireServerSupabase();
+    const { data, error } = await supabase
+      .from(TABLE)
+      .update({ status: 'void', decided_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('status', 'pending')
+      .select('id');
+    if (error) {
+      if (isTableMissing(error)) return 'not_found';
+      throw new Error(`voidPendingValidation: ${error.message}`);
+    }
+    if ((data ?? []).length > 0) return 'voided';
+    const { data: row, error: readError } = await supabase
+      .from(TABLE)
+      .select('status')
+      .eq('id', id)
+      .maybeSingle();
+    if (readError) throw new Error(`voidPendingValidation: ${readError.message}`);
+    if (!row) return 'not_found';
+    const status = (row as { status: string }).status;
+    if (status === 'sent') return 'already_sent';
+    if (status === 'void') return 'already_void';
+    return 'in_flight';
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return 'not_found';
+    throw err;
+  }
+}
+
+/**
+ * Réouverture (annulation d'un classement par erreur) : `void → pending`,
+ * conditionnel. La validation redevient visible dans la file HITL.
+ */
+export async function unvoidPendingValidation(
+  id: string,
+): Promise<'restored' | 'not_void'> {
+  try {
+    const supabase = requireServerSupabase();
+    const { data, error } = await supabase
+      .from(TABLE)
+      .update({ status: 'pending', decided_at: null })
+      .eq('id', id)
+      .eq('status', 'void')
+      .select('id');
+    if (error) {
+      if (isTableMissing(error)) return 'not_void';
+      throw new Error(`unvoidPendingValidation: ${error.message}`);
+    }
+    return (data ?? []).length > 0 ? 'restored' : 'not_void';
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return 'not_void';
+    throw err;
+  }
+}
+
+/** Validations fermées par classement sans suite (status = 'void') — sert la
+ * réouverture (restaurer `void → pending`). */
+export async function listVoidValidations(): Promise<PendingValidation[]> {
+  try {
+    const supabase = requireServerSupabase();
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('*')
+      .eq('status', 'void')
+      .order('updated_at', { ascending: false });
+    if (error) {
+      if (isTableMissing(error)) return [];
+      throw new Error(`listVoidValidations: ${error.message}`);
+    }
+    return (data ?? []).map((r) => rowToDomain(r as PendingValidationRow));
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return [];
+    throw err;
+  }
+}
+
 /** Validations DÉJÀ traitées (status = 'sent') — historique consultable (lot 2d). */
 export async function listSentValidations(
   limit = 50,

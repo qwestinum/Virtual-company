@@ -55,6 +55,8 @@ export const pdfBaseStyles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   paragraph: { marginTop: 2 },
+  /** Note de bas de section (méthodologie, dénominateurs). */
+  footnote: { fontSize: 7, color: PDF_COLORS.muted },
   footer: {
     position: 'absolute',
     bottom: 22,

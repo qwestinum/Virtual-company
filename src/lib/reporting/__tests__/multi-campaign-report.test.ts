@@ -18,6 +18,7 @@ function datum(p: Partial<CampaignAnalysisDatum>): CampaignAnalysisDatum {
     humanIntervention: false,
     recruited: false,
     contacted: false,
+    dismissed: false,
     ...p,
   };
   if (d.humanIntervention && d.decidedBy === 'auto') {
@@ -84,6 +85,7 @@ describe('buildMultiCampaignReportData — agrégats', () => {
       retained: 2,
       rejected: 1,
       enAttente: 0,
+      classeeSansSuite: 0,
       decidedBySystem: 3,
       decidedByHuman: 0,
     });

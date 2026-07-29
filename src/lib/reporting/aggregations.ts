@@ -69,20 +69,25 @@ export function addMonthsIso(iso: string, months: number): string {
 }
 
 export function computeVolumes(analyses: CampaignAnalysisDatum[]): CampaignVolumes {
+  // Classée sans suite = catégorie PROPRE : exclue de retenu/écarté/en attente
+  // ET des compteurs système/humain (ce n'est pas une évaluation). La
+  // partition somme : received = retained + rejected + enAttente + sansSuite.
+  const evaluated = analyses.filter((a) => !a.dismissed);
   // En attente = zone grise pas encore tranchée par l'humain (statut provisoire
   // 'rejected' → exclu de retained ET de rejected pour ne pas fausser les taux).
   const isPending = (a: CampaignAnalysisDatum): boolean =>
     a.decisionZone === 'gray' && a.decidedBy !== 'user';
   return {
     received: analyses.length,
-    retained: analyses.filter((a) => a.status === 'accepted' && !isPending(a))
+    retained: evaluated.filter((a) => a.status === 'accepted' && !isPending(a))
       .length,
-    rejected: analyses.filter((a) => a.status === 'rejected' && !isPending(a))
+    rejected: evaluated.filter((a) => a.status === 'rejected' && !isPending(a))
       .length,
-    enAttente: analyses.filter(isPending).length,
+    enAttente: evaluated.filter(isPending).length,
+    classeeSansSuite: analyses.length - evaluated.length,
     // Système = zones auto (et legacy sans zone) ; humain = gris tranché.
-    decidedBySystem: analyses.filter((a) => a.decisionZone !== 'gray').length,
-    decidedByHuman: analyses.filter((a) => a.decidedBy === 'user').length,
+    decidedBySystem: evaluated.filter((a) => a.decisionZone !== 'gray').length,
+    decidedByHuman: evaluated.filter((a) => a.decidedBy === 'user').length,
   };
 }
 
@@ -116,7 +121,10 @@ export function channelPerformance(
   analyses: CampaignAnalysisDatum[],
 ): ChannelPerformance[] {
   const by = new Map<string, ChannelPerformance>();
-  for (const a of analyses) {
+  // Mesure de PERFORMANCE ⇒ candidatures évaluées uniquement : une classée
+  // sans suite gonflerait le volume sans jamais être « retenue » et ferait
+  // paraître le canal sous-performant à tort.
+  for (const a of analyses.filter((x) => !x.dismissed)) {
     const channelLabel = CV_SOURCE_LABELS[a.source] ?? a.source;
     const row =
       by.get(channelLabel) ??

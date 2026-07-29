@@ -11,6 +11,8 @@
  * JAMAIS d'un scan de journal tronqué (cf. compteurs exhaustifs).
  *
  * Échelle « le plus avancé gagne » (priorité décroissante) :
+ *   0. Sans suite (classement terminal, raison externe — domine TOUT état
+ *      ouvert : jamais une évaluation, cf. src/types/dismissal.ts)
  *   1. Retenu (GO définitif humain)
  *   2. Non retenu (refus après process : validation/entretien)
  *   3. Entretien fait
@@ -29,6 +31,7 @@ export const CANDIDATE_STAGES = [
   'rdv_pris',
   'invite',
   'a_valider',
+  'sans_suite',
   'non_retenu',
   'refus_auto',
 ] as const;
@@ -50,6 +53,8 @@ export type CandidateStageInput = {
   interviewMarked: 'realized' | 'missed' | null;
   /** Marqueur journal validation finale (candidate_validation_marked) — bas volume. */
   validationMarked: 'validated' | 'rejected' | null;
+  /** Classée sans suite (candidate_analyses.dismissed_at non null). */
+  isDismissed: boolean;
 };
 
 /**
@@ -59,6 +64,10 @@ export type CandidateStageInput = {
  * d'entretien postérieure est « Invité ».
  */
 export function deriveCandidateStage(input: CandidateStageInput): CandidateStage {
+  // 0 — classée sans suite : terminal, domine TOUT (y compris les marqueurs) —
+  // c'est ce qui éteint les signaux métier PAR CONSTRUCTION (stage ≠ ouvert).
+  if (input.isDismissed) return 'sans_suite';
+
   // 1-2 — décision finale humaine (marqueur journal, bas volume).
   if (input.validationMarked === 'validated') return 'retenu';
   if (input.validationMarked === 'rejected') return 'non_retenu';
@@ -95,11 +104,17 @@ export const CANDIDATE_STAGE_LABELS: Record<CandidateStage, string> = {
   rdv_pris: 'RDV pris',
   invite: 'Invité',
   a_valider: 'À valider',
+  sans_suite: 'Sans suite',
   non_retenu: 'Non retenu',
   refus_auto: 'Refus auto',
 };
 
-export type CandidateStageTone = 'positive' | 'progress' | 'pending' | 'negative';
+export type CandidateStageTone =
+  | 'positive'
+  | 'progress'
+  | 'pending'
+  | 'negative'
+  | 'neutral';
 
 export const CANDIDATE_STAGE_TONES: Record<CandidateStage, CandidateStageTone> = {
   retenu: 'positive',
@@ -107,11 +122,15 @@ export const CANDIDATE_STAGE_TONES: Record<CandidateStage, CandidateStageTone> =
   rdv_pris: 'progress',
   invite: 'progress',
   a_valider: 'pending',
+  // Ni vert ni rouge : un sans-suite n'est PAS une évaluation.
+  sans_suite: 'neutral',
   non_retenu: 'negative',
   refus_auto: 'negative',
 };
 
-/** Ordre d'affichage du ruban (pipeline → terminaux). */
+/** Ordre d'affichage du ruban (pipeline → terminaux). ⚠️ TABLEAU, pas un
+ * Record : une étape absente ici est INVISIBLE dans le ruban sans erreur de
+ * compilation — toute nouvelle étape doit y être ajoutée à la main. */
 export const CANDIDATE_STAGE_RIBBON_ORDER: CandidateStage[] = [
   'a_valider',
   'invite',
@@ -120,6 +139,7 @@ export const CANDIDATE_STAGE_RIBBON_ORDER: CandidateStage[] = [
   'retenu',
   'non_retenu',
   'refus_auto',
+  'sans_suite',
 ];
 
 export type CandidateStageCounts = Record<CandidateStage, number>;
@@ -132,6 +152,7 @@ export function emptyStageCounts(): CandidateStageCounts {
     rdv_pris: 0,
     invite: 0,
     a_valider: 0,
+    sans_suite: 0,
     non_retenu: 0,
     refus_auto: 0,
   };

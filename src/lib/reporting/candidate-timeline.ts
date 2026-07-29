@@ -55,6 +55,10 @@ export type CandidateTimelineFacts = {
   finalValidatedAt: string | null;
   /** Journal candidate_validation_marked = rejected. */
   finalRejectedAt: string | null;
+  /** candidate_analyses.dismissed_at — classement sans suite (terminal). */
+  dismissedAt: string | null;
+  /** Libellé du motif de classement (null si non classée). */
+  dismissalReasonLabel: string | null;
 };
 
 /** Date « inconnue » sentinelle (analyses historiques sans computedAt). */
@@ -81,6 +85,7 @@ const STEP_RANK: Record<string, number> = {
   interview_missed: 7,
   final_validated: 8,
   final_rejected: 8,
+  dismissed: 9,
 };
 
 /**
@@ -176,6 +181,14 @@ export function buildCandidateTimeline(
     'positive',
   );
   push('final_rejected', facts.finalRejectedAt, 'Non retenu', null, 'negative');
+  // Classement sans suite : terminal NEUTRE (jamais un refus).
+  push(
+    'dismissed',
+    facts.dismissedAt,
+    'Classée sans suite',
+    facts.dismissalReasonLabel ? `Motif : ${facts.dismissalReasonLabel}` : null,
+    'neutral',
+  );
 
   events.sort((a, b) => {
     const ra = STEP_RANK[a.key] ?? 99;

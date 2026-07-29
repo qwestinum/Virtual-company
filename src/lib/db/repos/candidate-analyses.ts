@@ -19,6 +19,7 @@ import {
 } from '@/lib/db/supabase-server';
 import type { CandidateAnalysisRow } from '@/lib/db/types';
 import type { CVApplication } from '@/types/cv-analysis';
+import type { DismissalReason } from '@/types/dismissal';
 import {
   DEFAULT_HITL_CONFIG,
   type DecidedBy,
@@ -37,7 +38,7 @@ const TABLE = 'candidate_analyses';
 
 /** Colonnes du résumé (sans le jsonb `application`). */
 const SUMMARY_COLUMNS =
-  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, hitl_config, decision_zone, decided_by, decided_by_user_id, decided_by_user_email, from_vivier, vivier_candidate_id, created_at';
+  'id, uid, campaign_id, candidate_name, candidate_email, file_name, source, received_at, total_score, status, computed_at, hitl_config, decision_zone, decided_by, decided_by_user_id, decided_by_user_email, from_vivier, vivier_candidate_id, dismissed_at, dismissal_reason, dismissed_by, dismissed_by_user_id, dismissed_by_user_email, created_at';
 
 /**
  * Repli déterministe statut→zone (binaire, sans `gray`) — utilisé UNIQUEMENT
@@ -79,6 +80,13 @@ export function rowToSummary(row: SummaryRow): CandidateAnalysisSummary {
     // colonne (migration douce, jamais NULL grâce au défaut SQL).
     fromVivier: row.from_vivier ?? false,
     vivierCandidateId: row.vivier_candidate_id ?? null,
+    // Classement sans suite (migration douce : null = non classée).
+    dismissedAt: row.dismissed_at ?? null,
+    dismissalReason: row.dismissal_reason ?? null,
+    dismissedBy: row.dismissed_by ?? null,
+    dismissedByUser: row.dismissed_by_user_id
+      ? { userId: row.dismissed_by_user_id, email: row.dismissed_by_user_email ?? null }
+      : null,
   };
 }
 
@@ -296,7 +304,10 @@ export async function updateCandidateAnalysisDecision(params: {
         decided_by_user_id: params.decidedByUser?.userId ?? null,
         decided_by_user_email: params.decidedByUser?.email ?? null,
       })
-      .eq('uid', params.uid);
+      .eq('uid', params.uid)
+      // Garde : une décision tardive n'écrase JAMAIS un classement sans suite
+      // (le void de la validation ferme déjà la porte en amont — ceinture).
+      .is('dismissed_at', null);
     q = params.campaignId
       ? q.eq('campaign_id', params.campaignId)
       : q.is('campaign_id', null);
@@ -348,6 +359,10 @@ export async function listCandidateAnalyses(
   if (filters.fromVivier) q = q.eq('from_vivier', true);
   if (filters.decisionZone) q = q.eq('decision_zone', filters.decisionZone);
   if (filters.decidedBy) q = q.eq('decided_by', filters.decidedBy);
+  if (filters.dismissed !== undefined)
+    q = filters.dismissed
+      ? q.not('dismissed_at', 'is', null)
+      : q.is('dismissed_at', null);
   if (filters.uidIn && filters.uidIn.length > 0) q = q.in('uid', filters.uidIn);
   const orClause = searchOrClause(filters.search);
   if (orClause) q = q.or(orClause);
@@ -372,6 +387,10 @@ export async function countCandidateAnalyses(
   if (filters.fromVivier) q = q.eq('from_vivier', true);
   if (filters.decisionZone) q = q.eq('decision_zone', filters.decisionZone);
   if (filters.decidedBy) q = q.eq('decided_by', filters.decidedBy);
+  if (filters.dismissed !== undefined)
+    q = filters.dismissed
+      ? q.not('dismissed_at', 'is', null)
+      : q.is('dismissed_at', null);
   if (filters.uidIn && filters.uidIn.length > 0) q = q.in('uid', filters.uidIn);
   const orClause = searchOrClause(filters.search);
   if (orClause) q = q.or(orClause);
@@ -401,6 +420,74 @@ export async function listAllCandidateAnalyses(
     if (page.length < PAGE) break;
   }
   return out;
+}
+
+// ─── Classement sans suite ─────────────────────────────────────────────────
+
+export type DismissOutcome = 'dismissed' | 'already_dismissed' | 'not_found';
+
+/**
+ * Classe une candidature sans suite — update CONDITIONNEL `.is('dismissed_at',
+ * null)` : un seul gagnant, idempotent (rejouer rend `already_dismissed`).
+ * Le verdict de screening (`status`), la zone et `decided_by` ne sont JAMAIS
+ * touchés : le classement est orthogonal à l'évaluation. Lève sur erreur DB
+ * (l'appelant décide — jamais un succès silencieux).
+ */
+export async function dismissCandidateAnalysis(params: {
+  analysisId: string;
+  reason: DismissalReason;
+  dismissedBy: DecidedBy;
+  dismissedByUser: HumanDecider | null;
+}): Promise<DismissOutcome> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      dismissed_at: new Date().toISOString(),
+      dismissal_reason: params.reason,
+      dismissed_by: params.dismissedBy,
+      dismissed_by_user_id: params.dismissedByUser?.userId ?? null,
+      dismissed_by_user_email: params.dismissedByUser?.email ?? null,
+    })
+    .eq('id', params.analysisId)
+    .is('dismissed_at', null)
+    .select('id');
+  if (error) throw new Error(`dismissCandidateAnalysis: ${error.message}`);
+  if ((data ?? []).length > 0) return 'dismissed';
+  const { data: row, error: readError } = await supabase
+    .from(TABLE)
+    .select('id, dismissed_at')
+    .eq('id', params.analysisId)
+    .maybeSingle();
+  if (readError) throw new Error(`dismissCandidateAnalysis: ${readError.message}`);
+  if (!row) return 'not_found';
+  return 'already_dismissed';
+}
+
+/**
+ * Rouvre une candidature classée par erreur : remet les colonnes `dismissed_*`
+ * à null (conditionnel inverse — no-op si déjà rouverte). La trace d'origine
+ * survit dans le journal. Un mail d'information déjà parti ne se dé-envoie
+ * pas (rappelé côté UI).
+ */
+export async function revertCandidateAnalysisDismissal(
+  analysisId: string,
+): Promise<'reverted' | 'not_dismissed'> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      dismissed_at: null,
+      dismissal_reason: null,
+      dismissed_by: null,
+      dismissed_by_user_id: null,
+      dismissed_by_user_email: null,
+    })
+    .eq('id', analysisId)
+    .not('dismissed_at', 'is', null)
+    .select('id');
+  if (error) throw new Error(`revertCandidateAnalysisDismissal: ${error.message}`);
+  return (data ?? []).length > 0 ? 'reverted' : 'not_dismissed';
 }
 
 /**

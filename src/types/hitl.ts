@@ -65,10 +65,14 @@ export type HumanDecider = {
 // `sending` (audit C6) : réservation d'envoi posée AVANT tout mail — état de
 // quelques secondes (≤ TTL 5 min après un crash, puis re-réservable). Pour
 // tous les lecteurs, un `sending` est « encore en attente », jamais terminal.
+// `void` : TERMINAL — validation fermée par classement sans suite de la
+// candidature (jamais tranchée, jamais envoyée). Transition UNIQUEMENT depuis
+// `pending` ; un `sending` n'est jamais voidé (un mail part peut-être).
 export const PendingValidationStatusSchema = z.enum([
   'pending',
   'sending',
   'sent',
+  'void',
 ]);
 export type PendingValidationStatus = z.infer<
   typeof PendingValidationStatusSchema

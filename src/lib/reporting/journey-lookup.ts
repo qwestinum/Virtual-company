@@ -90,6 +90,7 @@ export function journeyFromSignals(
   screeningStatus: CandidateStatus,
   decisionZone: DecisionZone | null,
   decidedBy: DecidedBy | null,
+  dismissed = false,
 ): CandidateJourney {
   const row = signals.markers.get(uid);
   return deriveJourneyFor(
@@ -105,5 +106,6 @@ export function journeyFromSignals(
         }
       : undefined,
     signals.pendingUids.has(uid),
+    dismissed,
   );
 }

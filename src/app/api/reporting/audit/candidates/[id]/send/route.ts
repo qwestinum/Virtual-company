@@ -70,6 +70,7 @@ export async function POST(
       detail.status,
       detail.decisionZone,
       detail.decidedBy,
+      detail.dismissedAt !== null,
     );
     const generatedAtIso = new Date().toISOString();
     const pdf = await renderCandidateAuditPdf({

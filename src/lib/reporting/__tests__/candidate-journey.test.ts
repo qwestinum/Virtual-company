@@ -20,6 +20,7 @@ function input(p: Partial<CandidateJourneyInput>): CandidateJourneyInput {
     // HITL ON par défaut (= DEFAULT_HITL_CONFIG) : verdict système provisoire.
     rejectionGated: true,
     acceptanceGated: true,
+    dismissed: false,
     ...p,
   };
 }

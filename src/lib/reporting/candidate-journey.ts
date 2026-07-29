@@ -23,7 +23,9 @@ import type { CandidateStatus } from '@/types/scoring';
 export type ScreeningState = 'retenu' | 'ecarte';
 export type ValidationState = 'na' | 'en_attente' | 'retenu_entretien' | 'ecarte';
 export type InterviewState = 'na' | 'en_attente' | 'realise' | 'non_realise';
-export type FinalState = 'na' | 'en_attente' | 'retenu' | 'ecarte';
+/** `sans_suite` : classée sans suite — DISTINCT d'« écarté » (jamais une
+ * évaluation, raison externe — cf. src/types/dismissal.ts). */
+export type FinalState = 'na' | 'en_attente' | 'retenu' | 'ecarte' | 'sans_suite';
 
 export type CandidateJourney = {
   screening: ScreeningState;
@@ -73,6 +75,7 @@ export const FINAL_LABELS: Record<FinalState, string> = {
   en_attente: 'En attente',
   retenu: 'Retenu définitivement',
   ecarte: 'Écarté définitivement',
+  sans_suite: 'Classée sans suite',
 };
 
 function toneOf(
@@ -135,6 +138,8 @@ export type CandidateJourneyInput = {
    * entretien » directement (auto).
    */
   acceptanceGated: boolean;
+  /** Classée sans suite — force la décision finale `sans_suite` (terminal). */
+  dismissed: boolean;
 };
 
 /** Dérive les 4 phases + le drapeau d'intervention humaine. */
@@ -204,7 +209,12 @@ export function deriveCandidateJourney(
   // refus envoyé après screening positif, OU refus de screening rendu
   // définitif (HITL refus OFF / refus confirmé).
   let final: FinalState;
-  if (validationMarked === 'validated') {
+  if (input.dismissed) {
+    // Classée sans suite : terminal, domine tout état ouvert. Les phases
+    // amont restent telles quelles (l'audit garde « screening : retenu, puis
+    // classée sans suite ») — jamais convertie en « écarté ».
+    final = 'sans_suite';
+  } else if (validationMarked === 'validated') {
     final = 'retenu';
   } else if (validationMarked === 'rejected') {
     final = 'ecarte';
@@ -295,6 +305,9 @@ export function journeyCurrentState(j: CandidateJourney): {
   label: string;
   tone: JourneyTone;
 } {
+  if (j.final === 'sans_suite') {
+    return { label: FINAL_LABELS.sans_suite, tone: 'neutral' };
+  }
   if (j.final === 'retenu' || j.final === 'ecarte') {
     return { label: FINAL_LABELS[j.final], tone: toneOf(j.final) };
   }
@@ -322,6 +335,7 @@ export const JOURNEY_FILTER_STATES = [
   'entretien_realise',
   'retenu_definitif',
   'ecarte',
+  'sans_suite',
 ] as const;
 export type JourneyFilterState = (typeof JOURNEY_FILTER_STATES)[number];
 
@@ -331,10 +345,12 @@ export const JOURNEY_FILTER_LABELS: Record<JourneyFilterState, string> = {
   entretien_realise: 'Entretien réalisé',
   retenu_definitif: 'Retenu définitivement',
   ecarte: 'Écarté',
+  sans_suite: 'Classée sans suite',
 };
 
 /** Mappe un parcours sur une clé de filtre (état courant simplifié). */
 export function journeyFilterKey(j: CandidateJourney): JourneyFilterState {
+  if (j.final === 'sans_suite') return 'sans_suite';
   if (j.final === 'retenu') return 'retenu_definitif';
   if (j.final === 'ecarte' || j.validation === 'ecarte' || j.screening === 'ecarte') {
     return 'ecarte';
@@ -368,6 +384,7 @@ export function deriveJourneyFor(
     recommendation: 'go' | 'no-go' | null;
   },
   isPendingValidation = false,
+  dismissed = false,
 ): CandidateJourney {
   const gated = decisionZone === 'gray';
   // Un GRIS a PASSÉ le screening (score dans la bande de validation) : son
@@ -387,6 +404,7 @@ export function deriveJourneyFor(
       (screeningStatus === 'accepted' ? 'go' : null),
     rejectionGated: gated,
     acceptanceGated: gated,
+    dismissed,
   });
   return { ...j, humanIntervention: decidedBy === 'user' };
 }

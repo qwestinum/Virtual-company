@@ -25,7 +25,11 @@ import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { chunk } from '@/lib/db/paginate';
 import { type ZoneCounts } from '@/lib/dashboard/derive-metrics';
 
-/** Combinaison PURE des comptes bruts → 4 zones. Testable (clamps inclus). */
+/** Combinaison PURE des comptes bruts → 5 catégories. Testable (clamps
+ * inclus). Les comptes accepted/rejected EXCLUENT les classées sans suite
+ * (`dismissed: false` côté requêtes) ; `sansSuite` les porte à part — le
+ * TOTAL reste le volume complet (sinon divergence Bureau vs menu, l'incident
+ * du 26/07/2026). */
 export function combineZoneCounts(raw: {
   acceptedTotal: number;
   rejectedTotal: number;
@@ -33,6 +37,8 @@ export function combineZoneCounts(raw: {
   humanRejected: number;
   /** Gris en file RAPPROCHÉS d'une analyse rejetée (jamais la file brute). */
   pendingMatched: number;
+  /** Classées sans suite (toutes zones confondues). */
+  sansSuite: number;
 }): ZoneCounts {
   const humanValidated = raw.humanAccepted + raw.humanRejected;
   const autoAccept = Math.max(0, raw.acceptedTotal - raw.humanAccepted);
@@ -47,7 +53,8 @@ export function combineZoneCounts(raw: {
     autoAccept,
     humanValidated,
     pending: raw.pendingMatched,
-    total: raw.acceptedTotal + raw.rejectedTotal,
+    sansSuite: raw.sansSuite,
+    total: raw.acceptedTotal + raw.rejectedTotal + raw.sansSuite,
   };
 }
 
@@ -66,8 +73,13 @@ async function countPendingMatched(uids: string[]): Promise<number> {
   let matched = 0;
   for (const part of chunk(uids, 300)) {
     const [all, human] = await Promise.all([
-      countCandidateAnalyses({ status: 'rejected', uidIn: part }),
-      countCandidateAnalyses({ status: 'rejected', uidIn: part, decidedBy: 'user' }),
+      countCandidateAnalyses({ status: 'rejected', uidIn: part, dismissed: false }),
+      countCandidateAnalyses({
+        status: 'rejected',
+        uidIn: part,
+        decidedBy: 'user',
+        dismissed: false,
+      }),
     ]);
     matched += Math.max(0, all - human);
   }
@@ -75,14 +87,21 @@ async function countPendingMatched(uids: string[]): Promise<number> {
 }
 
 export async function zoneDistribution(): Promise<ZoneCounts> {
-  const [acceptedTotal, rejectedTotal, humanAccepted, humanRejected, pendingList] =
-    await Promise.all([
-      countCandidateAnalyses({ status: 'accepted' }),
-      countCandidateAnalyses({ status: 'rejected' }),
-      countCandidateAnalyses({ status: 'accepted', decidedBy: 'user' }),
-      countCandidateAnalyses({ status: 'rejected', decidedBy: 'user' }),
-      listPendingValidations().catch(() => []),
-    ]);
+  const [
+    acceptedTotal,
+    rejectedTotal,
+    humanAccepted,
+    humanRejected,
+    sansSuite,
+    pendingList,
+  ] = await Promise.all([
+    countCandidateAnalyses({ status: 'accepted', dismissed: false }),
+    countCandidateAnalyses({ status: 'rejected', dismissed: false }),
+    countCandidateAnalyses({ status: 'accepted', decidedBy: 'user', dismissed: false }),
+    countCandidateAnalyses({ status: 'rejected', decidedBy: 'user', dismissed: false }),
+    countCandidateAnalyses({ dismissed: true }),
+    listPendingValidations().catch(() => []),
+  ]);
   const pendingUids = [
     ...new Set(
       pendingList
@@ -97,5 +116,6 @@ export async function zoneDistribution(): Promise<ZoneCounts> {
     humanAccepted,
     humanRejected,
     pendingMatched,
+    sansSuite,
   });
 }

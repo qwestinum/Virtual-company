@@ -15,6 +15,7 @@ function datum(p: Partial<CampaignAnalysisDatum>): CampaignAnalysisDatum {
     humanIntervention: false,
     recruited: false,
     contacted: true,
+    dismissed: false,
     ...p,
   };
 }

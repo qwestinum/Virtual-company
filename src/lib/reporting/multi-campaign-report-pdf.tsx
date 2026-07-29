@@ -133,6 +133,10 @@ function MultiCampaignDocument({
           <Kpi value={String(aggregateVolumes.retained)} label="Retenus" />
           <Kpi value={String(aggregateVolumes.rejected)} label="Écartés" />
           <Kpi value={String(aggregateVolumes.enAttente)} label="En attente" />
+          <Kpi
+            value={String(aggregateVolumes.classeeSansSuite)}
+            label="Sans suite"
+          />
         </View>
         <View style={[s.kpiRow, { marginTop: 6 }]}>
           <Kpi
@@ -154,6 +158,12 @@ function MultiCampaignDocument({
           />
           <Kpi value={`${rates.responseRate}%`} label="Taux de réponse" />
         </View>
+        {aggregateVolumes.classeeSansSuite > 0 ? (
+          <Text style={[pdfBaseStyles.footnote, { marginTop: 4 }]}>
+            Taux calculés sur les candidatures évaluées (reçues hors classées
+            sans suite).
+          </Text>
+        ) : null}
 
         {/* 3. Répartition par campagne */}
         <Text style={pdfBaseStyles.sectionTitle}>Répartition par campagne</Text>

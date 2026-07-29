@@ -47,6 +47,10 @@ const DETAIL: CandidateAnalysisDetail & { journey: CandidateJourney } = {
   decidedByUser: null,
   fromVivier: false,
   vivierCandidateId: null,
+  dismissedAt: null,
+  dismissalReason: null,
+  dismissedBy: null,
+  dismissedByUser: null,
   journey: JOURNEY,
   application: {
     candidate: {

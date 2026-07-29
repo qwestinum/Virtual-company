@@ -9,6 +9,7 @@
 import { getScheduledInterviewByUid } from '@/lib/db/repos/interview-briefs';
 import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import type { CandidateTimelineFacts } from '@/lib/reporting/candidate-timeline';
+import { DISMISSAL_REASON_LABELS } from '@/types/dismissal';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 
 const OUTREACH_ACTION = 'imap_outreach_mail';
@@ -88,5 +89,9 @@ export async function extractCandidateTimelineFacts(
     interviewMissedAt,
     finalValidatedAt,
     finalRejectedAt,
+    dismissedAt: detail.dismissedAt,
+    dismissalReasonLabel: detail.dismissalReason
+      ? DISMISSAL_REASON_LABELS[detail.dismissalReason]
+      : null,
   };
 }
