@@ -11,6 +11,7 @@ import {
   executeJobWriter,
 } from '@/lib/agents/server/job-writer-execute';
 import { AIProviderError } from '@/lib/ai/errors';
+import { resolveCampaignReceptionAddress } from '@/lib/campaign/reception-address';
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getSenderEmail } from '@/lib/email/addresses';
 import { FDPInProgressSchema } from '@/types/field-collection';
@@ -63,7 +64,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     const parsedAd = JobAdResultSchema.parse(output.data.ad);
     // Mention RGPD vivier (§7) apposée déterministe — contact = intake/expéditeur.
     const settings = await getAppSettings();
-    const contact = settings?.intakeEmail || (await getSenderEmail()) || '';
+    const contact =
+      (await resolveCampaignReceptionAddress(
+        parsed.fdp.campaignId,
+        settings?.intakeEmail,
+      )) ||
+      (await getSenderEmail()) ||
+      '';
     const ad = withVivierRgpdMention(parsedAd, contact);
     const markdown = renderJobAdMarkdown(ad);
     const fileName = suggestJobAdFileName(ad.title);

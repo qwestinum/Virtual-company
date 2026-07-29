@@ -9,6 +9,7 @@
  * C'est une invitation à CANDIDATER (jamais à un entretien). Server-only.
  */
 
+import { resolveCampaignReceptionAddress } from '@/lib/campaign/reception-address';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
@@ -60,8 +61,13 @@ export async function sendVivierInvitation(
 
   const settings = await getAppSettings();
   const config = settings?.vivierConfig ?? DEFAULT_VIVIER_CONFIG;
-  const intake = settings?.intakeEmail ?? '';
-  const rgpdContact = intake || (await getSenderEmail()) || '';
+  // Adresse de réception effective : boîte IMAP associée à la campagne en
+  // priorité (c'est elle que le poller rattache), repli intakeEmail global.
+  const reception = await resolveCampaignReceptionAddress(
+    campaignId,
+    settings?.intakeEmail,
+  );
+  const rgpdContact = reception || (await getSenderEmail()) || '';
 
   const jobTitle = jobTitleOf(campaign.fdp);
   const text = renderVivierInvitation(config.invitationTemplate, {
@@ -70,7 +76,7 @@ export async function sendVivierInvitation(
     campaignName: campaign.name,
     // Référence à quoter en objet = l'ID campagne (ce que le poller matche).
     reference: campaign.id,
-    receptionAddress: intake || '(adresse de réception à configurer)',
+    receptionAddress: reception || '(adresse de réception à configurer)',
     organisation: config.organisationName.trim() || 'L’équipe recrutement',
     rgpdContact,
   });
@@ -82,7 +88,7 @@ export async function sendVivierInvitation(
     // reste rattachable par le poller (match `includes`, le préfixe Re: n'y fait rien).
     subject: `Une opportunité : ${jobTitle} (réf. ${campaign.id})`,
     html: invitationTextToHtml(text),
-    replyTo: intake || undefined,
+    replyTo: reception || undefined,
   });
 
   const status: InvitationStatus = result.ok

@@ -217,3 +217,27 @@ export async function listMailboxesForCampaign(
   if (error) throw new Error(`listMailboxesForCampaign: ${error.message}`);
   return (data ?? []).map((r) => (r as { mailbox_id: string }).mailbox_id);
 }
+
+/**
+ * Adresses des boîtes ACTIVÉES associées à une campagne (ordre de création).
+ * Une boîte désactivée ne reçoit plus (le poller l'ignore) : on ne la propose
+ * jamais comme adresse de réception à un candidat.
+ */
+export async function listEnabledMailboxEmailsForCampaign(
+  campaignId: string,
+): Promise<string[]> {
+  const ids = await listMailboxesForCampaign(campaignId);
+  if (ids.length === 0) return [];
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('user_email, created_at')
+    .in('id', ids)
+    .eq('is_enabled', true)
+    .order('created_at', { ascending: true });
+  if (error)
+    throw new Error(`listEnabledMailboxEmailsForCampaign: ${error.message}`);
+  return (data ?? [])
+    .map((r) => (r as { user_email: string }).user_email)
+    .filter((e) => Boolean(e?.trim()));
+}

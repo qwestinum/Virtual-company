@@ -9,6 +9,7 @@ const settingsRepo = { getAppSettings: vi.fn() };
 const addresses = { getSenderEmail: vi.fn() };
 const emailClient = { sendEmail: vi.fn() };
 const journal = { appendJournalEntry: vi.fn() };
+const mailboxesRepo = { listEnabledMailboxEmailsForCampaign: vi.fn() };
 
 vi.mock('@/lib/db/repos/vivier', () => candidatesRepo);
 vi.mock('@/lib/db/repos/campaigns', () => campaignsRepo);
@@ -17,6 +18,7 @@ vi.mock('@/lib/db/repos/app-settings', () => settingsRepo);
 vi.mock('@/lib/email/addresses', () => addresses);
 vi.mock('@/lib/email/client', () => emailClient);
 vi.mock('@/lib/db/repos/journal', () => journal);
+vi.mock('@/lib/db/repos/mailboxes', () => mailboxesRepo);
 
 function fdp() {
   const f = buildEmptyFDP('CAMP-1');
@@ -25,9 +27,11 @@ function fdp() {
 }
 
 beforeEach(() => {
-  [candidatesRepo, campaignsRepo, preselRepo, settingsRepo, addresses, emailClient, journal].forEach(
+  [candidatesRepo, campaignsRepo, preselRepo, settingsRepo, addresses, emailClient, journal, mailboxesRepo].forEach(
     (m) => Object.values(m).forEach((f) => f.mockReset()),
   );
+  // Par défaut : aucune boîte associée ⇒ repli sur intakeEmail (réglage global).
+  mailboxesRepo.listEnabledMailboxEmailsForCampaign.mockResolvedValue([]);
   candidatesRepo.getVivierCandidate.mockResolvedValue({
     id: 'cand-1',
     email: 'jane@doe.com',
@@ -68,6 +72,43 @@ describe('sendVivierInvitation', () => {
     expect(mail.html).toContain('vivier de candidatures'); // mention RGPD
     expect(preselRepo.markContacted).toHaveBeenCalledWith('CAMP-1', ['cand-1'], 'user');
     expect(journal.appendJournalEntry.mock.calls[0][0].action).toBe('vivier_invitation_sent');
+  });
+
+  it('boîte IMAP associée à la campagne ⇒ elle PRIME sur intakeEmail (réception + replyTo)', async () => {
+    mailboxesRepo.listEnabledMailboxEmailsForCampaign.mockResolvedValue([
+      'recrutement@client.fr',
+    ]);
+    emailClient.sendEmail.mockResolvedValueOnce({ ok: true, messageId: 'm1' });
+    const { sendVivierInvitation } = await import('@/lib/vivier/invitation-send');
+
+    await sendVivierInvitation('CAMP-1', 'cand-1', 'user');
+
+    const mail = emailClient.sendEmail.mock.calls[0][0];
+    expect(mail.replyTo).toBe('recrutement@client.fr');
+    expect(mail.html).toContain('recrutement@client.fr');
+    expect(mail.html).not.toContain('à configurer');
+  });
+
+  it('ni boîte associée ni intakeEmail ⇒ placeholder honnête (jamais une adresse inventée)', async () => {
+    settingsRepo.getAppSettings.mockResolvedValue({
+      intakeEmail: null,
+      vivierConfig: {
+        contactMode: 'manual',
+        invitationTemplate: 'Bonjour [prénom], candidature à [adresse de réception].',
+        cooldownDays: 90,
+        shortlistCap: 50,
+        similarityFloor: 0.2,
+        organisationName: 'ACME',
+      },
+    });
+    emailClient.sendEmail.mockResolvedValueOnce({ ok: true, messageId: 'm1' });
+    const { sendVivierInvitation } = await import('@/lib/vivier/invitation-send');
+
+    await sendVivierInvitation('CAMP-1', 'cand-1', 'user');
+
+    const mail = emailClient.sendEmail.mock.calls[0][0];
+    expect(mail.html).toContain('(adresse de réception à configurer)');
+    expect(mail.replyTo).toBeUndefined();
   });
 
   it('email non configuré (démo) ⇒ marqué contacted quand même (best-effort)', async () => {
