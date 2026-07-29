@@ -95,3 +95,22 @@ describe('combineZoneCounts', () => {
     });
   });
 });
+
+describe('combineZoneCounts — sans suite', () => {
+  it('5e catégorie propre : total = complet (jamais une divergence Bureau/menu)', () => {
+    const z = combineZoneCounts({
+      // Comptes accepted/rejected HORS sans-suite (dismissed:false en SQL).
+      acceptedTotal: 8,
+      rejectedTotal: 12,
+      humanAccepted: 1,
+      humanRejected: 2,
+      pendingMatched: 3,
+      sansSuite: 5,
+    });
+    expect(z.sansSuite).toBe(5);
+    expect(z.total).toBe(25); // 8 + 12 + 5 — le volume complet
+    expect(
+      z.autoAccept + z.autoReject + z.humanValidated + z.pending + z.sansSuite,
+    ).toBe(z.total);
+  });
+});

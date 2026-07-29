@@ -26,6 +26,30 @@ function base(over: Partial<CandidateStageInput> = {}): CandidateStageInput {
 describe('deriveCandidateStage — échelle 7 priorités', () => {
   const cases: Array<{ name: string; input: CandidateStageInput; expected: CandidateStage }> = [
     {
+      name: 'sans suite : domine TOUT état ouvert (gris en attente)',
+      input: base({
+        status: 'rejected',
+        decisionZone: 'gray',
+        isPendingValidation: true,
+        isDismissed: true,
+      }),
+      expected: 'sans_suite',
+    },
+    {
+      name: 'sans suite : domine un RDV pris',
+      input: base({
+        status: 'accepted',
+        hasScheduledInterview: true,
+        isDismissed: true,
+      }),
+      expected: 'sans_suite',
+    },
+    {
+      name: 'sans suite : domine même un marqueur GO (cohérence terminal)',
+      input: base({ validationMarked: 'validated', isDismissed: true }),
+      expected: 'sans_suite',
+    },
+    {
       name: 'refus auto (system, auto_reject)',
       input: base({ status: 'rejected', decisionZone: 'auto_reject', decidedBy: 'auto' }),
       expected: 'refus_auto',

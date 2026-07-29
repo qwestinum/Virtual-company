@@ -113,6 +113,11 @@ export async function cleanAll(): Promise<void> {
   // Boîtes mail de test.
   await del('mailboxes', { col: 'email', like: `%@${TEST_EMAIL_DOMAIN}` });
 
+  // Claims d'envoi des tests (pseudo-mailboxes hitl/dismissal) — sans ce
+  // nettoyage, un run suivant verrait « duplicate » et n'enverrait plus.
+  await del('imap_outreach_claims', { col: 'uid', like: 'treg_%' });
+  await del('imap_outreach_claims', { col: 'uid', like: 'val_treg_%' });
+
   // Les campagnes en dernier (cibles des FK).
   if (campIds.length > 0) {
     await del('campaigns', { col: 'id', in: campIds });

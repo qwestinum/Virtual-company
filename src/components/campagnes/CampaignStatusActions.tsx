@@ -11,10 +11,15 @@
  *
  * Chaque action mute le store + déclenche la prise d'acte du Manager
  * via `pushManagerAcknowledgment` (cf. spec §6.3 — synchronisation
- * chat/interface). Clôture demande une confirmation native (browser
- * confirm()) car elle est irréversible.
+ * chat/interface). La clôture passe par `CampaignDismissFlowDialog`
+ * (récapitulatif des candidatures en cours + classement sans suite optionnel,
+ * POST /api/campaigns/[id]/close — qui pose closed_at), plus jamais un
+ * window.confirm silencieux.
  */
 
+import { useState } from 'react';
+
+import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
 import { canActivate } from '@/lib/campaign/lifecycle';
 import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import {
@@ -84,11 +89,11 @@ export function CampaignStatusActions({
       triggerVivierPreselection(campaignId);
     }
   };
-  const onClose = () => {
-    const ok = window.confirm(
-      'Clôturer cette campagne ? Cette action est définitive — les agents arrêteront tout traitement automatique.',
-    );
-    if (!ok) return;
+  const [closing, setClosing] = useState(false);
+  const onClosed = () => {
+    setClosing(false);
+    // Le serveur a déjà posé status='closed' + closed_at ; on aligne le store
+    // (le PUT snapshot re-poussera le même statut, sans toucher closed_at).
     updateStatus(campaignId, 'closed');
     ack('campaign_closed');
   };
@@ -136,7 +141,15 @@ export function CampaignStatusActions({
           variant="danger"
           icon="⏹"
           label="Clôturer"
-          onClick={onClose}
+          onClick={() => setClosing(true)}
+        />
+      ) : null}
+      {closing ? (
+        <CampaignDismissFlowDialog
+          campaignId={campaignId}
+          mode="close"
+          onCancel={() => setClosing(false)}
+          onDone={onClosed}
         />
       ) : null}
     </>

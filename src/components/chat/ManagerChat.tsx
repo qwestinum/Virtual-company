@@ -14,6 +14,7 @@ import {
 } from '@/types/switch-dialog';
 
 import { ActiveListeningChip } from '@/components/chat/ActiveListeningChip';
+import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
 import {
   CampaignSelector,
   type CampaignEntry,
@@ -580,6 +581,9 @@ export function ManagerChat() {
     null,
   );
   const [isAgentBusy, setAgentBusy] = useState(false);
+  // Clôture depuis le sélecteur : passe par le dialog récapitulatif (classement
+  // sans suite optionnel) — jamais une clôture silencieuse.
+  const [closingEntry, setClosingEntry] = useState<CampaignEntry | null>(null);
   // Token incrémental : déplie la checklist FDP (clic « Ajuster » sur une
   // bulle sans lien source — vieux message).
   const [expandChecklistToken, setExpandChecklistToken] = useState(0);
@@ -2401,6 +2405,20 @@ export function ManagerChat() {
     next: CampaignStatus,
   ) {
     if (isSending || isTranscribing || isAgentBusy) return;
+    // Clôture d'une CAMPAGNE : détour par le dialog (récap + classement sans
+    // suite + POST /close qui pose closed_at). Les sollicitations gardent le
+    // chemin direct (pas de candidatures rattachées).
+    if (entry.kind === 'fdp' && next === 'closed') {
+      setClosingEntry(entry);
+      return;
+    }
+    applyCampaignStatusChange(entry, next);
+  }
+
+  function applyCampaignStatusChange(
+    entry: CampaignEntry,
+    next: CampaignStatus,
+  ) {
     if (entry.kind === 'fdp') {
       // Si la courante est dans fdp-store et pas encore dans campaigns,
       // on l'y pose avant de muter son status (sinon updateStatus est
@@ -2538,6 +2556,18 @@ export function ManagerChat() {
                 <ActiveListeningChip
                   campaignId={currentEntry.id}
                   jobTitle={currentEntry.title}
+                />
+              ) : null}
+              {closingEntry ? (
+                <CampaignDismissFlowDialog
+                  campaignId={closingEntry.id}
+                  mode="close"
+                  onCancel={() => setClosingEntry(null)}
+                  onDone={() => {
+                    const entry = closingEntry;
+                    setClosingEntry(null);
+                    if (entry) applyCampaignStatusChange(entry, 'closed');
+                  }}
                 />
               ) : null}
             </>

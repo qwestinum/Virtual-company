@@ -6,20 +6,27 @@
  * mécanique sous-jacente — aucune divergence :
  *   - zone grise        → `ValidationCard` (→ `decideGrayValidation`)
  *   - invité / RDV pris → `markCandidateInterview`
- *   - entretien réalisé → `markCandidateValidation`
- *   - terminal          → aucune action (consultation seule)
+ *   - entretien réalisé → `markCandidateValidation` (+ flux « poste pourvu »
+ *     après un GO : proposer de classer les candidatures restantes)
+ *   - toute étape OUVERTE → « Classer sans suite » (dialog motif)
+ *   - sans suite         → mention terminale + « Rouvrir »
+ *   - terminal           → aucune action (consultation seule)
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { ValidationCard } from '@/components/validations/ValidationCard';
+import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
 import {
   markCandidateInterview,
   markCandidateValidation,
 } from '@/lib/dashboard/candidate-actions';
-import type { PendingValidation } from '@/types/hitl';
 import type { CandidateListItem } from '@/types/reporting';
 
+import {
+  DismissActionButton,
+  DismissedBlock,
+} from './CandidatureDismissAction';
+import { GrayValidationAction } from './GrayValidationAction';
 import { isTerminalStage } from './stage-ui';
 
 export function CandidatureActions({
@@ -29,8 +36,18 @@ export function CandidatureActions({
   item: CandidateListItem;
   onActed: () => void;
 }) {
+  if (item.stage === 'sans_suite') {
+    return <DismissedBlock item={item} onActed={onActed} />;
+  }
   if (item.stage === 'a_valider') {
-    return <GrayValidationAction item={item} onActed={onActed} />;
+    return (
+      <div className="flex flex-col gap-2">
+        <GrayValidationAction item={item} onActed={onActed} />
+        <div>
+          <DismissActionButton item={item} onActed={onActed} />
+        </div>
+      </div>
+    );
   }
   if (item.stage === 'invite' || item.stage === 'rdv_pris') {
     return <InterviewMarkAction item={item} onActed={onActed} />;
@@ -46,59 +63,6 @@ export function CandidatureActions({
     );
   }
   return null;
-}
-
-/** Gris : on retrouve la validation suspendue par uid et on rend la carte partagée. */
-function GrayValidationAction({
-  item,
-  onActed,
-}: {
-  item: CandidateListItem;
-  onActed: () => void;
-}) {
-  const [validation, setValidation] = useState<PendingValidation | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch('/api/validations', { cache: 'no-store' });
-        if (!res.ok) return;
-        const json = (await res.json()) as { validations?: PendingValidation[] };
-        const match =
-          json.validations?.find(
-            (v) =>
-              typeof v.payload?.uid === 'string' && v.payload.uid === item.uid,
-          ) ?? null;
-        if (!cancelled) setValidation(match);
-      } catch {
-        // silencieux
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [item.uid]);
-
-  if (loading) {
-    return (
-      <p className="font-body text-[12px] text-stone-400">
-        Chargement de la validation…
-      </p>
-    );
-  }
-  if (!validation) {
-    return (
-      <p className="font-body text-[12px] italic text-stone-400">
-        Validation introuvable (déjà traitée ?).
-      </p>
-    );
-  }
-  return <ValidationCard v={validation} onSent={() => onActed()} />;
 }
 
 function InterviewMarkAction({
@@ -132,6 +96,7 @@ function InterviewMarkAction({
       <ActionButton tone="neutral" disabled={busy} onClick={() => mark('missed')}>
         Non réalisé
       </ActionButton>
+      <DismissActionButton item={item} onActed={onActed} />
     </div>
   );
 }
@@ -144,6 +109,11 @@ function FinalDecisionAction({
   onActed: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  // Flux « poste pourvu » (cas B validé) : après un GO, proposer de classer
+  // les candidatures restantes de la campagne — NON bloquant (le GO est déjà
+  // acté si l'utilisateur décline).
+  const [goFollowUp, setGoFollowUp] = useState(false);
+
   const decide = async (status: 'validated' | 'rejected') => {
     if (busy) return;
     setBusy(true);
@@ -154,20 +124,41 @@ function FinalDecisionAction({
         campaignId: item.campaignId,
         status,
       });
-      onActed();
+      if (status === 'validated' && item.campaignId) {
+        setGoFollowUp(true);
+      } else {
+        onActed();
+      }
     } finally {
       setBusy(false);
     }
   };
   return (
-    <div className="flex flex-wrap gap-2">
-      <ActionButton tone="positive" disabled={busy} onClick={() => decide('validated')}>
-        GO définitif
-      </ActionButton>
-      <ActionButton tone="negative" disabled={busy} onClick={() => decide('rejected')}>
-        Non retenu
-      </ActionButton>
-    </div>
+    <>
+      <div className="flex flex-wrap gap-2">
+        <ActionButton tone="positive" disabled={busy} onClick={() => decide('validated')}>
+          GO définitif
+        </ActionButton>
+        <ActionButton tone="negative" disabled={busy} onClick={() => decide('rejected')}>
+          Non retenu
+        </ActionButton>
+        <DismissActionButton item={item} onActed={onActed} />
+      </div>
+      {goFollowUp && item.campaignId ? (
+        <CampaignDismissFlowDialog
+          campaignId={item.campaignId}
+          mode="go"
+          onCancel={() => {
+            setGoFollowUp(false);
+            onActed();
+          }}
+          onDone={() => {
+            setGoFollowUp(false);
+            onActed();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

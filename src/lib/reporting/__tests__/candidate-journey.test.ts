@@ -220,6 +220,33 @@ describe('journeyColumns', () => {
   });
 });
 
+describe('classement sans suite (journey)', () => {
+  it('dismissed → final sans_suite, phases amont INTACTES (jamais « écarté »)', () => {
+    const j = deriveCandidateJourney(
+      input({ screeningStatus: 'accepted', dismissed: true }),
+    );
+    expect(j.screening).toBe('retenu'); // le verdict de screening survit
+    expect(j.final).toBe('sans_suite');
+    expect(journeyFilterKey(j)).toBe('sans_suite');
+    expect(journeyCurrentState(j)).toEqual({
+      label: 'Classée sans suite',
+      tone: 'neutral',
+    });
+  });
+
+  it('dismissed domine même un GO marqué (cohérence avec le stage)', () => {
+    const j = deriveCandidateJourney(
+      input({ validationMarked: 'validated', dismissed: true }),
+    );
+    expect(j.final).toBe('sans_suite');
+  });
+
+  it('deriveJourneyFor propage dismissed', () => {
+    const j = deriveJourneyFor('accepted', 'auto_accept', null, undefined, false, true);
+    expect(j.final).toBe('sans_suite');
+  });
+});
+
 describe('deriveJourneyFor — HITL 3 zones', () => {
   it('zone auto_accept → retenu pour entretien (auto, non gated)', () => {
     const j = deriveJourneyFor('accepted', 'auto_accept', 'auto');

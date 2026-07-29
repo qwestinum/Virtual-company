@@ -70,6 +70,53 @@ describe('helpers numériques', () => {
     });
   });
 
+  it('computeVolumes : sans suite = catégorie PROPRE, la partition somme', () => {
+    const v = computeVolumes([
+      datum({ status: 'accepted' }),
+      datum({ status: 'rejected' }),
+      // Gris en attente PUIS classé sans suite (clôture) : sort d'« en attente ».
+      datum({ status: 'rejected', decisionZone: 'gray', decidedBy: 'auto', dismissed: true }),
+      // Accepté classé sans suite (poste pourvu) : sort de « retenues ».
+      datum({ status: 'accepted', dismissed: true }),
+    ]);
+    expect(v).toEqual({
+      received: 4,
+      retained: 1,
+      rejected: 1,
+      enAttente: 0,
+      classeeSansSuite: 2,
+      decidedBySystem: 2,
+      decidedByHuman: 0,
+    });
+    // Invariant : la partition somme au total brut.
+    expect(v.retained + v.rejected + v.enAttente + v.classeeSansSuite).toBe(v.received);
+  });
+
+  it('taux calculés sur les ÉVALUÉES (reçues − sans suite)', () => {
+    const meta: CampaignReportMeta = {
+      campaignId: 'CAMP-1',
+      campaignName: 'Test',
+      jobTitle: 'Dev',
+      launchedAt: '2026-01-01T00:00:00.000Z',
+      closedAt: '2026-02-01T00:00:00.000Z',
+      donneurOrdre: null,
+      donneurOrdreId: null,
+      siteId: null,
+      siteLabel: null,
+    };
+    const analyses = [
+      datum({ status: 'accepted', contacted: true }),
+      datum({ status: 'rejected' }),
+      datum({ status: 'rejected', dismissed: true }),
+      datum({ status: 'rejected', dismissed: true }),
+    ];
+    const summary = buildCampaignReportSummary(meta, analyses, [], null);
+    const data = buildCampaignReportData(summary, analyses);
+    // 1 retenue sur 2 évaluées (pas sur 4 reçues).
+    expect(data.performance.retentionRate).toBe(50);
+    expect(data.performance.responseRate).toBe(50);
+  });
+
   it('computeIssue : recruited si au moins un recrutement', () => {
     expect(computeIssue([datum({ recruited: true })])).toEqual({
       issue: 'recruited',

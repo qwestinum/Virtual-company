@@ -9,6 +9,9 @@
  * pas laisser le DRH éditer une campagne fermée.
  */
 
+import { useState } from 'react';
+
+import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
 import { canActivate } from '@/lib/campaign/lifecycle';
 import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
@@ -59,11 +62,10 @@ export function LifecycleEditBlock({
       triggerVivierPreselection(campaign.id);
     }
   };
-  const onCloseCampaign = () => {
-    const ok = window.confirm(
-      'Clôturer cette campagne ? Les agents arrêteront tout traitement automatique.',
-    );
-    if (!ok) return;
+  const [closing, setClosing] = useState(false);
+  const onClosed = () => {
+    setClosing(false);
+    // Le serveur a posé status='closed' + closed_at ; on aligne le store.
     updateStatus(campaign.id, 'closed');
     ack('campaign_closed');
     onClose();
@@ -103,9 +105,17 @@ export function LifecycleEditBlock({
       {campaign.status === 'active' || campaign.status === 'paused' ? (
         <ActionRow
           label="Clôturer la campagne"
-          hint="Action définitive. Le bilan est généré et les agents libérés."
-          onClick={onCloseCampaign}
+          hint="Action définitive : les candidatures en cours peuvent être classées sans suite, les agents sont libérés."
+          onClick={() => setClosing(true)}
           variant="danger"
+        />
+      ) : null}
+      {closing ? (
+        <CampaignDismissFlowDialog
+          campaignId={campaign.id}
+          mode="close"
+          onCancel={() => setClosing(false)}
+          onDone={onClosed}
         />
       ) : null}
     </div>

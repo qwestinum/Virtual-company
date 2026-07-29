@@ -190,6 +190,7 @@ describe('S6 — cohérence des indicateurs', () => {
           retained: number;
           rejected: number;
           enAttente: number;
+          classeeSansSuite: number;
           decidedBySystem: number;
           decidedByHuman: number;
         };
@@ -205,6 +206,9 @@ describe('S6 — cohérence des indicateurs', () => {
     expect(volumes.decidedBySystem).toBe(2);
     expect(volumes.decidedByHuman).toBe(1);
 
+    // Aucun classement sans suite dans ce scénario (clôture SANS classer).
+    expect(volumes.classeeSansSuite).toBe(0);
+
     // BONUS (décision DO) : chiffres AVANT clôture == rapport APRÈS clôture —
     // la clôture ne perd ni ne déforme aucun comptage.
     expect(volumes.received).toBe(before.total);
@@ -216,5 +220,12 @@ describe('S6 — cohérence des indicateurs', () => {
         before.counts.entretien_fait! +
         before.counts.retenu!,
     );
+    expect(volumes.classeeSansSuite).toBe(before.counts.sans_suite);
+
+    // INVARIANT DE PARTITION (étendu « sans suite ») : la ventilation somme
+    // au total brut — c'est LE test qui attrape tout statut qui fuirait.
+    expect(
+      volumes.retained + volumes.rejected + volumes.enAttente + volumes.classeeSansSuite,
+    ).toBe(volumes.received);
   });
 });
