@@ -178,3 +178,12 @@ describe('tallyStages', () => {
     expect(Object.values(empty).every((n) => n === 0)).toBe(true);
   });
 });
+
+describe('CANDIDATE_STAGE_RIBBON_ORDER — garde-fou du piège non compilable', () => {
+  it('contient TOUTES les étapes (une absente = carte invisible sans erreur TS)', async () => {
+    const { CANDIDATE_STAGES, CANDIDATE_STAGE_RIBBON_ORDER } = await import(
+      '@/lib/reporting/candidate-stage'
+    );
+    expect([...CANDIDATE_STAGE_RIBBON_ORDER].sort()).toEqual([...CANDIDATE_STAGES].sort());
+  });
+});
