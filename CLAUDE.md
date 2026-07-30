@@ -57,6 +57,7 @@ Le MVP couvre le département RH avec deux modalités de travail : **campagnes c
 
 ## Règles absolues
 
+- **`scripts/migrate.sql` = fichier d'ÉTAT FINAL idempotent**, rejoué EN ENTIER à chaque application (dev et prod). Toute modification de schéma doit : (1) être **rejouable sur n'importe quel état de base** sans erreur (`if not exists`, `drop constraint if exists` + add, `create or replace`, guards sur la DÉFINITION finale — pas seulement sur le nom) ; (2) ne **JAMAIS empiler deux versions d'une même contrainte/structure** — si un chantier fait évoluer une contrainte existante, il **met à jour le bloc d'origine** dans le fichier (un bloc canonique par contrainte) ; (3) être **validée par DOUBLE application** : le fichier doit passer deux exécutions successives en dev sans erreur avant tout déploiement. Incident de référence (30/07/2026) : le CHECK `pending_validations_status` posé à 3 valeurs par un ancien bloc alors qu'un bloc ultérieur (chantier sans-suite) l'avait porté à 4 et que des rows `'void'` existaient — violation 23514 au rejeu. C'est cette classe d'erreur que la règle élimine.
 - **TypeScript strict, jamais de `any`.** Si un type est complexe, on le définit dans `src/types/`.
 - **Chaque agent implémente le contrat `AgentContract`** défini dans `src/types/agent.ts`. La prise d'acte des actions UI fait partie du contrat du Manager (voir spec §4.1).
 - **Chaque composant React = un fichier, max 200 lignes.** Au-delà, on découpe.

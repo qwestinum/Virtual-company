@@ -444,7 +444,7 @@ create table if not exists public.pending_validations (
   mail_draft_artifact_id text,
   confirmed              boolean not null default false,
   status                 text not null default 'pending'
-                           check (status in ('pending', 'sent')),
+                           check (status in ('pending', 'sending', 'sent', 'void')),
   payload                jsonb not null default '{}'::jsonb,
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now(),
@@ -1117,7 +1117,7 @@ create table if not exists public.interview_briefs (
   candidate_name       text not null,
   job_title            text,
   status               text not null default 'awaiting_booking'
-                         check (status in ('awaiting_booking', 'scheduled')),
+                         check (status in ('awaiting_booking', 'scheduled', 'cancelled')),
   questions            jsonb not null default '[]'::jsonb,   -- trame générée
   candidate_snapshot   jsonb not null default '{}'::jsonb,   -- MailCandidate (corps mail + repli)
   booking_uid          text,          -- uid Cal.com, posé à la livraison
@@ -1263,22 +1263,34 @@ create index if not exists imap_unmatched_cvs_status_idx
 alter table public.pending_validations
   add column if not exists sending_at timestamptz;
 
+-- CHECK status — ÉTAT FINAL (C6 `sending` + chantier sans-suite `void`).
+-- RÈGLE DU FICHIER : une contrainte = UN bloc canonique, mis à jour en place
+-- quand un chantier la fait évoluer (jamais deux blocs empilés — l'ancien
+-- bloc 3 valeurs rejoué sur une base portant des rows 'void' violait le
+-- CHECK au rejeu, incident 30/07/2026). Converge depuis N'IMPORTE quel état :
+-- drop en boucle de toute version antérieure (inline du create table, chk 3
+-- valeurs, chk2), puis pose de la contrainte finale ; no-op si déjà finale.
 do $$
 declare c text;
 begin
-  if exists (select 1 from pg_constraint where conname = 'pending_validations_status_chk') then
-    return; -- déjà migré
+  if exists (
+    select 1 from pg_constraint
+     where conname = 'pending_validations_status_chk2'
+       and pg_get_constraintdef(oid) like '%void%'
+  ) then
+    return; -- déjà à l'état final
   end if;
-  select conname into c from pg_constraint
-   where conrelid = 'public.pending_validations'::regclass
-     and contype = 'c'
-     and pg_get_constraintdef(oid) like '%status%';
-  if c is not null then
+  for c in
+    select conname from pg_constraint
+     where conrelid = 'public.pending_validations'::regclass
+       and contype = 'c'
+       and pg_get_constraintdef(oid) like '%status%'
+  loop
     execute format('alter table public.pending_validations drop constraint %I', c);
-  end if;
+  end loop;
   alter table public.pending_validations
-    add constraint pending_validations_status_chk
-    check (status in ('pending', 'sending', 'sent'));
+    add constraint pending_validations_status_chk2
+    check (status in ('pending', 'sending', 'sent', 'void'));
 end $$;
 
 -- C5/I7 : claims DEUX PHASES. `confirmed_at` distingue « réservé ET envoyé »
@@ -1369,25 +1381,9 @@ create index if not exists candidate_analyses_dismissed_idx
 
 -- pending_validations : nouvel état TERMINAL `void` (validation fermée par
 -- classement sans suite — jamais tranchée, jamais envoyée). Transition
--- UNIQUEMENT depuis `pending` (un `sending` n'est jamais voidé : un mail part
--- peut-être). CHECK recréé en deux temps (contrainte versionnée _chk2).
-do $$
-declare c text;
-begin
-  if exists (select 1 from pg_constraint where conname = 'pending_validations_status_chk2') then
-    return; -- déjà migré
-  end if;
-  select conname into c from pg_constraint
-   where conrelid = 'public.pending_validations'::regclass
-     and contype = 'c'
-     and pg_get_constraintdef(oid) like '%status%';
-  if c is not null then
-    execute format('alter table public.pending_validations drop constraint %I', c);
-  end if;
-  alter table public.pending_validations
-    add constraint pending_validations_status_chk2
-    check (status in ('pending', 'sending', 'sent', 'void'));
-end $$;
+-- UNIQUEMENT depuis `pending` (un `sending` n'est jamais voidé). Le CHECK
+-- vit dans son bloc CANONIQUE unique, section C6 ci-dessus (règle « état
+-- final » : jamais deux versions d'une même contrainte dans ce fichier).
 
 -- interview_briefs : nouvel état `cancelled` (brief annulé par classement
 -- sans suite). Bloque le « booking posthume » : un candidat classé qui
@@ -1397,16 +1393,21 @@ end $$;
 do $$
 declare c text;
 begin
-  if exists (select 1 from pg_constraint where conname = 'interview_briefs_status_chk2') then
-    return; -- déjà migré
+  if exists (
+    select 1 from pg_constraint
+     where conname = 'interview_briefs_status_chk2'
+       and pg_get_constraintdef(oid) like '%cancelled%'
+  ) then
+    return; -- déjà à l'état final
   end if;
-  select conname into c from pg_constraint
-   where conrelid = 'public.interview_briefs'::regclass
-     and contype = 'c'
-     and pg_get_constraintdef(oid) like '%status%';
-  if c is not null then
+  for c in
+    select conname from pg_constraint
+     where conrelid = 'public.interview_briefs'::regclass
+       and contype = 'c'
+       and pg_get_constraintdef(oid) like '%status%'
+  loop
     execute format('alter table public.interview_briefs drop constraint %I', c);
-  end if;
+  end loop;
   alter table public.interview_briefs
     add constraint interview_briefs_status_chk2
     check (status in ('awaiting_booking', 'scheduled', 'cancelled'));
