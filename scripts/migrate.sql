@@ -1437,19 +1437,26 @@ create table if not exists public.recruiters (
 -- service_role applicatif bypasse ; l'anon key ne lit RIEN).
 alter table public.recruiters enable row level security;
 
--- Seed admin (idempotent) : le compte Supabase existant du DO. L'email est
--- la clé de recherche — VÉRIFIER dans Auth > Users qu'il correspond bien
--- au compte attendu avant d'appliquer en prod.
-insert into public.recruiters (id, display_name, email, role)
-select id, 'QWESTINUM', email, 'admin'
-  from auth.users
- where email = 'qwestinum@gmail.com'
-on conflict (id) do nothing;
+-- ── SEED ADMIN : ÉTAPE MANUELLE PAR ENVIRONNEMENT (dev et prod ont des
+-- auth.users DIFFÉRENTS — jamais d'UUID ni d'email en dur rejoué partout ;
+-- l'ancien seed cléé sur un email no-opait EN SILENCE si le compte de
+-- l'environnement différait, incident 30/07/2026). Décommenter, remplacer
+-- <UUID_ADMIN>/<EMAIL_ADMIN> par le compte de CET environnement
+-- (Dashboard → Auth → Users), exécuter, RE-COMMENTER. Idempotent.
+-- ⚠️ ORDRE IMPÉRATIF EN PROD : migration → CE seed → déploiement du code du
+-- gate (sinon l'admin est verrouillé hors de /admin) — runbook
+-- docs/ops/multi-utilisateur.md §1.
+--
+-- insert into public.recruiters (id, display_name, email, role)
+-- values ('<UUID_ADMIN>', 'QWESTINUM', '<EMAIL_ADMIN>', 'admin')
+-- on conflict (id) do nothing;
 
--- Référent de campagne (nullable, migration douce). Backfill : l'admin
--- seedé ci-dessus (les campagnes historiques lui sont attribuées).
+-- Référent de campagne (nullable, migration douce).
 alter table public.campaigns
   add column if not exists owner_user_id uuid;
+-- Backfill des campagnes historiques sur l'admin. No-op TANT QUE le seed
+-- ci-dessus n'a pas été exécuté — relancer ce fichier (ou cette requête)
+-- APRÈS le seed pour attribuer l'historique. Idempotent.
 update public.campaigns
    set owner_user_id = (
      select id from public.recruiters where role = 'admin'

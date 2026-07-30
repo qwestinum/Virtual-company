@@ -14,17 +14,46 @@ des candidatures par mail s'arrête au déploiement**.
 3. Après déploiement : un hit manuel sans header doit répondre 401 (et le poll
    planifié doit continuer de tourner — vérifier `GET /api/imap/status`).
 
-## 1. Migration (dev d'abord, puis prod)
+## 1. Migration + seed admin (dev d'abord, puis prod)
 
-1. Appliquer la fin de `scripts/migrate.sql` (table `recruiters` + RLS +
-   seed admin + `campaigns.owner_user_id` + backfill).
-2. **Vérifier le seed** : le `insert … select from auth.users where email =
-   'qwestinum@gmail.com'` doit avoir créé UNE ligne `recruiters` en `admin`.
-   Contrôler dans Auth > Users que cet email correspond bien au compte
-   attendu (l'UUID de la ligne = l'UUID du compte).
-3. Dashboard Supabase → **Reload schema cache** (sinon « column not found in
+**⚠️ ORDRE IMPÉRATIF — surtout en PROD : migration → seed admin (UUID de
+CET environnement) → SEULEMENT ENSUITE déployer le code du gate.** Le gate
+`/admin` lit `recruiters.role` en fail-closed : déployer le code avant le
+seed verrouille l'admin hors de `/admin` (et masque la section Recruteurs).
+Le seed est MANUEL et PAR ENVIRONNEMENT : dev et prod ont des `auth.users`
+différents — jamais d'UUID/email en dur rejoué partout (l'ancien seed cléé
+sur un email no-opait en silence, incident 30/07/2026).
+
+1. Appliquer `scripts/migrate.sql` EN ENTIER (deux fois — règle de double
+   application). La table `recruiters` est créée VIDE : c'est attendu.
+2. **Seed admin (manuel)** : Dashboard → Auth → Users → copier l'UUID du
+   compte admin de CET environnement, puis exécuter :
+
+   ```sql
+   insert into public.recruiters (id, display_name, email, role)
+   values ('<UUID_ADMIN>', 'QWESTINUM', '<EMAIL_ADMIN>', 'admin')
+   on conflict (id) do nothing;
+   ```
+
+3. **Backfill des campagnes historiques** (dépend du seed — relancer après) :
+
+   ```sql
+   update public.campaigns
+      set owner_user_id = (
+        select id from public.recruiters where role = 'admin'
+        order by created_at asc limit 1
+      )
+    where owner_user_id is null;
+   ```
+
+4. **Vérifier AVANT de déployer le code** :
+   `select id, email, role, is_active from public.recruiters;`
+   → une ligne `admin` active dont l'id = l'UUID du compte. Table vide =
+   STOP, ne pas déployer.
+5. Dashboard Supabase → **Reload schema cache** (sinon « column not found in
    schema cache »).
-4. Vérifier : `/settings` affiche la section « Recruteurs » pour l'admin.
+6. Déployer le code, puis vérifier : `/admin` accessible avec le compte
+   admin, `/settings` affiche la section « Recruteurs ».
 
 ## 2. Verrouiller les signups Supabase (dev ET prod)
 
