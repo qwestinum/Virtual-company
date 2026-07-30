@@ -12,15 +12,24 @@
  *      clôture ne renvoie rien (claims deux-phases) et ne reclasse rien ;
  *   4. réouverture (erreur humaine) : la candidature reprend son étape,
  *      la validation redevient pending ;
- *   5. classement INDIVIDUEL (raison sans_reponse) → journal tracé.
+ *   5. classement INDIVIDUEL (raison sans_reponse) → journal tracé ;
+ *   6. flux GO « poste pourvu » : récap hasRetenu, classement en masse SANS
+ *      clôturer, le recruté jamais classé ;
+ *   7. gris en cours d'envoi (`sending`) : classement DIFFÉRÉ (409) — jamais
+ *      sous incertitude d'envoi.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { POST as analyzeCv } from '@/app/api/cv-analyzer/route';
 import { PUT as putCampaign } from '@/app/api/campaigns/route';
 import { POST as closeCampaign } from '@/app/api/campaigns/[id]/close/route';
-import { GET as getOpenRecap } from '@/app/api/campaigns/[id]/open-candidatures/route';
+import {
+  GET as getOpenRecap,
+  POST as dismissOpenBatch,
+} from '@/app/api/campaigns/[id]/open-candidatures/route';
 import { POST as dismissOne } from '@/app/api/candidatures/[id]/dismiss/route';
+import { POST as postJournal } from '@/app/api/journal/route';
+import { POST as reserveSend } from '@/app/api/validations/[id]/reserve-send/route';
 import { POST as reopenOne } from '@/app/api/candidatures/[id]/reopen/route';
 import { GET as getCounters } from '@/app/api/candidatures/counters/route';
 import { GET as getBusinessSignals } from '@/app/api/notifications/business/route';
@@ -67,13 +76,17 @@ function dismissalMails(): typeof sentEmails {
   return sentEmails.filter((m) => m.subject.startsWith('Votre candidature'));
 }
 
-async function analyze(profile: 'fort' | 'faible' | 'moyen', taskId: string): Promise<CVApplication> {
+async function analyze(
+  profile: 'fort' | 'faible' | 'moyen',
+  taskId: string,
+  campaignId: string = camp,
+): Promise<CVApplication> {
   const res = await call(analyzeCv, {
     method: 'POST',
     form: cvAnalyzerForm({
       profile,
-      campaignId: camp,
-      sheet: testScoringSheet(camp),
+      campaignId,
+      sheet: testScoringSheet(campaignId),
       thresholdLow: 30,
       thresholdHigh: 75,
       taskId,
@@ -81,6 +94,33 @@ async function analyze(profile: 'fort' | 'faible' | 'moyen', taskId: string): Pr
   });
   expect(res.status).toBe(200);
   return res.json.application as CVApplication;
+}
+
+/** Met un gris en file HITL (validation pending) — parcours réel. */
+async function enqueueGray(
+  campaignId: string,
+  taskId: string,
+  app: CVApplication,
+): Promise<string> {
+  const validationId = `val_treg_${taskId}`;
+  const res = await call(postValidation, {
+    method: 'POST',
+    body: {
+      id: validationId,
+      campaignId,
+      candidateName: app.candidate.fullName,
+      candidateEmail: app.candidate.email,
+      score: app.scoringResult.totalScore,
+      decision: 'reject',
+      payload: {
+        uid: taskId,
+        candidate: cvApplicationToMailCandidate(app),
+        jobTitle: TEST_JOB_TITLE,
+      },
+    },
+  });
+  expect(res.status).toBe(200);
+  return validationId;
 }
 
 beforeAll(async () => {
@@ -257,5 +297,102 @@ describe('S9 — classement sans suite', () => {
       body: { reason: 'campagne_cloturee', sendMail: false },
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('S9 — flux GO (poste pourvu) et gris en cours d’envoi', () => {
+  it('GO : récap hasRetenu, classement en masse SANS clôturer la campagne', async () => {
+    const campGo = newTestCampaignId('s9go');
+    const created = await call(putCampaign, {
+      method: 'PUT',
+      body: testCampaignPayload({ id: campGo, status: 'active' }),
+    });
+    expect(created.status).toBe(200);
+
+    // 1 recruté (GO posé) + 2 candidatures OUVERTES (invité + gris en file).
+    const goTask = `treg_s9go_a_${Date.now().toString(36)}`;
+    await analyze('fort', goTask, campGo);
+    const marked = await call(postJournal, {
+      method: 'POST',
+      body: {
+        action: 'candidate_validation_marked',
+        campaignId: campGo,
+        actor: 'user',
+        payload: { uid: goTask, candidate: 'Recruté Treg', status: 'validated' },
+      },
+    });
+    expect(marked.status).toBe(204);
+    await analyze('fort', `treg_s9go_b_${Date.now().toString(36)}`, campGo);
+    const grayTask = `treg_s9go_c_${Date.now().toString(36)}`;
+    await enqueueGray(campGo, grayTask, await analyze('moyen', grayTask, campGo));
+
+    // Récap : le GO rend hasRetenu=true (pré-coche « poste pourvu » du dialog).
+    const recap = await callWithId(getOpenRecap, campGo, { method: 'GET' });
+    expect(recap.status).toBe(200);
+    expect(recap.json.total).toBe(2);
+    expect(recap.json.hasRetenu).toBe(true);
+
+    // Classement en masse « poste pourvu » — flux GO : la campagne N'EST PAS clôturée.
+    const batch = await callWithId(dismissOpenBatch, campGo, {
+      method: 'POST',
+      body: { reason: 'poste_pourvu', sendMail: false },
+    });
+    expect(batch.status).toBe(200);
+    expect((batch.json.summary as { dismissed: number }).dismissed).toBe(2);
+
+    const row = await readRow<{ status: string }>('campaigns', campGo);
+    expect(row.status).toBe('active'); // le GO ne clôture pas
+
+    const res = await call(getCounters, { query: `campaignId=${campGo}` });
+    const { counts, total } = res.json as { counts: StageCounts; total: number };
+    expect(total).toBe(3);
+    expect(counts.retenu).toBe(1); // le recruté n'est JAMAIS classé
+    expect(counts.sans_suite).toBe(2);
+
+    const dismissed = await readRows<{ dismissal_reason: string }>(
+      'candidate_analyses',
+      { campaign_id: campGo, dismissal_reason: 'poste_pourvu' },
+    );
+    expect(dismissed).toHaveLength(2);
+  });
+
+  it('gris en cours d’ENVOI (sending) : classement DIFFÉRÉ — jamais sous incertitude', async () => {
+    const campDef = newTestCampaignId('s9def');
+    const created = await call(putCampaign, {
+      method: 'PUT',
+      body: testCampaignPayload({ id: campDef, status: 'active' }),
+    });
+    expect(created.status).toBe(200);
+
+    const grayTask = `treg_s9def_${Date.now().toString(36)}`;
+    const validationId = await enqueueGray(
+      campDef,
+      grayTask,
+      await analyze('moyen', grayTask, campDef),
+    );
+
+    // Réservation d'envoi réelle (pending → sending) — un mail part peut-être.
+    const reserved = await callWithId(reserveSend, validationId, { method: 'POST' });
+    expect(reserved.json.reserved).toBe(true);
+
+    // Le classement individuel REFUSE (409) tant que l'envoi n'est pas résolu.
+    const res = await callWithId(dismissOne, grayTask, {
+      method: 'POST',
+      body: { reason: 'sans_reponse', sendMail: false },
+    });
+    expect(res.status).toBe(409);
+    expect(res.json.error).toBe('send_in_flight');
+
+    // Rien n'a bougé : analyse non classée, validation toujours `sending`.
+    const analysis = await readRow<{ dismissed_at: string | null }>(
+      'candidate_analyses',
+      grayTask,
+    );
+    expect(analysis.dismissed_at).toBeNull();
+    const validation = await readRow<{ status: string }>(
+      'pending_validations',
+      validationId,
+    );
+    expect(validation.status).toBe('sending');
   });
 });

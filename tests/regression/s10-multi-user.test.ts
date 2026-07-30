@@ -8,13 +8,16 @@
  * 2. GATE ADMIN : member → 403 sur les routes techniques, admin → 200 ;
  *    /api/metrics/global SCINDÉ (member : agents vidés + coût 0, métier
  *    intact) ; le métier reste accessible au member.
+ * 3. SYNTHÈSE PAR CAMPAGNE : webhook Cal.com RÉEL (HMAC signé) → brief livré
+ *    au référent + adresses configurées (dédup casse), organizer/eventTypeId
+ *    journalisés ; référent désactivé → repli agenda global.
  *
  * Identité : `getAuthServerClient` est mocké pour simuler la session (admin /
  * member / anonyme) — le gate RÉEL (requireAdminApiUser → recruiters.role en
  * base) et la résolution RÉELLE (campaigns.owner_user_id → recruiters) sont
  * exercés sur les routes réelles.
  */
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -40,10 +43,12 @@ import { GET as getGlobalMetrics } from '@/app/api/metrics/global/route';
 import { GET as getAvailableAccounts } from '@/app/api/recruiters/available-accounts/route';
 import { GET as getRecruitersList } from '@/app/api/recruiters/route';
 import { GET as getRecruiterOptions } from '@/app/api/recruiters/options/route';
+import { POST as calcomWebhook } from '@/app/api/webhooks/calcom/route';
+import { invalidateEmailAddressesCache } from '@/lib/email/addresses';
 import type { MailCandidate } from '@/types/mail-candidate';
 
 import { call, callWithId, testCampaignPayload, TEST_JOB_TITLE } from './helpers/api';
-import { cleanAll, db, newTestCampaignId } from './helpers/db';
+import { cleanAll, db, newTestCampaignId, readRows } from './helpers/db';
 import { resetSentEmails, sentEmails } from './helpers/mocks';
 
 const campOwned = newTestCampaignId('s10o');
@@ -77,6 +82,8 @@ function actAs(user: 'admin' | 'member' | 'anonymous'): void {
 }
 
 let previousInterviewConfig: unknown;
+let previousSynthesisActive: unknown;
+let webhookSecretWasSet = true;
 
 async function cleanRecruiters(): Promise<void> {
   const { error } = await db()
@@ -111,6 +118,27 @@ beforeAll(async () => {
   expect(upd.error).toBeNull();
 
   // Référentiel : un admin (référent, avec lien perso) + un member (sans).
+  // Adresses de synthèse CONFIGURÉES — avec un doublon du référent à casse
+  // différente (test de dédup). Restaurées en afterAll.
+  const { data: settingsRow } = await db()
+    .from('app_settings')
+    .select('synthesis_emails_active')
+    .eq('id', 1)
+    .maybeSingle();
+  previousSynthesisActive = settingsRow?.synthesis_emails_active ?? null;
+  const updSynth = await db()
+    .from('app_settings')
+    .update({ synthesis_emails_active: ['drh.s10@test.local', 'ADMIN.S10@test.local'] })
+    .eq('id', 1);
+  expect(updSynth.error).toBeNull();
+  invalidateEmailAddressesCache();
+
+  // Secret webhook : on signe avec la valeur de l'env (posée si absente).
+  if (!process.env.CAL_COM_WEBHOOK_SECRET) {
+    webhookSecretWasSet = false;
+    process.env.CAL_COM_WEBHOOK_SECRET = 'treg-webhook-secret';
+  }
+
   const ins = await db().from('recruiters').insert([
     {
       id: ADMIN_ID,
@@ -144,8 +172,15 @@ beforeAll(async () => {
 afterAll(async () => {
   await db()
     .from('app_settings')
-    .update({ interview_config: previousInterviewConfig })
+    .update({
+      interview_config: previousInterviewConfig,
+      synthesis_emails_active: previousSynthesisActive,
+    })
     .eq('id', 1);
+  invalidateEmailAddressesCache();
+  if (!webhookSecretWasSet) delete process.env.CAL_COM_WEBHOOK_SECRET;
+  // Idempotence webhook : lignes de test non couvertes par cleanAll.
+  await db().from('calcom_webhook_events').delete().like('booking_uid', 'bk_treg_%');
   await cleanRecruiters();
   await cleanAll();
   actAs('anonymous');
@@ -263,5 +298,103 @@ describe('S10 — gate admin', () => {
     actAs('member');
     const res = await call(getCounters, { query: `campaignId=${campOwned}` });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('S10 — synthèse par campagne (webhook Cal.com réel)', () => {
+  it('brief livré au RÉFÉRENT + adresses configurées, dédup — organizer journalisé', async () => {
+    resetSentEmails();
+    // Brief en attente pour la campagne du référent (cas nominal du webhook).
+    const briefUid = `treg_s10w_${Date.now().toString(36)}`;
+    const ins = await db().from('interview_briefs').insert({
+      campaign_id: campOwned,
+      candidate_email: CANDIDATE.email,
+      candidate_name: CANDIDATE.candidateName,
+      job_title: TEST_JOB_TITLE,
+      status: 'awaiting_booking',
+      questions: [{ theme: 'Parcours', question: 'Racontez-nous.' }],
+      candidate_snapshot: CANDIDATE,
+      uid: briefUid,
+    });
+    expect(ins.error).toBeNull();
+
+    // BOOKING_CREATED signé HMAC (corps BRUT) — la vraie porte d'entrée.
+    const bookingUid = `bk_treg_${Date.now().toString(36)}`;
+    const rawBody = JSON.stringify({
+      triggerEvent: 'BOOKING_CREATED',
+      createdAt: new Date().toISOString(),
+      payload: {
+        uid: bookingUid,
+        attendees: [{ email: CANDIDATE.email, name: CANDIDATE.candidateName }],
+        startTime: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+        endTime: new Date(Date.now() + 3 * 86_400_000 + 1_800_000).toISOString(),
+        organizer: { email: 'orga.s10@test.local', username: 'orga-treg' },
+        eventTypeId: 4242,
+      },
+    });
+    const signature = createHmac('sha256', process.env.CAL_COM_WEBHOOK_SECRET!)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    const res = await calcomWebhook(
+      new Request('http://regression.test/api/webhooks/calcom', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-cal-signature-256': signature,
+        },
+        body: rawBody,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { status: string }).status).toBe('delivered');
+
+    // Destinataires : référent EN TÊTE + configurées, doublon à casse
+    // différente (ADMIN.S10@…) DÉDUPLIQUÉ — jamais de double envoi.
+    const brief = sentEmails.find(
+      (m) => Array.isArray(m.to) && m.to.includes('admin.s10@test.local'),
+    );
+    expect(brief).toBeDefined();
+    expect(brief!.to).toEqual(['admin.s10@test.local', 'drh.s10@test.local']);
+
+    // Traçabilité multi-agendas : QUEL agenda a produit le RDV.
+    const entries = await readRows<{
+      action: string;
+      payload: { bookingUid?: string; organizerEmail?: string; eventTypeId?: number };
+    }>('journal', { action: 'interview_brief_delivered' });
+    const entry = entries.find((e) => e.payload.bookingUid === bookingUid);
+    expect(entry).toBeDefined();
+    expect(entry!.payload.organizerEmail).toBe('orga.s10@test.local');
+    expect(entry!.payload.eventTypeId).toBe(4242);
+  });
+
+  it('référent DÉSACTIVÉ → repli agenda GLOBAL (jamais l’agenda d’un parti)', async () => {
+    const off = await db()
+      .from('recruiters')
+      .update({ is_active: false })
+      .eq('id', ADMIN_ID);
+    expect(off.error).toBeNull();
+    try {
+      const res = await call(composeMail, {
+        method: 'POST',
+        body: {
+          artifactId: 'preview',
+          campaignId: campOwned,
+          jobTitle: TEST_JOB_TITLE,
+          mode: 'invite',
+          candidate: CANDIDATE,
+          preview: true,
+        },
+      });
+      expect(res.status).toBe(200);
+      const html = String(res.json.html);
+      expect(html).toContain(GLOBAL_LINK);
+      expect(html).not.toContain(PERSONAL_LINK);
+    } finally {
+      const on = await db()
+        .from('recruiters')
+        .update({ is_active: true })
+        .eq('id', ADMIN_ID);
+      expect(on.error).toBeNull();
+    }
   });
 });
