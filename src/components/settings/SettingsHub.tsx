@@ -371,7 +371,7 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
       <SettingsSection
         icon="📝"
         title="Adresses de synthèse"
-        description="Destinataires des briefings d'entretien. Cochez chaque adresse qui doit recevoir les briefings — le mail ne part qu'aux adresses cochées."
+        description="Destinataires des briefings d'entretien. Cochez chaque adresse qui doit recevoir les briefings — le mail ne part qu'aux adresses cochées. Le recruteur référent d'une campagne reçoit TOUJOURS les briefings de ses campagnes en plus de cette liste (jamais en double s'il y figure déjà)."
       >
         <FallbackHint
           envName="EMAIL_DRH"

@@ -25,7 +25,7 @@ import {
   type BookingDelivery,
 } from '@/lib/db/repos/interview-briefs';
 import { getVivierCandidateByEmail } from '@/lib/db/repos/vivier';
-import { getSynthesisEmails } from '@/lib/email/addresses';
+import { getSynthesisRecipientsForCampaign } from '@/lib/campaign/synthesis-recipients';
 import {
   sendEmail,
   type EmailAttachment,
@@ -207,11 +207,6 @@ async function sendBrief(args: {
 export async function deliverBriefForBooking(
   input: DeliverBriefInput,
 ): Promise<DeliverBriefResult> {
-  const recipients = await getSynthesisEmails();
-  if (recipients.length === 0) {
-    return { ok: false, status: 'no_recipient', retryable: false };
-  }
-
   const pending = await getPendingBriefByEmail(input.attendeeEmail);
   const delivery = (messageId: string | null): BookingDelivery => ({
     bookingUid: input.bookingUid,
@@ -223,6 +218,11 @@ export async function deliverBriefForBooking(
 
   // ── Cas nominal : un briefing était en attente ─────────────────────
   if (pending) {
+    // Destinataires PAR CAMPAGNE : référent + adresses de synthèse (dédup).
+    const recipients = await getSynthesisRecipientsForCampaign(pending.campaignId);
+    if (recipients.length === 0) {
+      return { ok: false, status: 'no_recipient', retryable: false };
+    }
     const ownerLabel = pending.campaignId ?? pending.taskId ?? 'la campagne';
     const send = await sendBrief({
       recipients,
@@ -252,7 +252,12 @@ export async function deliverBriefForBooking(
   // ── Repli : pas de briefing en file → régénération à la volée ──────
   const analysis = await getLatestAnalysisByEmail(input.attendeeEmail);
   if (!analysis) {
-    // Candidat non retrouvé : on NOTIFIE la synthèse (l'info ne se perd jamais).
+    // Candidat non retrouvé : on NOTIFIE la synthèse (l'info ne se perd
+    // jamais). Pas de campagne identifiable ⇒ liste configurée seule.
+    const recipients = await getSynthesisRecipientsForCampaign(null);
+    if (recipients.length === 0) {
+      return { ok: false, status: 'no_recipient', retryable: false };
+    }
     const notice = buildUnmatchedBookingMail({
       attendeeEmail: input.attendeeEmail,
       attendeeName: input.attendeeName,
@@ -260,6 +265,11 @@ export async function deliverBriefForBooking(
     });
     await sendEmail({ to: recipients, subject: notice.subject, html: notice.html });
     return { ok: true, status: 'unmatched', retryable: false };
+  }
+
+  const recipients = await getSynthesisRecipientsForCampaign(analysis.campaignId);
+  if (recipients.length === 0) {
+    return { ok: false, status: 'no_recipient', retryable: false };
   }
 
   const candidate = cvApplicationToMailCandidate(analysis.application);
