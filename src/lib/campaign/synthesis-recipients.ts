@@ -61,3 +61,16 @@ export async function getSynthesisRecipientsForCampaign(
   ]);
   return mergeSynthesisRecipients(ownerEmail, configured);
 }
+
+/**
+ * Adresse SINGULIÈRE de synthèse d'une campagne (replyTo des mails candidat
+ * invitation/refus) : le RÉFÉRENT en priorité, sinon la 1re adresse
+ * configurée (repli env inclus), sinon null. NB : les mails dont la réponse
+ * doit être RATTACHÉE par le poller (invitation vivier, sans-suite) gardent
+ * leur replyTo = adresse de réception — ne pas les basculer ici.
+ */
+export async function getSynthesisReplyToForCampaign(
+  campaignId: string | null,
+): Promise<string | null> {
+  return (await getSynthesisRecipientsForCampaign(campaignId))[0] ?? null;
+}

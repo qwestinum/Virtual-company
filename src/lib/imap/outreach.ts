@@ -39,7 +39,7 @@ import {
   upsertPendingValidation,
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
-import { getSynthesisEmail } from '@/lib/email/addresses';
+import { getSynthesisReplyToForCampaign } from '@/lib/campaign/synthesis-recipients';
 import { sendEmail } from '@/lib/email/client';
 import { RetryablePollError } from '@/lib/imap/poll-retry';
 import { uploadArtifact } from '@/lib/storage/blob';
@@ -376,7 +376,10 @@ async function composeAndSendCandidateMail(args: {
     if (!candidate.email) {
       status = 'skipped_no_email';
     } else {
-      const synthesisAddress = await getSynthesisEmail();
+      // replyTo PAR CAMPAGNE : le référent en priorité (repli liste globale).
+      const synthesisAddress = await getSynthesisReplyToForCampaign(
+        input.campaignId.startsWith('TASK-') ? null : input.campaignId,
+      );
       const sendResult = await sendEmail({
         to: candidate.email,
         subject: composed.subject,

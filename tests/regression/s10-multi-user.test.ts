@@ -206,6 +206,8 @@ describe('S10 — résolution d’agenda par recruteur', () => {
     expect(mail).toBeDefined();
     expect(mail!.html).toContain(PERSONAL_LINK);
     expect(mail!.html).not.toContain(GLOBAL_LINK);
+    // replyTo par campagne : le RÉFÉRENT (pas la liste globale ni EMAIL_DRH).
+    expect(mail!.replyTo).toBe('admin.s10@test.local');
   });
 });
 

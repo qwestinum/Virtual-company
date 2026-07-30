@@ -10,6 +10,8 @@
  * un wording fidèle (« envoyé », « non envoyé — config manquante »…).
  */
 import { NextResponse } from 'next/server';
+
+import { getSynthesisReplyToForCampaign } from '@/lib/campaign/synthesis-recipients';
 import { z } from 'zod';
 
 import { buildInterviewMail } from '@/lib/agents/server/interview-mail';
@@ -252,7 +254,13 @@ async function finalizeSend(
         to: parsed.candidate.email,
         subject: composed.subject,
         html: composed.html,
-        replyTo: process.env.EMAIL_DRH || undefined,
+        // replyTo PAR CAMPAGNE : référent → 1re adresse de synthèse → env.
+        replyTo:
+          (await getSynthesisReplyToForCampaign(
+            parsed.campaignId.startsWith('TASK-') ? null : parsed.campaignId,
+          )) ??
+          process.env.EMAIL_DRH ??
+          undefined,
       });
       if (sendResult.ok) {
         status = 'sent';

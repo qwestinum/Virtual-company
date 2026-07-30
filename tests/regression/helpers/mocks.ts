@@ -33,6 +33,7 @@ export type RecordedEmail = {
   to: string | string[];
   subject: string;
   html: string;
+  replyTo: string | null;
 };
 
 export const sentEmails: RecordedEmail[] = [];
@@ -47,7 +48,7 @@ export function buildEmailClientMock(
   return {
     ...actual,
     sendEmail: async (input) => {
-      sentEmails.push({ to: input.to, subject: input.subject, html: input.html });
+      sentEmails.push({ to: input.to, subject: input.subject, html: input.html, replyTo: input.replyTo ?? null });
       return { ok: true, messageId: `mock_msg_${sentEmails.length}` };
     },
   };
