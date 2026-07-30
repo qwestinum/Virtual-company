@@ -8,6 +8,8 @@
  */
 import { NextResponse } from 'next/server';
 
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
+
 import {
   listUnmatchedCvs,
   type UnmatchedCvStatus,
@@ -19,6 +21,10 @@ export const runtime = 'nodejs';
 const STATUSES: UnmatchedCvStatus[] = ['pending', 'replayed', 'dismissed'];
 
 export async function GET(request: Request): Promise<NextResponse> {
+  // Diagnostic technique — ADMIN uniquement (401 sans session, 403 member).
+  const denied = await requireAdminApiUser();
+  if (denied) return denied;
+
   const url = new URL(request.url);
   const statusParam = url.searchParams.get('status') ?? 'pending';
   if (!STATUSES.includes(statusParam as UnmatchedCvStatus)) {

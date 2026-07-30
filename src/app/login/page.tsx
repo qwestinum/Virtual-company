@@ -4,6 +4,7 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { OrqaLogo } from '@/components/navigation/OrqaLogo';
 import { SiteFooter } from '@/components/navigation/SiteFooter';
 import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
+import { sanitizeNextPath } from '@/lib/auth/next-path';
 import { getAuthServerClient } from '@/lib/auth/supabase-server';
 
 export const metadata = {
@@ -30,7 +31,7 @@ export default async function LoginPage({
         data: { user },
       } = await supabase.auth.getUser();
       if (user) {
-        redirect(params.next ?? '/app');
+        redirect(sanitizeNextPath(params.next));
       }
     } catch {
       // Supabase injoignable → on rend juste la page de login,

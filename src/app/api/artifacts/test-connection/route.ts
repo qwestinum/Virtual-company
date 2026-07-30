@@ -11,6 +11,8 @@
  */
 import { NextResponse } from 'next/server';
 
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
+
 import {
   getServerSupabase,
   SupabaseNotConfiguredError,
@@ -20,6 +22,10 @@ import { ARTIFACTS_BUCKET } from '@/lib/storage/blob';
 export const runtime = 'nodejs';
 
 export async function GET(): Promise<NextResponse> {
+  // Diagnostic technique — ADMIN uniquement (401 sans session, 403 member).
+  const denied = await requireAdminApiUser();
+  if (denied) return denied;
+
   const supabase = getServerSupabase();
   if (!supabase) {
     return NextResponse.json(

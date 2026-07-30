@@ -63,6 +63,7 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     thresholdHigh: row.threshold_high ?? 100,
     siteId: row.site_id ?? null,
     donneurOrdreId: row.donneur_ordre_id ?? null,
+    ownerUserId: row.owner_user_id ?? null,
     launchedAt: row.launched_at ?? null,
     closedAt: row.closed_at ?? null,
     prefillExtraction: row.prefill_extraction ?? null,
@@ -87,6 +88,7 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     threshold_high: campaign.thresholdHigh,
     site_id: campaign.siteId,
     donneur_ordre_id: campaign.donneurOrdreId,
+    owner_user_id: campaign.ownerUserId,
     launched_at: campaign.launchedAt,
     closed_at: campaign.closedAt,
     // Inc. 2b — la machine d'états est désormais persistée (source de vérité).
@@ -166,6 +168,7 @@ export type CampaignPatch = {
    *  (nullable). `null` détache explicitement. */
   siteId?: string | null;
   donneurOrdreId?: string | null;
+  ownerUserId?: string | null;
 };
 
 export async function patchCampaign(
@@ -185,6 +188,7 @@ export async function patchCampaign(
   if (patch.siteId !== undefined) row.site_id = patch.siteId;
   if (patch.donneurOrdreId !== undefined)
     row.donneur_ordre_id = patch.donneurOrdreId;
+  if (patch.ownerUserId !== undefined) row.owner_user_id = patch.ownerUserId;
 
   // Reporting — horodatage du cycle de vie sur transition de statut.
   // closed_at : posé à CHAQUE clôture (ré-clôture écrase → « seul le dernier

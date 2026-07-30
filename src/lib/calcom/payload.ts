@@ -20,6 +20,16 @@ const PayloadSchema = z
   .object({
     uid: z.string().min(1),
     attendees: z.array(AttendeeSchema).optional().default([]),
+    // Traçabilité multi-agendas : QUEL recruteur a reçu le RDV. Jamais
+    // utilisé pour le matching (email candidat seul) — journalisé.
+    organizer: z
+      .object({
+        email: z.string().nullish().catch(null),
+        username: z.string().nullish().catch(null),
+      })
+      .passthrough()
+      .nullish(),
+    eventTypeId: z.number().nullish().catch(null),
     startTime: z.string().optional().nullable(),
     endTime: z.string().optional().nullable(),
     location: z.string().optional().nullable(),
@@ -54,6 +64,10 @@ export type CalcomBooking = {
   startTime: string | null;
   endTime: string | null;
   location: string | null;
+  /** Organisateur (agenda source) — traçabilité multi-recruteurs. */
+  organizerEmail: string | null;
+  organizerUsername: string | null;
+  eventTypeId: number | null;
 };
 
 /** Une chaîne est-elle une URL http(s) ? Pur. */
@@ -101,5 +115,8 @@ export function parseCalcomBooking(raw: unknown): CalcomBooking | null {
     endTime: payload.endTime ?? null,
     // Lieu résolu = lien visio réel si présent (cf. resolveMeetingLocation).
     location: resolveMeetingLocation(payload),
+    organizerEmail: payload.organizer?.email ?? null,
+    organizerUsername: payload.organizer?.username ?? null,
+    eventTypeId: payload.eventTypeId ?? null,
   };
 }

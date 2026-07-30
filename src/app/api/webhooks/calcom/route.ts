@@ -124,6 +124,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         // Lieu RÉSOLU (lien visio si trouvé) — confirmation que le bon champ est
         // capté côté Cal.com. URL ⇒ OK ; libellé/null ⇒ videoCallUrl absent du payload.
         location: booking.location,
+        // Traçabilité multi-agendas : QUEL recruteur/event-type a produit le
+        // RDV (détecte un référent mal posé). Sans effet sur le matching.
+        organizerEmail: booking.organizerEmail,
+        organizerUsername: booking.organizerUsername,
+        eventTypeId: booking.eventTypeId,
       },
     }).catch(() => {});
 

@@ -29,6 +29,10 @@ describe('parseCalcomBooking', () => {
       startTime: '2026-06-23T12:00:00.000Z',
       endTime: '2026-06-23T12:30:00.000Z',
       location: 'Google Meet',
+      // Traçabilité multi-agendas (jamais utilisé pour le matching).
+      organizerEmail: 'orga@corp.fr',
+      organizerUsername: null,
+      eventTypeId: null,
     });
   });
 

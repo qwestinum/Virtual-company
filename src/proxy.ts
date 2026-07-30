@@ -7,8 +7,9 @@
  *
  * Deux régimes :
  *  - PAGES protégées (`/app`, `/rh`, `/settings`, `/validations`, `/admin`) :
- *    pas de session valide → redirect vers `/login?next=<path>`. NB : `/admin`
- *    n'a PAS encore de contrôle de RÔLE (session seule) — cf. docs/BACKLOG.md.
+ *    pas de session valide → redirect vers `/login?next=<path>`. `/admin`
+ *    exige EN PLUS le rôle admin (lookup `recruiters.role`, fail-closed —
+ *    limité au préfixe /admin pour ne pas payer un lookup DB par requête).
  *  - ROUTES `/api` : DENY-BY-DEFAULT. Toute route `/api` exige une session
  *    valide → sinon 401 JSON (jamais de redirect : un fetch d'API ne doit pas
  *    recevoir du HTML). SEULES exceptions : les routes à auth PROPRE (webhook
@@ -64,6 +65,21 @@ export async function proxy(request: NextRequest) {
     loginUrl.search = '';
     loginUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Rôle ADMIN requis sur /admin (session déjà validée ci-dessus). Lookup
+  // `recruiters.role` fail-closed : table absente / ligne absente /
+  // désactivé / doute ⇒ member ⇒ redirect. L'URL cachée n'est plus une
+  // protection.
+  if (user && (pathname === '/admin' || pathname.startsWith('/admin/'))) {
+    const { getRecruiterRole } = await import('@/lib/db/repos/recruiters');
+    const role = await getRecruiterRole(user.id);
+    if (role !== 'admin') {
+      const homeUrl = request.nextUrl.clone();
+      homeUrl.pathname = '/app';
+      homeUrl.search = '';
+      return NextResponse.redirect(homeUrl);
+    }
   }
 
   return response;

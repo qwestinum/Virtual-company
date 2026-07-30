@@ -1411,3 +1411,47 @@ begin
     add constraint interview_briefs_status_chk2
     check (status in ('awaiting_booking', 'scheduled', 'cancelled'));
 end $$;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Multi-utilisateur — référentiel des recruteurs + référent de campagne
+-- (juil. 2026). Tout l'espace métier reste COMMUN (aucun cloisonnement,
+-- choix assumé) ; ce qui devient individuel : l'agenda Cal.com, l'identité
+-- dans les actions (pattern decided_by existant), l'accès admin.
+-- ──────────────────────────────────────────────────────────────────────
+create table if not exists public.recruiters (
+  -- = auth.users.id (sans FK dure — pattern snapshot : un recruteur parti
+  -- reste référencé par ses actions passées, jamais de suppression).
+  id uuid primary key,
+  display_name text not null,
+  email text not null,
+  -- Lien de réservation Cal.com PERSONNEL (nullable → fallback global).
+  calcom_link text,
+  role text not null default 'member' check (role in ('admin', 'member')),
+  -- Désactivation DOUCE (un inactif sort des sélecteurs et de la
+  -- résolution d'agenda, ses actions passées restent attribuées).
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+-- Consigne audit : RLS activée dès la migration (aucune policy — le
+-- service_role applicatif bypasse ; l'anon key ne lit RIEN).
+alter table public.recruiters enable row level security;
+
+-- Seed admin (idempotent) : le compte Supabase existant du DO. L'email est
+-- la clé de recherche — VÉRIFIER dans Auth > Users qu'il correspond bien
+-- au compte attendu avant d'appliquer en prod.
+insert into public.recruiters (id, display_name, email, role)
+select id, 'QWESTINUM', email, 'admin'
+  from auth.users
+ where email = 'qwestinum@gmail.com'
+on conflict (id) do nothing;
+
+-- Référent de campagne (nullable, migration douce). Backfill : l'admin
+-- seedé ci-dessus (les campagnes historiques lui sont attribuées).
+alter table public.campaigns
+  add column if not exists owner_user_id uuid;
+update public.campaigns
+   set owner_user_id = (
+     select id from public.recruiters where role = 'admin'
+     order by created_at asc limit 1
+   )
+ where owner_user_id is null;

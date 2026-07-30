@@ -16,12 +16,15 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { sanitizeNextPath } from '@/lib/auth/next-path';
+
 import { getAuthServerClient } from '@/lib/auth/supabase-server';
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/app';
+  // Anti open-redirect : `next` accepté uniquement comme chemin interne.
+  const next = sanitizeNextPath(searchParams.get('next'));
 
   if (!code) {
     return NextResponse.redirect(

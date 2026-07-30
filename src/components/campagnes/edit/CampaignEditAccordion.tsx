@@ -17,6 +17,7 @@ import { ChannelsEditBlock } from './ChannelsEditBlock';
 import { FDPEditBlock } from './FDPEditBlock';
 import { FluxEditBlock } from './FluxEditBlock';
 import { LifecycleEditBlock } from './LifecycleEditBlock';
+import { OwnerEditBlock } from './OwnerEditBlock';
 import { DecisionThresholdsBlock } from './DecisionThresholdsBlock';
 import { ScoringEditBlock } from './ScoringEditBlock';
 
@@ -32,6 +33,7 @@ type BlockKey =
   | 'flux'
   | 'vivier'
   | 'threshold'
+  | 'owner'
   | 'lifecycle';
 
 export function CampaignEditAccordion({
@@ -114,6 +116,19 @@ export function CampaignEditAccordion({
         onToggle={() => toggle('threshold')}
       >
         <DecisionThresholdsBlock campaign={campaign} />
+      </AccordionItem>
+      <AccordionItem
+        title="Recruteur référent"
+        subtitle={
+          campaign.ownerUserId
+            ? 'Agenda personnel du référent'
+            : 'Agenda global (aucun référent)'
+        }
+        icon="🧑‍💼"
+        open={expanded === 'owner'}
+        onToggle={() => toggle('owner')}
+      >
+        <OwnerEditBlock campaignId={campaign.id} />
       </AccordionItem>
       <AccordionItem
         title="Cycle de vie"

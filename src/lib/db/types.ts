@@ -49,6 +49,8 @@ export type CampaignRow = {
    */
   site_id: string | null;
   donneur_ordre_id: string | null;
+  /** Recruteur RÉFÉRENT (auth.users.id, sans FK — snapshot). Nullable. */
+  owner_user_id: string | null;
   /**
    * Reporting — dates de cycle de vie (rapport de campagne). Nullable :
    * repli applicatif sur created_at / updated_at pour l'historique.

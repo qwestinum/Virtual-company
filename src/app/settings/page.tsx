@@ -4,6 +4,8 @@ import { SiteFooter } from '@/components/navigation/SiteFooter';
 import { TopBanner } from '@/components/navigation/TopBanner';
 import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
 import { SettingsHub } from '@/components/settings/SettingsHub';
+import { getAuthServerClient } from '@/lib/auth/supabase-server';
+import { getRecruiterRole } from '@/lib/db/repos/recruiters';
 
 export const metadata = {
   title: 'Paramètres — QWESTINUM',
@@ -16,7 +18,23 @@ export const metadata = {
  * intégrations canaux. Bandeau ORQA + fond atelier commun à toutes les
  * pages applicatives.
  */
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  // Rôle résolu CÔTÉ SERVEUR (SettingsHub est client et aveugle à la
+  // session) : la section « Recruteurs » n'est rendue que pour un admin —
+  // les routes /api/recruiters re-vérifient de toute façon (défense en
+  // profondeur). Fail-closed : doute ⇒ member.
+  let isAdmin = false;
+  try {
+    const supabase = await getAuthServerClient();
+    if (supabase) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) isAdmin = (await getRecruiterRole(user.id)) === 'admin';
+    }
+  } catch {
+    isAdmin = false;
+  }
   return (
     <main className="relative flex min-h-[100svh] flex-col">
       <WorkspaceBackground />
@@ -45,7 +63,7 @@ export default function SettingsPage() {
             modifications sont appliquées au pipeline live dès la sauvegarde.
           </p>
         </header>
-        <SettingsHub />
+        <SettingsHub isAdmin={isAdmin} />
       </div>
       <SiteFooter />
     </main>

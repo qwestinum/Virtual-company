@@ -8,6 +8,8 @@
  */
 import { NextResponse } from 'next/server';
 
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
+
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { pollAllMailboxes } from '@/lib/imap/poller';
 
@@ -15,6 +17,10 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 export async function POST(): Promise<NextResponse> {
+  // Diagnostic technique — ADMIN uniquement (401 sans session, 403 member).
+  const denied = await requireAdminApiUser();
+  if (denied) return denied;
+
   try {
     const outcomes = await pollAllMailboxes();
     return NextResponse.json({

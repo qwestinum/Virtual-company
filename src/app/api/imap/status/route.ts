@@ -13,6 +13,8 @@
  */
 import { NextResponse } from 'next/server';
 
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
+
 import { countUnmatchedPending } from '@/lib/db/repos/imap-unmatched-cvs';
 import { listJournalEntries } from '@/lib/db/repos/journal';
 import {
@@ -28,6 +30,10 @@ import {
 export const runtime = 'nodejs';
 
 export async function GET(): Promise<NextResponse> {
+  // Diagnostic technique — ADMIN uniquement (401 sans session, 403 member).
+  const denied = await requireAdminApiUser();
+  if (denied) return denied;
+
   // Force le démarrage si pas encore lancé — utile pour diagnostiquer
   // une instance qui aurait crashé.
   ensureSchedulerStarted();

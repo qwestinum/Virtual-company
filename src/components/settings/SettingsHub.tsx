@@ -36,6 +36,7 @@ import {
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 
 import { DonneursOrdreManager } from './DonneursOrdreManager';
+import { RecruitersManager } from './RecruitersManager';
 import { EmailListField } from './EmailListField';
 import { EmailMultiSelectField } from './EmailMultiSelectField';
 import { IntegrationCard } from './IntegrationCard';
@@ -156,7 +157,7 @@ function ToggleRow({
   );
 }
 
-export function SettingsHub() {
+export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -340,6 +341,16 @@ export function SettingsHub() {
       >
         <MailboxesManager />
       </SettingsSection>
+
+      {isAdmin ? (
+        <SettingsSection
+          icon="🧑‍💼"
+          title="Recruteurs"
+          description="Les utilisateurs de l'espace (multi-utilisateur) : nom, lien Cal.com personnel (agendas d'entretien individuels), rôle et désactivation. Section réservée aux administrateurs."
+        >
+          <RecruitersManager />
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection
         icon="🏢"

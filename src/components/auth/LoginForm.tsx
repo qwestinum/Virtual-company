@@ -11,6 +11,8 @@
  */
 
 import { useRouter, useSearchParams } from 'next/navigation';
+
+import { sanitizeNextPath } from '@/lib/auth/next-path';
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 
@@ -19,7 +21,8 @@ import { getAuthBrowserClient } from '@/lib/auth/supabase-browser';
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = searchParams.get('next') ?? '/app';
+  // Anti open-redirect : chemin interne uniquement (sanitizeNextPath).
+  const nextPath = sanitizeNextPath(searchParams.get('next'));
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

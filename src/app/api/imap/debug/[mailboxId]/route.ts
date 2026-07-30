@@ -14,6 +14,8 @@
  *   ?force=1 — bypass le last_uid_seen, scanne depuis UID 1
  */
 import { NextResponse } from 'next/server';
+
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
 import { simpleParser } from 'mailparser';
 
 import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
@@ -36,6 +38,10 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ mailboxId: string }> },
 ): Promise<NextResponse> {
+  // Diagnostic technique — ADMIN uniquement (401 sans session, 403 member).
+  const denied = await requireAdminApiUser();
+  if (denied) return denied;
+
   const { mailboxId } = await context.params;
   const url = new URL(request.url);
   const limit = Math.min(

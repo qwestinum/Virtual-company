@@ -51,6 +51,8 @@ const CampaignSchema = z.object({
   // Reporting (préparation) — liens nullable site / donneur d'ordre.
   siteId: z.string().nullable().optional(),
   donneurOrdreId: z.string().nullable().optional(),
+  // Multi-utilisateur — recruteur référent (agenda Cal.com personnel).
+  ownerUserId: z.string().uuid().nullable().optional(),
   // Inc. 2b — machine d'états du cycle de vie. Optionnelle : un client antérieur
   // ne l'enverrait pas → repli sur la re-dérivation des artefacts (prev null).
   lifecycle: CampaignLifecycleSchema.optional(),
@@ -135,6 +137,7 @@ export async function PUT(request: Request): Promise<NextResponse> {
       sources,
       siteId: parsed.siteId ?? null,
       donneurOrdreId: parsed.donneurOrdreId ?? null,
+      ownerUserId: parsed.ownerUserId ?? null,
       prefillExtraction: parsed.prefillExtraction ?? null,
       // Dates de cycle de vie gérées par patchCampaign (transitions de statut)
       // — upsertCampaign retire les clés nulles pour ne pas écraser l'existant.

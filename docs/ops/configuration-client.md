@@ -19,7 +19,9 @@ par client), l'ensemble vit dans l'instance et la base Supabase de ce client.
 | `RESEND_API_KEY` | Envoi d'emails (refus, invitations, briefs) | Free tier 100 mails/j OK en démo |
 | `EMAIL_FROM` | Adresse expéditeur par défaut | Mettre le **domaine du client** (cf. délivrabilité/DMARC) |
 | `EMAIL_DRH` | **Adresse du donneur d'ordre / recruteur** | Reçoit bilans & briefs d'entretien |
-| `CAL_COM_EVENT_URL` | Lien de réservation d'entretien du client | `https://cal.com/<user>/<event>` |
+| `CAL_COM_EVENT_URL` | Lien de réservation d'entretien du client (repli global — les référents de campagne ont leur lien perso, cf. docs/ops/multi-utilisateur.md) | `https://cal.com/<user>/<event>` |
+| `CAL_COM_WEBHOOK_SECRET` | Secret HMAC du webhook Cal.com (Settings → Developer → Webhooks — LE MÊME sur chaque compte recruteur) | chaîne aléatoire |
+| `CRON_SECRET` | Bearer du cron imap-poll — OBLIGATOIRE (fail-closed : sans lui, la relève mail s'arrête) | chaîne aléatoire |
 | `MAILBOX_ENCRYPTION_KEY` | Clé de chiffrement des mots de passe IMAP | `openssl rand -hex 32`, **unique par projet, jamais changée** (la roter invalide toutes les boîtes) |
 
 > `.env.local` est **gitignored** — ne jamais le committer. Le sauvegarder hors serveur.
@@ -82,6 +84,8 @@ Champs techniques tenus par le poller (non saisis) : `last_polled_at`, `last_uid
 - [ ] `/settings` : `sender_email`, `synthesis_email` (= recruteur), `intake_email`.
 - [ ] `/settings/mailboxes` : la/les boîte(s) IMAP du client (host/port/ssl/login/mdp).
 - [ ] Domaine d'envoi vérifié côté Resend (DKIM/SPF) + **DMARC** posé (cf. déploiement).
-- [ ] `CAL_COM_EVENT_URL` = lien de réservation du client.
+- [ ] `CAL_COM_EVENT_URL` = lien de réservation du client (repli global).
+- [ ] `CAL_COM_WEBHOOK_SECRET` posé + webhook enregistré sur CHAQUE compte Cal.com recruteur (même URL, même secret — docs/ops/multi-utilisateur.md §4).
+- [ ] `CRON_SECRET` posé côté Vercel ET cron-job.org (fail-closed).
 - [ ] Compte du client créé dans Supabase Auth (inscription publique désactivée).
 - [ ] Smoke test : login → campagne → upload CV → mail de refus reçu en boîte.

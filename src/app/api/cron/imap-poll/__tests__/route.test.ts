@@ -24,11 +24,12 @@ describe('GET /api/cron/imap-poll', () => {
     else process.env.CRON_SECRET = prev;
   });
 
-  it('poll sans secret configuré (ouvert)', async () => {
+  it('FAIL-CLOSED (I13) : sans CRON_SECRET configuré → 500, jamais de poll', async () => {
     delete process.env.CRON_SECRET;
     const res = await GET(req());
-    expect(res.status).toBe(200);
-    expect(pollMock).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe('cron_not_configured');
+    expect(pollMock).not.toHaveBeenCalled();
   });
 
   it('accepte le Bearer correct quand CRON_SECRET est défini', async () => {

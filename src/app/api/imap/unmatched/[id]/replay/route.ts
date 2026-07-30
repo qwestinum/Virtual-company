@@ -19,6 +19,8 @@
  */
 import { NextResponse } from 'next/server';
 
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
+
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import { getUnmatchedCv } from '@/lib/db/repos/imap-unmatched-cvs';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -31,6 +33,10 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  // Diagnostic technique — ADMIN uniquement (401 sans session, 403 member).
+  const denied = await requireAdminApiUser();
+  if (denied) return denied;
+
   const { id } = await params;
   let bodyCampaignId: string | null;
   try {

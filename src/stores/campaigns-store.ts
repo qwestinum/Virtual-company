@@ -88,6 +88,11 @@ export type ActiveCampaign = {
   siteId: string | null;
   donneurOrdreId: string | null;
   /**
+   * Recruteur RÉFÉRENT de la campagne (auth.users.id) — son agenda Cal.com
+   * personnel est utilisé pour les invitations (repli global sinon).
+   */
+  ownerUserId: string | null;
+  /**
    * Reporting (rapport de campagne) — dates de cycle de vie. `launchedAt`
    * posée au 1er passage en 'active', `closedAt` à chaque passage en
    * 'closed' (ré-clôture écrase). Nullable : repli createdAt / updatedAt
@@ -123,6 +128,7 @@ export type CampaignsState = {
     thresholdHigh?: number;
     siteId?: string | null;
     donneurOrdreId?: string | null;
+    ownerUserId?: string | null;
     prefillExtraction?: CampaignPrefill | null;
   }) => ActiveCampaign;
   /**
@@ -136,6 +142,11 @@ export type CampaignsState = {
    * substractive) pour rester explicite côté UI.
    */
   setSources: (id: string, sources: CVSource[]) => void;
+  /**
+   * Multi-utilisateur — pose/retire le recruteur RÉFÉRENT (son agenda Cal.com
+   * personnel sert aux invitations ; null = repli agenda global).
+   */
+  setOwner: (id: string, ownerUserId: string | null) => void;
   /**
    * Écrase explicitement le statut d'une campagne (paused / closed
    * principalement). Pour les transitions dérivées (draft → in_progress
@@ -334,6 +345,7 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
     const siteId = input.siteId ?? existing?.siteId ?? null;
     const donneurOrdreId =
       input.donneurOrdreId ?? existing?.donneurOrdreId ?? null;
+    const ownerUserId = input.ownerUserId ?? existing?.ownerUserId ?? null;
     const prefillExtraction =
       input.prefillExtraction !== undefined
         ? input.prefillExtraction
@@ -361,6 +373,7 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       thresholdHigh,
       siteId,
       donneurOrdreId,
+      ownerUserId,
       status,
       lifecycle,
       launchedAt: existing?.launchedAt ?? null,
@@ -474,6 +487,23 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
             ...current,
             thresholdLow: lo,
             thresholdHigh: hi,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }),
+
+  setOwner: (id, ownerUserId) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current || current.ownerUserId === ownerUserId) return state;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: {
+            ...current,
+            ownerUserId,
             updatedAt: new Date().toISOString(),
           },
         },

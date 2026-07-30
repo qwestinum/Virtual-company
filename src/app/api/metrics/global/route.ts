@@ -15,6 +15,8 @@
 
 import { NextResponse } from 'next/server';
 
+import { getAdminApiUser } from '@/lib/auth/require-api-user';
+
 import {
   EMPTY_ZONE_COUNTS,
   journalToActivityFeed,
@@ -41,6 +43,13 @@ export async function GET(): Promise<NextResponse> {
   // l'app est ouverte, donc la relève des candidatures par mail ne peut pas
   // rester en panne silencieuse. Idempotent (garde sur globalThis).
   ensureSchedulerStarted();
+
+  // Multi-utilisateur : la route sert le MÉTIER (Bureau : zones, activité,
+  // candidats — accessible à toute session) ET l'admin (coûts IA, métriques
+  // par agent). SCINDÉ plutôt que gaté en bloc : un member reçoit le payload
+  // avec `agents` vidé et `costEstimate` à 0 (cache de rôle 60 s — la route
+  // est pollée toutes les 5 s).
+  const isAdmin = (await getAdminApiUser()) !== null;
 
   const agentIds = getAgentOrder();
 
@@ -97,16 +106,18 @@ export async function GET(): Promise<NextResponse> {
   // Best-effort : un échec retombe sur des zones vides, le reste du payload tient.
   const zones = await zoneDistribution().catch(() => EMPTY_ZONE_COUNTS);
 
+  const kpis = {
+    ...journalToGlobalKPIs(totalRows, pendingUids),
+    awaitingValidation: pending.length,
+  };
   return NextResponse.json({
     offline: false,
-    kpis: {
-      ...journalToGlobalKPIs(totalRows, pendingUids),
-      awaitingValidation: pending.length,
-    },
+    // Coût IA = donnée ADMIN (member : 0, jamais le chiffre réel).
+    kpis: isAdmin ? kpis : { ...kpis, costEstimate: 0 },
     // Agents + activité = fenêtre RÉCENTE assumée (durée/tokens/coût récents,
     // fil « qui défile ») — limite légitime, pas un total. Reste sur la
-    // fenêtre 500 (`result.rows`).
-    agents: journalToAgentMetrics(result.rows, agentIds),
+    // fenêtre 500 (`result.rows`). Métriques par agent = ADMIN uniquement.
+    agents: isAdmin ? journalToAgentMetrics(result.rows, agentIds) : [],
     candidates,
     activity: journalToActivityFeed(result.rows, 50),
     zones,

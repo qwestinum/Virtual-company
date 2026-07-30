@@ -9,6 +9,8 @@
 
 import { NextResponse } from 'next/server';
 
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
+
 import {
   journalToCampaignMetric,
 } from '@/lib/dashboard/derive-metrics';
@@ -22,6 +24,10 @@ export async function GET(
   _request: Request,
   context: RouteContext,
 ): Promise<NextResponse> {
+  // Diagnostic technique — ADMIN uniquement (401 sans session, 403 member).
+  const denied = await requireAdminApiUser();
+  if (denied) return denied;
+
   const { id } = await context.params;
   if (!id) {
     return NextResponse.json(

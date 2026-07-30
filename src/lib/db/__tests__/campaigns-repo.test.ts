@@ -40,6 +40,7 @@ function buildCampaign(overrides: Partial<ActiveCampaign> = {}): ActiveCampaign 
     thresholdHigh: 90,
     siteId: null,
     donneurOrdreId: null,
+    ownerUserId: null,
     status: 'in_progress',
     lifecycle: buildLifecycle(),
     launchedAt: null,

@@ -10,11 +10,17 @@
  */
 import { NextResponse } from 'next/server';
 
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
+
 import { getEmailDeliveryStatus } from '@/lib/email/client';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request): Promise<NextResponse> {
+  // Diagnostic technique — ADMIN uniquement (401 sans session, 403 member).
+  const denied = await requireAdminApiUser();
+  if (denied) return denied;
+
   const id = new URL(request.url).searchParams.get('id');
   if (!id) {
     return NextResponse.json(

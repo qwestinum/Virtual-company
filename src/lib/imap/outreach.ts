@@ -110,11 +110,13 @@ export async function dispatchImapCandidateOutreach(
     ? { taskId: input.campaignId }
     : { campaignId: input.campaignId };
 
-  // Lien d'agenda obligatoire en mode invite (réglage org-level, repli env).
-  // Absent ⇒ on logue et on n'envoie NI l'acceptation NI le brief (mais on ne
-  // plante pas le poller). Le refus, lui, ne dépend pas du lien. (Inchangé,
-  // hors périmètre du gating HITL.)
-  const agendaLink = await getResolvedAgendaLink();
+  // Lien d'agenda obligatoire en mode invite — résolution PAR CAMPAGNE
+  // (référent → global → env). Absent ⇒ on logue et on n'envoie NI
+  // l'acceptation NI le brief (mais on ne plante pas le poller). Le refus,
+  // lui, ne dépend pas du lien.
+  const agendaLink = await getResolvedAgendaLink(
+    isTaskOwner ? null : input.campaignId,
+  );
   if (mode === 'invite' && !agendaLink) {
     await appendJournalEntry({
       action: 'imap_outreach_skipped',
