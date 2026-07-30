@@ -14,7 +14,17 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export async function getAuthServerClient(): Promise<SupabaseClient | null> {
-  const cookieStore = await cookies();
+  let cookieStore: Awaited<ReturnType<typeof cookies>>;
+  try {
+    cookieStore = await cookies();
+  } catch {
+    // Hors scope de requête Next (handler invoqué in-process : tests de
+    // régression, appels internes) : pas de cookies ⇒ pas de session
+    // possible. `null` est le contrat existant « aucune session » — les
+    // gardes (getApiUser/requireAdmin) restent FAIL-CLOSED (member/401),
+    // jamais une exception qui fait planter une route par ailleurs saine.
+    return null;
+  }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {
