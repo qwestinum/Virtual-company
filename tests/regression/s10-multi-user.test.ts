@@ -83,6 +83,7 @@ function actAs(user: 'admin' | 'member' | 'anonymous'): void {
 
 let previousInterviewConfig: unknown;
 let previousSynthesisActive: unknown;
+let previousSynthesisList: unknown;
 let webhookSecretWasSet = true;
 
 async function cleanRecruiters(): Promise<void> {
@@ -119,16 +120,24 @@ beforeAll(async () => {
 
   // Référentiel : un admin (référent, avec lien perso) + un member (sans).
   // Adresses de synthèse CONFIGURÉES — avec un doublon du référent à casse
-  // différente (test de dédup). Restaurées en afterAll.
+  // différente (test de dédup). INVARIANT du modèle : les adresses COCHÉES
+  // sont filtrées contre la LISTE des adresses connues (resolveActiveSynthesis)
+  // → poser les DEUX colonnes, sinon les cochées de test sont écartées et le
+  // repli EMAIL_DRH s'applique. Restaurées en afterAll.
   const { data: settingsRow } = await db()
     .from('app_settings')
-    .select('synthesis_emails_active')
+    .select('synthesis_emails, synthesis_emails_active')
     .eq('id', 1)
     .maybeSingle();
+  previousSynthesisList = settingsRow?.synthesis_emails ?? null;
   previousSynthesisActive = settingsRow?.synthesis_emails_active ?? null;
+  const testSynthesis = ['drh.s10@test.local', 'ADMIN.S10@test.local'];
   const updSynth = await db()
     .from('app_settings')
-    .update({ synthesis_emails_active: ['drh.s10@test.local', 'ADMIN.S10@test.local'] })
+    .update({
+      synthesis_emails: testSynthesis,
+      synthesis_emails_active: testSynthesis,
+    })
     .eq('id', 1);
   expect(updSynth.error).toBeNull();
   invalidateEmailAddressesCache();
@@ -174,6 +183,7 @@ afterAll(async () => {
     .from('app_settings')
     .update({
       interview_config: previousInterviewConfig,
+      synthesis_emails: previousSynthesisList,
       synthesis_emails_active: previousSynthesisActive,
     })
     .eq('id', 1);
