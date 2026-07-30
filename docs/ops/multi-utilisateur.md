@@ -66,9 +66,10 @@ l'anon key peut se créer une session valide pour tout l'espace. À vérifier su
 
 1. Dashboard Supabase → Authentication → Users → **Invite user** (email pro).
    Le recruteur définit son mot de passe via le lien reçu.
-2. Copier l'**UUID** du compte créé (colonne id).
-3. App → Paramètres → **Recruteurs** → « Ajouter un recruteur » : coller
-   l'UUID, l'email, le nom affiché, et le **lien Cal.com personnel** (cf. §4).
+2. App → Paramètres → **Recruteurs** → « Ajouter un recruteur » : **choisir
+   le compte dans la liste** (les comptes Auth non encore référencés y
+   apparaissent automatiquement — aucun UUID à recopier), ajuster le nom
+   affiché, renseigner le **lien Cal.com personnel** (cf. §4).
 4. (Optionnel) Poser ce recruteur comme **référent** de ses campagnes :
    édition de campagne → bloc « Recruteur référent ».
 

@@ -101,6 +101,34 @@ export async function getRecruiterRole(
   }
 }
 
+export type AvailableAccount = {
+  /** auth.users.id. */
+  id: string;
+  email: string;
+  createdAt: string;
+};
+
+/**
+ * Comptes Supabase Auth PAS ENCORE référencés comme recruteurs — alimente le
+ * sélecteur d'ajout (zéro resaisie d'UUID : le serveur détient déjà la liste
+ * via la clé service_role). Un compte désactivé côté recruiters reste
+ * « référencé » (on le RÉACTIVE, on ne le re-crée pas).
+ */
+export async function listAvailableAuthAccounts(): Promise<AvailableAccount[]> {
+  const supabase = requireServerSupabase();
+  // Espace de 2-10 recruteurs : une page large suffit (pas de pagination).
+  const { data, error } = await supabase.auth.admin.listUsers({
+    page: 1,
+    perPage: 200,
+  });
+  if (error) throw new Error(`listAvailableAuthAccounts: ${error.message}`);
+  const referenced = new Set((await listRecruiters()).map((r) => r.id));
+  return data.users
+    .filter((u) => !referenced.has(u.id) && Boolean(u.email))
+    .map((u) => ({ id: u.id, email: u.email!, createdAt: u.created_at }))
+    .sort((a, b) => a.email.localeCompare(b.email));
+}
+
 export type CreateRecruiterInput = {
   /** auth.users.id du compte Supabase créé/invité au préalable. */
   id: string;

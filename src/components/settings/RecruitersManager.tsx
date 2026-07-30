@@ -3,9 +3,9 @@
 /**
  * Gestion des RECRUTEURS de l'espace (multi-utilisateur) — section ADMIN
  * uniquement (rendue conditionnellement par la page serveur ; les routes
- * /api/recruiters re-vérifient le rôle). Ajout = référencer un compte
- * Supabase Auth déjà invité (dashboard Supabase — signups publics
- * désactivés) : voir docs/ops/multi-utilisateur.md. Jamais de suppression :
+ * /api/recruiters re-vérifient le rôle). Ajout = CHOISIR un compte Supabase
+ * Auth déjà invité dans la liste des comptes non référencés (zéro resaisie
+ * d'UUID) : voir docs/ops/multi-utilisateur.md. Jamais de suppression :
  * désactivation douce.
  */
 
@@ -117,7 +117,8 @@ export function RecruitersManager() {
         ))}
         {items.length === 0 ? (
           <li className="font-body text-[13px] italic text-stone-400">
-            Aucun recruteur référencé (la migration seed l&apos;admin).
+            Aucun recruteur référencé — seed admin à exécuter (runbook
+            docs/ops/multi-utilisateur.md §1).
           </li>
         ) : null}
       </ul>

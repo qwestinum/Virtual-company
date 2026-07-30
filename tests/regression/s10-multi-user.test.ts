@@ -37,6 +37,7 @@ import { PUT as putCampaign } from '@/app/api/campaigns/route';
 import { GET as getCounters } from '@/app/api/candidatures/counters/route';
 import { GET as getCampaignMetrics } from '@/app/api/metrics/campaigns/[id]/route';
 import { GET as getGlobalMetrics } from '@/app/api/metrics/global/route';
+import { GET as getAvailableAccounts } from '@/app/api/recruiters/available-accounts/route';
 import { GET as getRecruitersList } from '@/app/api/recruiters/route';
 import { GET as getRecruiterOptions } from '@/app/api/recruiters/options/route';
 import type { MailCandidate } from '@/types/mail-candidate';
@@ -229,6 +230,17 @@ describe('S10 — gate admin', () => {
     expect(JSON.stringify(options.json)).not.toContain('admin.s10@test.local');
     actAs('admin');
     expect((await call(getRecruitersList)).status).toBe(200);
+  });
+
+  it('comptes Auth disponibles (sélecteur d’ajout) : member → 403, admin → 200 sans les référencés', async () => {
+    actAs('member');
+    expect((await call(getAvailableAccounts)).status).toBe(403);
+    actAs('admin');
+    const res = await call(getAvailableAccounts);
+    expect(res.status).toBe(200);
+    const accounts = res.json.accounts as Array<{ id: string }>;
+    // Les recruteurs déjà référencés (nos deux lignes de test) n'y figurent pas.
+    expect(accounts.some((a) => a.id === ADMIN_ID || a.id === MEMBER_ID)).toBe(false);
   });
 
   it('/api/metrics/global SCINDÉ : member = métier intact mais agents vidés + coût 0', async () => {
