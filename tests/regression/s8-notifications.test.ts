@@ -130,7 +130,10 @@ describe('S8 — notifications métier', () => {
     expect(overdue).not.toBeNull();
     expect(overdue!.count).toBeGreaterThanOrEqual(1);
     expect(overdue!.oldestDays).toBeGreaterThanOrEqual(5);
-    expect(overdue!.message).toContain('attendent votre validation');
+    // Accord SINGULIER/PLURIEL selon le compte (« 1 candidat attend… » /
+    // « N candidats attendent… ») — l'assertion ne doit pas figer l'accord,
+    // le compte réel dépend de l'état de la base dev au moment du run.
+    expect(overdue!.message).toMatch(/attend(ent)? votre validation depuis plus de/);
     expect(overdue!.target).toEqual({ tab: 'validations' });
 
     const interviews = ofKey(signals, 'interviews_awaiting_decision');
