@@ -738,3 +738,54 @@ Candidatures / bandeau) plutôt que journal seul.
 
 **Risque** : faible (visibilité), mais aligné sur la règle « pas d'échec
 silencieux » chère au DO.
+
+---
+
+## Cartographie produit du Manager — nouvelles surfaces non référencées
+
+**Statut** : la refonte « Manager lecture seule » impose que les chemins de
+navigation viennent EXCLUSIVEMENT de `src/lib/agents/manager-cartography.ts`
+(libellés exacts de l'UI, à tenir à jour). Les chantiers de juillet ont ajouté
+des surfaces que la cartographie ne connaît pas : bloc « Recruteur référent »
+(édition de campagne), section Paramètres « Recruteurs » (admin), actions
+« Classer sans suite » / « Rouvrir la candidature », étape « Sans suite » du
+ruban, dialog de clôture avec classement.
+
+**Risque** : le Manager avoue son incertitude plutôt que d'inventer (garde
+anti-hallucination), donc pas de faux chemins — mais il ne sait pas orienter
+vers ces fonctions récentes.
+
+**Piste** : passe de mise à jour de la cartographie (libellés exacts), avec
+mention du conditionnement admin pour la section Recruteurs.
+
+---
+
+## Sans-suite — polissage V2
+
+- **Template du mail d'information éditable en settings** (aujourd'hui :
+  template pur en code, variables figées) — même pattern que les templates
+  entretien/vivier si le besoin d'édition apparaît.
+- **`candidatures-apercu`** : maquette jetable encore présente
+  (`src/app/candidatures-apercu/page.tsx`, non commitée) — à supprimer.
+- **Vérification visuelle** ruban « Sans suite » + 5ᵉ ligne du Bureau sur
+  environnement migré (demandée lors de la validation, couverte par tests
+  d'exhaustivité mais pas encore constatée à l'écran).
+
+---
+
+## Multi-utilisateur — suites possibles
+
+- **`/validations-vivier` hors préfixe proxy** (SEC-7 résiduel) : la page
+  échappe au préfixe `/validations` (shell sans données, APIs gatées) —
+  ajouter le préfixe ou renommer la route.
+- **Auto-enrôlement optionnel** : trigger sur `auth.users` créant la ligne
+  `recruiters` (member) à l'invitation — fusionnerait invitation et
+  référencement (débattu le 30/07 : le modèle explicite à 2 gestes est
+  conservé pour l'instant ; si adopté, retirer le sélecteur de comptes).
+- **Env `EMAIL_DRH` en dernier repli du replyTo** : reliquat historique —
+  à retirer quand toutes les installations ont des adresses de synthèse
+  configurées.
+- **Régression invitation vivier / adresse de réception** : la priorité
+  « boîte associée > intakeEmail » n'est couverte qu'en unitaire
+  (`invitation-send.test.ts`) — un scénario S5 exigerait l'échafaudage
+  présélection complet, gain jugé marginal pour l'instant.

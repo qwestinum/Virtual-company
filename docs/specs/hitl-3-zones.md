@@ -7,6 +7,12 @@ validation humaine, au reporting de décision et au parcours d'audit.
 Refonte livrée en **lots 1, 2 et 3** (tous mergés sur `main` et déployés en
 prod). Mémoire associée : `project_hitl_three_zones`.
 
+> **Mise à jour (juil. 2026)** : la machine d'états de `pending_validations`
+> est désormais `pending → sending → sent` **+ `void`** (terminal — validation
+> fermée par « classement sans suite » de la candidature, uniquement depuis
+> `pending`, un `sending` n'est jamais voidé). Un `void` n'est « en attente »
+> pour AUCUN lecteur. Référence : `docs/specs/candidatures-sans-suite.md` §2.1.
+
 ---
 
 ## 1. Vue d'ensemble fonctionnelle

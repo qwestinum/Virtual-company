@@ -12,7 +12,7 @@ Le MVP couvre le département RH avec deux modalités de travail : **campagnes c
 
 **`docs/specs/entreprise-virtuelle-rh.md`** est la source de vérité fonctionnelle. Tout comportement métier (rôles des agents, rituels, validations, artefacts, actions directes, escalades) y est défini. Claude Code consulte ce document avant toute décision de design fonctionnel.
 
-**Brief de la session courante** : voir `docs/sessions/SESSION_3.md` pour le périmètre exact de ce qui doit être implémenté maintenant et ce qui ne doit pas l'être.
+**Brief de la session courante** : voir `docs/sessions/SESSION_NEXT.md` (préparé le 30/07/2026 — priorité : mise en production ordonnée du lot sans-suite + multi-utilisateur, puis onboarding recruteurs). Dernier compte-rendu : `docs/sessions/SESSION_2026-07-29_30.md`. Specs de référence par domaine : `docs/specs/` (`candidatures-sans-suite.md` et `multi-utilisateur.md` ajoutées en juillet 2026).
 
 ## Stack
 

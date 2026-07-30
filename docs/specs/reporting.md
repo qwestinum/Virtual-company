@@ -13,6 +13,14 @@ toutes les sessions à venir.
 > « arbitré/arbitrage » ou définit les volumes en 2 catégories, **la référence à
 > jour est `docs/specs/hitl-3-zones.md` §5**.
 
+> **⚠️ « Classée sans suite » (juil. 2026).** Les volumes portent une 6ᵉ
+> catégorie **`classeeSansSuite`** (candidatures jamais évaluées jusqu'au
+> bout — raison externe, DISTINCT du refus) : la partition somme (`reçues =
+> retenues + écartées + en attente + sans suite`) et **tous les taux**
+> (rétention, validation humaine, réponse, recos, canaux) sont calculés sur
+> les **évaluées** (reçues − sans suite), note de bas de page dans les PDF.
+> Référence : `docs/specs/candidatures-sans-suite.md` §1.6.
+
 ## 1. Vue d'ensemble
 
 Le module Reporting est un **onglet principal** de la navigation ORQA qui
@@ -188,10 +196,12 @@ Décisions et proxies retenus, à connaître pour les évolutions :
   (nullable), posées par `patchCampaign` sur transition de statut (`closed_at`
   ré-écrit à chaque clôture → « seul le dernier état compte » ; `launched_at`
   au 1ᵉʳ passage `active`). Repli `created_at` / `updated_at` pour l'historique.
-- **Volumes** : dérivés de `candidate_analyses` (reçues / retenues / écartées)
-  + parcours HITL pour les **arbitrées** (intervention humaine).
+- **Volumes** : dérivés de `candidate_analyses` (reçues / retenues / écartées
+  / en attente / **classées sans suite**) + parcours HITL pour la validation
+  humaine. Taux sur les **évaluées** (reçues − sans suite).
 - **Issue** : `recruited` (≥ 1 recrutement finalisé) vs `no_hire`. La nuance
-  « abandonnée / sans suite » nécessiterait un motif saisi (non disponible).
+  « sans suite » existe désormais **au niveau candidature** (motif typé,
+  `candidatures-sans-suite.md`) ; l'issue de CAMPAGNE reste binaire.
 - **Performance par canal** : proxy = canal de **réception** du CV (`source`),
   faute d'attribution diffusion → candidat.
 - **Time-to-hire** : proxy lancement → clôture (jours) quand recrutement.
