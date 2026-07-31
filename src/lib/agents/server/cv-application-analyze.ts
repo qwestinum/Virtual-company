@@ -184,6 +184,15 @@ export type AnalyzeCVApplicationInput = {
 
 export type AnalyzeCVApplicationOutput = {
   application: CVApplication;
+  /**
+   * Le document a-t-il été reconnu comme une CANDIDATURE par l'extraction ?
+   * `false` = court-circuit « Candidat anonyme » (lettre de motivation, doc
+   * annexe…). Permet à l'appelant multi-PJ (poller IMAP) de préférer une
+   * autre PJ du même mail plutôt que de persister l'anonyme. Une extraction
+   * candidat en échec (`llmFailures.candidate`) reste `true` : on ne peut pas
+   * PROUVER que le document n'est pas un CV.
+   */
+  isCv: boolean;
   metrics: { durationMs: number; tokensUsed: number; costEstimate: number };
   /**
    * Observabilité : quelle(s) phase(s) LLM DÉGRADABLE(S) a/ont échoué
@@ -282,6 +291,7 @@ export async function analyzeCVApplication(
     };
     return {
       application: CVApplicationSchema.parse({ candidate, scoringResult, narration }),
+      isCv: false,
       metrics,
       llmFailures: {
         candidate: candidateFailed,
@@ -463,6 +473,7 @@ export async function analyzeCVApplication(
 
   return {
     application,
+    isCv: true,
     metrics,
     llmFailures: {
       candidate: candidateFailed,

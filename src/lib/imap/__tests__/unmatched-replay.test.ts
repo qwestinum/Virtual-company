@@ -81,7 +81,7 @@ beforeEach(() => {
   } as never);
   vi.mocked(reserveUnmatchedReplay).mockResolvedValue(true);
   vi.mocked(downloadArtifact).mockResolvedValue(Buffer.from('pdf') as never);
-  vi.mocked(processEmailAttachment).mockResolvedValue(undefined);
+  vi.mocked(processEmailAttachment).mockResolvedValue('processed');
 });
 
 describe('canReceiveReplay', () => {
@@ -176,7 +176,7 @@ describe('drainPendingSheetCvs', () => {
     vi.mocked(listPendingSheetCvs).mockResolvedValue(rows);
     vi.mocked(processEmailAttachment)
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce('processed');
     await drainPendingSheetCvs(makeCampaign());
     expect(processEmailAttachment).toHaveBeenCalledTimes(2);
     expect(revertUnmatchedReplay).toHaveBeenCalledWith('row-1');
@@ -194,5 +194,75 @@ describe('drainPendingSheetCvs', () => {
       new Error('column reason does not exist'),
     );
     await expect(drainPendingSheetCvs(makeCampaign())).resolves.toBeUndefined();
+  });
+
+  it('un mail = une candidature : le vrai CV du groupe est rejoué en premier, les autres lignes sont consommées tracées', async () => {
+    // Deux lignes du MÊME mail (mailbox, uid) : lettre APEC + vrai CV.
+    const letter = makeRow({ id: 'row-letter', file_name: 'candidature.pdf' });
+    const cv = makeRow({ id: 'row-cv', file_name: 'Cv_Malaka.pdf' });
+    vi.mocked(listPendingSheetCvs).mockResolvedValue([letter, cv]);
+
+    await drainPendingSheetCvs(makeCampaign());
+
+    // Une SEULE analyse : le CV (priorité nom), avec skip actif (pas dernier
+    // recours puisqu'une autre ligne du groupe existe encore).
+    expect(processEmailAttachment).toHaveBeenCalledTimes(1);
+    expect(processEmailAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileName: 'Cv_Malaka.pdf',
+        skipIfNotCv: true,
+      }),
+    );
+    // La lettre est consommée (réservée) et tracée — jamais un backlog fantôme.
+    expect(reserveUnmatchedReplay).toHaveBeenCalledWith('row-cv', 'CAMP-0001');
+    expect(reserveUnmatchedReplay).toHaveBeenCalledWith(
+      'row-letter',
+      'CAMP-0001',
+    );
+    const actions = vi
+      .mocked(appendJournalEntry)
+      .mock.calls.map(([entry]) => entry.action);
+    expect(actions).toContain('imap_unmatched_sibling_skipped');
+  });
+
+  it('un mail = une candidature : PJ prioritaire classée non-CV → la suivante porte la candidature en dernier recours', async () => {
+    const letter = makeRow({ id: 'row-letter', file_name: 'candidature.pdf' });
+    const cv = makeRow({ id: 'row-cv', file_name: 'Cv_Malaka.pdf' });
+    vi.mocked(listPendingSheetCvs).mockResolvedValue([letter, cv]);
+    vi.mocked(processEmailAttachment)
+      .mockResolvedValueOnce('not_a_cv')
+      .mockResolvedValueOnce('processed');
+
+    await drainPendingSheetCvs(makeCampaign());
+
+    expect(processEmailAttachment).toHaveBeenCalledTimes(2);
+    expect(processEmailAttachment).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ fileName: 'Cv_Malaka.pdf', skipIfNotCv: true }),
+    );
+    expect(processEmailAttachment).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        fileName: 'candidature.pdf',
+        skipIfNotCv: false,
+      }),
+    );
+  });
+
+  it('groupes distincts (uids différents) : une candidature PAR mail', async () => {
+    const mailA = makeRow({ id: 'row-a', uid: '42', file_name: 'cv-a.pdf' });
+    const mailB = makeRow({ id: 'row-b', uid: '43', file_name: 'cv-b.pdf' });
+    vi.mocked(listPendingSheetCvs).mockResolvedValue([mailA, mailB]);
+
+    await drainPendingSheetCvs(makeCampaign());
+
+    expect(processEmailAttachment).toHaveBeenCalledTimes(2);
+    // Ligne seule dans son groupe = dernier recours direct.
+    expect(processEmailAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: '42', skipIfNotCv: false }),
+    );
+    expect(processEmailAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: '43', skipIfNotCv: false }),
+    );
   });
 });

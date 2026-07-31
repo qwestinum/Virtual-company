@@ -117,6 +117,8 @@ describe('analyzeCVApplication', () => {
     expect(out.application.scoringResult.hardFailures).toEqual([]);
     // Narration présente.
     expect(out.application.narration.summary).toMatch(/profil solide/i);
+    // Document reconnu comme candidature (sélection « un mail = une candidature »).
+    expect(out.isCv).toBe(true);
     expect(out.llmFailures).toEqual({
       candidate: false,
       ledger: false,
@@ -239,6 +241,9 @@ describe('analyzeCVApplication', () => {
     expect(
       out.application.scoringResult.breakdown.every((b) => b.llmDecision === 'non_verifiable'),
     ).toBe(true);
+    // Exposé à l'appelant multi-PJ (« un mail = une candidature ») : le poller
+    // préfère une autre PJ du mail plutôt que persister l'anonyme.
+    expect(out.isCv).toBe(false);
   });
 
   it('agrège les métriques des quatre appels LLM', async () => {

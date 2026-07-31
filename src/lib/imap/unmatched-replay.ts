@@ -22,6 +22,7 @@ import {
 } from '@/lib/db/repos/imap-unmatched-cvs';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { getMailboxWithSecrets } from '@/lib/db/repos/mailboxes';
+import { orderCvAttachmentsByPriority } from '@/lib/imap/cv-attachment';
 import { processEmailAttachment } from '@/lib/imap/poller';
 import { RetryablePollError } from '@/lib/imap/poll-retry';
 import { downloadArtifact } from '@/lib/storage/blob';
@@ -30,6 +31,12 @@ export type ReplayOutcome =
   | { kind: 'done' }
   /** Déjà rejoué/écarté (perdant d'une course) — rien à faire. */
   | { kind: 'already_consumed' }
+  /**
+   * PJ classée non-CV sous sélection « un mail = une candidature »
+   * (`skipIfNotCv`, drain uniquement) : rien persisté, ligne CONSOMMÉE — la
+   * candidature du mail sera portée par une autre PJ du même groupe.
+   */
+  | { kind: 'not_a_cv' }
   /** Ligne sans binaire (panne storage à la réception) — renvoi requis. */
   | { kind: 'binary_unavailable' }
   /** Binaire introuvable en Storage au download — ligne rendue re-rejouable. */
@@ -40,13 +47,17 @@ export type ReplayOutcome =
 /**
  * Rejoue UNE ligne vers `campaign` (fiche validée exigée par l'appelant).
  * `actor` distingue le rejeu humain du drain système dans le journal.
+ * `skipIfNotCv` (drain multi-PJ) : une PJ classée non-CV ne persiste pas
+ * l'anonyme — le rejeu HUMAIN d'une ligne choisie ne le passe jamais (le
+ * choix humain prime, parité avec l'ancien comportement).
  */
 export async function replayUnmatchedCv(args: {
   row: UnmatchedCvRow;
   campaign: ActiveCampaign;
   actor: 'user' | 'system';
+  skipIfNotCv?: boolean;
 }): Promise<ReplayOutcome> {
-  const { row, campaign, actor } = args;
+  const { row, campaign, actor, skipIfNotCv = false } = args;
   if (!row.storage_path) return { kind: 'binary_unavailable' };
 
   const mailbox = await getMailboxWithSecrets(row.mailbox_id);
@@ -68,8 +79,9 @@ export async function replayUnmatchedCv(args: {
     return { kind: 'download_failed' };
   }
 
+  let attachmentOutcome: Awaited<ReturnType<typeof processEmailAttachment>>;
   try {
-    await processEmailAttachment({
+    attachmentOutcome = await processEmailAttachment({
       mailbox,
       campaign,
       fileName: row.file_name,
@@ -79,6 +91,7 @@ export async function replayUnmatchedCv(args: {
       subject: row.subject ?? '',
       from: row.from_addr,
       matchSource: 'replay',
+      skipIfNotCv,
     });
   } catch (procErr) {
     // Échec (transitoire ou non) : re-rejouable — les claims d'idempotence
@@ -89,6 +102,13 @@ export async function replayUnmatchedCv(args: {
       retryable: procErr instanceof RetryablePollError,
       message: procErr instanceof Error ? procErr.message : String(procErr),
     };
+  }
+
+  if (attachmentOutcome === 'not_a_cv') {
+    // La PJ n'est pas un CV : rien persisté (trace posée par
+    // processEmailAttachment). La ligne RESTE consommée (`replayed`) — elle a
+    // été examinée et écartée, la candidature du mail vient d'une autre PJ.
+    return { kind: 'not_a_cv' };
   }
 
   await appendJournalEntry({
@@ -138,24 +158,72 @@ export async function drainPendingSheetCvs(
     console.log(
       `[imap-unmatched] drain pending_sheet ${campaign.id} : ${rows.length} CV en attente de fiche`,
     );
+    // « Un mail = une candidature » aussi au drain : les lignes d'un MÊME mail
+    // (mailbox, uid) forment un groupe — sans ce regroupement, la lettre APEC
+    // rejouée en premier persisterait l'anonyme et l'analyse du vrai CV
+    // retomberait en `already_exists` (le bug du poller se rejouerait ici).
+    const groups = new Map<string, UnmatchedCvRow[]>();
     for (const row of rows) {
-      try {
-        const outcome = await replayUnmatchedCv({
-          row,
-          campaign,
-          actor: 'system',
-        });
-        if (outcome.kind !== 'done' && outcome.kind !== 'already_consumed') {
+      const key = `${row.mailbox_id}|${row.uid}`;
+      const group = groups.get(key);
+      if (group) group.push(row);
+      else groups.set(key, [row]);
+    }
+    for (const group of groups.values()) {
+      const ordered = orderCvAttachmentsByPriority(group, (r) => r.file_name);
+      for (let i = 0; i < ordered.length; i++) {
+        const row = ordered[i];
+        try {
+          const outcome = await replayUnmatchedCv({
+            row,
+            campaign,
+            actor: 'system',
+            // Dernière ligne du groupe = dernier recours (parité poller).
+            skipIfNotCv: i < ordered.length - 1,
+          });
+          if (outcome.kind === 'done') {
+            // Candidature produite : les lignes restantes du groupe ne sont
+            // plus à analyser — consommées ET tracées (jamais un skip muet,
+            // jamais un backlog fantôme re-drainé à chaque sauvegarde).
+            for (const sibling of ordered.slice(i + 1)) {
+              const consumed = await reserveUnmatchedReplay(
+                sibling.id,
+                campaign.id,
+              ).catch(() => false);
+              if (consumed) {
+                await appendJournalEntry({
+                  action: 'imap_unmatched_sibling_skipped',
+                  actor: 'system',
+                  campaignId: campaign.id,
+                  payload: {
+                    unmatchedId: sibling.id,
+                    mailboxId: sibling.mailbox_id,
+                    uid: sibling.uid,
+                    fileName: sibling.file_name,
+                    analyzedFileName: row.file_name,
+                    reason:
+                      'un mail = une candidature — candidature déjà portée par la PJ analysée du même mail',
+                  },
+                }).catch(() => {});
+              }
+            }
+            break;
+          }
+          if (
+            outcome.kind !== 'not_a_cv' &&
+            outcome.kind !== 'already_consumed'
+          ) {
+            console.error(
+              `[imap-unmatched] drain ${campaign.id} uid=${row.uid} ${row.file_name} → ${outcome.kind}`,
+              'message' in outcome ? outcome.message : '',
+            );
+          }
+        } catch (err) {
           console.error(
-            `[imap-unmatched] drain ${campaign.id} uid=${row.uid} ${row.file_name} → ${outcome.kind}`,
-            'message' in outcome ? outcome.message : '',
+            `[imap-unmatched] drain ${campaign.id} uid=${row.uid} KO`,
+            err,
           );
         }
-      } catch (err) {
-        console.error(
-          `[imap-unmatched] drain ${campaign.id} uid=${row.uid} KO`,
-          err,
-        );
       }
     }
   } catch (err) {

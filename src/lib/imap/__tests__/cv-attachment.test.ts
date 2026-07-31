@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  cvAttachmentPriority,
   fileExtension,
   isSupportedCvAttachment,
   isUnsupportedCvAttachment,
+  orderCvAttachmentsByPriority,
 } from '@/lib/imap/cv-attachment';
 
 const DOCX_MIME =
@@ -68,5 +70,74 @@ describe('isUnsupportedCvAttachment — .doc à tracer (jamais silencieux)', () 
   it('ne classe pas les formats hors bureautique (image, inconnu)', () => {
     expect(isUnsupportedCvAttachment('image/png', 'photo.png')).toBe(false);
     expect(isUnsupportedCvAttachment(null, null)).toBe(false);
+  });
+});
+
+describe('cvAttachmentPriority — vraisemblance « vrai CV » par nom de fichier', () => {
+  it('reconnaît les noms de CV réels (corpus prod)', () => {
+    for (const name of [
+      'Cv_Malaka.pdf',
+      'CV_fr.pdf',
+      'CV_juin.pdf',
+      'BA_CV_Mariem_Benkacem.pdf',
+      'CV-Kevin_NGUYEN.pdf',
+      'cv_maram_gabsii_f_Data_Engineeer_2_.pdf',
+      'Curriculum_Vitae_Kossivi_LOGLO.pdf',
+      'resume-john-doe.pdf',
+      'Résumé de carrière.pdf',
+    ]) {
+      expect(cvAttachmentPriority(name), name).toBeGreaterThan(0);
+    }
+  });
+
+  it('pénalise les documents annexes (lettre APEC, export profil)', () => {
+    for (const name of [
+      'candidature.pdf',
+      'lettre_de_motivation.pdf',
+      'Lettre-Motivation-Jean.pdf',
+      'alexandr.rihard_gmail.com_PROFIL.pdf',
+      'cover_letter.pdf',
+    ]) {
+      expect(cvAttachmentPriority(name), name).toBeLessThan(0);
+    }
+  });
+
+  it('reste neutre sur un nom quelconque — jamais une exclusion', () => {
+    expect(cvAttachmentPriority('dkaneFr.docx')).toBe(0);
+    // « dossier de compétences » = vrai CV : PAS pénalisé.
+    expect(
+      cvAttachmentPriority('Dossier_competences_Pierre_DORIVAL_Data_analyst_BI.pdf'),
+    ).toBe(0);
+    expect(cvAttachmentPriority(null)).toBe(0);
+  });
+
+  it('ne matche pas « cv » enfoui dans un mot', () => {
+    expect(cvAttachmentPriority('encvlopedie.pdf')).toBe(0);
+  });
+});
+
+describe('orderCvAttachmentsByPriority — le vrai CV d’abord, tri stable', () => {
+  it('mail APEC : CV > neutre > lettre/profil', () => {
+    const atts = [
+      { filename: 'candidature.pdf' },
+      { filename: 'notes.pdf' },
+      { filename: 'Cv_Malaka.pdf' },
+      { filename: 'aime_gmail.com_PROFIL.pdf' },
+    ];
+    expect(
+      orderCvAttachmentsByPriority(atts, (a) => a.filename).map((a) => a.filename),
+    ).toEqual([
+      'Cv_Malaka.pdf',
+      'notes.pdf',
+      'candidature.pdf',
+      'aime_gmail.com_PROFIL.pdf',
+    ]);
+  });
+
+  it('à score égal, conserve l’ordre du mail (déterminisme des re-fetch)', () => {
+    const atts = [{ filename: 'b.pdf' }, { filename: 'a.pdf' }];
+    expect(
+      orderCvAttachmentsByPriority(atts, (a) => a.filename).map((a) => a.filename),
+    ).toEqual(['b.pdf', 'a.pdf']);
   });
 });

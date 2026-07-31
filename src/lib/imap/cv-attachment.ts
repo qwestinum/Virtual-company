@@ -57,3 +57,56 @@ export function isUnsupportedCvAttachment(
   if (mime && UNSUPPORTED_CV_MIMES.has(mime.toLowerCase())) return true;
   return false;
 }
+
+/**
+ * « Un mail = une candidature » : quand un mail porte PLUSIEURS PJ exploitables
+ * (cas APEC typique : lettre `candidature.pdf` + export `xxx_PROFIL.pdf` + vrai
+ * CV), on analyse les PJ par priorité DÉCROISSANTE et on s'arrête à la première
+ * reconnue comme un vrai CV. Ce score ORDONNE seulement — il n'exclut jamais :
+ * une PJ mal nommée reste analysée si les mieux classées ne sont pas des CV.
+ *
+ * +1 : le nom évoque explicitement un CV (`cv`, `curriculum`, `resume`).
+ * −1 : le nom évoque un document ANNEXE de candidature (lettre de motivation,
+ *      `candidature.pdf` APEC, export de profil). NB : « dossier » n'est PAS
+ *      pénalisé (les « dossiers de compétences » sont de vrais CV).
+ */
+const CV_NAME_POSITIVE_RE = /(^|[^a-z])cv([^a-z]|$)|curriculum|resume/;
+const CV_NAME_NEGATIVE_RE = /candidature|lettre|motivation|profil|cover[ _-]?letter/;
+
+/** Sans accents ni casse, pour matcher `Résumé`/`PROFIL`/`Cv_`. Pur. */
+function normalizeName(name: string | null | undefined): string {
+  return (name ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Score de vraisemblance « vrai CV » d'un nom de fichier. Pur, testé. */
+export function cvAttachmentPriority(
+  filename: string | null | undefined,
+): number {
+  const name = normalizeName(filename);
+  let score = 0;
+  if (CV_NAME_POSITIVE_RE.test(name)) score += 1;
+  if (CV_NAME_NEGATIVE_RE.test(name)) score -= 1;
+  return score;
+}
+
+/**
+ * Ordonne les PJ par priorité décroissante, TRI STABLE (à score égal, l'ordre
+ * d'origine du mail est conservé — déterminisme requis par les rails de
+ * réessai : un re-fetch du même mail doit produire le même ordre).
+ */
+export function orderCvAttachmentsByPriority<T>(
+  attachments: readonly T[],
+  filenameOf: (attachment: T) => string | null | undefined,
+): T[] {
+  return attachments
+    .map((attachment, index) => ({ attachment, index }))
+    .sort(
+      (a, b) =>
+        cvAttachmentPriority(filenameOf(b.attachment)) -
+          cvAttachmentPriority(filenameOf(a.attachment)) || a.index - b.index,
+    )
+    .map((entry) => entry.attachment);
+}

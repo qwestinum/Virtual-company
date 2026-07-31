@@ -117,6 +117,10 @@ export async function POST(
     switch (outcome.kind) {
       case 'done':
         return NextResponse.json({ ok: true, campaignId });
+      // Inatteignable en rejeu humain (`skipIfNotCv` réservé au drain) —
+      // exhaustivité du switch.
+      case 'not_a_cv':
+        return NextResponse.json({ ok: true, campaignId, notACv: true });
       case 'already_consumed':
         return NextResponse.json(
           { error: 'already_replayed', message: 'Déjà rejoué ou écarté.' },
