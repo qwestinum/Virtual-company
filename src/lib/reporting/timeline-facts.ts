@@ -44,6 +44,7 @@ export async function extractCandidateTimelineFacts(
   // récente (on ne réécrit jamais une valeur déjà posée).
   let invitationSentAt: string | null = null;
   let rejectionSentAt: string | null = null;
+  let rejectionViaValidation = false;
   let validatedAt: string | null = null;
   let interviewRealizedAt: string | null = null;
   let interviewMissedAt: string | null = null;
@@ -64,8 +65,25 @@ export async function extractCandidateTimelineFacts(
       if (status === 'validated' && !finalValidatedAt) finalValidatedAt = e.createdAt;
       else if (status === 'rejected' && !finalRejectedAt) finalRejectedAt = e.createdAt;
     } else if (e.action === HITL_SENT_ACTION) {
-      // Validation d'un gris ENVOYÉE en acceptation → « Candidat validé ».
-      if (e.payload.decision === 'accept' && !validatedAt) validatedAt = e.createdAt;
+      // Validation d'un gris ENVOYÉE. `mailSent` = réalité de l'envoi
+      // (journal honnête C5/C6) — un mail non parti a sa trace dédiée
+      // `hitl_mail_not_sent`, on ne pose pas de fait « envoyé » dessus.
+      const mailSent = e.payload.mailSent === true;
+      if (e.payload.decision === 'accept') {
+        // → « Candidat validé » + « Invitation envoyée » (l'invitation d'un
+        // gris accepté part par CE flux, pas par imap_outreach_mail).
+        if (!validatedAt) validatedAt = e.createdAt;
+        if (mailSent && !invitationSentAt) invitationSentAt = e.createdAt;
+      } else if (
+        e.payload.decision === 'reject' &&
+        mailSent &&
+        !rejectionSentAt
+      ) {
+        // → « Refus envoyé ». L'ancien extracteur ignorait le reject HITL :
+        // la frise d'un gris refusé par un humain s'arrêtait à l'analyse.
+        rejectionSentAt = e.createdAt;
+        rejectionViaValidation = true;
+      }
     }
   }
 
@@ -84,6 +102,8 @@ export async function extractCandidateTimelineFacts(
     validatedAt,
     invitationSentAt,
     rejectionSentAt,
+    rejectionViaValidation,
+    decidedByUserEmail: detail.decidedByUser?.email ?? null,
     scheduledAt: rdv?.startAt ?? rdv?.bookedAt ?? null,
     interviewRealizedAt,
     interviewMissedAt,

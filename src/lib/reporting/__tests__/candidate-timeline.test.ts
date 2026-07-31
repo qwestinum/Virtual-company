@@ -21,6 +21,8 @@ function facts(over: Partial<CandidateTimelineFacts> = {}): CandidateTimelineFac
     validatedAt: null,
     invitationSentAt: null,
     rejectionSentAt: null,
+    rejectionViaValidation: false,
+    decidedByUserEmail: null,
     scheduledAt: null,
     interviewRealizedAt: null,
     interviewMissedAt: null,
@@ -96,5 +98,41 @@ describe('buildCandidateTimeline', () => {
     const t = buildCandidateTimeline(facts({ finalRejectedAt: '2026-06-07T00:00:00.000Z' }));
     const final = t.find((e) => e.key === 'final_rejected');
     expect(final?.tone).toBe('negative');
+  });
+
+  it('refus HITL (gris tranché humain) : « Refus envoyé » avec décideur en détail', () => {
+    const t = buildCandidateTimeline(
+      facts({
+        rejectionSentAt: '2026-07-31T07:19:05.000Z',
+        rejectionViaValidation: true,
+        decidedByUserEmail: 'manuela.chotoklieva@biagroupe.fr',
+      }),
+    );
+    const rejected = t.find((e) => e.key === 'rejected_mail');
+    expect(rejected?.label).toBe('Refus envoyé');
+    expect(rejected?.detail).toBe(
+      'Refus tranché en zone de validation · par manuela.chotoklieva@biagroupe.fr',
+    );
+  });
+
+  it('refus AUTO : « Refus envoyé » sans détail de validation', () => {
+    const t = buildCandidateTimeline(
+      facts({ rejectionSentAt: '2026-07-31T07:19:05.000Z' }),
+    );
+    expect(t.find((e) => e.key === 'rejected_mail')?.detail).toBeNull();
+  });
+
+  it('acceptation HITL : décideur en détail de « Candidat validé »', () => {
+    const t = buildCandidateTimeline(
+      facts({
+        validatedAt: '2026-06-02T09:00:00.000Z',
+        invitationSentAt: '2026-06-02T09:00:00.000Z',
+        decidedByUserEmail: 'vanessa.eudaric@biagroupe.fr',
+      }),
+    );
+    expect(t.find((e) => e.key === 'validated')?.detail).toBe(
+      'Acceptation tranchée en zone de validation · par vanessa.eudaric@biagroupe.fr',
+    );
+    expect(t.map((e) => e.key)).toContain('invited');
   });
 });

@@ -41,10 +41,18 @@ export type CandidateTimelineFacts = {
   vivierAppliedAt: string | null;
   /** Journal hitl_validation_sent (decision accept) — candidat validé (gris accepté). */
   validatedAt: string | null;
-  /** Journal imap_outreach_mail (mode invite, sent). */
+  /** Journal imap_outreach_mail (mode invite, sent) OU hitl accept mail parti. */
   invitationSentAt: string | null;
-  /** Journal imap_outreach_mail (mode reject, sent). */
+  /**
+   * Journal imap_outreach_mail (mode reject, sent) OU hitl_validation_sent
+   * (decision reject, mailSent) — le refus d'un gris tranché par un humain
+   * était MUET dans la frise avant ce second cas.
+   */
   rejectionSentAt: string | null;
+  /** true si le refus vient d'une validation humaine (flux HITL), pas du refus auto. */
+  rejectionViaValidation: boolean;
+  /** Identité du valideur humain (candidate_analyses.decided_by_user_email). */
+  decidedByUserEmail: string | null;
   /** interview_briefs.scheduled (par UID) — RDV pris. */
   scheduledAt: string | null;
   /** Journal candidate_interview_marked = realized. */
@@ -135,11 +143,14 @@ export function buildCandidateTimeline(
     null,
     'neutral',
   );
+  const decider = facts.decidedByUserEmail
+    ? ` · par ${facts.decidedByUserEmail}`
+    : '';
   push(
     'validated',
     facts.validatedAt,
     'Candidat validé',
-    'Acceptation tranchée en zone de validation',
+    `Acceptation tranchée en zone de validation${decider}`,
     'positive',
   );
   push(
@@ -149,7 +160,15 @@ export function buildCandidateTimeline(
     null,
     'positive',
   );
-  push('rejected_mail', facts.rejectionSentAt, 'Refus envoyé', null, 'negative');
+  push(
+    'rejected_mail',
+    facts.rejectionSentAt,
+    'Refus envoyé',
+    facts.rejectionViaValidation
+      ? `Refus tranché en zone de validation${decider}`
+      : null,
+    'negative',
+  );
   // « RDV pris » : réservation Cal.com rattachée PAR UID (fiable, ≠ email) →
   // n'apparaît que pour la candidature réellement réservée.
   push(
