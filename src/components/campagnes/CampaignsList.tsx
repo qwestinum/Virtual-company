@@ -19,6 +19,8 @@ import {
   useCampaignsStore,
 } from '@/stores/campaigns-store';
 
+import type { CandidateStage } from '@/lib/reporting/candidate-stage';
+
 import { CampaignCard } from './CampaignCard';
 import type { DashboardData } from '@/hooks/useDashboardData';
 
@@ -26,6 +28,11 @@ export type CampaignsListProps = {
   candidates: DashboardData['candidates'];
   onEditCampaign: (campaignId: string) => void;
   onCreateCampaign: () => void;
+  /** Quadrant de carte cliqué → onglet Candidatures pré-filtré (campagne + étape). */
+  onOpenCandidatures?: (
+    campaignId: string,
+    stage: CandidateStage | null,
+  ) => void;
 };
 
 const PAGE_SIZE = 5;
@@ -44,6 +51,7 @@ export function CampaignsList({
   candidates,
   onEditCampaign,
   onCreateCampaign,
+  onOpenCandidatures,
 }: CampaignsListProps) {
   const rawCampaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
   // Tri par récence (createdAt desc). Fallback sur l'ordre d'insertion si
@@ -217,6 +225,11 @@ export function CampaignsList({
                 setExpandedId(expandedId === camp.id ? null : camp.id)
               }
               onEdit={() => onEditCampaign(camp.id)}
+              onOpenCandidatures={
+                onOpenCandidatures
+                  ? (stage) => onOpenCandidatures(camp.id, stage)
+                  : undefined
+              }
             />
           ))}
           {totalPages > 1 ? (

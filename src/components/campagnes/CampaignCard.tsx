@@ -10,6 +10,7 @@
  * Conversion globale) et les boutons d'action.
  */
 
+import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
@@ -36,6 +37,8 @@ export type CampaignCardProps = {
   expanded: boolean;
   onToggle: () => void;
   onEdit: () => void;
+  /** Quadrant de stats cliqué → Candidatures de CETTE campagne (+ étape). */
+  onOpenCandidatures?: (stage: CandidateStage | null) => void;
 };
 
 export function CampaignCard({
@@ -44,6 +47,7 @@ export function CampaignCard({
   expanded,
   onToggle,
   onEdit,
+  onOpenCandidatures,
 }: CampaignCardProps) {
   const pillKind: PillKind = pillKindOf(campaign.status);
   const conversion =
@@ -152,7 +156,12 @@ export function CampaignCard({
         </span>
       </button>
       {expanded ? (
-        <CampaignCardBody campaign={campaign} stats={stats} onEdit={onEdit}>
+        <CampaignCardBody
+          campaign={campaign}
+          stats={stats}
+          onEdit={onEdit}
+          onOpenCandidatures={onOpenCandidatures}
+        >
           <CampaignStatusActions
             status={campaign.status as CampaignActionStatus}
             campaignId={campaign.id}

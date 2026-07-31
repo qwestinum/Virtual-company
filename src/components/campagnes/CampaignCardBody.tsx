@@ -11,6 +11,7 @@
 
 import type { ReactNode } from 'react';
 
+import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type { FieldKey } from '@/types/field-collection';
 
@@ -23,12 +24,15 @@ export type CampaignCardBodyProps = {
   campaign: ActiveCampaign;
   stats: CampaignCardStats;
   onEdit: () => void;
+  /** Quadrant cliqué → Candidatures de cette campagne, pré-filtré par étape. */
+  onOpenCandidatures?: (stage: CandidateStage | null) => void;
   children: ReactNode;
 };
 
 export function CampaignCardBody({
   campaign,
   stats,
+  onOpenCandidatures,
   children,
 }: CampaignCardBodyProps) {
   const goRate =
@@ -59,29 +63,45 @@ export function CampaignCardBody({
           marginBottom: 18,
         }}
       >
+        {/* Quadrant → étape du menu Candidatures (mapping aligné sur la
+            sémantique des stats, cf. CampaignsList) : CV reçus = toutes ;
+            Shortlistés/Invités = invite ; Entretiens = entretien_fait
+            (« Entretien réalisé » cliqué) ; GO = retenu. */}
         <StatBox
           icon="📄"
           color={DASH_COLORS.blue.solid}
           value={stats.candidates}
           label="CV reçus"
+          onOpen={onOpenCandidatures ? () => onOpenCandidatures(null) : undefined}
         />
         <StatBox
           icon="⭐"
           color={DASH_COLORS.purple.solid}
           value={stats.shortlisted}
           label="Shortlistés / Invités"
+          onOpen={
+            onOpenCandidatures ? () => onOpenCandidatures('invite') : undefined
+          }
         />
         <StatBox
           icon="🎯"
           color={DASH_COLORS.teal.solid}
           value={stats.interviews}
           label="Entretiens"
+          onOpen={
+            onOpenCandidatures
+              ? () => onOpenCandidatures('entretien_fait')
+              : undefined
+          }
         />
         <StatBox
           icon="✅"
           color={DASH_COLORS.green.solid}
           value={stats.goCount}
           label="GO"
+          onOpen={
+            onOpenCandidatures ? () => onOpenCandidatures('retenu') : undefined
+          }
         />
       </div>
 
@@ -186,21 +206,17 @@ function StatBox({
   color,
   value,
   label,
+  onOpen,
 }: {
   icon: string;
   color: string;
   value: number;
   label: string;
+  /** Clic sur le quadrant → Candidatures pré-filtré. Absent = box statique. */
+  onOpen?: () => void;
 }) {
-  return (
-    <div
-      style={{
-        background: 'var(--dash-warm)',
-        borderRadius: 12,
-        padding: '14px 12px',
-        textAlign: 'center',
-      }}
-    >
+  const content = (
+    <>
       <span
         aria-hidden
         style={{ fontSize: 18, display: 'block', marginBottom: 6 }}
@@ -223,7 +239,42 @@ function StatBox({
       >
         {label}
       </div>
-    </div>
+    </>
+  );
+  const baseStyle = {
+    background: 'var(--dash-warm)',
+    borderRadius: 12,
+    padding: '14px 12px',
+    textAlign: 'center' as const,
+  };
+  if (!onOpen) {
+    return <div style={baseStyle}>{content}</div>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`Voir les candidatures — ${label}`}
+      aria-label={`Voir les candidatures de la campagne — ${label}`}
+      className="campaign-statbox"
+      style={{
+        ...baseStyle,
+        border: '1px solid transparent',
+        cursor: 'pointer',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        font: 'inherit',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--dash-border-strong)';
+        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'transparent';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
+      {content}
+    </button>
   );
 }
 

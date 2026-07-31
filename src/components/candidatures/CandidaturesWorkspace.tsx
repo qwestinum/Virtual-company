@@ -40,6 +40,7 @@ function isoDayMinus(ref: Date, days: number): string {
 
 export function CandidaturesWorkspace({
   initialStage = null,
+  initialCampaignId = null,
 }: {
   /**
    * Pré-filtre étape appliqué UNE fois au montage (navigation depuis une
@@ -48,6 +49,13 @@ export function CandidaturesWorkspace({
    * libre de changer/retirer le chip ensuite.
    */
   initialStage?: CandidateStage | null;
+  /**
+   * Pré-filtre campagne appliqué UNE fois au montage (navigation depuis un
+   * quadrant de carte campagne — onglet Campagnes). Se combine avec
+   * `initialStage` (quadrant « Entretiens » → campagne + entretien_fait).
+   * L'utilisateur reste libre de changer le sélecteur ensuite.
+   */
+  initialCampaignId?: string | null;
 } = {}) {
   // `useShallow` OBLIGATOIRE : `selectActiveCampaigns` recrée un tableau à chaque
   // appel → sans comparaison superficielle, useSyncExternalStore boucle à
@@ -99,13 +107,22 @@ export function CandidaturesWorkspace({
   const [campaignTouched, setCampaignTouched] = useState(false);
   const referenceDate = useMemo(() => new Date(), []);
 
-  // Pré-filtre étape (navigation notification) — appliqué une seule fois au
-  // montage ; le composant remonte à chaque entrée dans l'onglet, et le parent
-  // remet initialStage à null sur toute navigation manuelle. Le deep-link doit
-  // voir TOUTES les campagnes (le signal n'est pas scopé aux actives) → on
-  // fige le sélecteur sur « Toutes les campagnes ».
+  // Pré-filtres de navigation croisée — appliqués une seule fois au montage ;
+  // le composant remonte à chaque entrée dans l'onglet, et le parent remet les
+  // pré-filtres à null sur toute navigation manuelle.
+  //  - étape seule (notification métier) : le deep-link doit voir TOUTES les
+  //    campagnes (le signal n'est pas scopé aux actives) → sélecteur « Toutes » ;
+  //  - campagne (quadrant d'une carte campagne) : sélecteur figé sur CETTE
+  //    campagne, étape éventuelle du quadrant en plus.
   useEffect(() => {
-    if (initialStage) {
+    if (initialCampaignId) {
+      setCampaignTouched(true);
+      setFilters({
+        campaignId: initialCampaignId,
+        campaignIds: NO_CAMPAIGN_IDS,
+        stage: initialStage ?? null,
+      });
+    } else if (initialStage) {
       setCampaignTouched(true);
       setFilters({ stage: initialStage });
     }
@@ -116,7 +133,7 @@ export function CandidaturesWorkspace({
   // et maintenue tant que l'utilisateur n'a pas choisi lui-même une campagne
   // (le store se charge en asynchrone — activeIds arrive après le 1er rendu).
   useEffect(() => {
-    if (campaignTouched || initialStage) return;
+    if (campaignTouched || initialStage || initialCampaignId) return;
     setFilters({
       campaignId: '',
       campaignIds: activeIds.length > 0 ? activeIds : NO_CAMPAIGN_IDS,

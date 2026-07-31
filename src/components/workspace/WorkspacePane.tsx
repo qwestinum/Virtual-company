@@ -84,10 +84,11 @@ function usePendingVivierCount(): number {
 
 export function WorkspacePane() {
   const [tab, setTab] = useState<Tab>('rh');
-  // Pré-filtre étape de l'onglet Candidatures — posé UNIQUEMENT par une
-  // navigation de notification, remis à null sur toute navigation manuelle
-  // (les parcours existants ne changent pas).
+  // Pré-filtres de l'onglet Candidatures — posés UNIQUEMENT par une navigation
+  // croisée (notification métier, ou quadrant d'une carte campagne), remis à
+  // null sur toute navigation manuelle (les parcours existants ne changent pas).
   const [candidaturesStage, setCandidaturesStage] = useState<CandidateStage | null>(null);
+  const [candidaturesCampaignId, setCandidaturesCampaignId] = useState<string | null>(null);
   const pendingCount = usePendingValidationsCount();
   const vivierCount = usePendingVivierCount();
   // Signaux métier : fetch au montage + re-fetch à chaque changement d'onglet
@@ -96,9 +97,11 @@ export function WorkspacePane() {
 
   const changeTab = (next: Tab) => {
     setCandidaturesStage(null);
+    setCandidaturesCampaignId(null);
     setTab(next);
   };
   const navigateToSignal = (target: BusinessSignalTarget) => {
+    setCandidaturesCampaignId(null);
     if (target.tab === 'candidatures') {
       setCandidaturesStage(target.stage);
       setTab('candidatures');
@@ -106,6 +109,16 @@ export function WorkspacePane() {
       setCandidaturesStage(null);
       setTab(target.tab);
     }
+  };
+  // Quadrant d'une carte campagne → Candidatures pré-filtré sur CETTE campagne
+  // (+ étape selon le quadrant : Entretiens → entretien_fait, GO → retenu…).
+  const openCandidaturesForCampaign = (
+    campaignId: string,
+    stage: CandidateStage | null,
+  ) => {
+    setCandidaturesCampaignId(campaignId);
+    setCandidaturesStage(stage);
+    setTab('candidatures');
   };
 
   return (
@@ -128,9 +141,12 @@ export function WorkspacePane() {
             </div>
           </div>
         ) : tab === 'campagnes' ? (
-          <CampaignsWorkspace />
+          <CampaignsWorkspace onOpenCandidatures={openCandidaturesForCampaign} />
         ) : tab === 'candidatures' ? (
-          <CandidaturesWorkspace initialStage={candidaturesStage} />
+          <CandidaturesWorkspace
+            initialStage={candidaturesStage}
+            initialCampaignId={candidaturesCampaignId}
+          />
         ) : tab === 'validations' ? (
           <div className="h-full overflow-auto px-6 py-6">
             <div className="mx-auto w-full max-w-6xl">
