@@ -91,6 +91,8 @@ export function WorkspacePane() {
   const [candidaturesStage, setCandidaturesStage] = useState<CandidateStage | null>(null);
   const [candidaturesCampaignId, setCandidaturesCampaignId] = useState<string | null>(null);
   const [candidaturesEverInvited, setCandidaturesEverInvited] = useState(false);
+  const [candidaturesEverInterviewed, setCandidaturesEverInterviewed] =
+    useState(false);
   const pendingCount = usePendingValidationsCount();
   const vivierCount = usePendingVivierCount();
   // Signaux métier : fetch au montage + re-fetch à chaque changement d'onglet
@@ -101,11 +103,13 @@ export function WorkspacePane() {
     setCandidaturesStage(null);
     setCandidaturesCampaignId(null);
     setCandidaturesEverInvited(false);
+    setCandidaturesEverInterviewed(false);
     setTab(next);
   };
   const navigateToSignal = (target: BusinessSignalTarget) => {
     setCandidaturesCampaignId(null);
     setCandidaturesEverInvited(false);
+    setCandidaturesEverInterviewed(false);
     if (target.tab === 'candidatures') {
       setCandidaturesStage(target.stage);
       setTab('candidatures');
@@ -115,8 +119,8 @@ export function WorkspacePane() {
     }
   };
   // Quadrant d'une carte campagne → Candidatures pré-filtré sur CETTE campagne
-  // (+ préset du quadrant : Entretiens → entretien_fait, GO → retenu,
-  // Shortlistés/Invités → « passés par l'invitation », trajectoire complète).
+  // (+ préset du quadrant : GO → retenu ; Shortlistés/Invités et Entretiens →
+  // TRAJECTOIRES « passés par l'invitation » / « passés par l'entretien »).
   const openCandidaturesForCampaign = (
     campaignId: string,
     preset: CampaignCandidaturesPreset,
@@ -124,6 +128,7 @@ export function WorkspacePane() {
     setCandidaturesCampaignId(campaignId);
     setCandidaturesStage(preset.stage);
     setCandidaturesEverInvited(preset.everInvited ?? false);
+    setCandidaturesEverInterviewed(preset.everInterviewed ?? false);
     setTab('candidatures');
   };
 
@@ -153,6 +158,7 @@ export function WorkspacePane() {
             initialStage={candidaturesStage}
             initialCampaignId={candidaturesCampaignId}
             initialEverInvited={candidaturesEverInvited}
+            initialEverInterviewed={candidaturesEverInterviewed}
           />
         ) : tab === 'validations' ? (
           <div className="h-full overflow-auto px-6 py-6">

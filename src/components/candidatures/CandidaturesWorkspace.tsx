@@ -42,6 +42,7 @@ export function CandidaturesWorkspace({
   initialStage = null,
   initialCampaignId = null,
   initialEverInvited = false,
+  initialEverInterviewed = false,
 }: {
   /**
    * Pré-filtre étape appliqué UNE fois au montage (navigation depuis une
@@ -62,6 +63,11 @@ export function CandidaturesWorkspace({
    * (status accepted), pas seulement ceux dont c'est le stade actuel.
    */
   initialEverInvited?: boolean;
+  /**
+   * Quadrant « Entretiens » : entretien marqué réalisé, quel que soit le
+   * stade actuel (un « Retenu » a bien passé son entretien).
+   */
+  initialEverInterviewed?: boolean;
 } = {}) {
   // `useShallow` OBLIGATOIRE : `selectActiveCampaigns` recrée un tableau à chaque
   // appel → sans comparaison superficielle, useSyncExternalStore boucle à
@@ -128,6 +134,7 @@ export function CandidaturesWorkspace({
         campaignIds: NO_CAMPAIGN_IDS,
         stage: initialStage ?? null,
         everInvited: initialEverInvited,
+        everInterviewed: initialEverInterviewed,
       });
     } else if (initialStage) {
       setCampaignTouched(true);
@@ -177,6 +184,7 @@ export function CandidaturesWorkspace({
       stage: null,
       fromVivier: false,
       everInvited: false,
+      everInterviewed: false,
     });
   };
 
@@ -213,6 +221,10 @@ export function CandidaturesWorkspace({
               onVivier={(b) => setFilters({ fromVivier: b })}
               everInvited={filters.everInvited}
               onClearEverInvited={() => setFilters({ everInvited: false })}
+              everInterviewed={filters.everInterviewed}
+              onClearEverInterviewed={() =>
+                setFilters({ everInterviewed: false })
+              }
               onReset={onResetView}
             />
           </div>

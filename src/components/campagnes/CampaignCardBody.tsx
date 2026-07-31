@@ -68,9 +68,10 @@ export function CampaignCardBody({
         {/* Quadrant → pré-filtre du menu Candidatures (mapping aligné sur la
             sémantique des stats, cf. CampaignsList) : CV reçus = toutes ;
             Shortlistés/Invités = TRAJECTOIRE « passés par l'invitation »
-            (everInvited — inclut RDV/entretien/GO/non retenus après process,
-            pas seulement le stade courant `invite`) ; Entretiens =
-            entretien_fait (« Entretien réalisé » cliqué) ; GO = retenu. */}
+            (everInvited — inclut RDV/entretien/GO/non retenus après process) ;
+            Entretiens = TRAJECTOIRE « passés par l'entretien »
+            (everInterviewed — un Retenu a bien passé son entretien) ;
+            GO = retenu. */}
         <StatBox
           icon="📄"
           color={DASH_COLORS.blue.solid}
@@ -100,7 +101,7 @@ export function CampaignCardBody({
           label="Entretiens"
           onOpen={
             onOpenCandidatures
-              ? () => onOpenCandidatures({ stage: 'entretien_fait' })
+              ? () => onOpenCandidatures({ stage: null, everInterviewed: true })
               : undefined
           }
         />

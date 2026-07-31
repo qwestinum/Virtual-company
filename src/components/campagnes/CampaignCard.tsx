@@ -33,13 +33,15 @@ export type CampaignCardStats = {
 
 /**
  * Pré-filtre porté par un quadrant de stats : étape COURANTE du pipeline
- * (`stage`) ou trajectoire « passés par l'invitation » (`everInvited` — le
- * quadrant Shortlistés/Invités ramène AUSSI ceux devenus RDV/entretien/GO/non
- * retenus, pas seulement ceux dont c'est le stade actuel).
+ * (`stage`) ou TRAJECTOIRE — « passés par l'invitation » (`everInvited`) /
+ * « passés par l'entretien » (`everInterviewed`) : ces quadrants ramènent
+ * AUSSI ceux qui ont avancé depuis (RDV/entretien/GO/non retenus), pas
+ * seulement ceux dont c'est le stade actuel.
  */
 export type CampaignCandidaturesPreset = {
   stage: CandidateStage | null;
   everInvited?: boolean;
+  everInterviewed?: boolean;
 };
 
 export type CampaignCardProps = {

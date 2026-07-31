@@ -78,6 +78,11 @@ export async function GET(request: Request): Promise<NextResponse> {
   )
     ? (stageRaw as CandidateStage)
     : null;
+  // « Passés par l'entretien » (quadrant Entretiens) : tous ceux dont
+  // l'entretien a été marqué RÉALISÉ, quel que soit leur stade ACTUEL (un
+  // « Retenu » a bien passé son entretien). Signal = marqueur journal
+  // dernier-gagne (signals.interviewMarks) → filtre DÉRIVÉ, en mémoire.
+  const everInterviewed = params.get('everInterviewed') === 'true';
 
   try {
     // Signaux scopés à la campagne (les loaders journal/entretien filtrent par
@@ -85,15 +90,19 @@ export async function GET(request: Request): Promise<NextResponse> {
     // les lignes — un seul chargement.
     const signals = await loadStageSignals({ campaignId: campaignId ?? undefined });
 
-    if (stageFilter) {
+    if (stageFilter || everInterviewed) {
       // Filtre DÉRIVÉ : dérive sur tout le périmètre (campagne+période+recherche
-      // +fromVivier), filtre par étape, puis pagine en mémoire.
+      // +fromVivier), filtre par étape/trajectoire, puis pagine en mémoire.
       const all = await listAllCandidateAnalyses(baseFilters);
       const enriched: CandidateListItem[] = all.map((c) => ({
         ...c,
         stage: stageFor(c, signals),
       }));
-      const filtered = enriched.filter((c) => c.stage === stageFilter);
+      const filtered = enriched.filter(
+        (c) =>
+          (!stageFilter || c.stage === stageFilter) &&
+          (!everInterviewed || signals.interviewMarks.get(c.uid) === 'realized'),
+      );
       const rows = filtered.slice(offset, offset + limit);
       return NextResponse.json({ rows, total: filtered.length });
     }

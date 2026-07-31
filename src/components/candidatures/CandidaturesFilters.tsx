@@ -27,6 +27,8 @@ export function CandidaturesFilters({
   onVivier,
   everInvited,
   onClearEverInvited,
+  everInterviewed,
+  onClearEverInterviewed,
   onReset,
 }: {
   campaignOptions: { id: string; label: string }[];
@@ -40,12 +42,14 @@ export function CandidaturesFilters({
   fromVivier: boolean;
   onVivier: (value: boolean) => void;
   /**
-   * Filtre « Passés par l'invitation » actif (posé par le quadrant
-   * Shortlistés/Invités d'une carte campagne). Affiché en chip retirable —
-   * jamais posable depuis cette barre.
+   * Filtres de TRAJECTOIRE actifs (posés par les quadrants d'une carte
+   * campagne). Affichés en chips retirables — jamais posables depuis cette
+   * barre.
    */
   everInvited?: boolean;
   onClearEverInvited?: () => void;
+  everInterviewed?: boolean;
+  onClearEverInterviewed?: () => void;
   /** « Toutes » : retour à la vue par défaut (tous filtres réinitialisés). */
   onReset: () => void;
 }) {
@@ -86,15 +90,20 @@ export function CandidaturesFilters({
       </select>
 
       {everInvited ? (
-        <button
-          type="button"
-          onClick={onClearEverInvited}
+        <TrajectoryChip
+          onClear={onClearEverInvited}
           title="Retirer le filtre « Passés par l'invitation »"
-          className="inline-flex items-center gap-1.5 rounded-full border border-orqa-ciel bg-orqa-ciel/10 px-3.5 py-2 font-inter text-[12.5px] text-orqa-encre transition hover:border-orqa-nuit"
         >
           ⭐ Passés par l&apos;invitation
-          <span aria-hidden className="font-bold">×</span>
-        </button>
+        </TrajectoryChip>
+      ) : null}
+      {everInterviewed ? (
+        <TrajectoryChip
+          onClear={onClearEverInterviewed}
+          title="Retirer le filtre « Passés par l'entretien »"
+        >
+          🎯 Passés par l&apos;entretien
+        </TrajectoryChip>
       ) : null}
 
       <div className="ml-auto flex gap-1.5">
@@ -106,6 +115,29 @@ export function CandidaturesFilters({
         </Segment>
       </div>
     </div>
+  );
+}
+
+/** Chip retirable d'un filtre de trajectoire (posé par un quadrant campagne). */
+function TrajectoryChip({
+  onClear,
+  title,
+  children,
+}: {
+  onClear?: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      title={title}
+      className="inline-flex items-center gap-1.5 rounded-full border border-orqa-ciel bg-orqa-ciel/10 px-3.5 py-2 font-inter text-[12.5px] text-orqa-encre transition hover:border-orqa-nuit"
+    >
+      {children}
+      <span aria-hidden className="font-bold">×</span>
+    </button>
   );
 }
 

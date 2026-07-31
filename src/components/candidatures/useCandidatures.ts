@@ -29,6 +29,13 @@ export type CandidaturesFilters = {
    * stade courant.
    */
   everInvited: boolean;
+  /**
+   * « Passés par l'entretien » : entretien marqué RÉALISÉ, quel que soit le
+   * stade actuel (un « Retenu » a bien passé son entretien). Posé par le
+   * quadrant « Entretiens » — l'étape `entretien_fait` du ruban garde sa
+   * sémantique de stade courant.
+   */
+  everInterviewed: boolean;
 };
 
 /** Référence stable pour « aucune campagne ciblée » (évite les refetch en boucle). */
@@ -43,6 +50,7 @@ const EMPTY_FILTERS: CandidaturesFilters = {
   stage: null,
   fromVivier: false,
   everInvited: false,
+  everInterviewed: false,
 };
 
 function buildQuery(params: Record<string, string | undefined>): string {
@@ -136,6 +144,7 @@ export function useCandidatures() {
             stage: filters.stage ?? undefined,
             fromVivier: filters.fromVivier ? 'true' : undefined,
             everInvited: filters.everInvited ? 'true' : undefined,
+            everInterviewed: filters.everInterviewed ? 'true' : undefined,
             limit: String(CANDIDATURES_PAGE_SIZE),
             offset: String(page * CANDIDATURES_PAGE_SIZE),
           })}`,
@@ -168,6 +177,7 @@ export function useCandidatures() {
     filters.stage,
     filters.fromVivier,
     filters.everInvited,
+    filters.everInterviewed,
     page,
     refreshToken,
   ]);
