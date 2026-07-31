@@ -51,6 +51,25 @@ export const PROFILE_IDENTITY: Record<
   },
 };
 
+/**
+ * Marqueur d'un document NON-CV (lettre de motivation APEC…) : l'extracteur
+ * mocké répond `isCv:false` — c'est le court-circuit « Candidat anonyme »
+ * de la sélection « un mail = une candidature » (incident Malaka 30/07/2026).
+ */
+export const LETTER_MARKER = 'LETTRE_MOTIVATION_TREG';
+
+/** Extraction d'un document classé non-CV (mêmes clés que le fixture CV). */
+export const LETTER_EXTRACTION_FIXTURE = {
+  isCv: false,
+  fullName: 'Candidat anonyme',
+  email: null,
+  phone: null,
+  detectedLanguage: 'fr',
+  rightToWork: null,
+  location: null,
+  photoPresent: false,
+};
+
 /** Extraction candidat (ExtractedCandidateSchema, .strict()). */
 export function candidateExtractionFixture(profile: TestProfile) {
   const id = PROFILE_IDENTITY[profile];

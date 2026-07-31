@@ -17,6 +17,8 @@ import type { z } from 'zod';
 import {
   INTERVIEW_GUIDE_FIXTURE,
   LEDGER_FIXTURE,
+  LETTER_EXTRACTION_FIXTURE,
+  LETTER_MARKER,
   NARRATION_FIXTURE,
   TITLE_VARIANTS_FIXTURE,
   candidateExtractionFixture,
@@ -119,6 +121,9 @@ function routeChatCompleteJson(messages: ChatMessage[]): unknown {
   const profile = profileFromText(user) ?? 'moyen';
 
   if (system.includes("l'extracteur de données factuelles du CV Analyzer RH")) {
+    // Document marqué NON-CV (lettre) → isCv:false, identité anonymisée —
+    // le pipeline court-circuite (ni verdicts ni narration ne seront appelés).
+    if (user.includes(LETTER_MARKER)) return LETTER_EXTRACTION_FIXTURE;
     return candidateExtractionFixture(profile);
   }
   if (system.includes("l'extracteur de FAITS du CV Analyzer RH")) {
