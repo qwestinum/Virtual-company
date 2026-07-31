@@ -31,14 +31,25 @@ export type CampaignCardStats = {
   goCount: number;
 };
 
+/**
+ * Pré-filtre porté par un quadrant de stats : étape COURANTE du pipeline
+ * (`stage`) ou trajectoire « passés par l'invitation » (`everInvited` — le
+ * quadrant Shortlistés/Invités ramène AUSSI ceux devenus RDV/entretien/GO/non
+ * retenus, pas seulement ceux dont c'est le stade actuel).
+ */
+export type CampaignCandidaturesPreset = {
+  stage: CandidateStage | null;
+  everInvited?: boolean;
+};
+
 export type CampaignCardProps = {
   campaign: ActiveCampaign;
   stats: CampaignCardStats;
   expanded: boolean;
   onToggle: () => void;
   onEdit: () => void;
-  /** Quadrant de stats cliqué → Candidatures de CETTE campagne (+ étape). */
-  onOpenCandidatures?: (stage: CandidateStage | null) => void;
+  /** Quadrant de stats cliqué → Candidatures de CETTE campagne (pré-filtré). */
+  onOpenCandidatures?: (preset: CampaignCandidaturesPreset) => void;
 };
 
 export function CampaignCard({

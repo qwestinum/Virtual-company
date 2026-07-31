@@ -41,6 +41,7 @@ function isoDayMinus(ref: Date, days: number): string {
 export function CandidaturesWorkspace({
   initialStage = null,
   initialCampaignId = null,
+  initialEverInvited = false,
 }: {
   /**
    * Pré-filtre étape appliqué UNE fois au montage (navigation depuis une
@@ -56,6 +57,11 @@ export function CandidaturesWorkspace({
    * L'utilisateur reste libre de changer le sélecteur ensuite.
    */
   initialCampaignId?: string | null;
+  /**
+   * Quadrant « Shortlistés / Invités » : tous ceux PASSÉS par l'invitation
+   * (status accepted), pas seulement ceux dont c'est le stade actuel.
+   */
+  initialEverInvited?: boolean;
 } = {}) {
   // `useShallow` OBLIGATOIRE : `selectActiveCampaigns` recrée un tableau à chaque
   // appel → sans comparaison superficielle, useSyncExternalStore boucle à
@@ -121,6 +127,7 @@ export function CandidaturesWorkspace({
         campaignId: initialCampaignId,
         campaignIds: NO_CAMPAIGN_IDS,
         stage: initialStage ?? null,
+        everInvited: initialEverInvited,
       });
     } else if (initialStage) {
       setCampaignTouched(true);
@@ -169,6 +176,7 @@ export function CandidaturesWorkspace({
       search: '',
       stage: null,
       fromVivier: false,
+      everInvited: false,
     });
   };
 
@@ -203,6 +211,8 @@ export function CandidaturesWorkspace({
               onPeriod={onPeriod}
               fromVivier={filters.fromVivier}
               onVivier={(b) => setFilters({ fromVivier: b })}
+              everInvited={filters.everInvited}
+              onClearEverInvited={() => setFilters({ everInvited: false })}
               onReset={onResetView}
             />
           </div>

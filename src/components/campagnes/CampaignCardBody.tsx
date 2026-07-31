@@ -11,21 +11,23 @@
 
 import type { ReactNode } from 'react';
 
-import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type { FieldKey } from '@/types/field-collection';
 
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { DASH_COLORS } from '@/components/dashboard/tokens';
 
-import type { CampaignCardStats } from './CampaignCard';
+import type {
+  CampaignCandidaturesPreset,
+  CampaignCardStats,
+} from './CampaignCard';
 
 export type CampaignCardBodyProps = {
   campaign: ActiveCampaign;
   stats: CampaignCardStats;
   onEdit: () => void;
-  /** Quadrant cliqué → Candidatures de cette campagne, pré-filtré par étape. */
-  onOpenCandidatures?: (stage: CandidateStage | null) => void;
+  /** Quadrant cliqué → Candidatures de cette campagne, pré-filtré. */
+  onOpenCandidatures?: (preset: CampaignCandidaturesPreset) => void;
   children: ReactNode;
 };
 
@@ -63,16 +65,22 @@ export function CampaignCardBody({
           marginBottom: 18,
         }}
       >
-        {/* Quadrant → étape du menu Candidatures (mapping aligné sur la
+        {/* Quadrant → pré-filtre du menu Candidatures (mapping aligné sur la
             sémantique des stats, cf. CampaignsList) : CV reçus = toutes ;
-            Shortlistés/Invités = invite ; Entretiens = entretien_fait
-            (« Entretien réalisé » cliqué) ; GO = retenu. */}
+            Shortlistés/Invités = TRAJECTOIRE « passés par l'invitation »
+            (everInvited — inclut RDV/entretien/GO/non retenus après process,
+            pas seulement le stade courant `invite`) ; Entretiens =
+            entretien_fait (« Entretien réalisé » cliqué) ; GO = retenu. */}
         <StatBox
           icon="📄"
           color={DASH_COLORS.blue.solid}
           value={stats.candidates}
           label="CV reçus"
-          onOpen={onOpenCandidatures ? () => onOpenCandidatures(null) : undefined}
+          onOpen={
+            onOpenCandidatures
+              ? () => onOpenCandidatures({ stage: null })
+              : undefined
+          }
         />
         <StatBox
           icon="⭐"
@@ -80,7 +88,9 @@ export function CampaignCardBody({
           value={stats.shortlisted}
           label="Shortlistés / Invités"
           onOpen={
-            onOpenCandidatures ? () => onOpenCandidatures('invite') : undefined
+            onOpenCandidatures
+              ? () => onOpenCandidatures({ stage: null, everInvited: true })
+              : undefined
           }
         />
         <StatBox
@@ -90,7 +100,7 @@ export function CampaignCardBody({
           label="Entretiens"
           onOpen={
             onOpenCandidatures
-              ? () => onOpenCandidatures('entretien_fait')
+              ? () => onOpenCandidatures({ stage: 'entretien_fait' })
               : undefined
           }
         />
@@ -100,7 +110,9 @@ export function CampaignCardBody({
           value={stats.goCount}
           label="GO"
           onOpen={
-            onOpenCandidatures ? () => onOpenCandidatures('retenu') : undefined
+            onOpenCandidatures
+              ? () => onOpenCandidatures({ stage: 'retenu' })
+              : undefined
           }
         />
       </div>

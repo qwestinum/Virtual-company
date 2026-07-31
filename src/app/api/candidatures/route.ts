@@ -66,6 +66,11 @@ export async function GET(request: Request): Promise<NextResponse> {
   const to = params.get('to');
   if (to) baseFilters.to = to;
   if (params.get('fromVivier') === 'true') baseFilters.fromVivier = true;
+  // « Passés par l'invitation » (quadrant Shortlistés/Invités) : tous ceux
+  // qui ont ÉTÉ invités — l'invitation découle de status='accepted' (colonne,
+  // cf. deriveCandidateStage), et les stades AVAL (RDV, entretien, retenu,
+  // non retenu après process) la conservent. Filtre SQL, pagination exacte.
+  if (params.get('everInvited') === 'true') baseFilters.status = 'accepted';
 
   const stageRaw = params.get('stage');
   const stageFilter = (CANDIDATE_STAGES as readonly string[]).includes(

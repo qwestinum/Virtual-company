@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { AgentDetailsPanel } from '@/components/agents/AgentDetailsPanel';
+import type { CampaignCandidaturesPreset } from '@/components/campagnes/CampaignCard';
 import { HRDepartmentView } from '@/components/agents/HRDepartmentView';
 import { BureauPulse } from '@/components/bureau/BureauPulse';
 import { CampaignsWorkspace } from '@/components/campagnes/CampaignsWorkspace';
@@ -89,6 +90,7 @@ export function WorkspacePane() {
   // null sur toute navigation manuelle (les parcours existants ne changent pas).
   const [candidaturesStage, setCandidaturesStage] = useState<CandidateStage | null>(null);
   const [candidaturesCampaignId, setCandidaturesCampaignId] = useState<string | null>(null);
+  const [candidaturesEverInvited, setCandidaturesEverInvited] = useState(false);
   const pendingCount = usePendingValidationsCount();
   const vivierCount = usePendingVivierCount();
   // Signaux métier : fetch au montage + re-fetch à chaque changement d'onglet
@@ -98,10 +100,12 @@ export function WorkspacePane() {
   const changeTab = (next: Tab) => {
     setCandidaturesStage(null);
     setCandidaturesCampaignId(null);
+    setCandidaturesEverInvited(false);
     setTab(next);
   };
   const navigateToSignal = (target: BusinessSignalTarget) => {
     setCandidaturesCampaignId(null);
+    setCandidaturesEverInvited(false);
     if (target.tab === 'candidatures') {
       setCandidaturesStage(target.stage);
       setTab('candidatures');
@@ -111,13 +115,15 @@ export function WorkspacePane() {
     }
   };
   // Quadrant d'une carte campagne → Candidatures pré-filtré sur CETTE campagne
-  // (+ étape selon le quadrant : Entretiens → entretien_fait, GO → retenu…).
+  // (+ préset du quadrant : Entretiens → entretien_fait, GO → retenu,
+  // Shortlistés/Invités → « passés par l'invitation », trajectoire complète).
   const openCandidaturesForCampaign = (
     campaignId: string,
-    stage: CandidateStage | null,
+    preset: CampaignCandidaturesPreset,
   ) => {
     setCandidaturesCampaignId(campaignId);
-    setCandidaturesStage(stage);
+    setCandidaturesStage(preset.stage);
+    setCandidaturesEverInvited(preset.everInvited ?? false);
     setTab('candidatures');
   };
 
@@ -146,6 +152,7 @@ export function WorkspacePane() {
           <CandidaturesWorkspace
             initialStage={candidaturesStage}
             initialCampaignId={candidaturesCampaignId}
+            initialEverInvited={candidaturesEverInvited}
           />
         ) : tab === 'validations' ? (
           <div className="h-full overflow-auto px-6 py-6">

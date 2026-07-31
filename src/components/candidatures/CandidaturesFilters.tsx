@@ -25,6 +25,8 @@ export function CandidaturesFilters({
   onPeriod,
   fromVivier,
   onVivier,
+  everInvited,
+  onClearEverInvited,
   onReset,
 }: {
   campaignOptions: { id: string; label: string }[];
@@ -37,6 +39,13 @@ export function CandidaturesFilters({
   onPeriod: (value: PeriodKey) => void;
   fromVivier: boolean;
   onVivier: (value: boolean) => void;
+  /**
+   * Filtre « Passés par l'invitation » actif (posé par le quadrant
+   * Shortlistés/Invités d'une carte campagne). Affiché en chip retirable —
+   * jamais posable depuis cette barre.
+   */
+  everInvited?: boolean;
+  onClearEverInvited?: () => void;
   /** « Toutes » : retour à la vue par défaut (tous filtres réinitialisés). */
   onReset: () => void;
 }) {
@@ -75,6 +84,18 @@ export function CandidaturesFilters({
         <option value="7">7 derniers jours</option>
         <option value="30">30 derniers jours</option>
       </select>
+
+      {everInvited ? (
+        <button
+          type="button"
+          onClick={onClearEverInvited}
+          title="Retirer le filtre « Passés par l'invitation »"
+          className="inline-flex items-center gap-1.5 rounded-full border border-orqa-ciel bg-orqa-ciel/10 px-3.5 py-2 font-inter text-[12.5px] text-orqa-encre transition hover:border-orqa-nuit"
+        >
+          ⭐ Passés par l&apos;invitation
+          <span aria-hidden className="font-bold">×</span>
+        </button>
+      ) : null}
 
       <div className="ml-auto flex gap-1.5">
         <Segment active={!fromVivier} onClick={onReset}>

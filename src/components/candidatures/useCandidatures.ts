@@ -21,6 +21,14 @@ export type CandidaturesFilters = {
   search: string;
   stage: CandidateStage | null;
   fromVivier: boolean;
+  /**
+   * « Passés par l'invitation » : tous ceux qui ont ÉTÉ invités (status
+   * accepted), quel que soit leur stade ACTUEL (RDV pris, entretien, retenu,
+   * non retenu après process…). Posé par le quadrant « Shortlistés / Invités »
+   * d'une carte campagne — l'étape `invite` du ruban, elle, ne montre que le
+   * stade courant.
+   */
+  everInvited: boolean;
 };
 
 /** Référence stable pour « aucune campagne ciblée » (évite les refetch en boucle). */
@@ -34,6 +42,7 @@ const EMPTY_FILTERS: CandidaturesFilters = {
   search: '',
   stage: null,
   fromVivier: false,
+  everInvited: false,
 };
 
 function buildQuery(params: Record<string, string | undefined>): string {
@@ -126,6 +135,7 @@ export function useCandidatures() {
             search: debouncedSearch,
             stage: filters.stage ?? undefined,
             fromVivier: filters.fromVivier ? 'true' : undefined,
+            everInvited: filters.everInvited ? 'true' : undefined,
             limit: String(CANDIDATURES_PAGE_SIZE),
             offset: String(page * CANDIDATURES_PAGE_SIZE),
           })}`,
@@ -157,6 +167,7 @@ export function useCandidatures() {
     debouncedSearch,
     filters.stage,
     filters.fromVivier,
+    filters.everInvited,
     page,
     refreshToken,
   ]);

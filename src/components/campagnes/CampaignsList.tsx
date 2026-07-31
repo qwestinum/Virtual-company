@@ -19,19 +19,20 @@ import {
   useCampaignsStore,
 } from '@/stores/campaigns-store';
 
-import type { CandidateStage } from '@/lib/reporting/candidate-stage';
-
-import { CampaignCard } from './CampaignCard';
+import {
+  CampaignCard,
+  type CampaignCandidaturesPreset,
+} from './CampaignCard';
 import type { DashboardData } from '@/hooks/useDashboardData';
 
 export type CampaignsListProps = {
   candidates: DashboardData['candidates'];
   onEditCampaign: (campaignId: string) => void;
   onCreateCampaign: () => void;
-  /** Quadrant de carte cliqué → onglet Candidatures pré-filtré (campagne + étape). */
+  /** Quadrant de carte cliqué → onglet Candidatures pré-filtré (campagne + préset). */
   onOpenCandidatures?: (
     campaignId: string,
-    stage: CandidateStage | null,
+    preset: CampaignCandidaturesPreset,
   ) => void;
 };
 
@@ -227,7 +228,7 @@ export function CampaignsList({
               onEdit={() => onEditCampaign(camp.id)}
               onOpenCandidatures={
                 onOpenCandidatures
-                  ? (stage) => onOpenCandidatures(camp.id, stage)
+                  ? (preset) => onOpenCandidatures(camp.id, preset)
                   : undefined
               }
             />

@@ -15,8 +15,8 @@
 import { useState } from 'react';
 
 import { useDashboardData } from '@/hooks/useDashboardData';
-import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 
+import type { CampaignCandidaturesPreset } from './CampaignCard';
 import { CampaignsList } from './CampaignsList';
 import { UnsavedChangesBanner } from './UnsavedChangesBanner';
 import { CampaignCreateSheet } from './edit/CampaignCreateSheet';
@@ -28,9 +28,12 @@ export function CampaignsWorkspace({
   /**
    * Navigation croisée : un quadrant de carte campagne (« CV reçus »,
    * « Entretiens »…) ouvre l'onglet Candidatures pré-filtré sur la campagne
-   * (+ étape du quadrant). Optionnel : absent = quadrants non cliquables.
+   * (+ préset du quadrant). Optionnel : absent = quadrants non cliquables.
    */
-  onOpenCandidatures?: (campaignId: string, stage: CandidateStage | null) => void;
+  onOpenCandidatures?: (
+    campaignId: string,
+    preset: CampaignCandidaturesPreset,
+  ) => void;
 } = {}) {
   const { data } = useDashboardData();
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
