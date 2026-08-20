@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { formatDateTime, formatShortDate, formatTimeRange, isValidTimeZone, zoneLabel } from '../format';
 import { fill, type SchedulingLabels } from '../labels';
 import type { BookingPageState, LinkDisplay, MeetingLocation, Slot } from '../types';
+import { CloseButton } from './CloseButton';
 import { SlotPicker } from './SlotPicker';
 import { useDetectedTimeZone } from './useDetectedTimeZone';
 import { TimezoneBar } from './TimezoneBar';
@@ -176,19 +177,7 @@ function OpenBooking({
   if (confirmed) {
     return (
       <Shell display={state.display}>
-        <Centered
-          mark="✓"
-          title={labels.confirmedTitle}
-          body={fill(labels.confirmedIntro, {
-            when: `${formatDateTime(confirmed.startAt, confirmed.timeZone)} (heure de ${zoneLabel(
-              confirmed.timeZone,
-            )})`,
-          })}
-        />
-        <Recap confirmation={confirmed} labels={labels} manageCta={labels.manageCta} />
-        <p className="sched-note" style={{ marginTop: 14 }}>
-          {labels.icsSent}
-        </p>
+        <ConfirmedView confirmation={confirmed} labels={labels} />
       </Shell>
     );
   }
@@ -444,6 +433,46 @@ function Centered({
       <h2>{title}</h2>
       <p>{body}</p>
     </div>
+  );
+}
+
+/**
+ * Écran qui suit une réservation réussie.
+ *
+ * Il ne propose NI déplacement NI annulation, et c'est délibéré : inviter
+ * quelqu'un à défaire ce qu'il vient de faire, à la seconde où il vient de le
+ * faire, travaille contre lui. Ces deux gestes vivent dans le message de
+ * confirmation — le besoin de déplacer naît des jours plus tard, devant sa
+ * boîte de réception, pas devant cet écran-ci.
+ *
+ * Il propose en revanche une SORTIE. Sans elle, l'invité reste devant une page
+ * dont plus rien n'indique qu'elle est terminée, et cette hésitation-là est
+ * exactement ce qu'un écran de confirmation doit dissiper.
+ */
+export function ConfirmedView({
+  confirmation,
+  labels,
+}: {
+  confirmation: BookingConfirmation;
+  labels: SchedulingLabels;
+}) {
+  return (
+    <>
+      <Centered
+        mark="✓"
+        title={labels.confirmedTitle}
+        body={fill(labels.confirmedIntro, {
+          when: `${formatDateTime(confirmation.startAt, confirmation.timeZone)} (heure de ${zoneLabel(
+            confirmation.timeZone,
+          )})`,
+        })}
+      />
+      <Recap confirmation={confirmation} labels={labels} manageCta={null} />
+      <p className="sched-note" style={{ marginTop: 14 }}>
+        {labels.icsSent} {labels.manageInMail}
+      </p>
+      <CloseButton labels={labels} />
+    </>
   );
 }
 

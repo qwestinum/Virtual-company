@@ -14,6 +14,7 @@ import { formatDateTime, isValidTimeZone, zoneLabel } from '../format';
 import { fill, type SchedulingLabels } from '../labels';
 import type { MeetingLocation, Slot } from '../types';
 import { Recap, type BookingConfirmation } from './BookingPage';
+import { CloseButton } from './CloseButton';
 import { SlotPicker } from './SlotPicker';
 import { TimezoneBar } from './TimezoneBar';
 import { useDetectedTimeZone } from './useDetectedTimeZone';
@@ -79,6 +80,8 @@ export function ManagePage({ manageToken, booking, labels, apiBase }: ManagePage
           title={labels.cancelledTitle}
           body={labels.cancelledBody}
         />
+        {/* Même cul-de-sac que la confirmation : plus rien à faire ici. */}
+        <CloseButton labels={labels} />
       </Card>
     );
   }

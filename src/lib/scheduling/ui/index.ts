@@ -7,7 +7,13 @@
  */
 export { SCHEDULING_CSS, brandRootStyle } from './styles';
 export { BrandMark } from './Brand';
-export { BookingPage, type BookingConfirmation, type BookingPageProps } from './BookingPage';
+export {
+  BookingPage,
+  ConfirmedView,
+  type BookingConfirmation,
+  type BookingPageProps,
+} from './BookingPage';
+export { CloseButton } from './CloseButton';
 export { ManagePage, type ManageBooking, type ManagePageProps } from './ManagePage';
 export { SlotPicker } from './SlotPicker';
 export { TimezoneBar } from './TimezoneBar';

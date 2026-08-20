@@ -47,6 +47,28 @@ export type SchedulingLabels = {
   recapDuration: string;
   icsSent: string;
   manageCta: string;
+  /**
+   * Où se trouvent désormais le déplacement et l'annulation. L'écran qui suit
+   * une réservation ne les propose PLUS : inviter quelqu'un à défaire ce qu'il
+   * vient de faire, au moment précis où il vient de le faire, travaille contre
+   * lui. Le message qu'il reçoit porte le lien, et il le retrouvera le jour où
+   * il en aura besoin — c'est là que le besoin naît, pas ici.
+   */
+  manageInMail: string;
+
+  // ── Fermeture ────────────────────────────────────────────────────────
+  /**
+   * Sortie explicite d'un écran terminal. Sans elle, l'invité reste devant une
+   * page dont plus rien n'indique qu'elle est finie.
+   */
+  closeCta: string;
+  /**
+   * Repli quand le navigateur REFUSE de fermer l'onglet — il ne l'autorise que
+   * pour une fenêtre ouverte par script, ce qui n'est jamais le cas d'une page
+   * ouverte depuis un message. On dit alors quoi faire plutôt que de laisser
+   * un bouton sans effet.
+   */
+  closeFallback: string;
 
   // ── États fermés ─────────────────────────────────────────────────────
   degradedTitle: string;
@@ -116,6 +138,11 @@ export const FR_LABELS: SchedulingLabels = {
   icsSent:
     'Une invitation à ajouter à votre agenda vient de vous être envoyée par email.',
   manageCta: 'Modifier ou annuler',
+  manageInMail:
+    'Ce même message vous permettra de le déplacer ou de l’annuler si besoin.',
+
+  closeCta: 'Fermer cette page',
+  closeFallback: 'C’est terminé : vous pouvez fermer cet onglet.',
 
   degradedTitle: 'Momentanément indisponible',
   degradedBody:
