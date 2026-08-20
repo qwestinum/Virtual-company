@@ -169,3 +169,89 @@ export function nextCommitTarget(
   if (minRetryUid !== null) target = Math.min(target, minRetryUid - 1);
   return target > committedSoFar ? target : null;
 }
+
+// ─── Bornage des opérations réseau ─────────────────────────────────────────
+
+/** Une opération réseau n'a pas rendu la main dans son budget. */
+export class OperationTimeoutError extends Error {
+  constructor(public readonly label: string, public readonly ms: number) {
+    super(`operation_timeout: ${label} n'a pas rendu la main en ${ms} ms`);
+    this.name = 'OperationTimeoutError';
+  }
+}
+
+/**
+ * Borne une promesse dans le temps.
+ *
+ * Motif : `client.logout()` d'imapflow ne rend PAS la main après un `break`
+ * sur un fetch large — le serveur streame encore, et `socketTimeout` ne
+ * couvre pas ce cas puisque le socket reçoit des données. Mesuré le
+ * 20/08/2026 sur une boîte de 25 685 messages : toujours bloqué à 240 s.
+ * Comme TOUTES les écritures d'état du poll sont APRÈS ce point, un blocage
+ * là rend la boîte totalement muette (ni `last_polled_at`, ni `last_error`,
+ * ni journal) — indiscernable d'une boîte jamais sélectionnée.
+ *
+ * Le minuteur est TOUJOURS annulé : sans `clearTimeout`, un poll rapide
+ * laisserait le process Node éveillé jusqu'à l'échéance.
+ */
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new OperationTimeoutError(label, ms)),
+      ms,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      },
+    );
+  });
+}
+
+// ─── Point de départ d'une boîte jamais relevée ────────────────────────────
+
+/**
+ * Curseur INITIAL d'une boîte neuve — le uid AVANT le premier message qu'on
+ * accepte de traiter. PURE.
+ *
+ * Une boîte fraîchement branchée pointe souvent une messagerie personnelle
+ * déjà pleine. Démarrer à l'uid 1 (`buildFetchSet(null)` rendait `'1:*'`)
+ * revient à télécharger la source COMPLÈTE des plus vieux messages : sur
+ * 25 685 messages et 50 par poll, il faut ~514 relèves pour atteindre le
+ * courrier du jour — le CV qu'on attend n'arrive jamais, et la boîte lente
+ * ralentit toutes les autres au passage (incident 20/08/2026).
+ *
+ * Le passé se rejoue à la demande ; il n'a pas à bloquer le présent. On
+ * démarre donc au bord RÉCENT :
+ *
+ *  1. s'il existe des messages reçus DEPUIS le branchement de la boîte, on se
+ *     place juste avant le plus ancien d'entre eux — un CV envoyé entre la
+ *     création de la boîte et la première relève n'est pas perdu, c'est le
+ *     cas NOMINAL d'une recette (on branche, on teste) ;
+ *  2. sinon, juste avant le prochain uid que le serveur attribuera
+ *     (`uidNext`) — tout ce qui arrivera ensuite sera vu.
+ *
+ * `null` = indéterminable (serveur sans `uidNext`) : l'appelant garde alors
+ * son comportement d'origine plutôt que d'inventer un point de départ.
+ */
+export function initialCursorFor(input: {
+  uidNext: number | null;
+  uidsSinceConnection: readonly number[];
+}): number | null {
+  const fresh = input.uidsSinceConnection.filter((u) => Number.isFinite(u) && u > 0);
+  if (fresh.length > 0) return Math.max(0, Math.min(...fresh) - 1);
+  const next = input.uidNext;
+  if (typeof next === 'number' && Number.isFinite(next) && next >= 1) {
+    return next - 1;
+  }
+  return null;
+}

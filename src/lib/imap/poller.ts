@@ -53,11 +53,13 @@ import {
   buildFetchSet,
   classifyProcessingError,
   computeNextRetryAt,
+  initialCursorFor,
   isInBackoffWindow,
   MAX_CV_ANALYSIS_ATTEMPTS,
   nextCommitTarget,
   RetryablePollError,
   shouldProcessUid,
+  withTimeout,
 } from '@/lib/imap/poll-retry';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import {
@@ -81,6 +83,8 @@ import {
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { feedVivierFromApplication } from '@/lib/vivier/ingest-application';
 import { matchVivierApplication } from '@/lib/vivier/match-application';
+import type { ImapFlow } from 'imapflow';
+
 import { openConnection } from '@/lib/imap/client';
 import {
   emailBodyText,
@@ -134,6 +138,75 @@ globalThis.__imapInflightMailboxes__ = inflight;
  * table journal pour audit. Met à jour `last_polled_at`, `last_uid_seen`,
  * `last_error` dans tous les cas.
  */
+/**
+ * Budget de fermeture d'une connexion IMAP.
+ *
+ * `client.logout()` ne rend PAS la main après un `break` sur un fetch large :
+ * le serveur streame encore, et `socketTimeout` ne couvre pas ce cas puisque
+ * le socket reçoit des données. Mesuré le 20/08/2026 sur une boîte de 25 685
+ * messages : toujours bloqué à 240 s. Comme toutes les écritures d'état du
+ * poll sont APRÈS ce point, la boîte devenait totalement muette.
+ */
+const LOGOUT_TIMEOUT_MS = 10_000;
+
+/** Budget du SEARCH d'amorçage — au-delà, `uidNext` suffit. */
+const INITIAL_SEARCH_TIMEOUT_MS = 15_000;
+
+/**
+ * Ferme la connexion en un temps BORNÉ. Le `logout` poli d'abord (il laisse le
+ * serveur libérer proprement), la coupure sèche ensuite. Ne lève jamais : les
+ * messages sont déjà en mémoire, la phase 2 doit se dérouler quoi qu'il arrive.
+ */
+async function closeConnection(client: ImapFlow): Promise<void> {
+  try {
+    await withTimeout(client.logout(), LOGOUT_TIMEOUT_MS, 'imap_logout');
+  } catch {
+    try {
+      client.close();
+    } catch {
+      // Déjà fermée — rien à faire.
+    }
+  }
+}
+
+/**
+ * Curseur de départ d'une boîte jamais relevée. L'INBOX doit être ouverte.
+ *
+ * On cherche d'abord les messages arrivés DEPUIS le branchement de la boîte :
+ * c'est le cas nominal d'une recette (on branche, on s'envoie un CV), et ce
+ * CV-là ne doit pas être perdu. À défaut — SEARCH indisponible, trop lent, ou
+ * aucun message depuis — on se place juste avant `uidNext` : tout ce qui
+ * arrivera ensuite sera vu. Jamais l'uid 1.
+ */
+async function resolveInitialCursor(
+  client: ImapFlow,
+  mailbox: MailboxRow,
+): Promise<number | null> {
+  const status = client.mailbox;
+  const uidNext =
+    typeof status === 'object' && status && typeof status.uidNext === 'number'
+      ? status.uidNext
+      : null;
+
+  let uidsSinceConnection: number[] = [];
+  const since = new Date(mailbox.created_at);
+  if (Number.isFinite(since.getTime())) {
+    try {
+      const found = await withTimeout(
+        Promise.resolve(client.search({ since }, { uid: true })),
+        INITIAL_SEARCH_TIMEOUT_MS,
+        'imap_search_since',
+      );
+      if (Array.isArray(found)) uidsSinceConnection = found;
+    } catch {
+      // Repli sur `uidNext` : un cran plus strict (le courrier du jour n'est
+      // pas repris), jamais un retour à l'uid 1.
+    }
+  }
+
+  return initialCursorFor({ uidNext, uidsSinceConnection });
+}
+
 export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
   const outcome: PollOutcome = {
     mailboxId: mailbox.id,
@@ -246,25 +319,19 @@ async function pollMailboxImpl(
   // retries ÉCHUS re-fetchés NOMMÉMENT (ils sont derrière le curseur)
   // + la plage des nouveaux messages. Un uid en fenêtre de backoff n'est
   // PAS fetché : il attend dans `imap_cv_retries` sans geler la file.
-  const previousLastUid = mailbox.last_uid_seen
+  //
+  // `let` et non `const` : une boîte JAMAIS relevée n'a pas encore de curseur,
+  // et celui-ci ne peut être établi qu'une fois l'INBOX ouverte — il dépend
+  // d'`uidNext` et des messages reçus depuis le branchement. Le set fetché est
+  // donc construit PLUS BAS, dans la phase 1.
+  let previousLastUid = mailbox.last_uid_seen
     ? Number(mailbox.last_uid_seen)
     : 0;
+  let hasCursor = mailbox.last_uid_seen !== null;
   const dueRetryUids = new Set<number>();
-  for (const [uidStr, st] of retryStates) {
-    const n = Number(uidStr);
-    if (
-      Number.isFinite(n) &&
-      n <= previousLastUid &&
-      !isInBackoffWindow(st.nextRetryAt, new Date())
-    ) {
-      dueRetryUids.add(n);
-    }
-  }
-  const fromUid = buildFetchSet(
-    mailbox.last_uid_seen ? previousLastUid : null,
-    [...dueRetryUids],
-  );
   let maxUidSeen = previousLastUid;
+  /** Curseur initial à PERSISTER (boîte neuve) — écrit hors connexion IMAP. */
+  let pendingBaseline: number | null = null;
   // Plus petit UID dont l'ÉTAT FINAL n'a pas pu être écrit (ex. journal
   // `imap_no_campaign_match` KO — panne DB) : avancer le consommerait
   // sans trace. C'est le frein « DB down », PLUS JAMAIS le frein « CV en
@@ -287,6 +354,34 @@ async function pollMailboxImpl(
   try {
     const lock = await client.getMailboxLock('INBOX');
     try {
+      // Boîte JAMAIS relevée : on se place au bord RÉCENT. Repartir de l'uid 1
+      // sur une messagerie personnelle déjà pleine ne remonte jamais jusqu'au
+      // courrier du jour (cf. `initialCursorFor`, incident 20/08/2026).
+      if (!hasCursor) {
+        const baseline = await resolveInitialCursor(client, mailbox);
+        if (baseline !== null) {
+          previousLastUid = baseline;
+          maxUidSeen = baseline;
+          hasCursor = true;
+          pendingBaseline = baseline;
+        }
+      }
+
+      for (const [uidStr, st] of retryStates) {
+        const n = Number(uidStr);
+        if (
+          Number.isFinite(n) &&
+          n <= previousLastUid &&
+          !isInBackoffWindow(st.nextRetryAt, new Date())
+        ) {
+          dueRetryUids.add(n);
+        }
+      }
+      const fromUid = buildFetchSet(
+        hasCursor ? previousLastUid : null,
+        [...dueRetryUids],
+      );
+
       for await (const message of client.fetch(
         fromUid,
         { uid: true, source: true },
@@ -303,11 +398,35 @@ async function pollMailboxImpl(
       }
     }
   } finally {
+    await closeConnection(client);
+  }
+
+  // Curseur initial : écrit HORS connexion IMAP (une latence DB n'a rien à
+  // faire sous le verrou INBOX) et AVANT tout traitement — pour qu'une boîte
+  // neuve cesse immédiatement d'être un « last_uid_seen NULL » opaque, même si
+  // la relève échoue ensuite. Poser le curseur ne saute rien : les messages à
+  // traiter sont tous AU-DESSUS.
+  if (pendingBaseline !== null) {
     try {
-      await client.logout();
-    } catch {
-      // ignore
+      await updateMailboxPollState(mailbox.id, {
+        lastUidSeen: String(pendingBaseline),
+      });
+    } catch (err) {
+      console.error(
+        `[imap-poller] curseur initial ${pendingBaseline} non persisté pour ${mailbox.id}`,
+        err,
+      );
     }
+    await appendJournalEntry({
+      action: 'imap_mailbox_baseline_set',
+      actor: 'imap_poller',
+      payload: {
+        mailboxId: mailbox.id,
+        baselineUid: pendingBaseline,
+        reason:
+          'boîte branchée sur une messagerie existante — la relève démarre au courrier récent, les messages antérieurs ne sont pas analysés',
+      },
+    }).catch(() => {});
   }
 
   // Phase 2 — TRAITEMENT, hors connexion. Filet de sécurité : un crash
