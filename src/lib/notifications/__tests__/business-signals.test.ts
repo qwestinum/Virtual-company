@@ -163,12 +163,14 @@ describe('selectUnblockedHolidays', () => {
 describe('message du signal 4', () => {
   const NOEL = { day: '2026-12-25', label: 'Noël' };
 
-  it('accorde le nombre d’agendas et nomme la date la plus proche', () => {
+  it('parle de VOTRE agenda — le signal est filtré par session', () => {
+    // Un réglage personnel : le message s'adresse à la personne qui peut
+    // le corriger, pas au « cabinet » en général.
     expect(buildHolidaysUnblockedMessage(1, NOEL)).toBe(
-      '1 agenda propose encore des créneaux un jour férié — le plus proche : 25 décembre (Noël).',
+      'Votre agenda propose encore des créneaux le 25 décembre (Noël), qui est férié.',
     );
-    expect(buildHolidaysUnblockedMessage(3, NOEL)).toMatch(
-      /^3 agendas proposent/,
+    expect(buildHolidaysUnblockedMessage(3, NOEL)).toBe(
+      'Votre agenda propose encore des créneaux sur 3 jours fériés — le plus proche : 25 décembre (Noël).',
     );
   });
 

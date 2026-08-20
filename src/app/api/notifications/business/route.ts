@@ -8,13 +8,22 @@
  */
 import { NextResponse } from 'next/server';
 
+import { getApiUser } from '@/lib/auth/require-api-user';
 import { computeBusinessSignals } from '@/lib/notifications/business-signals';
 import type { BusinessNotificationsResponse } from '@/types/notifications';
 
 export const runtime = 'nodejs';
 
 export async function GET(): Promise<NextResponse> {
-  const signals = await computeBusinessSignals();
+  // L'identité ne SÉLECTIONNE pas les dossiers — l'espace métier est commun,
+  // et un candidat qui attend concerne tout le monde. Elle sert au seul signal
+  // qui porte sur un réglage PERSONNEL (l'agenda) : réclamer à quelqu'un de
+  // corriger la grille d'un autre ne mène à rien. Session absente ⇒ ce
+  // signal-là se tait, les autres restent servis.
+  const user = await getApiUser().catch(() => null);
+  const signals = await computeBusinessSignals(Date.now(), {
+    recruiterId: user?.id ?? null,
+  });
   const body: BusinessNotificationsResponse = {
     signals,
     generatedAt: new Date().toISOString(),

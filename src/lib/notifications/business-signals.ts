@@ -28,7 +28,7 @@ import {
 } from '@/lib/db/repos/pending-validations';
 import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
-import { listExceptions, listResources, listWeeklyRules } from '@/lib/scheduling';
+import { getResource, listExceptions, listWeeklyRules } from '@/lib/scheduling';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { BusinessSignal } from '@/types/notifications';
 
@@ -111,16 +111,13 @@ export function formatHolidayDay(day: string): string {
 }
 
 export function buildHolidaysUnblockedMessage(
-  agendaCount: number,
+  holidayCount: number,
   nearest: FrenchHoliday,
 ): string {
-  const who =
-    agendaCount === 1
-      ? '1 agenda propose'
-      : `${agendaCount} agendas proposent`;
-  return `${who} encore des créneaux un jour férié — le plus proche : ${formatHolidayDay(
-    nearest.day,
-  )} (${nearest.label}).`;
+  const when = `${formatHolidayDay(nearest.day)} (${nearest.label})`;
+  return holidayCount === 1
+    ? `Votre agenda propose encore des créneaux le ${when}, qui est férié.`
+    : `Votre agenda propose encore des créneaux sur ${holidayCount} jours fériés — le plus proche : ${when}.`;
 }
 
 /**
@@ -286,48 +283,42 @@ async function computeInterviewsAwaitingPointing(
  */
 async function computeAvailabilityHolidaysUnblocked(
   nowMs: number,
+  ctx: SignalContext,
 ): Promise<BusinessSignal | null> {
+  // Réglage PERSONNEL : hors session, il n'y a personne à qui le dire.
+  if (!ctx.recruiterId) return null;
+
   // Les ports du module sont injectés à l'exécution : sans cet appel,
-  // `listResources` LÈVE. Un `.catch(() => [])` ici rendrait « rien à
+  // `getResource` LÈVE. Un `.catch(() => null)` ici rendrait « rien à
   // signaler » sur une panne de configuration — le signal ne se serait jamais
   // allumé, nulle part, sans que rien ne le dise (défaut attrapé en recette).
   // On laisse donc remonter : le registre journalise et omet le signal.
   await ensureSchedulingConfigured();
-  const resources = await listResources({ activeOnly: true });
-  let agendas = 0;
-  let nearest: FrenchHoliday | null = null;
+  const resource = await getResource(ctx.recruiterId);
+  // Pas de ressource, ou agenda désactivé : rien n'est proposé, rien à régler.
+  if (!resource || !resource.isActive) return null;
 
-  for (const resource of resources) {
-    const [rules, exceptions] = await Promise.all([
-      listWeeklyRules(resource.externalRef).catch(() => null),
-      listExceptions(resource.externalRef).catch(() => null),
-    ]);
-    if (rules === null || exceptions === null) {
-      // Un agenda injoignable ne masque pas les autres — mais il se voit.
-      console.error(
-        `[notifications] disponibilités illisibles pour ${resource.externalRef}`,
-      );
-      continue;
-    }
-    const unblocked = selectUnblockedHolidays({
-      from: localDay(nowMs, resource.timezone),
-      horizonDays: resource.horizonDays,
-      openWeekdays: [...new Set(rules.map((r) => r.weekday))],
-      blockedDays: exceptions.map((e) => e.day),
-    });
-    if (unblocked.length === 0) continue;
-    agendas += 1;
-    const first = unblocked[0] as FrenchHoliday;
-    if (nearest === null || first.day < nearest.day) nearest = first;
-  }
+  const [rules, exceptions] = await Promise.all([
+    listWeeklyRules(resource.externalRef),
+    listExceptions(resource.externalRef),
+  ]);
+  const unblocked = selectUnblockedHolidays({
+    from: localDay(nowMs, resource.timezone),
+    horizonDays: resource.horizonDays,
+    openWeekdays: [...new Set(rules.map((r) => r.weekday))],
+    blockedDays: exceptions.map((e) => e.day),
+  });
+  if (unblocked.length === 0) return null;
 
-  if (nearest === null) return null;
   return {
     key: 'availability_holidays_unblocked',
-    count: agendas,
+    count: unblocked.length,
     // Ce signal n'a pas d'ancienneté : il APPROCHE, il ne vieillit pas.
     oldestDays: 0,
-    message: buildHolidaysUnblockedMessage(agendas, nearest),
+    message: buildHolidaysUnblockedMessage(
+      unblocked.length,
+      unblocked[0] as FrenchHoliday,
+    ),
     ctaLabel: 'Ouvrir Agendas & disponibilités',
     target: { route: '/settings' },
   };
@@ -341,9 +332,23 @@ function localDay(nowMs: number, timeZone: string): string {
 
 // ─── Registre ──────────────────────────────────────────────────────────────
 
+/**
+ * Contexte d'appel d'un signal.
+ *
+ * L'espace métier est COMMUN (campagnes, candidatures, compteurs) : les
+ * signaux qui portent sur un dossier en attente restent donc les mêmes pour
+ * tout le monde, et ne lisent pas ce contexte. Seul un signal qui porte sur
+ * un réglage PERSONNEL — l'agenda de quelqu'un — a besoin de savoir à qui il
+ * parle : réclamer à Paul de corriger la grille de Marie ne mène à rien.
+ */
+export type SignalContext = {
+  /** Identifiant du recruteur connecté, `null` hors session. */
+  recruiterId: string | null;
+};
+
 export type BusinessSignalDefinition = {
   key: BusinessSignal['key'];
-  compute: (nowMs: number) => Promise<BusinessSignal | null>;
+  compute: (nowMs: number, ctx: SignalContext) => Promise<BusinessSignal | null>;
 };
 
 export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
@@ -368,9 +373,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
  */
 export async function computeBusinessSignals(
   nowMs = Date.now(),
+  ctx: SignalContext = { recruiterId: null },
 ): Promise<BusinessSignal[]> {
   const results = await Promise.allSettled(
-    BUSINESS_SIGNALS.map((def) => def.compute(nowMs)),
+    BUSINESS_SIGNALS.map((def) => def.compute(nowMs, ctx)),
   );
   const signals: BusinessSignal[] = [];
   results.forEach((res, i) => {

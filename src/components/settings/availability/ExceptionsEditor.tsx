@@ -21,13 +21,9 @@ const INPUT =
 export function ExceptionsEditor({
   exceptions,
   onChange,
-  openWeekdays = [],
 }: {
   exceptions: ExceptionDraft[];
   onChange: (next: ExceptionDraft[]) => void;
-  /** Jours de la semaine réellement travaillés (ISO 1-7), pour ne pas
-   *  encombrer la liste de fériés tombant un jour où l'on ne reçoit pas. */
-  openWeekdays?: number[];
 }) {
   const [day, setDay] = useState('');
   const [label, setLabel] = useState('');
@@ -37,13 +33,21 @@ export function ExceptionsEditor({
    * Les fériés deviennent des absences ORDINAIRES : datées, libellées,
    * retirables une à une. Rien n'est imposé — certains cabinets reçoivent le
    * 11 novembre, et ce n'est pas au produit d'en décider.
+   *
+   * EXHAUSTIF, délibérément : on n'écarte pas les fériés tombant un jour où
+   * la grille actuelle ne reçoit pas. Une première version le faisait, pour
+   * « ne pas encombrer » — elle escamotait Noël 2026 (un vendredi) chez qui
+   * n'ouvre pas le vendredi, sans rien dire. Deux raisons de ne plus le
+   * faire : la grille CHANGE (ajouter le vendredi en mars ne recrée pas
+   * l'exception de décembre, le trou est alors silencieux), et un bouton qui
+   * annonce « les jours fériés » puis en pose une partie surprend. Une ligne
+   * en trop se voit et se retire ; une ligne manquante ne se voit pas.
    */
   function addFrenchHolidays() {
     const known = new Set(exceptions.map((e) => e.day));
-    const fresh = upcomingFrenchHolidays({
-      from: todayLocal(),
-      openWeekdays,
-    }).filter((h) => !known.has(h.day));
+    const fresh = upcomingFrenchHolidays({ from: todayLocal() }).filter(
+      (h) => !known.has(h.day),
+    );
     if (fresh.length === 0) {
       setNotice('Les jours fériés à venir sont déjà dans la liste.');
       return;

@@ -97,6 +97,20 @@ describe('fériés à proposer', () => {
     expect(days).toContain('2026-11-11');
   });
 
+  it('est EXHAUSTIF sans filtre — le contrat du bouton', () => {
+    // Incident 20/08/2026 : le bouton passait les jours travaillés du
+    // recruteur en filtre. Chez quelqu'un ouvrant lun/mar/mer/sam, 6 fériés
+    // sur 14 disparaissaient SANS RIEN DIRE — dont Noël 2026 (un vendredi) et
+    // la Toussaint 2026 (un dimanche). Une ligne en trop se voit et se
+    // retire ; une ligne manquante, non. Le filtre appartient au signal, pas
+    // au bouton.
+    const days = upcomingFrenchHolidays({ from: '2026-08-20' }).map((h) => h.day);
+    expect(days).toHaveLength(14);
+    expect(days).toContain('2026-12-25'); // vendredi
+    expect(days).toContain('2026-11-01'); // dimanche
+    expect(days).toContain('2027-05-08'); // samedi
+  });
+
   it('ne filtre RIEN quand aucune règle n’est encore saisie', () => {
     // Un bouton qui ne rendrait rien sans raison visible serait pire qu'inutile.
     const days = upcomingFrenchHolidays({
