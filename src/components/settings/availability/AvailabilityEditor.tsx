@@ -135,7 +135,11 @@ export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
     <div className="flex flex-col gap-4">
       <SlotSettingsRow value={settings} onChange={setSettings} />
       <WeeklyRulesEditor rules={rules} onChange={setRules} />
-      <ExceptionsEditor exceptions={exceptions} onChange={setExceptions} />
+      <ExceptionsEditor
+        exceptions={exceptions}
+        onChange={setExceptions}
+        openWeekdays={[...new Set(rules.map((r) => r.weekday))]}
+      />
       <MeetingLocationField value={location} onChange={setLocation} />
       <AvailabilityPreview slots={preview} timezone={settings.timezone} />
 
