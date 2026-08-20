@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { requireAdminApiUser } from '@/lib/auth/require-api-user';
 import { patchRecruiter } from '@/lib/db/repos/recruiters';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { syncRecruiterResourceFromProfile } from '@/lib/scheduling-host/recruiter-resource';
 import { RecruiterRoleSchema } from '@/types/recruiter';
 
 export const runtime = 'nodejs';
@@ -44,6 +45,15 @@ export async function PATCH(
     const recruiter = await patchRecruiter(id, parsed);
     if (!recruiter) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+    // La désactivation douce du référentiel se propage à l'agenda : la
+    // ressource cesse d'offrir des créneaux (les rendez-vous déjà pris, eux,
+    // restent — ils appartiennent au candidat autant qu'au recruteur). Le nom
+    // affiché suit aussi : c'est lui que voit le candidat.
+    if (parsed.isActive !== undefined || parsed.displayName !== undefined) {
+      await syncRecruiterResourceFromProfile(recruiter).catch((err) =>
+        console.error('[recruiters] synchro de la ressource KO', err),
+      );
     }
     return NextResponse.json({ recruiter });
   } catch (err) {

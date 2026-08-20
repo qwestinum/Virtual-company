@@ -21,6 +21,8 @@ import {
   InterviewConfigSchema,
 } from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG, VivierConfigSchema } from '@/types/vivier-settings';
+import { BrandingConfigSchema, DEFAULT_BRANDING_CONFIG } from '@/types/branding';
+import { invalidateSchedulingConfig } from '@/lib/scheduling-host/configure';
 
 export const runtime = 'nodejs';
 
@@ -41,6 +43,7 @@ const PatchSchema = z.object({
   channelsConfig: z.record(z.string(), IntegrationSchema).optional(),
   vivierConfig: VivierConfigSchema.optional(),
   interviewConfig: InterviewConfigSchema.optional(),
+  brandingConfig: BrandingConfigSchema.optional(),
   // Write-only : `''` efface la clé, une valeur non vide la pose. Jamais
   // renvoyée par le GET (seul `resendApiKeyConfigured` l'est).
   resendApiKey: z.string().max(2048).optional(),
@@ -75,6 +78,7 @@ function emptyPayload() {
       channelsConfig: {} as Record<string, IntegrationConfig>,
       vivierConfig: DEFAULT_VIVIER_CONFIG,
       interviewConfig: DEFAULT_INTERVIEW_CONFIG,
+      brandingConfig: DEFAULT_BRANDING_CONFIG,
       resendApiKeyConfigured: false,
       updatedAt: new Date(0).toISOString(),
     },
@@ -117,6 +121,9 @@ export async function PUT(request: Request): Promise<NextResponse> {
     // Force le prochain `getSynthesisEmail()` / `getSenderEmail()` à
     // relire la DB plutôt que d'attendre les 60s du TTL.
     invalidateEmailAddressesCache();
+    // Idem pour l'identité servie aux surfaces candidat : un logo qu'on vient
+    // de poser doit être visible tout de suite, pas au bout d'une minute.
+    invalidateSchedulingConfig();
     return NextResponse.json({ settings: next });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

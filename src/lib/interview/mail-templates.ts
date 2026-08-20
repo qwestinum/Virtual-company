@@ -7,6 +7,7 @@
  * [nom de la campagne], [organisation], [nom du recruteur].
  * Variable spécifique acceptation : [lien d'agenda] (le candidat y choisit son
  * créneau — il n'y a AUCUNE info de RDV pré-définie dans le message).
+ * Variable spécifique nouveau créneau : [intro] (le fait : qui a décalé, quand).
  */
 
 export type InterviewMailVars = {
@@ -18,6 +19,12 @@ export type InterviewMailVars = {
   recruiterName: string;
   /** Lien d'agenda (acceptation). Vide/placeholder pour le refus (non utilisé). */
   agendaLink: string;
+  /**
+   * Phrase factuelle du message de nouveau créneau : QUI a décalé et QUAND.
+   * Écrite par le code — un modèle éditable ne peut pas savoir, au moment où
+   * le DRH le rédige, si c'est le cabinet ou le candidat qui annulera.
+   */
+  intro?: string;
 };
 
 /** Sépare un nom complet en prénom (1er token) + nom (reste). */
@@ -49,7 +56,8 @@ export function renderInterviewMail(
     .replaceAll('[Organisation]', vars.organisation)
     .replaceAll('[nom du recruteur]', vars.recruiterName)
     .replaceAll("[lien d'agenda]", vars.agendaLink)
-    .replaceAll('[lien d’agenda]', vars.agendaLink);
+    .replaceAll('[lien d’agenda]', vars.agendaLink)
+    .replaceAll('[intro]', vars.intro ?? '');
 }
 
 function escapeHtml(s: string): string {
@@ -86,6 +94,18 @@ function clampSubject(s: string, max = 78): string {
 }
 
 /** Objet déterministe du message d'acceptation. */
+/**
+ * Objet du message de NOUVEAU CRÉNEAU. Il ne reprend pas « candidature
+ * retenue » : dans une boîte de réception, ce serait indiscernable du message
+ * déjà reçu, et personne ne l'ouvrirait.
+ */
+export function rescheduleSubject(jobTitle: string | null): string {
+  const t = jobTitle?.trim();
+  return clampSubject(
+    t ? `Nouveau créneau à choisir — ${t}` : 'Nouveau créneau d’entretien à choisir',
+  );
+}
+
 export function acceptanceSubject(jobTitle: string | null): string {
   const t = jobTitle?.trim();
   return clampSubject(

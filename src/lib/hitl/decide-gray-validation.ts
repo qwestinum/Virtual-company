@@ -17,13 +17,23 @@
  *      automatiques (zéro divergence, cf. rappel des bugs HITL/briefing).
  */
 
-import { sendValidation, type SendResult } from '@/lib/hitl/send-validation';
+import {
+  sendValidation,
+  type SendResult,
+  type SendValidationOptions,
+} from '@/lib/hitl/send-validation';
 import type { HitlDecision, PendingValidation } from '@/types/hitl';
 
 export async function decideGrayValidation(
   v: PendingValidation,
   decision: HitlDecision,
   draft: { subject: string; html: string },
+  /**
+   * Options d'ENVOI seulement (refus groupé : mail sauté, identifiant de lot).
+   * La décision, elle, suit exactement le même chemin qu'une carte tranchée à
+   * la main — c'est la raison d'être de cette fonction.
+   */
+  options: SendValidationOptions = {},
 ): Promise<SendResult> {
   if (decision !== v.decision) {
     try {
@@ -57,5 +67,5 @@ export async function decideGrayValidation(
       };
     }
   }
-  return sendValidation({ ...v, decision }, draft);
+  return sendValidation({ ...v, decision }, draft, options);
 }

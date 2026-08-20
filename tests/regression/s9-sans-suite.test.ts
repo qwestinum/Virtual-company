@@ -29,6 +29,8 @@ import {
 } from '@/app/api/campaigns/[id]/open-candidatures/route';
 import { POST as dismissOne } from '@/app/api/candidatures/[id]/dismiss/route';
 import { POST as postJournal } from '@/app/api/journal/route';
+import { POST as composeMail } from '@/app/api/mail-composer/route';
+import { POST as markSent } from '@/app/api/validations/[id]/send/route';
 import { POST as reserveSend } from '@/app/api/validations/[id]/reserve-send/route';
 import { POST as reopenOne } from '@/app/api/candidatures/[id]/reopen/route';
 import { GET as getCounters } from '@/app/api/candidatures/counters/route';
@@ -123,6 +125,55 @@ async function enqueueGray(
   return validationId;
 }
 
+/**
+ * Analyse un CV faible, le met en file (comme le gate), puis le REFUSE par la
+ * chaîne humaine réelle : réservation → mail relu → finalisation. Produit une
+ * candidature TERMINALE (`non_retenu`).
+ */
+async function refuseByHuman(taskId: string): Promise<void> {
+  const app = await analyze('faible', taskId);
+  const validationId = `val_treg_${taskId}`;
+  const enqueue = await call(postValidation, {
+    method: 'POST',
+    body: {
+      id: validationId,
+      campaignId: camp,
+      candidateName: app.candidate.fullName,
+      candidateEmail: app.candidate.email,
+      score: app.scoringResult.totalScore,
+      decision: 'reject',
+      payload: {
+        uid: taskId,
+        candidate: cvApplicationToMailCandidate(app),
+        jobTitle: TEST_JOB_TITLE,
+      },
+    },
+  });
+  expect(enqueue.status).toBe(200);
+  const reserved = await callWithId(reserveSend, validationId, { method: 'POST' });
+  expect(reserved.json.reserved).toBe(true);
+  const composed = await call(composeMail, {
+    method: 'POST',
+    body: {
+      artifactId: `art_treg_${taskId}`,
+      campaignId: camp,
+      jobTitle: TEST_JOB_TITLE,
+      mode: 'reject',
+      candidate: cvApplicationToMailCandidate(app),
+      // Objet volontairement distinct de « Votre candidature… » : les
+      // assertions sur les mails de CLASSEMENT filtrent sur ce préfixe.
+      mail: { subject: '[TREG] Refus relu', html: '<p>Refus relu (test).</p>' },
+      validationId,
+    },
+  });
+  expect(composed.json.status).toBe('sent');
+  const sent = await callWithId(markSent, validationId, {
+    method: 'POST',
+    body: { mailStatus: 'sent' },
+  });
+  expect(sent.status).toBe(200);
+}
+
 beforeAll(async () => {
   await cleanAll();
   resetSentEmails();
@@ -135,8 +186,12 @@ beforeAll(async () => {
   // Invité (fort, auto-accept) — candidature OUVERTE.
   invitedTaskId = `treg_s9_inv_${Date.now().toString(36)}`;
   await analyze('fort', invitedTaskId);
-  // Refus auto (faible) — TERMINAL : ne doit JAMAIS être classé.
-  await analyze('faible', `treg_s9_rej_${Date.now().toString(36)}`);
+  // Refusé PAR UN HUMAIN (faible) — TERMINAL : ne doit JAMAIS être classé.
+  // Depuis la conformité RGPD, la zone basse n'est plus terminale d'elle-même :
+  // elle attend en file. Le terminal, c'est le refus TRANCHÉ. On le produit
+  // donc par la chaîne réelle, sinon ce scénario testerait un cas qui n'existe
+  // plus en production.
+  await refuseByHuman(`treg_s9_rej_${Date.now().toString(36)}`);
   // Gris en file (moyen) — OUVERT, antidaté 5 jours (allume le signal 1).
   grayTaskId = `treg_s9_gray_${Date.now().toString(36)}`;
   const grayApp = await analyze('moyen', grayTaskId);
@@ -171,7 +226,7 @@ afterAll(async () => {
 });
 
 describe('S9 — classement sans suite', () => {
-  it('récapitulatif : 2 candidatures en cours (invité + à valider), refus auto exclu', async () => {
+  it('récapitulatif : 2 candidatures en cours (invité + à valider), refus HUMAIN exclu', async () => {
     const res = await callWithId(getOpenRecap, camp, { method: 'GET' });
     expect(res.status).toBe(200);
     const recap = res.json as { counts: StageCounts; total: number; hasRetenu: boolean };
@@ -207,11 +262,12 @@ describe('S9 — classement sans suite', () => {
     const validation = await readRow<{ status: string }>('pending_validations', grayValidationId);
     expect(validation.status).toBe('void');
 
-    // Ruban : la partition somme, le refus auto n'a PAS été touché.
+    // Ruban : la partition somme, le refus TRANCHÉ n'a PAS été touché.
     const { counts, total } = await countersNow();
     expect(total).toBe(3);
     expect(counts.sans_suite).toBe(2);
-    expect(counts.refus_auto).toBe(1);
+    expect(counts.non_retenu).toBe(1);
+    expect(counts.refus_auto).toBe(0);
     expect(counts.a_valider).toBe(0);
     expect(counts.invite).toBe(0);
 

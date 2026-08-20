@@ -62,3 +62,18 @@ bench/*
 # journal d'import vivier (script npm run import:vivier) — contient des EMAILS de
 # candidats (donnée personnelle) : JAMAIS committé. Couvre aussi le .dryrun.json.
 .import-vivier-journal*.json
+
+# scripts de diagnostic JETABLES (`scripts/*-tmp.ts`) : écrits pour un incident
+# précis, ils lisent des creds d'environnement (`.env.localX`) et portent des
+# identifiants/noms de candidats RÉELS. Ils restent sur la machine du dev, ils
+# n'entrent JAMAIS dans le dépôt. Cf. docs/sessions/SESSION_AUDIT_LOTS_2026-07-17_26.md.
+scripts/*-tmp.ts
+scripts/*-tmp[0-9].ts
+
+# aperçu JETABLE de l'identité ORQA (données mockées) : `next build` en ferait
+# une page PUBLIQUE en prod (elle n'est pas dans PROTECTED_PREFIXES du proxy).
+# À supprimer — cf. docs/BACKLOG.md et docs/audit/audit-orqa.md (SEC-7).
+/src/app/candidatures-apercu/
+
+# fichier utilitaire de diagnostic du 18/08 — ne teste rien, à supprimer.
+/tests/regression/zz-dbg.test.ts

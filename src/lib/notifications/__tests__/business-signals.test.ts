@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildInterviewsAwaitingMessage,
+  buildInterviewsPointingMessage,
   buildPendingValidationsMessage,
   cutoffIso,
   daysSinceIso,
   selectOverdueRealizedUids,
+  selectUnpointedBriefs,
 } from '@/lib/notifications/business-signals';
 
 const NOW = Date.parse('2026-07-26T12:00:00.000Z');
@@ -74,5 +76,39 @@ describe('selectOverdueRealizedUids', () => {
     const at = new Map([['u-limite', new Date(NOW - 2 * DAY).toISOString()]]);
     const m = new Map<string, 'realized' | 'missed'>([['u-limite', 'realized']]);
     expect(selectOverdueRealizedUids(m, at, NOW - 2 * DAY)).toEqual([]);
+  });
+});
+
+describe('signal 3 — entretiens passés sans pointage', () => {
+  it('retient les entretiens TERMINÉS avant le seuil', () => {
+    const cutoff = Date.parse('2026-09-15T12:00:00.000Z');
+    const kept = selectUnpointedBriefs(
+      [
+        { uid: 'a', interviewEndAt: '2026-09-14T10:00:00.000Z' },
+        { uid: 'b', interviewEndAt: '2026-09-15T18:00:00.000Z' },
+      ],
+      cutoff,
+    );
+    expect(kept.map((b) => b.uid)).toEqual(['a']);
+  });
+
+  it('ignore un entretien SANS date de fin — on ne date pas ce qu’on ignore', () => {
+    expect(
+      selectUnpointedBriefs([{ uid: 'a', interviewEndAt: null }], Date.now()),
+    ).toEqual([]);
+  });
+
+  it('ignore un briefing sans candidature rattachée', () => {
+    expect(
+      selectUnpointedBriefs(
+        [{ uid: null, interviewEndAt: '2020-01-01T00:00:00.000Z' }],
+        Date.now(),
+      ),
+    ).toEqual([]);
+  });
+
+  it('le message dit ce qu’on attend : un pointage, pas une décision', () => {
+    expect(buildInterviewsPointingMessage(1)).toMatch(/réalisé ou absent/);
+    expect(buildInterviewsPointingMessage(3)).toMatch(/^3 entretiens passés/);
   });
 });

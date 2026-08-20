@@ -33,14 +33,42 @@ export function hitlSectionForDecision(
 }
 
 /**
- * Zone de décision FIGÉE au moment du scoring (modèle 3 zones HITL). En lot 1,
- * le scoring est encore en seuil unique : seules `auto_reject`/`auto_accept`
- * sont posées. `gray` est réservée au lot 2 (deux poignées) — le champ
- * l'accueille déjà, sans nouvelle migration. `null` = ligne antérieure au
- * modèle 3 zones (frontière nette avant/après lot 1, jamais reconstruite).
+ * Zone de décision FIGÉE au moment du scoring.
+ *
+ * Trois zones VIVANTES depuis la mise en conformité RGPD (18/08/2026) :
+ *   - `proposed_reject` (< seuil bas) — **aucun mail ne part**. La candidature
+ *     est mise en file et PROPOSÉE au refus ; un humain tranche. C'est la zone
+ *     qui alimente le sous-onglet « Propositions de refus ».
+ *   - `gray` ([bas, haut[) — file de validation, examen une par une.
+ *   - `auto_accept` (≥ seuil haut) — invitation envoyée automatiquement. Seule
+ *     zone qui produit encore un mail sans intervention : une décision
+ *     FAVORABLE et réversible, hors du champ que le RGPD verrouille.
+ *
+ * `auto_reject` est **LEGACY** : plus jamais produite. Elle marque les
+ * candidatures refusées AUTOMATIQUEMENT avant la bascule — leur mail est
+ * réellement parti sans validation humaine. La conserver est ce qui permet de
+ * ne PAS réécrire l'histoire : sans elle, chaque refus automatique passé
+ * deviendrait rétroactivement « en attente » dans les rapports.
+ *
+ * `null` = ligne antérieure au modèle 3 zones (jamais reconstruite).
  */
-export const DecisionZoneSchema = z.enum(['auto_reject', 'gray', 'auto_accept']);
+export const DecisionZoneSchema = z.enum([
+  'auto_reject',
+  'proposed_reject',
+  'gray',
+  'auto_accept',
+]);
 export type DecisionZone = z.infer<typeof DecisionZoneSchema>;
+
+/**
+ * Zones qui ATTENDENT une décision humaine (statut `rejected` PROVISOIRE, rien
+ * n'est parti). Prédicat partagé — le dupliquer, c'est se garantir qu'un
+ * lecteur oubliera `proposed_reject` et comptera un dossier en attente comme
+ * un refus consommé.
+ */
+export function isAwaitingHumanZone(zone: DecisionZone | null): boolean {
+  return zone === 'gray' || zone === 'proposed_reject';
+}
 
 /**
  * Type d'acteur ayant tranché le statut FINAL. `auto` = décision système (pas

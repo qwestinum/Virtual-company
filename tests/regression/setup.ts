@@ -2,6 +2,12 @@
  * Setup GLOBAL de la suite de régression — exécuté avant CHAQUE fichier de
  * scénario (setupFiles vitest).
  *
+ * ⚠️ LANCER L'APPLICATION FERMÉE. Plusieurs scénarios (S6) mesurent des
+ * compteurs GLOBAUX avant/après : un serveur `next dev` qui relève les mails
+ * toutes les 30 s, ou un simple clic dans un onglet ouvert sur la même base,
+ * décale ces compteurs et fait échouer des assertions parfaitement justes.
+ * S6 détecte ce cas et le NOMME au lieu de rendre un « expected 1 to be 2 ».
+ *
  * 1. Charge .env.local (@next/env — même résolution que Next).
  * 2. GARDE-FOU PROJET : la suite écrit puis nettoie des données réelles — elle
  *    refuse de démarrer si `REGRESSION_PROJECT_REF` est absent de l'env OU ne

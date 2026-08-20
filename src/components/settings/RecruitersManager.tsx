@@ -7,6 +7,11 @@
  * Auth déjà invité dans la liste des comptes non référencés (zéro resaisie
  * d'UUID) : voir docs/ops/multi-utilisateur.md. Jamais de suppression :
  * désactivation douce.
+ *
+ * Les DISPONIBILITÉS ne sont pas ici : elles ont leur propre section
+ * (« Agendas & disponibilités »), accessible à tous. Les enfermer dans un
+ * écran réservé aux administrateurs privait chaque membre de son propre
+ * agenda — alors que la route, elle, l'autorise depuis toujours.
  */
 
 import { Loader2, Pencil, Plus } from 'lucide-react';

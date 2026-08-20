@@ -24,16 +24,24 @@ export default async function SettingsPage() {
   // les routes /api/recruiters re-vérifient de toute façon (défense en
   // profondeur). Fail-closed : doute ⇒ member.
   let isAdmin = false;
+  // Identifiant de session : chacun ouvre SON agenda dans « Agendas &
+  // disponibilités ». Résolu ici, côté serveur — le hub est un composant
+  // client, aveugle à la session.
+  let currentUserId: string | null = null;
   try {
     const supabase = await getAuthServerClient();
     if (supabase) {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) isAdmin = (await getRecruiterRole(user.id)) === 'admin';
+      if (user) {
+        currentUserId = user.id;
+        isAdmin = (await getRecruiterRole(user.id)) === 'admin';
+      }
     }
   } catch {
     isAdmin = false;
+    currentUserId = null;
   }
   return (
     <main className="relative flex min-h-[100svh] flex-col">
@@ -63,7 +71,7 @@ export default async function SettingsPage() {
             modifications sont appliquées au pipeline live dès la sauvegarde.
           </p>
         </header>
-        <SettingsHub isAdmin={isAdmin} />
+        <SettingsHub isAdmin={isAdmin} currentUserId={currentUserId} />
       </div>
       <SiteFooter />
     </main>

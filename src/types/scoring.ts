@@ -24,7 +24,7 @@ import { z } from 'zod';
 import { DecisionZoneSchema } from '@/types/hitl';
 
 // `obligatoire` (HARD_CAP) RETIRÉ du modèle : il court-circuitait la zone grise
-// (plafond sous le seuil bas → toujours auto_reject). Désormais soit
+// (plafond sous le seuil bas → toujours proposed_reject). Désormais soit
 // `redhibitoire` (éliminatoire dur, saisi en connaissance de cause), soit un
 // niveau SOFT_WEIGHTED — le score décide, le gris route vers la validation.
 export const SCORING_LEVELS = [
@@ -494,7 +494,7 @@ export const ScoreResultSchema = z.object({
   totalScore: z.number().int().min(0).max(100),
   status: CandidateStatusSchema,
   /**
-   * Zone de décision (modèle HITL 3 zones, lot 2) : `auto_reject` < seuil_bas,
+   * Zone de décision (modèle HITL 3 zones) : `proposed_reject` < seuil_bas,
    * `gray` dans [seuil_bas, seuil_haut[, `auto_accept` ≥ seuil_haut. OPTIONNEL :
    * absent des résultats antérieurs au lot 2 (jsonb stocké) → les lecteurs
    * retombent sur le `status`. `scoreCandidat` la pose TOUJOURS. `gray` n'a pas

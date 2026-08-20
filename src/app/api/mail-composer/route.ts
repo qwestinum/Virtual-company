@@ -43,6 +43,12 @@ const RequestSchema = z.object({
    */
   uid: z.string().optional(),
   /**
+   * Identifiant d'ANALYSE — clé d'idempotence du lien de réservation natif.
+   * Distinct de `uid` : l'uid IMAP n'est unique que par boîte. Sans lui, une
+   * campagne en réservation native ne peut PAS émettre d'invitation (503).
+   */
+  analysisId: z.string().optional(),
+  /**
    * HITL — mode BROUILLON : on rédige le mail et on persiste l'artefact,
    * mais on N'ENVOIE PAS (l'envoi est différé jusqu'à validation humaine).
    */
@@ -145,11 +151,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   // bloque jamais (placeholder de lien d'agenda si non configuré).
   if (parsed.preview) {
     try {
+      // Le preview ÉMET le lien (émission idempotente par analyse) : c'est
+      // ce qui fait que le relecteur voit le jeton qui partira vraiment, et
+      // qu'un second preview ne crée pas un second lien.
       const result = await buildInterviewMail({
         mode: parsed.mode,
         candidate: parsed.candidate,
         jobTitle: parsed.jobTitle,
         campaignId: parsed.campaignId,
+        analysisId: parsed.analysisId ?? parsed.uid ?? null,
+        uid: parsed.uid ?? null,
         draft: true,
       });
       return NextResponse.json({
@@ -184,13 +195,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       candidate: parsed.candidate,
       jobTitle: parsed.jobTitle,
       campaignId: parsed.campaignId,
+      analysisId: parsed.analysisId ?? parsed.uid ?? null,
+      uid: parsed.uid ?? null,
       draft: parsed.draft,
     });
     if (result.blocked) {
+      // Deux régimes, deux causes — et deux gestes différents pour le DRH :
+      // renseigner un lien dans les réglages, ou donner des disponibilités au
+      // référent de la campagne.
+      const native = result.blockedReason === 'native_link_unavailable';
       return NextResponse.json(
         {
-          error: 'agenda_link_not_configured',
-          message: 'Lien d’agenda non configuré dans les paramètres.',
+          error: native ? 'native_link_unavailable' : 'agenda_link_not_configured',
+          message: native
+            ? 'Réservation native : le recruteur référent de cette campagne n’a pas de disponibilités configurées.'
+            : 'Lien d’agenda non configuré dans les paramètres.',
         },
         { status: 503 },
       );

@@ -14,13 +14,42 @@ import { getCampaign } from '@/lib/db/repos/campaigns';
 import { getRecruiter } from '@/lib/db/repos/recruiters';
 import { getSynthesisEmails } from '@/lib/email/addresses';
 
-/** Fusion PURE référent + configurées, dédup insensible à la casse (l'ordre
- * garde le référent en tête, puis les configurées dans leur ordre). */
+/**
+ * Une adresse est-elle EXPÉDIABLE ? Contrôle volontairement minimal — on ne
+ * cherche pas à valider une adresse (personne n'y arrive par une expression
+ * régulière), seulement à écarter ce qui n'en est manifestement pas une.
+ */
+export function isSendableAddress(value: string): boolean {
+  return /^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(value);
+}
+
+/**
+ * Fusion PURE référent + configurées, dédup insensible à la casse (l'ordre
+ * garde le référent en tête, puis les configurées dans leur ordre).
+ *
+ * Les entrées qui ne sont pas des adresses sont ÉCARTÉES plutôt que
+ * transmises. Le fournisseur d'envoi rejette un message dès qu'UN destinataire
+ * est invalide : une seule saisie ratée faisait donc échouer le briefing pour
+ * tout le monde, sans que personne ne le sache. Incident réel — le seed du
+ * runbook a laissé la chaîne `ton-email-de-connexion` comme adresse de
+ * l'administrateur, référent de trois campagnes (dev, 17/08/2026).
+ *
+ * `rejected` remonte ce qui a été écarté : l'appelant le trace, pour qu'une
+ * adresse fautive se voie au lieu de disparaître.
+ */
 export function mergeSynthesisRecipients(
   ownerEmail: string | null,
   configured: string[],
 ): string[] {
-  const out: string[] = [];
+  return splitSynthesisRecipients(ownerEmail, configured).recipients;
+}
+
+export function splitSynthesisRecipients(
+  ownerEmail: string | null,
+  configured: string[],
+): { recipients: string[]; rejected: string[] } {
+  const recipients: string[] = [];
+  const rejected: string[] = [];
   const seen = new Set<string>();
   for (const email of [ownerEmail, ...configured]) {
     const clean = email?.trim();
@@ -28,9 +57,10 @@ export function mergeSynthesisRecipients(
     const key = clean.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(clean);
+    if (isSendableAddress(clean)) recipients.push(clean);
+    else rejected.push(clean);
   }
-  return out;
+  return { recipients, rejected };
 }
 
 /** Email du référent ACTIF d'une campagne, ou null (fail-soft). */
@@ -59,7 +89,16 @@ export async function getSynthesisRecipientsForCampaign(
     getSynthesisEmails(),
     ownerEmailFor(campaignId),
   ]);
-  return mergeSynthesisRecipients(ownerEmail, configured);
+  const { recipients, rejected } = splitSynthesisRecipients(ownerEmail, configured);
+  if (rejected.length > 0) {
+    // Trace SYSTÉMATIQUE : une adresse écartée est une configuration à
+    // corriger, pas un détail. Sans elle, on remplacerait un échec bruyant
+    // par un silence — l'inverse de ce qu'on cherche.
+    console.error(
+      `[synthesis-recipients] adresses écartées (invalides) pour ${campaignId ?? 'hors campagne'} : ${rejected.join(', ')}`,
+    );
+  }
+  return recipients;
 }
 
 /**

@@ -17,10 +17,14 @@ import {
 } from '@/lib/agents/server/interview-brief-mail';
 import { composeInterviewGuide } from '@/lib/agents/server/mail-composer-execute';
 import { buildInterviewIcs } from '@/lib/calendar/ics';
-import { getLatestAnalysisByEmail } from '@/lib/db/repos/candidate-analyses';
+import {
+  getCandidateAnalysis,
+  getLatestAnalysisByEmail,
+} from '@/lib/db/repos/candidate-analyses';
 import {
   createScheduledBrief,
   getPendingBriefByEmail,
+  getPendingBriefByUid,
   markBriefScheduled,
   type BookingDelivery,
 } from '@/lib/db/repos/interview-briefs';
@@ -48,6 +52,18 @@ export type DeliverBriefInput = {
   startTime: string | null;
   endTime: string | null;
   location: string | null;
+  /**
+   * Rapprochement par CANDIDATURE — chemin natif. La réservation transporte
+   * l'identité de la candidature dans son contexte : on ne cherche plus « le
+   * dernier briefing de cette adresse », on désigne le bon.
+   *
+   * Absent (chemin Cal.com) ⇒ rapprochement par email, inchangé.
+   */
+  identity?: {
+    uid: string | null;
+    analysisId: string;
+    campaignId: string;
+  } | null;
 };
 
 export type DeliverBriefResult = {
@@ -207,7 +223,14 @@ async function sendBrief(args: {
 export async function deliverBriefForBooking(
   input: DeliverBriefInput,
 ): Promise<DeliverBriefResult> {
-  const pending = await getPendingBriefByEmail(input.attendeeEmail);
+  // Le chemin natif ne retombe JAMAIS sur l'email : il sait de quelle
+  // candidature il parle. Y retomber ferait ressurgir le défaut que l'uid
+  // corrige (un même candidat sur deux campagnes).
+  const pending = input.identity
+    ? input.identity.uid
+      ? await getPendingBriefByUid(input.identity.uid, input.identity.campaignId)
+      : null
+    : await getPendingBriefByEmail(input.attendeeEmail);
   const delivery = (messageId: string | null): BookingDelivery => ({
     bookingUid: input.bookingUid,
     interviewStartAt: input.startTime,
@@ -250,7 +273,10 @@ export async function deliverBriefForBooking(
   }
 
   // ── Repli : pas de briefing en file → régénération à la volée ──────
-  const analysis = await getLatestAnalysisByEmail(input.attendeeEmail);
+  // Par candidature quand on la connaît (natif), par email sinon (Cal.com).
+  const analysis = input.identity
+    ? await getCandidateAnalysis(input.identity.analysisId)
+    : await getLatestAnalysisByEmail(input.attendeeEmail);
   if (!analysis) {
     // Candidat non retrouvé : on NOTIFIE la synthèse (l'info ne se perd
     // jamais). Pas de campagne identifiable ⇒ liste configurée seule.

@@ -17,7 +17,11 @@
  *   screening (le recruteur a « switché » l'issue).
  */
 
-import type { DecidedBy, DecisionZone } from '@/types/hitl';
+import {
+  isAwaitingHumanZone,
+  type DecidedBy,
+  type DecisionZone,
+} from '@/types/hitl';
 import type { CandidateStatus } from '@/types/scoring';
 
 export type ScreeningState = 'retenu' | 'ecarte';
@@ -366,9 +370,20 @@ export function journeyFilterKey(j: CandidateJourney): JourneyFilterState {
  * Dérive le parcours à partir du verdict screening + de la ZONE de décision
  * HITL 3 zones (figée à l'analyse) + des marqueurs journal éventuels.
  *
- * HITL 3 zones : la zone GRISE = décision « gated » (en attente d'un humain) ;
- * les zones auto (accept/reject) sont définitives/automatiques. Une ligne
- * historique sans zone (null) est traitée comme non gated (ancien binaire).
+ * Deux notions distinctes, à ne pas fondre en une :
+ *   - la zone GRISE fait passer le screening pour RETENU (le score est dans la
+ *     bande de validation : son « rejected » binaire est provisoire, et il
+ *     n'est éventuellement écarté qu'à la validation) ;
+ *   - `proposed_reject` a bel et bien ÉCHOUÉ au screening — mais son refus
+ *     n'est pas parti et attend un humain : le verdict reste « Écarté au
+ *     screening », en PROVISOIRE (`rejectionGated`) jusqu'à confirmation.
+ * Traiter le second comme le premier le ferait apparaître retenu, ce qu'il
+ * n'est pas ; le traiter comme un refus définitif annoncerait un mail jamais
+ * envoyé.
+ *
+ * `auto_accept` et `auto_reject` (LEGACY) sont définitifs/automatiques. Une
+ * ligne historique sans zone (null) est traitée comme non gated (ancien
+ * binaire).
  *
  * `humanIntervention` est désormais la SOURCE AUTORITAIRE `decidedBy === 'user'`
  * (un humain a tranché un gris), et non plus une dérivation override du verdict.
@@ -387,11 +402,15 @@ export function deriveJourneyFor(
   dismissed = false,
 ): CandidateJourney {
   const gated = decisionZone === 'gray';
+  // Refus SUSPENDU à une décision humaine : gris ET proposé au refus. C'est ce
+  // qui rend le « Écarté au screening » provisoire au lieu de définitif.
+  const rejectionPending = isAwaitingHumanZone(decisionZone);
   // Un GRIS a PASSÉ le screening (score dans la bande de validation) : son
   // statut binaire 'rejected' est PROVISOIRE. Le montrer « Écarté » en
   // présélection est faux — il n'est éventuellement écarté qu'à la VALIDATION
   // (refus humain). On traite donc son screening comme « retenu » ; le rejet
   // remonte alors à la phase Validation RH (et non à la présélection).
+  // `proposed_reject`, lui, garde son verdict : il a réellement échoué.
   const effectiveScreening: CandidateStatus = gated ? 'accepted' : screeningStatus;
   const j = deriveCandidateJourney({
     screeningStatus: effectiveScreening,
@@ -402,7 +421,7 @@ export function deriveJourneyFor(
     recommendation:
       markers?.recommendation ??
       (screeningStatus === 'accepted' ? 'go' : null),
-    rejectionGated: gated,
+    rejectionGated: rejectionPending,
     acceptanceGated: gated,
     dismissed,
   });

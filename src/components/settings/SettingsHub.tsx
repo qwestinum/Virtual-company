@@ -16,7 +16,7 @@
  * affiche un flash).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   CV_SOURCES,
@@ -34,16 +34,34 @@ import {
   type InterviewConfig,
 } from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
+import { DEFAULT_BRANDING_CONFIG, type BrandingConfig } from '@/types/branding';
+import {
+  brandingSummary,
+  countWarnings,
+  integrationsSummary,
+  interviewSummary,
+  resendSummary,
+  senderSummary,
+  synthesisSummary,
+  vivierSummary,
+  type SectionState,
+  type SummarySource,
+} from '@/lib/settings/section-summary';
 
 import { DonneursOrdreManager } from './DonneursOrdreManager';
 import { RecruitersManager } from './RecruitersManager';
 import { EmailListField } from './EmailListField';
 import { EmailMultiSelectField } from './EmailMultiSelectField';
 import { IntegrationCard } from './IntegrationCard';
+import { AgendaSettings } from './AgendaSettings';
+import { BrandingManager } from './BrandingManager';
 import { InterviewConfigManager } from './InterviewConfigManager';
 import { MailboxesManager } from './MailboxesManager';
 import { ResendKeyManager } from './ResendKeyManager';
+import { SettingsGroup } from './SettingsGroup';
 import { SettingsSection } from './SettingsSection';
+import { SettingsToolbar } from './SettingsToolbar';
+import { useSectionToggles } from './useSectionToggles';
 import { SitesManager } from './SitesManager';
 import { VivierConfigManager } from './VivierConfigManager';
 
@@ -65,6 +83,8 @@ type Settings = {
   channelsConfig: Record<string, IntegrationConfig>;
   vivierConfig: VivierConfig;
   interviewConfig: InterviewConfig;
+  /** Identité du cabinet (logo, couleur) — surfaces candidat. */
+  brandingConfig: BrandingConfig;
   /** Clé Resend : statut seulement (la valeur n'est jamais renvoyée). */
   resendApiKeyConfigured: boolean;
   updatedAt: string;
@@ -157,7 +177,40 @@ function ToggleRow({
   );
 }
 
-export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
+/**
+ * Flux réellement CONFIGURABLES : « manuel », « dossier local » et « vivier »
+ * n'ont pas d'identifiants d'API — les compter fausserait le « n sur N ».
+ */
+const INTEGRATION_SOURCES = CV_SOURCES.filter(
+  (source) => source !== 'manual' && source !== 'local_folder' && source !== 'vivier',
+);
+
+/**
+ * Identifiants STABLES des sections, dans l'ordre d'affichage. Ils servent de
+ * clé à la préférence mémorisée : renommer une section ne doit pas rouvrir ce
+ * que l'utilisateur avait replié.
+ */
+const SECTION_IDS = (isAdmin: boolean): string[] => [
+  'hitl',
+  'vivier',
+  'entretiens',
+  'identite',
+  'agendas',
+  ...(isAdmin ? ['recruteurs'] : []),
+  'donneurs',
+  'sites',
+  'boites',
+  'synthese',
+  'expediteur',
+  'resend',
+  'flux',
+  'canaux',
+];
+
+export function SettingsHub({
+  isAdmin = false,
+  currentUserId = null,
+}: { isAdmin?: boolean; currentUserId?: string | null } = {}) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -180,6 +233,8 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
               synthesisEmailsActive: json.settings.synthesisEmailsActive ?? [],
               interviewConfig:
                 json.settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG,
+              brandingConfig:
+                json.settings.brandingConfig ?? DEFAULT_BRANDING_CONFIG,
               resendApiKeyConfigured:
                 json.settings.resendApiKeyConfigured ?? false,
             },
@@ -201,6 +256,12 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
       cancelled = true;
     };
   }, []);
+
+  // Ouverture des sections — AVANT les retours anticipés : un hook appelé
+  // après un `return` conditionnel n'est pas appelé au même rang d'un rendu à
+  // l'autre, et React perd l'association état ↔ hook.
+  const sectionIds = useMemo(() => SECTION_IDS(isAdmin), [isAdmin]);
+  const toggles = useSectionToggles(sectionIds);
 
   if (state.kind === 'loading') {
     return (
@@ -275,8 +336,44 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
     );
   };
 
+  const sectionProps = (id: string, sectionState?: SectionState) => ({
+    open: toggles.isOpen(id),
+    onToggle: () => toggles.toggle(id),
+    summary: sectionState?.summary,
+    status: sectionState?.status,
+  });
+
+  const countConfigured = (config: Record<string, IntegrationConfig>): number =>
+    Object.values(config).filter((c) => c.status === 'configured').length;
+
+  const source: SummarySource = {
+    synthesisEmails: settings.synthesisEmails,
+    synthesisEmailsActive: settings.synthesisEmailsActive,
+    senderEmail: settings.senderEmail,
+    senderEmails: settings.senderEmails,
+    resendApiKeyConfigured: settings.resendApiKeyConfigured,
+    interviewConfig: settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG,
+    vivierConfig: settings.vivierConfig ?? DEFAULT_VIVIER_CONFIG,
+    brandingConfig: settings.brandingConfig ?? DEFAULT_BRANDING_CONFIG,
+    fluxConfigured: countConfigured(settings.fluxConfig),
+    channelsConfigured: countConfigured(settings.channelsConfig),
+  };
+  const states = {
+    synthese: synthesisSummary(source),
+    expediteur: senderSummary(source),
+    resend: resendSummary(source),
+    entretiens: interviewSummary(source),
+    identite: brandingSummary(source),
+    vivier: vivierSummary(source),
+    flux: integrationsSummary(source.fluxConfigured, INTEGRATION_SOURCES.length),
+    canaux: integrationsSummary(
+      source.channelsConfigured,
+      PUBLICATION_CHANNEL_ORDER.length,
+    ),
+  };
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-4">
       {offline ? (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-800 font-body">
           Mode local — Supabase n&apos;est pas connecté. Les valeurs ci-dessous
@@ -290,7 +387,18 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
         </div>
       ) : null}
 
+      <SettingsToolbar
+        warnings={countWarnings(Object.values(states))}
+        openCount={toggles.openCount}
+        total={sectionIds.length}
+        onOpenAll={toggles.openAll}
+        onCloseAll={toggles.closeAll}
+      />
+
+      <SettingsGroup label="Décision & candidats" />
+
       <SettingsSection
+        {...sectionProps('hitl')}
         icon="🛡️"
         title="Validation humaine (Human in the loop)"
         description="La validation humaine se règle désormais PAR CAMPAGNE, via les « Seuils de décision »."
@@ -306,6 +414,7 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
       </SettingsSection>
 
       <SettingsSection
+        {...sectionProps('vivier', states.vivier)}
         icon="🗂️"
         title="Vivier de candidats"
         description="Mode de contact (validation manuelle ou automatique), template du message d'invitation à postuler, cooldown anti-sollicitation et plafond de short-list."
@@ -319,6 +428,7 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
       </SettingsSection>
 
       <SettingsSection
+        {...sectionProps('entretiens', states.entretiens)}
         icon="📅"
         title="Entretiens — messages candidat"
         description="Templates d'acceptation+invitation et de refus (rendus tels quels, sans rédaction par l'IA) et lien d'agenda. L'invitation ne fixe pas de RDV : le candidat choisit son créneau via le lien d'agenda."
@@ -334,25 +444,48 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
         />
       </SettingsSection>
 
+      <SettingsGroup label="Identité & équipe" />
+
       <SettingsSection
-        icon="📥"
-        title="Boîtes de réception des CV"
-        description="Les boîtes mail IMAP surveillées par le poller. Quand un email arrive avec l'ID de campagne dans l'objet et un CV en pièce jointe, l'agent CV Analyzer s'exécute automatiquement."
+        {...sectionProps('identite', states.identite)}
+        icon="🎨"
+        title="Identité du cabinet"
+        description="Logo et couleur d'accent des pages de réservation et des messages d'entretien — ce que voit le candidat. Facultatif : sans configuration, l'apparence reste sobre."
       >
-        <MailboxesManager />
+        <BrandingManager
+          config={settings.brandingConfig ?? DEFAULT_BRANDING_CONFIG}
+          organizationName={
+            (settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG).organisationName.trim() ||
+            null
+          }
+          onSave={(next) =>
+            patchAndSave({ brandingConfig: next }, 'Identité du cabinet mise à jour.')
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        {...sectionProps('agendas')}
+        icon="🗓️"
+        title="Agendas & disponibilités"
+        description="Tes plages d'entretien, tes absences et ton lieu de rencontre — ce sur quoi les candidats réservent quand la campagne est en réservation native. Un administrateur peut ouvrir l'agenda d'un autre recruteur."
+      >
+        <AgendaSettings currentUserId={currentUserId} isAdmin={isAdmin} />
       </SettingsSection>
 
       {isAdmin ? (
         <SettingsSection
+          {...sectionProps('recruteurs')}
           icon="🧑‍💼"
           title="Recruteurs"
-          description="Les utilisateurs de l'espace (multi-utilisateur) : nom, lien Cal.com personnel (agendas d'entretien individuels), rôle et désactivation. Section réservée aux administrateurs."
+          description="Les utilisateurs de l'espace (multi-utilisateur) : nom, lien Cal.com personnel, rôle et désactivation. Les disponibilités se règlent dans « Agendas & disponibilités ». Section réservée aux administrateurs."
         >
           <RecruitersManager />
         </SettingsSection>
       ) : null}
 
       <SettingsSection
+        {...sectionProps('donneurs')}
         icon="🏢"
         title="Donneurs d'ordre"
         description="Les personnes (côté client) qui initient les campagnes — distinctes de l'utilisateur ORQA. Une campagne a un seul donneur d'ordre. Dimension consommée par le module Reporting."
@@ -361,6 +494,7 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
       </SettingsSection>
 
       <SettingsSection
+        {...sectionProps('sites')}
         icon="📍"
         title="Sites"
         description="Les implantations géographiques ou organisationnelles de rattachement des campagnes (multi-sites). Une campagne a un seul site. Un site « par défaut » existe pour les organisations mono-site."
@@ -368,7 +502,19 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
         <SitesManager />
       </SettingsSection>
 
+      <SettingsGroup label="Réception & envoi des mails" />
+
       <SettingsSection
+        {...sectionProps('boites')}
+        icon="📥"
+        title="Boîtes de réception des CV"
+        description="Les boîtes mail IMAP surveillées par le poller. Quand un email arrive avec l'ID de campagne dans l'objet et un CV en pièce jointe, l'agent CV Analyzer s'exécute automatiquement."
+      >
+        <MailboxesManager />
+      </SettingsSection>
+
+      <SettingsSection
+        {...sectionProps('synthese', states.synthese)}
         icon="📝"
         title="Adresses de synthèse"
         description="Destinataires des briefings d'entretien. Cochez chaque adresse qui doit recevoir les briefings — le mail ne part qu'aux adresses cochées. Le recruteur référent d'une campagne reçoit TOUJOURS les briefings de ses campagnes en plus de cette liste (jamais en double s'il y figure déjà)."
@@ -419,6 +565,7 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
       </SettingsSection>
 
       <SettingsSection
+        {...sectionProps('expediteur', states.expediteur)}
         icon="📤"
         title="Adresses expéditeur"
         description="Adresses depuis lesquelles les mails (invitations, refus) sont envoyés. Doivent appartenir à un domaine vérifié côté Resend."
@@ -464,6 +611,7 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
       </SettingsSection>
 
       <SettingsSection
+        {...sectionProps('resend', states.resend)}
         icon="📧"
         title="Service email (Resend)"
         description="Clé API Resend utilisée pour l'envoi des mails (invitations, refus, briefs). Pilotable ici — plus besoin de toucher au .env.local ni de redémarrer le serveur. La clé est stockée côté serveur et n'est jamais réaffichée."
@@ -474,7 +622,10 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
         />
       </SettingsSection>
 
+      <SettingsGroup label="Intégrations" />
+
       <SettingsSection
+        {...sectionProps('flux', states.flux)}
         icon="🔌"
         title="Intégrations — Flux d'arrivée"
         description="Identifiants d'API pour les canaux de réception automatique de CV. Configurez celles dont vous avez besoin ; les autres restent en mode manuel."
@@ -510,6 +661,7 @@ export function SettingsHub({ isAdmin = false }: { isAdmin?: boolean } = {}) {
       </SettingsSection>
 
       <SettingsSection
+        {...sectionProps('canaux', states.canaux)}
         icon="📢"
         title="Intégrations — Canaux de diffusion"
         description="Credentials pour publier les annonces sur les jobboards. Sans configuration, la diffusion reste en mode trace (l'annonce est rédigée mais pas publiée)."

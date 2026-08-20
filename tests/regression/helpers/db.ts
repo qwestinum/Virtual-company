@@ -37,18 +37,31 @@ type DelFilter =
   | { col: string; like: string };
 
 /**
- * DELETE filtré, tolérant aux tables absentes (migration pas encore passée
- * sur l'environnement) — toute autre erreur ÉCHOUE le clean, jamais en
- * silence.
+ * Codes d'une TABLE absente : migration pas encore passée sur cet
+ * environnement. C'est le seul cas tolérable.
+ *   42P01 = undefined_table · PGRST205 = table introuvable au cache PostgREST
+ */
+const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST205']);
+
+/**
+ * DELETE filtré, tolérant à une TABLE absente uniquement.
+ *
+ * ⚠️ La tolérance portait avant sur le message (`/does not exist/`), donc elle
+ * avalait aussi « column x.y does not exist » — une COLONNE mal nommée dans le
+ * nettoyage passait pour un environnement en retard. Conséquence réelle :
+ * `mailboxes.email` (la colonne s'appelle `user_email`) n'a jamais rien
+ * supprimé, et 30 boîtes de test se sont accumulées sur l'environnement de dev
+ * entre le 26/07 et le 17/08/2026, sans qu'aucun run ne le signale.
+ * Un nom de colonne faux est une faute du nettoyage : il doit ÉCHOUER.
  */
 async function del(table: string, filter: DelFilter): Promise<void> {
   const base = db().from(table).delete();
   const q =
     'in' in filter ? base.in(filter.col, filter.in) : base.like(filter.col, filter.like);
   const { error } = await q;
-  if (error && !/does not exist|schema cache/i.test(error.message)) {
-    throw new Error(`clean ${table}: ${error.message}`);
-  }
+  if (!error) return;
+  if (MISSING_TABLE_CODES.has(error.code)) return;
+  throw new Error(`clean ${table}.${filter.col}: ${error.message}`);
 }
 
 /**
@@ -110,8 +123,9 @@ export async function cleanAll(): Promise<void> {
     like: `%@${TEST_EMAIL_DOMAIN}`,
   });
 
-  // Boîtes mail de test.
-  await del('mailboxes', { col: 'email', like: `%@${TEST_EMAIL_DOMAIN}` });
+  // Boîtes mail de test. La colonne est `user_email` — pas `email` (les
+  // associations `campaign_mailboxes` partent en cascade).
+  await del('mailboxes', { col: 'user_email', like: `%@${TEST_EMAIL_DOMAIN}` });
 
   // Claims d'envoi des tests (pseudo-mailboxes hitl/dismissal) — sans ce
   // nettoyage, un run suivant verrait « duplicate » et n'enverrait plus.

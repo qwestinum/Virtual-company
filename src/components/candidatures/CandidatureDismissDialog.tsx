@@ -17,14 +17,25 @@ import {
   INDIVIDUAL_DISMISSAL_REASONS,
   type DismissalReason,
 } from '@/types/dismissal';
-import type { CandidateListItem } from '@/types/reporting';
+/**
+ * Ce dont le dialog a RÉELLEMENT besoin — pas une ligne de liste complète.
+ * `CandidateListItem` satisfait cette forme, donc les appels existants ne
+ * changent pas ; et la page Entretiens peut réutiliser LE dialog au lieu d'en
+ * écrire un second qui divergerait au premier changement de matrice de mails.
+ */
+export type DismissableCandidature = {
+  /** Identifiant d'ANALYSE — la clé de la route de classement. */
+  id: string;
+  candidateName: string;
+  candidateEmail: string | null;
+};
 
 export function CandidatureDismissDialog({
   item,
   onClose,
   onDismissed,
 }: {
-  item: CandidateListItem;
+  item: DismissableCandidature;
   onClose: () => void;
   onDismissed: () => void;
 }) {

@@ -13,6 +13,7 @@ import {
   signalCount,
   useBusinessSignals,
 } from '@/components/notifications/useBusinessSignals';
+import { InterviewsWorkspace } from '@/components/interviews/InterviewsWorkspace';
 import { ReportingHub } from '@/components/reporting/ReportingHub';
 import { ValidationsHub } from '@/components/validations/ValidationsHub';
 import { VivierValidationsWorklist } from '@/components/vivier/VivierValidationsWorklist';
@@ -24,6 +25,7 @@ type Tab =
   | 'rh'
   | 'campagnes'
   | 'candidatures'
+  | 'entretiens'
   | 'validations'
   | 'vivier'
   | 'reporting';
@@ -32,6 +34,7 @@ const TABS: { id: Tab; label: string; available: boolean }[] = [
   { id: 'rh', label: 'Bureau', available: true },
   { id: 'campagnes', label: 'Campagnes', available: true },
   { id: 'candidatures', label: 'Candidatures', available: true },
+  { id: 'entretiens', label: 'Entretiens', available: true },
   { id: 'validations', label: 'Validation suspendue', available: true },
   { id: 'vivier', label: 'Validations vivier', available: true },
   { id: 'reporting', label: 'Reporting', available: true },
@@ -91,6 +94,9 @@ export function WorkspacePane() {
   const [candidaturesStage, setCandidaturesStage] = useState<CandidateStage | null>(null);
   const [candidaturesCampaignId, setCandidaturesCampaignId] = useState<string | null>(null);
   const [candidaturesEverInvited, setCandidaturesEverInvited] = useState(false);
+  const [interviewsSection, setInterviewsSection] = useState<
+    'a_pointer' | 'awaiting' | null
+  >(null);
   const [candidaturesEverInterviewed, setCandidaturesEverInterviewed] =
     useState(false);
   const pendingCount = usePendingValidationsCount();
@@ -113,6 +119,10 @@ export function WorkspacePane() {
     if (target.tab === 'candidatures') {
       setCandidaturesStage(target.stage);
       setTab('candidatures');
+    } else if (target.tab === 'entretiens') {
+      setCandidaturesStage(null);
+      setInterviewsSection(target.section);
+      setTab('entretiens');
     } else {
       setCandidaturesStage(null);
       setTab(target.tab);
@@ -141,6 +151,7 @@ export function WorkspacePane() {
         vivierCount={vivierCount}
         overdueValidations={signalCount(businessSignals, 'pending_validations_overdue')}
         interviewsAwaiting={signalCount(businessSignals, 'interviews_awaiting_decision')}
+        interviewsToPoint={signalCount(businessSignals, 'interviews_awaiting_pointing')}
       />
       <div className="relative flex-1 overflow-hidden">
         {tab === 'rh' ? (
@@ -159,6 +170,13 @@ export function WorkspacePane() {
             initialCampaignId={candidaturesCampaignId}
             initialEverInvited={candidaturesEverInvited}
             initialEverInterviewed={candidaturesEverInterviewed}
+          />
+        ) : tab === 'entretiens' ? (
+          // `key` : une nouvelle cible de signal doit ROUVRIR l'écran sur le
+          // bon onglet, même si la page est déjà affichée.
+          <InterviewsWorkspace
+            key={interviewsSection ?? 'default'}
+            initialSection={interviewsSection}
           />
         ) : tab === 'validations' ? (
           <div className="h-full overflow-auto px-6 py-6">
@@ -206,6 +224,7 @@ function WorkspaceTabs({
   vivierCount,
   overdueValidations,
   interviewsAwaiting,
+  interviewsToPoint,
 }: {
   current: Tab;
   onChange: (tab: Tab) => void;
@@ -215,6 +234,8 @@ function WorkspaceTabs({
   overdueValidations: number;
   /** Signal métier : entretiens réalisés sans décision (ambre). */
   interviewsAwaiting: number;
+  /** Signal métier : entretiens passés jamais pointés (ambre). */
+  interviewsToPoint: number;
 }) {
   return (
     <nav
@@ -261,6 +282,12 @@ function WorkspaceTabs({
               <OverdueBadge
                 count={interviewsAwaiting}
                 title={`${interviewsAwaiting} candidat${interviewsAwaiting > 1 ? 's' : ''} en attente de décision après entretien`}
+              />
+            ) : null}
+            {tab.id === 'entretiens' && interviewsToPoint > 0 ? (
+              <OverdueBadge
+                count={interviewsToPoint}
+                title={`${interviewsToPoint} entretien${interviewsToPoint > 1 ? 's' : ''} passé${interviewsToPoint > 1 ? 's' : ''} sans pointage`}
               />
             ) : null}
             {tab.id === 'vivier' && vivierCount > 0 ? (

@@ -18,6 +18,11 @@ function ports(over: Partial<OutreachGatePorts> = {}): {
   return { send, enqueue, ports: { send, enqueue, ...over } };
 }
 
+/**
+ * ⚠️ Le test central de la conformité RGPD : AUCUN refus ne part sans humain.
+ * Si « proposed_reject → file » venait à passer au rouge, c'est que le refus
+ * automatique est revenu — ne jamais « réparer » en changeant l'attente.
+ */
 describe('gateCandidateOutreach — HITL 3 zones', () => {
   it('auto_accept → envoie (jamais de file)', async () => {
     const { ports: p, send, enqueue } = ports();
@@ -27,12 +32,27 @@ describe('gateCandidateOutreach — HITL 3 zones', () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it('auto_reject → envoie (jamais de file)', async () => {
+  it('proposed_reject → file, n’envoie JAMAIS (conformité RGPD)', async () => {
+    const { ports: p, send, enqueue } = ports();
+    const out = await gateCandidateOutreach('proposed_reject', p);
+    expect(out).toEqual({ kind: 'queued' });
+    expect(enqueue).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('proposed_reject + file NON persistée → deferred, rien ne part', async () => {
+    const { ports: p, send } = ports({ enqueue: async () => false });
+    const out = await gateCandidateOutreach('proposed_reject', p);
+    expect(out).toEqual({ kind: 'deferred', reason: 'enqueue_unpersisted' });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('auto_reject (LEGACY) → file elle aussi : le repli ne réenvoie jamais', async () => {
     const { ports: p, send, enqueue } = ports();
     const out = await gateCandidateOutreach('auto_reject', p);
-    expect(out).toEqual({ kind: 'sent' });
-    expect(send).toHaveBeenCalledOnce();
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(out).toEqual({ kind: 'queued' });
+    expect(enqueue).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('gray + file persistée → queued (n’envoie JAMAIS)', async () => {
@@ -50,11 +70,11 @@ describe('gateCandidateOutreach — HITL 3 zones', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('propage le SendResult non-sent du port (ex. skipped) sur une zone auto', async () => {
+  it('propage le SendResult non-sent du port (ex. skipped) sur l’acceptation auto', async () => {
     const { ports: p } = ports({
       send: async () => ({ kind: 'skipped', reason: 'no_email' }),
     });
-    const out = await gateCandidateOutreach('auto_reject', p);
+    const out = await gateCandidateOutreach('auto_accept', p);
     expect(out).toEqual({ kind: 'skipped', reason: 'no_email' });
   });
 

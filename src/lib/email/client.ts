@@ -62,6 +62,13 @@ export function requireEmailClient(): EmailClient {
 export type EmailAttachment = {
   filename: string;
   content: string;
+  /**
+   * Type MIME explicite. Sans lui, Resend le déduit de l'extension — ce qui
+   * suffit pour un PDF, mais pas pour une invitation d'agenda : c'est le
+   * paramètre `method` de `text/calendar` qui décide si les clients affichent
+   * une invitation ou une simple pièce jointe.
+   */
+  contentType?: string;
 };
 
 export type SendEmailInput = {

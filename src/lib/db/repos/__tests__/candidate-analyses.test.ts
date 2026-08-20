@@ -164,8 +164,8 @@ describe('deriveDecisionZone (lot 1 : seuil unique)', () => {
   it('accepted → auto_accept', () => {
     expect(deriveDecisionZone('accepted')).toBe('auto_accept');
   });
-  it('rejected → auto_reject', () => {
-    expect(deriveDecisionZone('rejected')).toBe('auto_reject');
+  it('rejected → proposed_reject', () => {
+    expect(deriveDecisionZone('rejected')).toBe('proposed_reject');
   });
 });
 
@@ -204,7 +204,7 @@ describe('insertCandidateAnalysis — capture « système »', () => {
     });
   });
 
-  it('statut rejected → decision_zone auto_reject', async () => {
+  it('statut rejected → decision_zone proposed_reject', async () => {
     const { insert } = captureInsert();
     const rejected = {
       ...ROW.application,
@@ -212,7 +212,7 @@ describe('insertCandidateAnalysis — capture « système »', () => {
     };
     await insertCandidateAnalysis(insertInput({ application: rejected }));
     expect(insert.mock.calls[0]![0]).toMatchObject({
-      decision_zone: 'auto_reject',
+      decision_zone: 'proposed_reject',
       decided_by: 'auto',
     });
   });

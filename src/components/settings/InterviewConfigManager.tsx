@@ -9,7 +9,10 @@
 
 import { useState } from 'react';
 
-import type { InterviewConfig } from '@/types/interview-settings';
+import {
+  DEFAULT_INTERVIEW_CONFIG,
+  type InterviewConfig,
+} from '@/types/interview-settings';
 
 export function InterviewConfigManager({
   config,
@@ -109,6 +112,25 @@ export function InterviewConfigManager({
           Variables : [prénom], [nom], [intitulé du poste], [nom de la
           campagne], [organisation], [nom du recruteur]. Le motif interne
           d&apos;analyse n&apos;est jamais exposé au candidat.
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="font-semibold text-stone-700">
+          Template du message de nouveau créneau
+        </span>
+        <textarea
+          value={draft.rescheduleTemplate ?? DEFAULT_INTERVIEW_CONFIG.rescheduleTemplate}
+          onChange={(e) => set('rescheduleTemplate', e.currentTarget.value)}
+          rows={8}
+          className="w-full rounded-md border border-stone-200 px-3 py-2 font-mono text-[12px] text-stone-700 outline-none focus:border-emerald-400"
+        />
+        <span className="text-[11px] text-stone-400">
+          Envoyé quand un rendez-vous déjà pris tombe : le cabinet décale, ou le
+          candidat a annulé. Il ne réannonce PAS la sélection — le candidat l&apos;a
+          déjà reçue. Variables : les mêmes, plus{' '}
+          <code>[intro]</code> (la phrase de fait — qui a décalé et quand,
+          rédigée automatiquement) et <code>[lien d&apos;agenda]</code>.
         </span>
       </label>
 

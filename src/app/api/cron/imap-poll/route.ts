@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server';
 
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { pollAllMailboxes } from '@/lib/imap/poller';
+import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -45,10 +46,15 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   try {
     const outcomes = await pollAllMailboxes();
+    // Rail de livraison des rendez-vous natifs : les surfaces candidat
+    // n'exécutent aucun traitement métier, c'est ici que les briefings
+    // partent. Ne peut pas faire échouer la relève (drain fail-soft).
+    const drained = await drainSchedulingEvents();
     return NextResponse.json({
       ok: true,
       polledAt: new Date().toISOString(),
       mailboxesPolled: outcomes.length,
+      bookingEvents: drained,
     });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

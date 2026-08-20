@@ -15,6 +15,7 @@
  *     de stage parallèle.
  */
 import { chunk } from '@/lib/db/paginate';
+import { listBriefsByStatus } from '@/lib/db/repos/interview-briefs';
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
   countOverduePendingValidations,
@@ -53,6 +54,30 @@ export function buildInterviewsAwaitingMessage(count: number): string {
   return count === 1
     ? '1 candidat a passé son entretien et attend votre décision.'
     : `${count} candidats ont passé leur entretien et attendent votre décision.`;
+}
+
+export function buildInterviewsPointingMessage(count: number): string {
+  return count === 1
+    ? '1 entretien passé attend votre pointage (réalisé ou absent).'
+    : `${count} entretiens passés attendent votre pointage (réalisé ou absent).`;
+}
+
+/**
+ * Briefings dont l'entretien est TERMINÉ depuis assez longtemps pour qu'un
+ * pointage soit attendu. Pur : la règle de sélection est testable sans base.
+ *
+ * Un entretien sans date de fin est ignoré — on ne déclare pas « passé » ce
+ * qu'on ne sait pas dater.
+ */
+export function selectUnpointedBriefs<
+  T extends { uid: string | null; interviewEndAt: string | null },
+>(briefs: T[], cutoffMs: number): T[] {
+  return briefs.filter(
+    (b) =>
+      b.uid !== null &&
+      b.interviewEndAt !== null &&
+      Date.parse(b.interviewEndAt) < cutoffMs,
+  );
 }
 
 /**
@@ -132,6 +157,55 @@ async function computeInterviewsAwaitingDecision(
   };
 }
 
+// ─── Signal 3 — entretiens passés sans pointage ────────────────────────────
+
+/**
+ * Un entretien terminé qui n'a été ni pointé « réalisé » ni pointé « absent »
+ * laisse la candidature figée : ni décision, ni relance. Le système le
+ * SIGNALE, il ne le transitionne jamais tout seul — un no-show est un fait
+ * que seul un humain constate.
+ *
+ * Extinction PAR CONSTRUCTION, comme les signaux 1 et 2 : la sélection retient
+ * les seules étapes encore ouvertes (`invite` / `rdv_pris`). Pointer, classer
+ * sans suite ou trancher fait sortir la ligne sans logique dédiée.
+ */
+async function computeInterviewsAwaitingPointing(
+  nowMs: number,
+): Promise<BusinessSignal | null> {
+  const hours = BUSINESS_NOTIFICATION_THRESHOLDS.interviewPointingAgeHours;
+  const briefs = await listBriefsByStatus('scheduled').catch(() => []);
+  const candidates = selectUnpointedBriefs(briefs, nowMs - hours * 3_600_000);
+  if (candidates.length === 0) return null;
+
+  const signals = await loadStageSignals();
+  const uids = candidates.map((b) => b.uid as string);
+  const open: { uid: string; endAt: string }[] = [];
+  for (const part of chunk(uids, 300)) {
+    const analyses = await listAllCandidateAnalyses({ uidIn: part });
+    const byUid = new Map(analyses.map((a) => [a.uid, a]));
+    for (const brief of candidates) {
+      const analysis = byUid.get(brief.uid as string);
+      if (!analysis) continue;
+      const stage = stageFor(analysis, signals);
+      // `entretien_fait` relève du signal 2 (décision attendue) : on ne
+      // réclame pas deux fois la même chose pour un seul dossier.
+      if (stage !== 'invite' && stage !== 'rdv_pris') continue;
+      open.push({ uid: analysis.uid, endAt: brief.interviewEndAt as string });
+    }
+  }
+  if (open.length === 0) return null;
+
+  const oldestMs = Math.min(...open.map((o) => Date.parse(o.endAt)));
+  return {
+    key: 'interviews_awaiting_pointing',
+    count: open.length,
+    oldestDays: daysSinceIso(new Date(oldestMs).toISOString(), nowMs),
+    message: buildInterviewsPointingMessage(open.length),
+    ctaLabel: 'Pointer les entretiens passés',
+    target: { tab: 'entretiens', section: 'a_pointer' },
+  };
+}
+
 // ─── Registre ──────────────────────────────────────────────────────────────
 
 export type BusinessSignalDefinition = {
@@ -144,6 +218,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'interviews_awaiting_decision',
     compute: (nowMs) => computeInterviewsAwaitingDecision(nowMs),
+  },
+  {
+    key: 'interviews_awaiting_pointing',
+    compute: computeInterviewsAwaitingPointing,
   },
 ];
 

@@ -8,7 +8,9 @@
  *      part peut-être, on ne classe pas sous incertitude ;
  *   2. classement conditionnel de l'analyse (`dismissed_at is null`, un seul
  *      gagnant, idempotent) ;
- *   3. annulation des briefs d'entretien ouverts (booking posthume bloqué) ;
+ *   3. annulation des briefs d'entretien ouverts (booking posthume bloqué),
+ *      puis, en réservation native, révocation du lien et décommande d'un
+ *      rendez-vous à venir SANS notifier le candidat (une seule voix) ;
  *   4. mail d'information OPTIONNEL sous claim deux-phases
  *      (`candidature_dismissal`/analysisId/`dismiss` — claim AVANT sendEmail,
  *      confirm APRÈS, release sur échec : rails identiques à l'outreach) ;
@@ -34,6 +36,8 @@ import {
 } from '@/lib/db/repos/imap-outreach-claims';
 import {
   cancelOpenBriefsForCandidate,
+  getLatestBriefByUid,
+  markBriefAwaitingBooking,
   restoreCancelledBriefsForCandidate,
 } from '@/lib/db/repos/interview-briefs';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
@@ -44,6 +48,11 @@ import {
   voidPendingValidation,
 } from '@/lib/db/repos/pending-validations';
 import { getSenderEmail } from '@/lib/email/addresses';
+import {
+  cancelBookingForAnalysis,
+  isBookingStillConfirmed,
+  revokeCampaignBookingLink,
+} from '@/lib/scheduling-host/campaign-booking';
 import { sendEmail } from '@/lib/email/client';
 import { dismissalMailAllowed, type DismissalReason } from '@/types/dismissal';
 import type { DecidedBy, HumanDecider } from '@/types/hitl';
@@ -208,6 +217,28 @@ export async function dismissCandidature(
     console.error('[dismissal] cancelOpenBriefsForCandidate failed', err);
   }
 
+  // 3 bis. Réservation NATIVE : le lien meurt vraiment, et un rendez-vous à
+  // venir est décommandé. `notifyAttendee: false` — le mail d'information de
+  // l'étape 4 porte déjà la nouvelle ; deux messages pour un même fait, c'est
+  // une voix de trop. Best-effort, comme les briefs.
+  let bookingCancelled = false;
+  try {
+    await revokeCampaignBookingLink(
+      analysis.campaignId,
+      analysis.id,
+      `classée sans suite (${opts.reason})`,
+    );
+    bookingCancelled =
+      (await cancelBookingForAnalysis({
+        campaignId: analysis.campaignId,
+        analysisId: analysis.id,
+        reason: 'candidature classée sans suite',
+        notifyAttendee: false,
+      })) === 'cancelled';
+  } catch (err) {
+    console.error('[dismissal] révocation/annulation de réservation KO', err);
+  }
+
   // 4. Mail d'information (optionnel, sous claim).
   let mailStatus: DismissalMailStatus = 'not_requested';
   if (opts.sendMail) {
@@ -231,6 +262,9 @@ export async function dismissCandidature(
       candidateEmail: analysis.candidateEmail,
       reason: opts.reason,
       voidedValidationId,
+      // Le rendez-vous décommandé au nom de l'organisation : le candidat n'en
+      // reçoit PAS d'avis séparé (une seule voix), donc la trace vit ici.
+      bookingCancelled,
       mailStatus,
       mailSent: mailStatus === 'sent' || mailStatus === 'duplicate',
     },
@@ -281,8 +315,21 @@ export async function reopenCandidature(
   } catch (err) {
     console.error('[dismissal] unvoid failed', err);
   }
+  let restoredBriefs = 0;
   try {
-    await restoreCancelledBriefsForCandidate({ uid: analysis.uid });
+    restoredBriefs = await restoreCancelledBriefsForCandidate({
+      uid: analysis.uid,
+    });
+    // La restauration relit `booking_uid` comme preuve d'un rendez-vous pris.
+    // En réservation native, ce rendez-vous a pu être DÉCOMMANDÉ pendant le
+    // classement : le briefing repart alors « en attente de réservation »
+    // plutôt que d'afficher un créneau qui n'existe plus. Un identifiant hors
+    // module (Cal.com) rend `null` ⇒ comportement historique conservé.
+    const restored = await getLatestBriefByUid(analysis.uid).catch(() => null);
+    const bookingUid = restored?.bookingUid ?? null;
+    if ((await isBookingStillConfirmed(bookingUid)) === false && bookingUid) {
+      await markBriefAwaitingBooking(bookingUid);
+    }
   } catch (err) {
     console.error('[dismissal] brief restore failed', err);
   }
@@ -296,6 +343,7 @@ export async function reopenCandidature(
       analysisId: analysis.id,
       candidateName: analysis.candidateName,
       restoredValidation,
+      restoredBriefs,
     },
   });
   return 'reopened';

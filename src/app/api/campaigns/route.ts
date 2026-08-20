@@ -15,7 +15,8 @@ import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 
 import { reconcileLifecycle } from '@/lib/campaign/lifecycle';
-import { listCampaigns, upsertCampaign } from '@/lib/db/repos/campaigns';
+import { getApiUser } from '@/lib/auth/require-api-user';
+import { getCampaign, listCampaigns, upsertCampaign } from '@/lib/db/repos/campaigns';
 import {
   canReceiveReplay,
   drainPendingSheetCvs,
@@ -128,6 +129,18 @@ export async function PUT(request: Request): Promise<NextResponse> {
     // Pas de défaut « manuel » : sans sources explicites = aucun flux (intake
     // non fait). Cohérent avec le store et la réhydratation repo.
     const sources = parsed.sources ?? [];
+    // RÉFÉRENT par défaut = la personne qui crée. Une campagne sans référent
+    // n'a pas d'agenda d'entretien, et personne ne pense à en désigner un
+    // avant d'en avoir besoin. On ne remplace JAMAIS un référent existant :
+    // le client peut omettre le champ sans effacer quoi que ce soit.
+    const existing = await getCampaign(parsed.id).catch(() => null);
+    const creator = await getApiUser().catch(() => null);
+    // `null` EXPLICITE = « aucun référent », un choix que le DRH doit pouvoir
+    // exprimer ; seule l'ABSENCE du champ déclenche le défaut.
+    const ownerUserId =
+      parsed.ownerUserId !== undefined
+        ? parsed.ownerUserId
+        : (existing?.ownerUserId ?? creator?.id ?? null);
     const saved = await upsertCampaign({
       ...parsed,
       // Défaut « tout gris » 0/100 ici (création serveur sans poignées explicites
@@ -137,7 +150,7 @@ export async function PUT(request: Request): Promise<NextResponse> {
       sources,
       siteId: parsed.siteId ?? null,
       donneurOrdreId: parsed.donneurOrdreId ?? null,
-      ownerUserId: parsed.ownerUserId ?? null,
+      ownerUserId,
       prefillExtraction: parsed.prefillExtraction ?? null,
       // Dates de cycle de vie gérées par patchCampaign (transitions de statut)
       // — upsertCampaign retire les clés nulles pour ne pas écraser l'existant.

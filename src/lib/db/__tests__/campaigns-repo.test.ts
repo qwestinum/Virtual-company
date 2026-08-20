@@ -41,6 +41,7 @@ function buildCampaign(overrides: Partial<ActiveCampaign> = {}): ActiveCampaign 
     siteId: null,
     donneurOrdreId: null,
     ownerUserId: null,
+    schedulingNative: false,
     status: 'in_progress',
     lifecycle: buildLifecycle(),
     launchedAt: null,

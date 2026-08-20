@@ -95,11 +95,13 @@ describe('S3 — zones de décision', () => {
     expect(journal.some((j) => j.payload.uid === taskId)).toBe(true);
   });
 
-  it('CV clairement FAIBLE (rédhibitoire raté) → auto_reject (fourchette basse)', async () => {
+  it('CV clairement FAIBLE (rédhibitoire raté) → proposed_reject, AUCUN mail', async () => {
     const taskId = `treg_s3_faible_${Date.now().toString(36)}`;
     const { application } = await analyze('faible', taskId);
 
-    expect(application.scoringResult.decisionZone).toBe('auto_reject');
+    // Conformité RGPD : sous le seuil bas, on PROPOSE le refus — on ne l'envoie
+    // pas. `auto_reject` ne doit plus jamais être produite.
+    expect(application.scoringResult.decisionZone).toBe('proposed_reject');
     expect(application.scoringResult.status).toBe('rejected');
     expect(application.scoringResult.totalScore).toBeLessThanOrEqual(40);
     // Le rédhibitoire raté doit être tracé comme échec dur.
@@ -109,8 +111,10 @@ describe('S3 — zones de décision', () => {
       'candidate_analyses',
       taskId,
     );
-    expect(row.decision_zone).toBe('auto_reject');
+    expect(row.decision_zone).toBe('proposed_reject');
     expect(row.decided_by).toBe('auto');
+    // Le statut binaire est provisoire, comme pour un gris : rien n'est parti.
+    expect(sentEmails).toHaveLength(0);
   });
 
   it('CV MOYEN → zone grise, pending_validation créée, AUCUN mail parti', async () => {

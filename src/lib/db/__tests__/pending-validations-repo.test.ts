@@ -61,36 +61,73 @@ const ROW = {
   decided_by_user_email: null,
 };
 
+/**
+ * Chaîne PostgREST d'une lecture keyset : select → in/eq → [gt] → order → limit.
+ * `pages` est servi dans l'ordre, une page par appel de `limit`.
+ */
+function keysetQuery(
+  pages: Record<string, unknown>[][],
+  error: { code: string } | null = null,
+) {
+  let call = 0;
+  const limit = vi.fn().mockImplementation(async () => ({
+    data: error ? null : (pages[call++] ?? []),
+    error,
+  }));
+  const order = vi.fn().mockReturnValue({ limit });
+  const gt = vi.fn().mockReturnValue({ order, limit });
+  const inFilter = vi.fn().mockReturnValue({ gt, order, limit });
+  const eq = vi.fn().mockReturnValue({ gt, order, limit });
+  const select = vi.fn().mockReturnValue({ in: inFilter, eq, gt, order, limit });
+  return { select, inFilter, eq, gt, order, limit };
+}
+
 describe('pending-validations repo', () => {
   beforeEach(() => requireServerSupabaseMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
   it('liste les validations EN ATTENTE (pending + sending) mappées en domaine', async () => {
-    const order = vi.fn().mockResolvedValue({ data: [ROW], error: null });
-    const inFilter = vi.fn().mockReturnValue({ order });
-    const select = vi.fn().mockReturnValue({ in: inFilter });
-    const from = vi.fn().mockReturnValue({ select });
+    const q = keysetQuery([[ROW]]);
+    const from = vi.fn().mockReturnValue({ select: q.select });
     requireServerSupabaseMock.mockReturnValue({ from } as never);
 
     const result = await listPendingValidations();
     expect(from).toHaveBeenCalledWith('pending_validations');
     // `sending` = réservation d'envoi en cours (audit C6) : encore « en
     // attente » pour TOUS les lecteurs, jamais un état terminal.
-    expect(inFilter).toHaveBeenCalledWith('status', ['pending', 'sending']);
+    expect(q.inFilter).toHaveBeenCalledWith('status', ['pending', 'sending']);
+    // Pagination KEYSET : curseur sur la PK, ordre PK ASC, page bornée — sans
+    // quoi PostgREST plafonnerait la file à 1000 lignes SANS le dire.
+    expect(q.order).toHaveBeenCalledWith('id', { ascending: true });
+    expect(q.limit).toHaveBeenCalledWith(1000);
     expect(result).toHaveLength(1);
     expect(result[0]!.campaignId).toBe('CAMP-1');
     expect(result[0]!.decision).toBe('accept');
     expect(result[0]!.payload).toEqual({ foo: 'bar' });
   });
 
-  it('liste → [] si la table est absente (migration HITL pas passée)', async () => {
-    const order = vi
-      .fn()
-      .mockResolvedValue({ data: null, error: { code: '42P01' } });
-    const inFilter = vi.fn().mockReturnValue({ order });
-    const select = vi.fn().mockReturnValue({ in: inFilter });
+  it('pagine au-delà d’une page pleine (zéro troncature silencieuse)', async () => {
+    // Page 1 PLEINE (1000 lignes) → la boucle DOIT redemander après le curseur.
+    const page1 = Array.from({ length: 1000 }, (_, i) => ({
+      ...ROW,
+      id: `PV-${String(i).padStart(4, '0')}`,
+    }));
+    const page2 = [{ ...ROW, id: 'PV-1000' }];
+    const q = keysetQuery([page1, page2]);
     requireServerSupabaseMock.mockReturnValue({
-      from: vi.fn().mockReturnValue({ select }),
+      from: vi.fn().mockReturnValue({ select: q.select }),
+    } as never);
+
+    const result = await listPendingValidations();
+    expect(result).toHaveLength(1001);
+    // Le curseur repart de la DERNIÈRE ligne de la page précédente.
+    expect(q.gt).toHaveBeenCalledWith('id', 'PV-0999');
+  });
+
+  it('liste → [] si la table est absente (migration HITL pas passée)', async () => {
+    const q = keysetQuery([], { code: '42P01' });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({ select: q.select }),
     } as never);
     expect(await listPendingValidations()).toEqual([]);
   });

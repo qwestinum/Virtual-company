@@ -3,9 +3,12 @@
  * de campagne) racontent le MÊME scénario chiffré.
  *
  * Jeu connu : N=4 candidatures sur une campagne neuve — 1 auto-accept (fort),
- * 1 auto-reject (faible), 2 grises (moyen, mises en file). Les compteurs du
- * Bureau étant GLOBAUX (toutes campagnes de la base dev), ils sont assertés en
- * DELTA (avant/après) ; le ruban et le rapport, scopés campagne, en ABSOLU.
+ * 1 PROPOSÉE au refus (faible) et 2 grises (moyen), toutes trois mises en file.
+ * Depuis la conformité RGPD, la zone basse n'envoie plus : elle attend un
+ * humain, exactement comme un gris — d'où 3 candidatures « à valider » et
+ * AUCUN refus automatique dans ce scénario. Les compteurs du Bureau étant
+ * GLOBAUX (toutes campagnes de la base dev), ils sont assertés en DELTA
+ * (avant/après) ; le ruban et le rapport, scopés campagne, en ABSOLU.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -24,7 +27,12 @@ import { cvApplicationToMailCandidate, type MailCandidate } from '@/types/mail-c
 import type { CVApplication } from '@/types/cv-analysis';
 
 import { call, callWithId, cvAnalyzerForm, testCampaignPayload, testScoringSheet, TEST_JOB_TITLE } from './helpers/api';
-import { cleanAll, newTestCampaignId } from './helpers/db';
+import {
+  cleanAll,
+  db,
+  newTestCampaignId,
+  TEST_CAMPAIGN_PREFIX,
+} from './helpers/db';
 import { resetSentEmails } from './helpers/mocks';
 
 const camp = newTestCampaignId('s6');
@@ -39,12 +47,47 @@ type Zones = {
 type StageCounts = Record<string, number>;
 
 let zonesBefore: Zones;
+let foreignBefore = 0;
 const grays: Array<{ taskId: string; validationId: string; candidate: MailCandidate }> = [];
 
 async function zonesNow(): Promise<Zones> {
   const res = await call(getGlobalMetrics);
   expect(res.status).toBe(200);
   return res.json.zones as Zones;
+}
+
+/**
+ * Nombre de validations OUVERTES hors campagnes de test.
+ *
+ * Les deltas de zones portent sur des compteurs GLOBAUX : ils supposent que
+ * rien d'autre n'écrit pendant le scénario. Sur l'environnement de dev, cette
+ * hypothèse tombe dès qu'un serveur `next dev` tourne (relève IMAP toutes les
+ * 30 s) ou qu'un navigateur est ouvert sur l'application — un seul clic
+ * « valider un gris » déplace le compteur et décale tous les deltas de 1.
+ *
+ * On mesure donc ce qui est HORS du scénario, avant et après : si ça a bougé,
+ * l'échec dit la vraie cause au lieu d'un « expected 1 to be 2 » indéchiffrable.
+ */
+async function foreignOpenValidations(): Promise<number> {
+  const { count } = await db()
+    .from('pending_validations')
+    .select('*', { count: 'exact', head: true })
+    .in('status', ['pending', 'sending'])
+    .not('campaign_id', 'like', `${TEST_CAMPAIGN_PREFIX}%`);
+  return count ?? 0;
+}
+
+/** Échoue AVEC la cause quand des données hors scénario ont bougé. */
+async function assertNoForeignDrift(): Promise<void> {
+  const now = await foreignOpenValidations();
+  if (now === foreignBefore) return;
+  throw new Error(
+    `Des validations HORS scénario ont changé pendant le test ` +
+      `(${foreignBefore} → ${now}). Les compteurs du Bureau sont GLOBAUX : ` +
+      `ferme l'application (serveur \`next dev\` et onglets ouverts sur la ` +
+      `base de dev) avant de lancer la suite, sinon un clic ou une relève ` +
+      `IMAP décale les deltas.`,
+  );
 }
 
 async function countersNow(): Promise<{ counts: StageCounts; total: number }> {
@@ -69,7 +112,10 @@ async function inject(profile: 'fort' | 'faible' | 'moyen', slug: string): Promi
   expect(res.status).toBe(200);
   const application = res.json.application as CVApplication;
 
-  if (application.scoringResult.decisionZone === 'gray') {
+  // Mise en file pour TOUTE zone qui attend un humain (gris ET proposé au
+  // refus) — c'est ce que fait `gateCandidateOutreach` en production.
+  const zone = application.scoringResult.decisionZone;
+  if (zone === 'gray' || zone === 'proposed_reject') {
     const candidate = cvApplicationToMailCandidate(application);
     const validationId = `val_treg_${taskId}`;
     const enqueue = await call(postValidation, {
@@ -85,7 +131,8 @@ async function inject(profile: 'fort' | 'faible' | 'moyen', slug: string): Promi
       },
     });
     expect(enqueue.status).toBe(200);
-    grays.push({ taskId, validationId, candidate });
+    // `grays` sert au test de décision HITL : on n'y met que les VRAIS gris.
+    if (zone === 'gray') grays.push({ taskId, validationId, candidate });
   }
 }
 
@@ -93,6 +140,7 @@ beforeAll(async () => {
   await cleanAll();
   resetSentEmails();
   zonesBefore = await zonesNow();
+  foreignBefore = await foreignOpenValidations();
   const res = await call(putCampaign, {
     method: 'PUT',
     body: testCampaignPayload({ id: camp, status: 'active' }),
@@ -110,21 +158,24 @@ afterAll(async () => {
 });
 
 describe('S6 — cohérence des indicateurs', () => {
-  it('ruban menu Candidatures (scopé campagne) : total 4, répartition 1/1/2', async () => {
+  it('ruban menu Candidatures (scopé campagne) : total 4, répartition 1/3', async () => {
     const { counts, total } = await countersNow();
     expect(total).toBe(4);
     expect(counts.invite).toBe(1); // auto-accept = invité
-    expect(counts.refus_auto).toBe(1);
-    expect(counts.a_valider).toBe(2);
+    // Plus AUCUN refus automatique : le faible attend un humain comme les gris.
+    expect(counts.refus_auto).toBe(0);
+    expect(counts.a_valider).toBe(3);
     expect(counts.retenu).toBe(0);
     expect(counts.non_retenu).toBe(0);
   });
 
-  it('Bureau (zones globales) : deltas exactement +1/+1/+2, total +4', async () => {
+  it('Bureau (zones globales) : deltas +1 accepté / +3 en attente, total +4', async () => {
+    await assertNoForeignDrift();
     const zones = await zonesNow();
     expect(zones.autoAccept - zonesBefore.autoAccept).toBe(1);
-    expect(zones.autoReject - zonesBefore.autoReject).toBe(1);
-    expect(zones.pending - zonesBefore.pending).toBe(2);
+    // Aucun refus automatique produit — le Bureau et le ruban disent pareil.
+    expect(zones.autoReject - zonesBefore.autoReject).toBe(0);
+    expect(zones.pending - zonesBefore.pending).toBe(3);
     expect(zones.humanValidated - zonesBefore.humanValidated).toBe(0);
     expect(zones.total - zonesBefore.total).toBe(4);
   });
@@ -160,14 +211,15 @@ describe('S6 — cohérence des indicateurs', () => {
 
     const { counts, total } = await countersNow();
     expect(total).toBe(4); // le total ne bouge JAMAIS avec une décision
-    expect(counts.a_valider).toBe(1); // gris −1
+    expect(counts.a_valider).toBe(2); // en attente −1
     expect(counts.invite).toBe(2); // accepté +1
 
+    await assertNoForeignDrift();
     const zones = await zonesNow();
-    expect(zones.pending - zonesBefore.pending).toBe(1);
+    expect(zones.pending - zonesBefore.pending).toBe(2);
     expect(zones.humanValidated - zonesBefore.humanValidated).toBe(1);
     expect(zones.autoAccept - zonesBefore.autoAccept).toBe(1);
-    expect(zones.autoReject - zonesBefore.autoReject).toBe(1);
+    expect(zones.autoReject - zonesBefore.autoReject).toBe(0);
     expect(zones.total - zonesBefore.total).toBe(4);
   });
 
@@ -198,12 +250,14 @@ describe('S6 — cohérence des indicateurs', () => {
     }).summary.volumes;
 
     // Rapport en absolu : 4 reçues, 2 retenues (1 auto + 1 gris accepté),
-    // 1 écartée (auto), 1 encore en attente, 2 décidées système, 1 humaine.
+    // 0 écartée (plus aucun refus automatique), 2 encore en attente (1 gris +
+    // 1 proposée au refus), 1 décidée système (la seule acceptation auto),
+    // 1 humaine.
     expect(volumes.received).toBe(4);
     expect(volumes.retained).toBe(2);
-    expect(volumes.rejected).toBe(1);
-    expect(volumes.enAttente).toBe(1);
-    expect(volumes.decidedBySystem).toBe(2);
+    expect(volumes.rejected).toBe(0);
+    expect(volumes.enAttente).toBe(2);
+    expect(volumes.decidedBySystem).toBe(1);
     expect(volumes.decidedByHuman).toBe(1);
 
     // Aucun classement sans suite dans ce scénario (clôture SANS classer).

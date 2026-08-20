@@ -135,7 +135,7 @@ afterEach(() => {
 
 describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
   const autoAccept = makeCV('auto_accept', 'Alice');
-  const autoReject = makeCV('auto_reject', 'Bob');
+  const proposedReject = makeCV('proposed_reject', 'Bob');
   const gray = makeCV('gray', 'Gris');
 
   it('tout GRIS : tout en FILE (SANS brouillon pré-rédigé), aucun envoi ni brief', async () => {
@@ -160,18 +160,21 @@ describe('HITL gating E2E — dispatchPostAnalysisOutreach (3 zones)', () => {
     expect(new Set(uids)).toEqual(new Set(['u-g1', 'u-g2']));
   });
 
-  it('zones AUTO : envoi automatique (mail réel + brief pour l’auto_accept)', async () => {
+  it('acceptation auto envoyée, proposition de refus MISE EN FILE (conformité RGPD)', async () => {
     await dispatchPostAnalysisOutreach({
       campaignId: 'CAMP-1',
       jobTitle: 'Dev',
-      summary: summaryOf(autoAccept, autoReject),
+      summary: summaryOf(autoAccept, proposedReject),
       uids: ['u-accept', 'u-reject'],
       cvArtifactIds: [null, null],
       reportArtifactId: 'rep-1',
     });
 
-    expect(at('/api/validations')).toHaveLength(0); // rien en file
-    expect(mailSends()).toHaveLength(2); // envois réels
+    // LE point du chantier : le refus ne part plus tout seul, il attend.
+    expect(at('/api/validations')).toHaveLength(1);
+    expect(at('/api/validations')[0]?.body?.decision).toBe('reject');
+    expect(mailSends()).toHaveLength(1); // la seule invitation
+    expect(mailSends()[0]?.body?.mode).toBe('invite');
     expect(mailDrafts()).toHaveLength(0);
     expect(at('/api/scheduler')).toHaveLength(1); // brief du seul auto_accept
     expect(mailSends().every((c) => typeof c.body?.uid === 'string')).toBe(true);

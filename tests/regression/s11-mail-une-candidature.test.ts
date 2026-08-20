@@ -198,8 +198,9 @@ describe('S11 — un mail = une candidature', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].candidate_name).toBe('Candidat anonyme');
     expect(rows[0].candidate_email).toBeNull();
-    expect(rows[0].decision_zone).toBe('auto_reject');
-    // Refus auto SKIPPÉ faute d'email — jamais un mail vers un anonyme.
+    expect(rows[0].decision_zone).toBe('proposed_reject');
+    // Aucun mail : la zone basse ne fait plus partir de refus, et un anonyme
+    // n'a de toute façon pas d'adresse.
     expect(sentEmails).toHaveLength(0);
   });
 

@@ -25,8 +25,9 @@
 
 import {
   buildInterviewMail,
-  getResolvedAgendaLink,
+  canInviteForCampaign,
 } from '@/lib/agents/server/interview-mail';
+import { imapAnalysisId } from '@/lib/imap/analysis-id';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import {
   claimOutreach,
@@ -97,11 +98,13 @@ export async function dispatchImapCandidateOutreach(
   input: OutreachInput,
 ): Promise<void> {
   const { candidate } = input;
-  // HITL 3 zones (lot 2) — la ZONE pilote le gate. Repli sur `aboveThreshold`
-  // pour les projections antérieures. Direction PROVISOIRE du gris = refus.
+  // La ZONE pilote le gate. Repli sur `aboveThreshold` pour les projections
+  // antérieures — côté refus on retombe sur `proposed_reject`, JAMAIS sur
+  // `auto_reject` : un repli ne doit pas ressusciter l'envoi automatique que la
+  // conformité RGPD vient de supprimer. Direction PROVISOIRE du gris = refus.
   const zone: DecisionZone =
     candidate.decisionZone ??
-    (candidate.aboveThreshold ? 'auto_accept' : 'auto_reject');
+    (candidate.aboveThreshold ? 'auto_accept' : 'proposed_reject');
   const accept = zone === 'auto_accept';
   const mode = accept ? 'invite' : 'reject';
   const decision: HitlDecision = accept ? 'accept' : 'reject';
@@ -110,19 +113,24 @@ export async function dispatchImapCandidateOutreach(
     ? { taskId: input.campaignId }
     : { campaignId: input.campaignId };
 
-  // Lien d'agenda obligatoire en mode invite — résolution PAR CAMPAGNE
-  // (référent → global → env). Absent ⇒ on logue et on n'envoie NI
+  // Lien de réservation obligatoire en mode invite. SONDE seulement : on
+  // vérifie qu'un lien POURRAIT partir (référent avec disponibilités en régime
+  // natif, cascade Cal.com sinon) sans en émettre un — sinon un envoi avorté
+  // laisserait un jeton orphelin. Absent ⇒ on logue et on n'envoie NI
   // l'acceptation NI le brief (mais on ne plante pas le poller). Le refus,
   // lui, ne dépend pas du lien.
-  const agendaLink = await getResolvedAgendaLink(
+  const canInvite = await canInviteForCampaign(
     isTaskOwner ? null : input.campaignId,
   );
-  if (mode === 'invite' && !agendaLink) {
+  if (mode === 'invite' && !canInvite) {
     await appendJournalEntry({
       action: 'imap_outreach_skipped',
       actor: 'imap_poller',
       campaignId: isTaskOwner ? null : input.campaignId,
       payload: {
+        // Une seule cause côté métier : rien pour réserver. Le détail (lien
+        // Cal.com absent vs référent sans disponibilités) se lit sur la
+        // campagne — le journal dit le FAIT, pas le régime.
         reason: 'agenda_link_not_configured',
         candidate: candidate.candidateName,
         uid: input.uid,
@@ -245,6 +253,10 @@ async function enqueueImapPendingValidation(args: {
     status: 'pending',
     payload: {
       uid: input.uid,
+      // Porté DANS la validation pour que le preview HITL puisse émettre le
+      // lien natif sans avoir à re-dériver la clé depuis l'identifiant de
+      // validation (repli conservé côté lecture pour les validations en vol).
+      analysisId: imapAnalysisId(input.mailboxId, input.uid),
       candidate,
       jobTitle: input.jobTitle,
       summary: candidate.summary,
@@ -312,7 +324,29 @@ async function composeAndSendCandidateMail(args: {
       candidate,
       jobTitle: input.jobTitle,
       campaignId: input.campaignId,
+      // Clé d'idempotence du lien natif : l'ANALYSE, pas l'uid brut.
+      analysisId: imapAnalysisId(input.mailboxId, input.uid),
+      uid: input.uid,
     });
+    // La sonde du gate a dit « on peut inviter », mais entre-temps le lien a
+    // pu devenir inémissible (disponibilités retirées, référent désactivé).
+    // Sans ce contrôle, on envoyait le message VIDE que rend un composeur
+    // bloqué — un mail sans objet ni corps à un candidat.
+    if (out.blocked) {
+      await appendJournalEntry({
+        action: 'imap_outreach_skipped',
+        actor: 'imap_poller',
+        campaignId: campaignIdForJournal,
+        payload: {
+          reason: out.blockedReason ?? 'link_unavailable',
+          mode,
+          candidate: candidate.candidateName,
+          uid: input.uid,
+          taskId: taskIdForJournal ?? undefined,
+        },
+      }).catch(() => {});
+      return { kind: 'skipped', reason: 'no_config' };
+    }
     composed = out.mail;
   } catch (err) {
     await appendJournalEntry({

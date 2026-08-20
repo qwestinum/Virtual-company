@@ -10,7 +10,8 @@
  *     Google Calendar / Outlook (qui ignorent les PJ binaires d'un .ics) ;
  *   - CV BINAIRE embarqué (ATTACH;ENCODING=BASE64) → Apple Calendar l'affiche.
  *
- * METHOD:PUBLISH = « ajouter à mon agenda ». UID stable dérivé du booking →
+ * METHOD:PUBLISH = « ajouter à mon agenda » (CANCEL pour un retrait).
+ * UID stable dérivé du booking →
  * ré-ajouter met à jour au lieu de dupliquer. Pur et testable ; CRLF,
  * échappement et PLIAGE de lignes (≤ 75 car.) conformes RFC 5545.
  */
@@ -33,6 +34,18 @@ export type InterviewIcsInput = {
   location?: string | null;
   /** Horodatage de génération (ISO) — injecté pour rester testable/déterministe. */
   stampAt: string;
+  /**
+   * Rang de la version de l'événement (0 = création). Incrémenté à chaque
+   * déplacement : c'est ce qui fait qu'un agenda DÉPLACE le rendez-vous au
+   * lieu d'en afficher un second, l'UID restant celui de la série.
+   */
+  sequence?: number;
+  /**
+   * Annulation : `METHOD:CANCEL` + `STATUS:CANCELLED`. Le même UID retire
+   * l'entrée de l'agenda au lieu d'en ajouter une — sans cela, un rendez-vous
+   * décommandé resterait dans le calendrier du recruteur.
+   */
+  cancelled?: boolean;
   /** Lien signé du CV (cliquable Google/Outlook). */
   cvUrl?: string | null;
   /** CV binaire embarqué (Apple Calendar). */
@@ -118,7 +131,7 @@ export function buildInterviewIcs(input: InterviewIcsInput): string | null {
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//QWESTINUM//ORQA//FR',
-    'METHOD:PUBLISH',
+    input.cancelled ? 'METHOD:CANCEL' : 'METHOD:PUBLISH',
     'CALSCALE:GREGORIAN',
     'BEGIN:VEVENT',
     `UID:${escapeText(input.bookingUid)}@orqa.qwestinum`,
@@ -126,6 +139,10 @@ export function buildInterviewIcs(input: InterviewIcsInput): string | null {
     `DTSTART:${dtStart}`,
     `DTEND:${dtEnd}`,
     `SUMMARY:${escapeText(input.summary)}`,
+    // Rang de la version : c'est lui qui dit à l'agenda quelle mise à jour
+    // l'emporte. Sans SEQUENCE, un déplacement renvoyé avec le même UID est
+    // ignoré par plusieurs clients.
+    `SEQUENCE:${Math.max(0, Math.trunc(input.sequence ?? 0))}`,
     description ? `DESCRIPTION:${escapeText(description)}` : '',
     // Variante HTML (Outlook) — text-escapée comme toute valeur iCalendar.
     htmlDescription
@@ -138,7 +155,7 @@ export function buildInterviewIcs(input: InterviewIcsInput): string | null {
     input.cvBinary
       ? `ATTACH;FMTTYPE=${input.cvBinary.mimeType};ENCODING=BASE64;VALUE=BINARY;X-APPLE-FILENAME=${input.cvBinary.filename}:${input.cvBinary.base64}`
       : '',
-    'STATUS:CONFIRMED',
+    input.cancelled ? 'STATUS:CANCELLED' : 'STATUS:CONFIRMED',
     'END:VEVENT',
     'END:VCALENDAR',
   ].filter((l) => l !== '');

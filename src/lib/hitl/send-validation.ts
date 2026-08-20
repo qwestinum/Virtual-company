@@ -30,10 +30,29 @@ function newArtifactId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/**
+ * Options du refus groupé. Aucune n'existe sur le chemin unitaire (carte à
+ * carte), qui garde exactement son comportement d'origine.
+ */
+export type SendValidationOptions = {
+  /**
+   * `false` = décider SANS écrire au candidat. La décision est bien
+   * enregistrée (c'est elle qu'on valide), mais aucune tentative d'envoi n'a
+   * lieu : `mailStatus` vaut alors `skipped_by_user`, que le journal distingue
+   * explicitement d'un échec d'envoi — un choix n'est pas une panne.
+   * Défaut : `true` (on écrit au candidat, c'est la courtoisie attendue).
+   */
+  sendMail?: boolean;
+  /** Identifiant du lot, journalisé pour retrouver la fournée d'un coup. */
+  batchId?: string;
+};
+
 export async function sendValidation(
   v: PendingValidation,
   edited: { subject: string; html: string },
+  options: SendValidationOptions = {},
 ): Promise<SendResult> {
+  const sendMail = options.sendMail !== false;
   const candidate = v.payload?.candidate as MailCandidate | undefined;
   const jobTitle =
     typeof v.payload?.jobTitle === 'string' ? (v.payload.jobTitle as string) : null;
@@ -87,30 +106,37 @@ export async function sendValidation(
   // pour rendre la livraison vérifiable via /api/email/status (le HITL ne passe
   // pas par `imap_outreach_mail`, seul porteur de l'id côté envoi auto).
   let providerMessageId: string | null = null;
-  try {
-    const res = await fetch('/api/mail-composer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        artifactId: newArtifactId('art_sent'),
-        campaignId: v.campaignId,
-        jobTitle,
-        mode,
-        candidate,
-        mail: edited,
-        // Claim d'idempotence deux-phases côté serveur (audit C6) : un retry
-        // après un envoi réussi reçoit `duplicate` — jamais de second mail.
-        validationId: v.id,
-      }),
-    });
-    const data = (await res.json()) as {
-      status?: string;
-      providerMessageId?: string | null;
-    };
-    mailStatus = res.ok ? (data.status ?? 'unknown') : `http_${res.status}`;
-    if (res.ok) providerMessageId = data.providerMessageId ?? null;
-  } catch {
-    mailStatus = 'network_error';
+  if (!sendMail) {
+    // On N'APPELLE PAS le composeur : ne pas l'appeler est la seule façon de
+    // garantir qu'aucun mail ne part. Un appel « à blanc » laisserait planer le
+    // doute et poserait un claim pour rien.
+    mailStatus = 'skipped_by_user';
+  } else {
+    try {
+      const res = await fetch('/api/mail-composer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artifactId: newArtifactId('art_sent'),
+          campaignId: v.campaignId,
+          jobTitle,
+          mode,
+          candidate,
+          mail: edited,
+          // Claim d'idempotence deux-phases côté serveur (audit C6) : un retry
+          // après un envoi réussi reçoit `duplicate` — jamais de second mail.
+          validationId: v.id,
+        }),
+      });
+      const data = (await res.json()) as {
+        status?: string;
+        providerMessageId?: string | null;
+      };
+      mailStatus = res.ok ? (data.status ?? 'unknown') : `http_${res.status}`;
+      if (res.ok) providerMessageId = data.providerMessageId ?? null;
+    } catch {
+      mailStatus = 'network_error';
+    }
   }
 
   // 2. Briefing DRH MIS EN FILE pour un accept (best-effort, ne bloque pas).
@@ -142,7 +168,11 @@ export async function sendValidation(
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerMessageId, mailStatus }),
+        body: JSON.stringify({
+          providerMessageId,
+          mailStatus,
+          batchId: options.batchId ?? null,
+        }),
       },
     );
     if (!res.ok) {
@@ -170,6 +200,8 @@ export async function sendValidation(
   } else if (mailStatus === 'duplicate') {
     tail =
       '— le mail était déjà parti lors d’une tentative précédente, aucun doublon envoyé.';
+  } else if (mailStatus === 'skipped_by_user') {
+    tail = '— décision enregistrée, aucun mail envoyé (choix explicite).';
   } else if (mailStatus === 'skipped_no_email') {
     tail = '— pas d’email candidat, mail à transmettre manuellement.';
   } else if (mailStatus === 'skipped_no_config') {

@@ -12,6 +12,7 @@
  */
 
 import { resolveClaimConflict } from '@/lib/db/claims-policy';
+import { fetchAllKeyset } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { InterviewBriefRow } from '@/lib/db/types';
 import { normalizeEmail } from '@/lib/vivier/candidates';
@@ -147,6 +148,162 @@ export async function getPendingBriefByEmail(
     .maybeSingle();
   if (error) throw new Error(`getPendingBriefByEmail: ${error.message}`);
   return data ? interviewBriefRowToDomain(data as InterviewBriefRow) : null;
+}
+
+/**
+ * Briefing EN ATTENTE d'une candidature PRÉCISE — clé de rapprochement du
+ * chemin NATIF. Rien à voir avec la recherche par email du webhook : ici la
+ * réservation transporte l'uid dans son contexte, donc on sait exactement de
+ * quelle candidature il s'agit. Un candidat qui postule à deux campagnes ne
+ * peut plus voir son second briefing consommé par le premier rendez-vous.
+ *
+ * La campagne est un garde-fou supplémentaire quand elle est connue : deux
+ * candidatures d'origines différentes pourraient partager un uid brut (uid
+ * IMAP unique par boîte seulement).
+ */
+export async function getPendingBriefByUid(
+  uid: string,
+  campaignId?: string | null,
+): Promise<InterviewBrief | null> {
+  const supabase = requireServerSupabase();
+  let query = supabase
+    .from(TABLE)
+    .select('*')
+    .eq('status', 'awaiting_booking')
+    .eq('uid', uid);
+  if (campaignId) query = query.eq('campaign_id', campaignId);
+  const { data, error } = await query
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getPendingBriefByUid: ${error.message}`);
+  return data ? interviewBriefRowToDomain(data as InterviewBriefRow) : null;
+}
+
+/**
+ * Briefings d'un STATUT donné, page par page (curseur = PK stable).
+ *
+ * Sert la page Entretiens, qui doit voir TOUS les dossiers en attente — pas
+ * les 1000 premiers rendus par PostgREST. Les deux régimes sont servis par la
+ * même requête : un briefing Cal.com et un briefing natif ne diffèrent que par
+ * l'origine de leur `booking_uid`.
+ */
+export async function listBriefsByStatus(
+  status: InterviewBrief['status'],
+  options?: { campaignId?: string | null },
+): Promise<InterviewBrief[]> {
+  const supabase = requireServerSupabase();
+  const rows = await fetchAllKeyset<InterviewBriefRow>({
+    cursorOf: (row) => row.id,
+    fetchPage: async (afterId, limit) => {
+      let query = supabase.from(TABLE).select('*').eq('status', status);
+      if (options?.campaignId) query = query.eq('campaign_id', options.campaignId);
+      if (afterId !== null) query = query.gt('id', afterId);
+      const { data, error } = await query.order('id', { ascending: true }).limit(limit);
+      if (error) throw new Error(`listBriefsByStatus: ${error.message}`);
+      return (data ?? []) as InterviewBriefRow[];
+    },
+  });
+  return rows.map(interviewBriefRowToDomain);
+}
+
+/** Compte EXACT d'un statut (compteur d'onglet — jamais une liste tronquée). */
+export async function countBriefsByStatus(
+  status: InterviewBrief['status'],
+  options?: { campaignId?: string | null },
+): Promise<number> {
+  const supabase = requireServerSupabase();
+  let query = supabase
+    .from(TABLE)
+    .select('*', { count: 'exact', head: true })
+    .eq('status', status);
+  if (options?.campaignId) query = query.eq('campaign_id', options.campaignId);
+  const { count, error } = await query;
+  if (error) throw new Error(`countBriefsByStatus: ${error.message}`);
+  return count ?? 0;
+}
+
+/** Dernier briefing d'une CANDIDATURE (tous statuts), ou null. */
+export async function getLatestBriefByUid(
+  uid: string,
+): Promise<InterviewBrief | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('uid', uid)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getLatestBriefByUid: ${error.message}`);
+  return data ? interviewBriefRowToDomain(data as InterviewBriefRow) : null;
+}
+
+/** Briefing rattaché à un rendez-vous (quel que soit son statut), ou null. */
+export async function getBriefByBookingUid(
+  bookingUid: string,
+): Promise<InterviewBrief | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('booking_uid', bookingUid)
+    .order('booked_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getBriefByBookingUid: ${error.message}`);
+  return data ? interviewBriefRowToDomain(data as InterviewBriefRow) : null;
+}
+
+/**
+ * Retour en arrière d'un briefing dont le rendez-vous vient d'être annulé :
+ * `scheduled → awaiting_booking`. Le `booking_uid` est EFFACÉ — sinon la
+ * restauration d'une candidature rouverte le relirait comme la preuve d'un
+ * rendez-vous encore valide et rendrait le briefing `scheduled` à tort.
+ * Rend le nombre de lignes touchées (0 = rien à faire, jamais une erreur).
+ */
+export async function markBriefAwaitingBooking(bookingUid: string): Promise<number> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      status: 'awaiting_booking',
+      booking_uid: null,
+      interview_start_at: null,
+      interview_end_at: null,
+      interview_location: null,
+      booked_at: null,
+    })
+    .eq('booking_uid', bookingUid)
+    .eq('status', 'scheduled')
+    .select('id');
+  if (error) throw new Error(`markBriefAwaitingBooking: ${error.message}`);
+  return (data ?? []).length;
+}
+
+/**
+ * Met à jour les FAITS d'un rendez-vous déplacé (dates, lieu) sans toucher au
+ * statut ni au briefing lui-même. `bookingUid` reste la clé : un déplacement
+ * crée une nouvelle réservation côté module, l'hôte suit donc l'ANCIEN
+ * identifiant puis le remplace.
+ */
+export async function updateBriefBookingFacts(
+  previousBookingUid: string,
+  facts: BookingDelivery,
+): Promise<number> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      booking_uid: facts.bookingUid,
+      interview_start_at: facts.interviewStartAt,
+      interview_end_at: facts.interviewEndAt,
+      interview_location: facts.interviewLocation,
+    })
+    .eq('booking_uid', previousBookingUid)
+    .select('id');
+  if (error) throw new Error(`updateBriefBookingFacts: ${error.message}`);
+  return (data ?? []).length;
 }
 
 /**

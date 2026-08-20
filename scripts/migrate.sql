@@ -651,23 +651,9 @@ alter table public.candidate_analyses
 alter table public.candidate_analyses
   add column if not exists decided_by_user_email text;
 
-do $$ begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'candidate_analyses_decision_zone_chk'
-  ) then
-    alter table public.candidate_analyses
-      add constraint candidate_analyses_decision_zone_chk
-      check (decision_zone is null
-             or decision_zone in ('auto_reject', 'gray', 'auto_accept'));
-  end if;
-  if not exists (
-    select 1 from pg_constraint where conname = 'candidate_analyses_decided_by_chk'
-  ) then
-    alter table public.candidate_analyses
-      add constraint candidate_analyses_decided_by_chk
-      check (decided_by is null or decided_by in ('auto', 'user'));
-  end if;
-end $$;
+-- (Contrainte `candidate_analyses_decision_zone_chk` : bloc canonique DÉPLACÉ
+--  en fin de fichier, avec la valeur `proposed_reject`. Ne pas la recréer ici
+--  — deux blocs pour une même contrainte, c'est l'incident du 30/07/2026.)
 
 -- Origine vivier DÉNORMALISÉE (menu Candidatures). La trace « issu du vivier »
 -- existe déjà via vivier_preselections (jointure email), mais on la FIGE ici au
@@ -1463,3 +1449,380 @@ update public.campaigns
      order by created_at asc limit 1
    )
  where owner_user_id is null;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- MODULE DE RÉSERVATION NATIF (`sched_*`) — lot 1, août 2026
+-- Spec de référence : docs/specs/scheduling-module.md
+-- ══════════════════════════════════════════════════════════════════════
+-- Module AUTONOME : il ne connaît NI candidat, NI campagne, NI brief, NI
+-- recruteur — seulement des ressources réservables, des cibles re-pointables,
+-- des liens nominatifs, des réservations et des événements. Les clés de
+-- l'hôte (`external_ref`) et les charges utiles (`context`, `display`) sont
+-- OPAQUES : stockées et restituées telles quelles, jamais interprétées ici.
+--
+-- Invariants portés par le SCHÉMA (jamais seulement par le code) :
+--   - atomicité de la réservation → index unique partiel
+--     (resource_id, start_at) where status='confirmed' : l'INSERT EST le
+--     claim, deux candidats sur le même créneau ⇒ un seul gagnant ;
+--   - idempotence des liens       → unique (target_id, idempotency_key) :
+--     ré-émettre avec la même clé rend le MÊME token (preview HITL) ;
+--   - un lien = un usage          → status active|used|revoked|expired ;
+--   - horaires                    → tout en timestamptz UTC ; les règles
+--     hebdo en MINUTES LOCALES de la ressource (seule forme qui survit au
+--     changement d'heure : « lun 9h-12h » reste 9h-12h été comme hiver).
+--
+-- RLS activée sur chaque table (aucune policy : le service_role applicatif
+-- bypasse, l'anon key ne lit RIEN) — la page publique candidat passe par une
+-- route serveur authentifiée par token, jamais par PostgREST direct.
+
+-- ── Ressources réservables ────────────────────────────────────────────
+-- Une personne (ou un poste) qui tient des rendez-vous. `timezone` (IANA) est
+-- LA référence des règles locales. `notify_email` : notification organisateur
+-- optionnelle — le module reste utilisable hors de tout hôte.
+create table if not exists public.sched_resources (
+  id                    uuid primary key default gen_random_uuid(),
+  external_ref          text not null unique,   -- clé opaque de l'hôte
+  display_name          text not null,
+  timezone              text not null default 'Europe/Paris',
+  slot_duration_minutes int  not null default 45,
+  buffer_minutes        int  not null default 15,   -- pause entre deux RDV
+  min_notice_minutes    int  not null default 1440, -- préavis minimum
+  horizon_days          int  not null default 21,   -- réservable jusqu'à
+  meeting_location      jsonb,                  -- { type, payload } OPAQUE
+  notify_email          text,
+  -- Désactivation DOUCE : une ressource inactive sort de la résolution (les
+  -- cibles qui la visent tombent en page dégradée), ses RDV pris subsistent.
+  is_active             boolean not null default true,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  constraint sched_resources_duration_chk
+    check (slot_duration_minutes between 5 and 480),
+  constraint sched_resources_buffer_chk
+    check (buffer_minutes between 0 and 240),
+  constraint sched_resources_notice_chk
+    check (min_notice_minutes between 0 and 43200),
+  constraint sched_resources_horizon_chk
+    check (horizon_days between 1 and 365)
+);
+alter table public.sched_resources enable row level security;
+
+drop trigger if exists sched_resources_touch_updated_at on public.sched_resources;
+create trigger sched_resources_touch_updated_at
+  before update on public.sched_resources
+  for each row execute function public.touch_updated_at();
+
+-- ── Règles de disponibilité hebdomadaires ─────────────────────────────
+-- Plusieurs plages par jour (lun 9h-12h + 14h-17h = DEUX lignes). Minutes
+-- LOCALES depuis minuit dans le fuseau de la ressource.
+-- `weekday` : ISO-8601, 1 = lundi … 7 = dimanche (aligné sur Luxon —
+-- zéro conversion, donc zéro bug de décalage de jour).
+create table if not exists public.sched_availability_rules (
+  id           uuid primary key default gen_random_uuid(),
+  resource_id  uuid not null references public.sched_resources(id) on delete cascade,
+  weekday      smallint not null,
+  start_minute int not null,
+  end_minute   int not null,
+  created_at   timestamptz not null default now(),
+  constraint sched_rules_weekday_chk check (weekday between 1 and 7),
+  constraint sched_rules_bounds_chk
+    check (start_minute >= 0 and end_minute <= 1440 and start_minute < end_minute)
+);
+alter table public.sched_availability_rules enable row level security;
+
+create index if not exists sched_rules_resource_idx
+  on public.sched_availability_rules (resource_id, weekday);
+
+-- ── Exceptions datées (congés, blocages ponctuels) ────────────────────
+-- (start_minute, end_minute) NULL/NULL = journée entière. Sinon plage
+-- partielle retranchée des règles du jour.
+create table if not exists public.sched_availability_exceptions (
+  id           uuid primary key default gen_random_uuid(),
+  resource_id  uuid not null references public.sched_resources(id) on delete cascade,
+  day          date not null,           -- date LOCALE de la ressource
+  start_minute int,
+  end_minute   int,
+  label        text,
+  created_at   timestamptz not null default now(),
+  constraint sched_exceptions_bounds_chk check (
+    (start_minute is null and end_minute is null)
+    or (start_minute is not null and end_minute is not null
+        and start_minute >= 0 and end_minute <= 1440 and start_minute < end_minute)
+  )
+);
+alter table public.sched_availability_exceptions enable row level security;
+
+create index if not exists sched_exceptions_resource_day_idx
+  on public.sched_availability_exceptions (resource_id, day);
+
+-- ── Cibles : l'alias RE-POINTABLE entre un lien et une ressource ──────
+-- Un lien ne pointe JAMAIS une ressource directement. L'hôte crée une cible
+-- par « poste de rendez-vous » et la re-pointe librement : tous les liens
+-- déjà émis suivent le nouveau titulaire SANS réémission, et les RDV déjà
+-- pris ne bougent pas (ils figent leur ressource).
+-- `version` : incrémentée à CHAQUE re-pointage → contrôle optimiste dans la
+-- séquence de confirmation (un re-pointage pendant qu'un candidat confirme
+-- est détecté et compensé, verdict `target_changed`).
+create table if not exists public.sched_targets (
+  id                        uuid primary key default gen_random_uuid(),
+  external_ref              text not null unique,  -- clé opaque de l'hôte
+  -- NULL (ou ressource inactive) ⇒ page publique DÉGRADÉE, jamais une erreur.
+  resource_id               uuid references public.sched_resources(id) on delete set null,
+  meeting_location_override jsonb,                 -- surcharge de lieu, OPAQUE
+  version                   int not null default 1,
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now()
+);
+alter table public.sched_targets enable row level security;
+
+create index if not exists sched_targets_resource_idx
+  on public.sched_targets (resource_id);
+
+drop trigger if exists sched_targets_touch_updated_at on public.sched_targets;
+create trigger sched_targets_touch_updated_at
+  before update on public.sched_targets
+  for each row execute function public.touch_updated_at();
+
+-- ── Liens de réservation nominatifs ───────────────────────────────────
+-- Token 128 bits (base64url), à USAGE UNIQUE, expirable et RÉVOCABLE — un
+-- classement sans suite peut tuer un lien, ce que Cal.com ne permettait pas.
+-- `context` : charge utile de l'hôte, restituée telle quelle dans les
+-- événements. `display` : ce que la page publique a le DROIT d'afficher
+-- (fourni par l'hôte, jamais déduit du contexte — le contexte ne fuit pas).
+create table if not exists public.sched_booking_links (
+  token           text primary key,
+  target_id       uuid not null references public.sched_targets(id) on delete cascade,
+  -- IDEMPOTENCE : ré-émettre avec la même clé rend le MÊME token (le
+  -- re-preview HITL ne crée jamais un 2e lien ⇒ le relecteur voit le VRAI).
+  idempotency_key text not null,
+  status          text not null default 'active',
+  expires_at      timestamptz,
+  context         jsonb not null default '{}'::jsonb,
+  display         jsonb not null default '{}'::jsonb,
+  revoked_reason  text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  constraint sched_links_status_chk
+    check (status in ('active', 'used', 'revoked', 'expired'))
+);
+alter table public.sched_booking_links enable row level security;
+
+create unique index if not exists sched_links_target_key_idx
+  on public.sched_booking_links (target_id, idempotency_key);
+
+create index if not exists sched_links_target_active_idx
+  on public.sched_booking_links (target_id)
+  where status = 'active';
+
+drop trigger if exists sched_booking_links_touch_updated_at on public.sched_booking_links;
+create trigger sched_booking_links_touch_updated_at
+  before update on public.sched_booking_links
+  for each row execute function public.touch_updated_at();
+
+-- ── Réservations ──────────────────────────────────────────────────────
+-- `resource_id` et `meeting_location` sont FIGÉS à la confirmation : un RDV
+-- est un engagement, il ne suit ni un re-pointage de cible ni un changement
+-- de lieu ultérieur. Le déplacer est une replanification EXPLICITE.
+create table if not exists public.sched_bookings (
+  id                uuid primary key default gen_random_uuid(),
+  link_token        text references public.sched_booking_links(token) on delete set null,
+  target_id         uuid not null references public.sched_targets(id) on delete cascade,
+  resource_id       uuid not null references public.sched_resources(id) on delete restrict,
+  start_at          timestamptz not null,
+  end_at            timestamptz not null,
+  status            text not null default 'confirmed',
+  cancelled_by      text,
+  cancelled_reason  text,
+  cancelled_at      timestamptz,
+  rescheduled_from  uuid references public.sched_bookings(id) on delete set null,
+  attendee_name     text not null,
+  attendee_email    text not null,
+  attendee_phone    text,
+  attendee_timezone text not null,
+  context           jsonb not null default '{}'::jsonb,  -- copie du lien
+  meeting_location  jsonb,                               -- SNAPSHOT résolu
+  manage_token      text not null,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  constraint sched_bookings_status_chk
+    check (status in ('confirmed', 'cancelled')),
+  constraint sched_bookings_cancelled_by_chk
+    check (cancelled_by is null or cancelled_by in ('attendee', 'organizer')),
+  constraint sched_bookings_window_chk check (end_at > start_at),
+  -- Cohérence état ↔ dates garantie EN BASE (pas seulement dans la couche
+  -- d'accès) — même exigence que vivier_preselections.
+  constraint sched_bookings_cancel_coherence_chk check (
+    (status = 'cancelled' and cancelled_at is not null)
+    or (status = 'confirmed' and cancelled_at is null and cancelled_by is null)
+  )
+);
+alter table public.sched_bookings enable row level security;
+
+-- ATOMICITÉ DE LA RÉSERVATION. Deux candidats qui confirment le même créneau
+-- ⇒ UN SEUL gagnant : l'INSERT est le claim (pas de SELECT-puis-INSERT, pas
+-- de verrou applicatif), le perdant reçoit 23505 → verdict `slot_taken`.
+create unique index if not exists sched_bookings_slot_claim_idx
+  on public.sched_bookings (resource_id, start_at)
+  where status = 'confirmed';
+
+-- Le lien de gestion candidat est unique PARMI LES CONFIRMÉES : une
+-- replanification REPORTE le token sur la nouvelle ligne (tout mail déjà reçu
+-- par le candidat reste fonctionnel), l'ancienne ligne annulée le conserve
+-- comme trace. La résolution privilégie la ligne confirmée.
+create unique index if not exists sched_bookings_manage_token_confirmed_idx
+  on public.sched_bookings (manage_token)
+  where status = 'confirmed';
+
+create index if not exists sched_bookings_manage_lookup_idx
+  on public.sched_bookings (manage_token, created_at desc);
+
+create index if not exists sched_bookings_target_idx
+  on public.sched_bookings (target_id, start_at desc);
+
+create index if not exists sched_bookings_link_idx
+  on public.sched_bookings (link_token);
+
+drop trigger if exists sched_bookings_touch_updated_at on public.sched_bookings;
+create trigger sched_bookings_touch_updated_at
+  before update on public.sched_bookings
+  for each row execute function public.touch_updated_at();
+
+-- ── Outbox d'événements ───────────────────────────────────────────────
+-- Écrite DANS la séquence de l'effet, dispatchée APRÈS (best-effort), drainée
+-- par le rail cron si le dispatch immédiat échoue. Livraison AT-LEAST-ONCE
+-- assumée : l'idempotence est la responsabilité du CONSOMMATEUR (clé = id
+-- d'événement) — même contrat que l'ancien webhook Cal.com.
+-- `booking.updated` est déjà admis par le CHECK : réservé à la V2 (lien visio
+-- unique généré après coup) pour qu'elle n'ait aucune contrainte à migrer.
+create table if not exists public.sched_events (
+  id            uuid primary key default gen_random_uuid(),
+  type          text not null,
+  booking_id    uuid not null references public.sched_bookings(id) on delete cascade,
+  payload       jsonb not null,
+  created_at    timestamptz not null default now(),
+  dispatched_at timestamptz,
+  attempts      int not null default 0,
+  last_error    text,
+  constraint sched_events_type_chk check (
+    type in ('booking.created', 'booking.cancelled', 'booking.rescheduled', 'booking.updated')
+  )
+);
+alter table public.sched_events enable row level security;
+
+create index if not exists sched_events_pending_idx
+  on public.sched_events (created_at)
+  where dispatched_at is null;
+
+-- Sert la RÉPARATION du drain : « réservation confirmée sans booking.created »
+-- ⇒ émission de rattrapage (crash entre le claim et l'écriture de l'outbox).
+create index if not exists sched_events_booking_type_idx
+  on public.sched_events (booking_id, type);
+
+-- ── Limitation de débit des surfaces publiques (lot 2) ────────────────
+-- Les pages de réservation sont ANONYMES : leur seule authentification est le
+-- jeton d'URL. Un compteur EN MÉMOIRE DE PROCESS n'y protégerait rien — c'est
+-- la leçon du double mail (chaque invocation serverless est une instance
+-- isolée, la SEULE chose partagée entre elles est la base). Le compteur vit
+-- donc ici.
+--
+-- Fenêtre FIXE : la clé porte le début de fenêtre, donc changer la durée d'une
+-- fenêtre ne corrompt rien (les anciennes lignes expirent d'elles-mêmes).
+-- Purge rattachée au drain d'événements existant — pas de mécanisme dédié.
+create table if not exists public.sched_rate_limits (
+  bucket_key   text        not null,   -- « action:portée:valeur », opaque
+  window_start timestamptz not null,
+  hits         int         not null default 0,
+  primary key (bucket_key, window_start)
+);
+alter table public.sched_rate_limits enable row level security;
+
+create index if not exists sched_rate_limits_window_idx
+  on public.sched_rate_limits (window_start);
+
+-- Incrément ATOMIQUE + verdict, en un seul aller-retour. Un
+-- SELECT-puis-UPDATE laisserait passer les rafales concurrentes : c'est
+-- précisément ce qu'on cherche à arrêter. `true` = requête autorisée.
+create or replace function public.sched_rate_limit_hit(
+  p_key          text,
+  p_window_start timestamptz,
+  p_limit        int
+) returns boolean
+language plpgsql
+as $$
+declare
+  v_hits int;
+begin
+  insert into public.sched_rate_limits (bucket_key, window_start, hits)
+  values (p_key, p_window_start, 1)
+  on conflict (bucket_key, window_start)
+    do update set hits = public.sched_rate_limits.hits + 1
+  returning hits into v_hits;
+
+  return v_hits <= p_limit;
+end
+$$;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- INTÉGRATION ORQA DU MODULE DE RÉSERVATION — lot 3, août 2026
+-- Spec de référence : docs/specs/scheduling-module.md §8
+-- ══════════════════════════════════════════════════════════════════════
+-- Deux colonnes, rien de plus : le module apporte ses propres tables
+-- (`sched_*`), l'hôte n'a besoin que de savoir QUELLE campagne réserve en
+-- natif et de QUELLE identité visuelle habiller les pages candidat.
+
+-- Flag de coexistence PAR CAMPAGNE. Défaut `false` ⇒ toutes les campagnes
+-- existantes repartent sur la chaîne Cal.com à l'identique : la migration est
+-- douce par construction, aucun backfill.
+-- ⚠️ Écrit UNIQUEMENT par PATCH /api/campaigns/[id] — délibérément absent de
+-- `campaignToRow` (le PUT snapshot ne doit jamais le dégrader depuis un
+-- client dont le store est antérieur à l'activation).
+alter table public.campaigns
+  add column if not exists scheduling_native boolean not null default false;
+
+-- Identité du cabinet (logo + couleur d'accent) injectée dans le branding des
+-- pages candidat et des mails du module. Le NOM d'organisation n'est PAS ici :
+-- il vit déjà dans `interview_config.organisationName` (source canonique) —
+-- en créer un troisième exemplaire serait une source de vérité de plus.
+alter table public.app_settings
+  add column if not exists branding_config jsonb not null default '{}'::jsonb;
+
+-- Idempotence de la consommation des ÉVÉNEMENTS de réservation natifs.
+-- L'outbox du module livre at-least-once (un dispatch qui réussit son effet
+-- puis échoue à marquer sa ligne sera rejoué par le drain) : le consommateur
+-- se protège par un claim DEUX PHASES sur `event.id`, mêmes règles que
+-- `claims-policy` — posé avant l'effet, `confirmed_at` après.
+-- Table DISTINCTE de `calcom_webhook_events` : celle-là disparaît à la
+-- décommission (lot 5), celle-ci reste.
+create table if not exists public.interview_booking_events (
+  event_id     text primary key,
+  event_type   text not null,
+  processed_at timestamptz not null default now(),
+  confirmed_at timestamptz
+);
+alter table public.interview_booking_events enable row level security;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Conformité RGPD — plus AUCUN refus envoyé sans validation humaine
+-- ──────────────────────────────────────────────────────────────────────
+-- La zone sous le seuil bas n'envoie plus : elle met en file. Elle porte donc
+-- une zone à elle, `proposed_reject`, distincte de `auto_reject` — cette
+-- dernière devient LEGACY (les refus réellement partis tout seuls, avant la
+-- bascule). Les confondre réécrirait l'histoire : chaque refus automatique
+-- passé basculerait rétroactivement en « en attente » dans les rapports.
+--
+-- ⚠️ BLOC CANONIQUE de la contrainte (règle « état final ») : on met à jour LA
+-- définition existante — drop + add, jamais un second bloc empilé.
+alter table public.candidate_analyses
+  drop constraint if exists candidate_analyses_decision_zone_chk;
+alter table public.candidate_analyses
+  add constraint candidate_analyses_decision_zone_chk
+  check (decision_zone is null
+         or decision_zone in ('auto_reject', 'proposed_reject', 'gray', 'auto_accept'));
+
+-- Le « seuil de proposition de refus » EST le seuil bas (`threshold_low`) :
+-- sous cette barre, la candidature est proposée au refus. Une colonne dédiée a
+-- existé quelques heures — elle bornait une sous-file À L'INTÉRIEUR de la zone
+-- grise, ce qui ne supprimait aucun envoi automatique. Contresens, supprimée.
+alter table public.campaigns
+  drop constraint if exists campaigns_rejection_proposal_chk;
+alter table public.campaigns
+  drop column if exists rejection_proposal_threshold;

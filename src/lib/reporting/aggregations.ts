@@ -10,6 +10,7 @@
  */
 
 import { CV_SOURCE_LABELS } from '@/types/cv-source';
+import { isAwaitingHumanZone } from '@/types/hitl';
 import type {
   CampaignAnalysisDatum,
   CampaignVolumes,
@@ -73,10 +74,16 @@ export function computeVolumes(analyses: CampaignAnalysisDatum[]): CampaignVolum
   // ET des compteurs système/humain (ce n'est pas une évaluation). La
   // partition somme : received = retained + rejected + enAttente + sansSuite.
   const evaluated = analyses.filter((a) => !a.dismissed);
-  // En attente = zone grise pas encore tranchée par l'humain (statut provisoire
-  // 'rejected' → exclu de retained ET de rejected pour ne pas fausser les taux).
+  // En attente = zone qui ATTEND un humain (grise OU proposée au refus) et pas
+  // encore tranchée (statut provisoire 'rejected' → exclu de retained ET de
+  // rejected pour ne pas fausser les taux).
+  //
+  // ⚠️ `auto_reject` en est volontairement EXCLUE : c'est la zone LEGACY des
+  // refus réellement partis tout seuls, avant la conformité RGPD. L'inclure
+  // ferait basculer rétroactivement tout l'historique des refus automatiques en
+  // « en attente » — des rapports déjà envoyés changeraient de chiffres.
   const isPending = (a: CampaignAnalysisDatum): boolean =>
-    a.decisionZone === 'gray' && a.decidedBy !== 'user';
+    isAwaitingHumanZone(a.decisionZone) && a.decidedBy !== 'user';
   return {
     received: analyses.length,
     retained: evaluated.filter((a) => a.status === 'accepted' && !isPending(a))
@@ -85,8 +92,13 @@ export function computeVolumes(analyses: CampaignAnalysisDatum[]): CampaignVolum
       .length,
     enAttente: evaluated.filter(isPending).length,
     classeeSansSuite: analyses.length - evaluated.length,
-    // Système = zones auto (et legacy sans zone) ; humain = gris tranché.
-    decidedBySystem: evaluated.filter((a) => a.decisionZone !== 'gray').length,
+    // Système = ce qui s'est décidé SANS personne (acceptation auto, refus
+    // automatiques de l'ancien régime, lignes legacy sans zone). On le lit sur
+    // `decidedBy`, pas sur la zone : depuis la conformité RGPD, une zone basse
+    // peut parfaitement avoir été tranchée par un humain.
+    decidedBySystem: evaluated.filter(
+      (a) => a.decidedBy !== 'user' && !isAwaitingHumanZone(a.decisionZone),
+    ).length,
     decidedByHuman: evaluated.filter((a) => a.decidedBy === 'user').length,
   };
 }

@@ -16,6 +16,8 @@ import {
   patchPendingValidation,
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { analysisIdForValidation } from '@/lib/hitl/analysis-key';
+import { revokeCampaignBookingLink } from '@/lib/scheduling-host/campaign-booking';
 
 export const runtime = 'nodejs';
 
@@ -29,10 +31,16 @@ export async function POST(
   // (rétro-compat) reste valide, mailStatus retombe sur 'unknown'.
   let providerMessageId: string | null = null;
   let mailStatus = 'unknown';
+  // Refus groupé — identifiant du LOT qui a produit cette décision (optionnel).
+  // Sert à retrouver « les 40 refus de mardi » d'un seul geste dans le journal ;
+  // il ne change RIEN au traitement, chaque validation restant décidée une par
+  // une avec sa propre réservation et son propre claim.
+  let batchId: string | null = null;
   try {
     const body = (await request.json()) as {
       providerMessageId?: unknown;
       mailStatus?: unknown;
+      batchId?: unknown;
     };
     if (typeof body?.providerMessageId === 'string') {
       providerMessageId = body.providerMessageId;
@@ -40,12 +48,24 @@ export async function POST(
     if (typeof body?.mailStatus === 'string' && body.mailStatus.trim() !== '') {
       mailStatus = body.mailStatus;
     }
+    if (typeof body?.batchId === 'string' && body.batchId.trim() !== '') {
+      batchId = body.batchId;
+    }
   } catch {
     // pas de corps / JSON invalide → on ignore, valeurs par défaut.
   }
   // Le mail est réputé parti si l'envoi a réussi MAINTENANT ('sent') ou lors
   // d'une tentative précédente ('duplicate' = claim confirmé, prouvé).
   const mailWentOut = mailStatus === 'sent' || mailStatus === 'duplicate';
+  // DEUX VÉRITÉS D'AUDIT DISTINCTES sous un mail non parti :
+  //   - `skipped_by_user` : personne n'a essayé, c'est un CHOIX (case décochée
+  //     au refus groupé). Le candidat est à contacter autrement, ou pas.
+  //   - tout le reste : on a essayé et ÉCHOUÉ. C'est un incident, il appelle
+  //     une reprise.
+  // Les confondre ferait lire une panne là où il y a une décision, et
+  // inversement — d'où le champ explicite plutôt qu'une déduction du statut
+  // par chaque lecteur.
+  const skippedByUser = mailStatus === 'skipped_by_user';
   try {
     const validation = await getPendingValidation(id);
     if (!validation) {
@@ -79,6 +99,8 @@ export async function POST(
         // | 'skipped_no_email' | 'skipped_no_config' | 'network_error' | 'unknown').
         mailStatus,
         mailSent: mailWentOut,
+        mailSkippedByUser: skippedByUser,
+        batchId,
         // Livraison vérifiable via GET /api/email/status?id=… (null si l'envoi
         // a échoué/été sauté — la décision reste enregistrée).
         providerMessageId,
@@ -102,8 +124,12 @@ export async function POST(
           candidateName: validation.candidateName,
           candidateEmail: validation.candidateEmail,
           mailStatus,
-          reason:
-            'décision humaine enregistrée mais mail candidat NON parti — à recontacter manuellement',
+          batchId,
+          // Champ de tri de l'audit — cf. commentaire de `skippedByUser`.
+          cause: skippedByUser ? 'skipped_by_user' : 'send_failed',
+          reason: skippedByUser
+            ? 'décision humaine enregistrée, envoi du mail volontairement sauté — candidat NON contacté'
+            : 'décision humaine enregistrée mais mail candidat NON parti — à recontacter manuellement',
         },
       }).catch((jErr) =>
         console.error('[validations/send] journal hitl_mail_not_sent KO', jErr),
@@ -114,6 +140,25 @@ export async function POST(
       status: 'sent',
       decidedAt: new Date().toISOString(),
     });
+
+    // REFUS tranché : le lien de réservation éventuellement émis pendant la
+    // relecture meurt ici. Le cas n'est pas théorique — le DRH ouvre souvent
+    // le brouillon d'acceptation (qui ÉMET le lien) avant de changer d'avis.
+    // Serveur, pas client : c'est ici qu'on a la décision, l'identité de la
+    // campagne et la clé. Best-effort : un lien encore vivant ne doit pas
+    // faire échouer l'enregistrement d'une décision déjà prise.
+    if (validation.decision === 'reject') {
+      const analysisId = analysisIdForValidation(validation);
+      if (analysisId) {
+        await revokeCampaignBookingLink(
+          validation.campaignId,
+          analysisId,
+          'candidature refusée',
+        ).catch((err) =>
+          console.error('[validations/send] révocation du lien KO', err),
+        );
+      }
+    }
 
     // Propagation lot 2 — un humain a tranché un gris : on fige le statut FINAL
     // de l'analyse + son identité (depuis la SESSION serveur, jamais le client).

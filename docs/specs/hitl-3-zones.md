@@ -120,6 +120,89 @@ Mécanique de file détaillée (brouillons, idempotence) : voir
 `docs/specs/hitl-validation-suspendue.md` (le **gating global** y est supersédé
 par le présent document — la zone remplace le toggle).
 
+### 4.1. Plus AUCUN refus automatique — le seuil bas propose, il n'envoie plus
+
+**Mise en conformité RGPD (18/08/2026).** Une décision défavorable ne peut plus
+être prise ET communiquée sans intervention humaine. La zone sous le seuil bas
+**n'envoie donc plus rien** : elle met en file et **propose** un refus.
+
+| Score | Zone | Effet |
+|-------|------|-------|
+| `< threshold_low` | **`proposed_reject`** | file HITL, **aucun mail** — sous-onglet « Propositions de refus », refus groupé en un geste |
+| `[low, high[` | `gray` | file HITL — sous-onglet « À examiner », une par une |
+| `≥ threshold_high` | `auto_accept` | **invitation envoyée automatiquement** (décision favorable et réversible : hors du champ que le RGPD verrouille) |
+
+**Le « seuil de proposition de refus » EST `threshold_low`.** Il n'y a pas de
+quatrième réglage. Une colonne dédiée (`rejection_proposal_threshold`) a existé
+quelques heures : elle bornait une sous-file *à l'intérieur* de la zone grise et
+ne supprimait donc aucun envoi automatique — contresens, colonne supprimée.
+
+**`auto_reject` est LEGACY.** Elle n'est plus jamais produite, et elle est
+conservée : elle marque les candidatures dont le refus est *réellement* parti
+sans validation, avant la bascule. La fondre dans `proposed_reject` ferait
+basculer rétroactivement tout l'historique des refus automatiques en « en
+attente » — des rapports déjà envoyés changeraient de chiffres.
+
+**Point d'application unique : `gateCandidateOutreach`.** Le gate liste la zone
+qui ENVOIE (`auto_accept`) et met tout le reste en file — jamais l'inverse : une
+zone ajoutée demain doit attendre par défaut, pas envoyer. Les deux pipelines
+(chat, poller IMAP) passent par lui, il n'y a pas d'autre chemin de sortie de
+mail candidat. Les replis des appelants retombent sur `proposed_reject`, jamais
+sur `auto_reject` : un repli ne doit pas ressusciter l'envoi supprimé.
+
+**Lecteurs sensibles** (prédicat partagé `isAwaitingHumanZone`, à ne pas
+dupliquer) :
+- `deriveCandidateStage` — `decidedBy === 'user'` prime (« Non retenu », quelle
+  que soit la zone) ; une zone en attente sans ligne de file rend « À valider »,
+  jamais un refus consommé ; `refus_auto` ne reste que pour le legacy.
+- `computeVolumes` — `enAttente` couvre gris **et** proposés ; `decidedBySystem`
+  se lit sur `decidedBy`, plus sur la zone.
+- `deriveJourneyFor` — un gris fait passer le screening pour RETENU (son score
+  est dans la bande) ; un `proposed_reject` a bien échoué au screening, mais son
+  refus est **provisoire** (`rejectionGated`) jusqu'à confirmation.
+- `zoneDistribution` (Bureau) — déjà agnostique : status + `decidedBy` + file
+  rapprochée par uid, rien à changer.
+
+### 4.2. Sous-onglet « Propositions de refus » (refus groupé)
+
+Sous-onglet de Validation suspendue. L'onglet « À examiner » et
+`ValidationCard` sont **intouchés** : la carte est réutilisée telle quelle sous
+une couche de sélection, donc accepter une proposition suit exactement le chemin
+d'acceptation normal.
+
+Partition **stricte** (`partitionRejectionProposals`, pur/testé) sur la **ZONE
+FIGÉE AU SCORING** (`candidate_analyses.decision_zone`), servie avec la file par
+`GET /api/validations` (`zoneByValidation`, rapprochement par `payload.uid`,
+chunké) : rien ne tombe entre les deux sous-onglets. Une zone inconnue, une
+analyse introuvable, une acceptation en attente restent dans « À examiner ».
+Tri **score décroissant** (les cas limites en tête), signal au-delà de ~200.
+
+> ⚠️ **Ne JAMAIS repartitionner en comparant le score au seuil bas courant.**
+> Les seuils d'une campagne se déplacent ; la zone d'un dossier déjà analysé,
+> non — c'est la règle du modèle (« le changement s'applique aux prochaines
+> candidatures »). Le défaut a été observé en recette : une candidature
+> analysée en zone grise (score 80) basculait dans les propositions de refus
+> après un déplacement du seuil bas à 93, soit re-jugée avec un barème qu'elle
+> n'avait jamais connu. Deux réglages distincts : le seuil bas décide de la
+> zone **au moment de l'analyse** ; la zone décide du sous-onglet **pour
+> toujours**.
+
+**Exécution** (`src/lib/hitl/bulk-reject.ts`) : ce n'est **pas** un nouveau
+chemin de décision. Chaque candidature passe **une par une** par
+`decideGrayValidation`, donc par sa propre réservation d'envoi, son claim
+d'idempotence et sa finalisation. Séquentiel. Un échec **n'arrête pas** la
+fournée et laisse la candidature `pending` — visible, retentable. Brouillon
+indisponible ⇒ on ne décide **pas** (jamais de mail vide, jamais de candidature
+« traitée » sans envoi). Confirmation **obligatoire**, liste nominative + score.
+
+**Case « envoyer les mails de refus »**, cochée par défaut. Décochée, la
+décision est enregistrée sans écrire au candidat : `mailStatus =
+'skipped_by_user'`, et le journal **distingue** ce choix d'un échec d'envoi via
+`hitl_mail_not_sent.payload.cause` (`'skipped_by_user'` vs `'send_failed'`) —
+deux vérités d'audit différentes, sous une action unique pour que les
+« décidés-non-contactés » restent requêtables d'une seule passe. `batchId`
+journalisé de part et d'autre.
+
 ---
 
 ## 5. Reporting de décision (volumes, taux, recos)
@@ -185,7 +268,7 @@ vs « Décision automatique (système) ».
 | Table.colonne | Type | Rôle |
 |---------------|------|------|
 | `campaigns.threshold_low` / `threshold_high` | `int` (CHECK `low ≤ high`) | seuils par campagne ; nullable → repli applicatif `0/100` |
-| `candidate_analyses.decision_zone` | `auto_reject` \| `gray` \| `auto_accept` (null = legacy) | **zone figée au scoring** (vraie zone de `scoreCandidat`) |
+| `candidate_analyses.decision_zone` | `proposed_reject` \| `gray` \| `auto_accept` \| `auto_reject` (LEGACY ; null = pré-modèle) | **zone figée au scoring** (vraie zone de `scoreCandidat`) |
 | `candidate_analyses.decided_by` | `auto` \| `user` (null = legacy) | qui a tranché le statut final |
 | `candidate_analyses.decided_by_user_id` / `_email` | text null | identité du valideur (chemin `user`) |
 | `candidate_analyses.hitl_config` | jsonb null | **snapshot d'audit conservé** (alimenté par `DEFAULT_HITL_CONFIG` ; plus de source globale) |

@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { analysisIdForValidation } from '@/lib/hitl/analysis-key';
 import { decideGrayValidation } from '@/lib/hitl/decide-gray-validation';
 import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import { formatDateTimeFr } from '@/lib/format/datetime';
@@ -83,6 +84,12 @@ export function ValidationCard({
             jobTitle: payloadString(v, 'jobTitle') ?? null,
             mode,
             candidate,
+            // Le preview ÉMET le lien de réservation (idempotent par
+            // analyse) : sans ces deux clés, une campagne en réservation
+            // native ne saurait pas quel lien montrer — et le relecteur
+            // relirait autre chose que ce qui partira.
+            uid: payloadString(v, 'uid') ?? undefined,
+            analysisId: analysisIdForValidation(v) ?? undefined,
             preview: true,
           }),
         });

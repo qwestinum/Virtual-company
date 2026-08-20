@@ -10,6 +10,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import { chunk } from '@/lib/db/paginate';
 import {
   getPendingValidation,
   listPendingValidations,
@@ -18,7 +20,11 @@ import {
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { mergePendingValidationEnqueue } from '@/lib/hitl/enqueue-merge';
-import { HitlDecisionSchema, type PendingValidation } from '@/types/hitl';
+import {
+  HitlDecisionSchema,
+  type DecisionZone,
+  type PendingValidation,
+} from '@/types/hitl';
 
 export const runtime = 'nodejs';
 
@@ -30,10 +36,40 @@ export async function GET(request: Request): Promise<NextResponse> {
       status === 'sent'
         ? await listSentValidations()
         : await listPendingValidations();
-    return NextResponse.json({ validations });
+    // ZONE FIGÉE AU SCORING de chaque validation, servie AVEC la file : c'est
+    // ELLE qui borne le sous-onglet « Propositions de refus », jamais une
+    // comparaison du score au seuil COURANT de la campagne.
+    //
+    // Les seuils d'une campagne se déplacent ; la zone d'un dossier déjà
+    // analysé, non. Recomparer au seuil du jour ferait basculer dans les
+    // propositions de refus une candidature analysée en zone grise — défaut
+    // observé en recette : re-juger un dossier avec un barème qu'il n'a jamais
+    // connu. La colonne `decision_zone` est la seule vérité.
+    //
+    // Rapprochement par `payload.uid` (même clé que le menu Candidatures et le
+    // Bureau), chunké pour rester sous le cap PostgREST quel que soit le volume.
+    // Forme : { [validationId]: DecisionZone | null }. Absent = « à examiner ».
+    const zoneByValidation: Record<string, DecisionZone | null> = {};
+    const uidOf = (v: PendingValidation): string | null =>
+      typeof v.payload?.uid === 'string' ? v.payload.uid : null;
+    const uids = [
+      ...new Set(validations.map(uidOf).filter((u): u is string => u !== null)),
+    ];
+    if (uids.length > 0) {
+      const zoneByUid = new Map<string, DecisionZone | null>();
+      for (const part of chunk(uids, 300)) {
+        const rows = await listAllCandidateAnalyses({ uidIn: part });
+        for (const row of rows) zoneByUid.set(row.uid, row.decisionZone);
+      }
+      for (const v of validations) {
+        const uid = uidOf(v);
+        zoneByValidation[v.id] = uid ? (zoneByUid.get(uid) ?? null) : null;
+      }
+    }
+    return NextResponse.json({ validations, zoneByValidation });
   } catch (err) {
     console.error('[api/validations] GET failed', err);
-    return NextResponse.json({ validations: [] });
+    return NextResponse.json({ validations: [], zoneByValidation: {} });
   }
 }
 

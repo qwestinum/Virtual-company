@@ -64,6 +64,9 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
     siteId: row.site_id ?? null,
     donneurOrdreId: row.donneur_ordre_id ?? null,
     ownerUserId: row.owner_user_id ?? null,
+    // Colonne absente (base antérieure au lot 3) ⇒ `false` : le régime
+    // historique est TOUJOURS le repli sûr.
+    schedulingNative: row.scheduling_native === true,
     launchedAt: row.launched_at ?? null,
     closedAt: row.closed_at ?? null,
     prefillExtraction: row.prefill_extraction ?? null,
@@ -74,7 +77,14 @@ function rowToCampaign(row: CampaignRow): ActiveCampaign {
   };
 }
 
-function campaignToRow(campaign: ActiveCampaign): CampaignRow {
+/**
+ * Ce qu'un snapshot complet a le droit d'écrire. `schedulingNative` en est
+ * EXCLU par le type lui-même : l'invariant « seul le PATCH pose le flag » est
+ * ainsi vérifié à la compilation, pas seulement par une relecture attentive.
+ */
+export type CampaignSnapshot = Omit<ActiveCampaign, 'schedulingNative'>;
+
+function campaignToRow(campaign: CampaignSnapshot): CampaignRow {
   return {
     id: campaign.id,
     name: campaign.name,
@@ -89,6 +99,10 @@ function campaignToRow(campaign: ActiveCampaign): CampaignRow {
     site_id: campaign.siteId,
     donneur_ordre_id: campaign.donneurOrdreId,
     owner_user_id: campaign.ownerUserId,
+    // ⚠️ `scheduling_native` est VOLONTAIREMENT absent : ce snapshot est écrit
+    // par le PUT depuis l'état du client. Un client chargé avant l'activation
+    // du flag le remettrait silencieusement à `false` — la classe de bug
+    // « perte silencieuse ». Seul le PATCH ciblé pose ce flag.
     launched_at: campaign.launchedAt,
     closed_at: campaign.closedAt,
     // Inc. 2b — la machine d'états est désormais persistée (source de vérité).
@@ -140,7 +154,7 @@ export async function getCampaign(id: string): Promise<ActiveCampaign | null> {
 }
 
 export async function upsertCampaign(
-  campaign: ActiveCampaign,
+  campaign: CampaignSnapshot,
 ): Promise<ActiveCampaign> {
   const supabase = requireServerSupabase();
   const row = campaignToRow(campaign);
@@ -169,6 +183,8 @@ export type CampaignPatch = {
   siteId?: string | null;
   donneurOrdreId?: string | null;
   ownerUserId?: string | null;
+  /** Réservation native — SEUL point d'écriture du flag (jamais le snapshot). */
+  schedulingNative?: boolean;
 };
 
 export async function patchCampaign(
@@ -189,6 +205,8 @@ export async function patchCampaign(
   if (patch.donneurOrdreId !== undefined)
     row.donneur_ordre_id = patch.donneurOrdreId;
   if (patch.ownerUserId !== undefined) row.owner_user_id = patch.ownerUserId;
+  if (patch.schedulingNative !== undefined)
+    row.scheduling_native = patch.schedulingNative;
 
   // Reporting — horodatage du cycle de vie sur transition de statut.
   // closed_at : posé à CHAQUE clôture (ré-clôture écrase → « seul le dernier

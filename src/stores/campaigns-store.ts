@@ -93,6 +93,13 @@ export type ActiveCampaign = {
    */
   ownerUserId: string | null;
   /**
+   * Réservation NATIVE (module `sched_*`) plutôt que Cal.com, pour CETTE
+   * campagne. LECTURE SEULE côté store : posé par PATCH /api/campaigns/[id]
+   * et jamais renvoyé par le PUT snapshot — un client dont l'état est
+   * antérieur à l'activation ne doit pas pouvoir le remettre à `false`.
+   */
+  schedulingNative: boolean;
+  /**
    * Reporting (rapport de campagne) — dates de cycle de vie. `launchedAt`
    * posée au 1er passage en 'active', `closedAt` à chaque passage en
    * 'closed' (ré-clôture écrase). Nullable : repli createdAt / updatedAt
@@ -147,6 +154,8 @@ export type CampaignsState = {
    * personnel sert aux invitations ; null = repli agenda global).
    */
   setOwner: (id: string, ownerUserId: string | null) => void;
+  /** Reflet LOCAL du flag après un PATCH réussi — jamais une décision client. */
+  setSchedulingNative: (id: string, schedulingNative: boolean) => void;
   /**
    * Écrase explicitement le statut d'une campagne (paused / closed
    * principalement). Pour les transitions dérivées (draft → in_progress
@@ -374,6 +383,9 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       siteId,
       donneurOrdreId,
       ownerUserId,
+      // Réservation native : jamais décidée côté client — l'état vient du
+      // serveur (PATCH), le défaut local est le régime historique.
+      schedulingNative: existing?.schedulingNative ?? false,
       status,
       lifecycle,
       launchedAt: existing?.launchedAt ?? null,
@@ -493,6 +505,7 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
       };
     }),
 
+
   setOwner: (id, ownerUserId) =>
     set((state) => {
       const current = state.byId[id];
@@ -506,6 +519,19 @@ export const useCampaignsStore = create<CampaignsState>()((set, get) => ({
             ownerUserId,
             updatedAt: new Date().toISOString(),
           },
+        },
+      };
+    }),
+
+  setSchedulingNative: (id, schedulingNative) =>
+    set((state) => {
+      const current = state.byId[id];
+      if (!current || current.schedulingNative === schedulingNative) return state;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [id]: { ...current, schedulingNative },
         },
       };
     }),

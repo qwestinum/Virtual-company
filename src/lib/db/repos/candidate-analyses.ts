@@ -42,11 +42,15 @@ const SUMMARY_COLUMNS =
 
 /**
  * Repli déterministe statut→zone (binaire, sans `gray`) — utilisé UNIQUEMENT
- * quand `scoringResult.decisionZone` est absent (analyses legacy / chemin sans
- * poignées). La zone autoritaire (3 niveaux) vient de `scoreCandidat`. Pur.
+ * quand `scoringResult.decisionZone` est absent (chemin sans poignées). La zone
+ * autoritaire vient de `scoreCandidat`. Pur.
+ *
+ * Côté refus le repli est `proposed_reject`, PAS `auto_reject` : on écrit une
+ * zone qui attend un humain, jamais une zone qui affirme qu'un mail est parti
+ * tout seul. `auto_reject` ne s'écrit plus — elle ne se lit que dans l'existant.
  */
 export function deriveDecisionZone(status: CandidateStatus): DecisionZone {
-  return status === 'accepted' ? 'auto_accept' : 'auto_reject';
+  return status === 'accepted' ? 'auto_accept' : 'proposed_reject';
 }
 
 type SummaryRow = Omit<CandidateAnalysisRow, 'application' | 'criteria_version'>;
@@ -215,8 +219,8 @@ export async function insertCandidateAnalysis(
     computed_at: scoringResult.computedAt,
     application: input.application,
     hitl_config: input.hitlConfig ?? DEFAULT_HITL_CONFIG,
-    // Zone figée au scoring : la VRAIE zone 3 niveaux calculée par scoreCandidat
-    // (auto_reject/gray/auto_accept). Repli déterministe statut→zone seulement
+    // Zone figée au scoring : la VRAIE zone calculée par scoreCandidat
+    // (proposed_reject/gray/auto_accept). Repli déterministe statut→zone seulement
     // si absente (legacy / chemin sans poignées). decided_by défaut 'auto'.
     decision_zone:
       scoringResult.decisionZone ?? deriveDecisionZone(scoringResult.status),

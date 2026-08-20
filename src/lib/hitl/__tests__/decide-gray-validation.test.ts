@@ -56,7 +56,8 @@ describe('decideGrayValidation — non-régression du chemin d’envoi', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(sendMock).toHaveBeenCalledTimes(1);
-    expect(sendMock).toHaveBeenCalledWith({ ...v, decision: 'accept' }, draft);
+    // 3e argument = options d'ENVOI (refus groupé) : vide sur le chemin unitaire.
+    expect(sendMock).toHaveBeenCalledWith({ ...v, decision: 'accept' }, draft, {});
     expect(res).toEqual({ ok: true, message: 'envoyé' });
   });
 
@@ -73,7 +74,7 @@ describe('decideGrayValidation — non-régression du chemin d’envoi', () => {
     expect(init.method).toBe('PATCH');
     expect(JSON.parse(init.body as string)).toEqual({ decision: 'reject', confirmed: true });
     // L'envoi part bien avec la décision TRANCHÉE.
-    expect(sendMock).toHaveBeenCalledWith({ ...v, decision: 'reject' }, draft);
+    expect(sendMock).toHaveBeenCalledWith({ ...v, decision: 'reject' }, draft, {});
   });
 
   it('n’envoie pas si la persistance de la décision échoue (HTTP non-ok)', async () => {

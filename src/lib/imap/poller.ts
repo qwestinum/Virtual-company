@@ -47,6 +47,7 @@ import {
   renderCVBatchMarkdown,
 } from '@/lib/agents/cv-report-render';
 import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
+import { imapAnalysisId } from '@/lib/imap/analysis-id';
 import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
 import {
   buildFetchSet,
@@ -1136,7 +1137,7 @@ export async function processEmailAttachment(args: {
   // (re-passe) est un succès ; Supabase absent reste toléré (démo volatile).
   try {
     await persistCandidateAnalysisStrict({
-      id: `can_imap_${mailbox.id}_${uid}`,
+      id: imapAnalysisId(mailbox.id, uid),
       // uid brut = clé des marqueurs de parcours du journal (cohérent avec
       // le payload.uid de imap_cv_analyzed → dashboard).
       uid: String(uid),
@@ -1162,7 +1163,7 @@ export async function processEmailAttachment(args: {
   void matchVivierApplication(
     isTaskOwner ? null : campaign.id,
     application.candidate.email,
-    `can_imap_${mailbox.id}_${uid}`,
+    imapAnalysisId(mailbox.id, uid),
   );
 
   // Round 5 fix — déclenche le mail au candidat (refus ou invitation)

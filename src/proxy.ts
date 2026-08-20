@@ -13,9 +13,15 @@
  *  - ROUTES `/api` : DENY-BY-DEFAULT. Toute route `/api` exige une session
  *    valide → sinon 401 JSON (jamais de redirect : un fetch d'API ne doit pas
  *    recevoir du HTML). SEULES exceptions : les routes à auth PROPRE (webhook
- *    Cal.com signé HMAC, cron authentifié par CRON_SECRET) qui se valident
- *    elles-mêmes. Conséquence voulue : toute NOUVELLE route `/api` est protégée
- *    par défaut, sans rien à ajouter.
+ *    Cal.com signé HMAC, cron authentifié par CRON_SECRET, réservation
+ *    authentifiée par jeton d'URL) qui se valident elles-mêmes. Conséquence
+ *    voulue : toute NOUVELLE route `/api` est protégée par défaut, sans rien
+ *    à ajouter.
+ *  - SURFACES PUBLIQUES de réservation (`/r/`, `/b/`, `/api/sched/`) :
+ *    court-circuit AVANT tout travail d'authentification. Les pages, elles,
+ *    n'ont besoin d'aucune exemption — le régime « pages » est une LISTE
+ *    BLANCHE, donc tout ce qui n'y figure pas est déjà public ; les inscrire
+ *    ici laisserait croire à une garde qui n'existe pas.
  *
  * Rafraîchit aussi le refresh-token Supabase via `getUserFromMiddleware`
  * (cookies posés sur la response).
@@ -31,7 +37,36 @@ const PROTECTED_PREFIXES = ['/app', '/rh', '/settings', '/validations', '/admin'
  * Routes `/api` à auth PROPRE (pas de session) — à NE PAS gater, sinon on
  * casse le webhook et le cron. Toute autre route `/api` est gardée par défaut.
  */
-const API_SELF_AUTHENTICATED = ['/api/webhooks/calcom', '/api/cron/imap-poll'];
+const API_SELF_AUTHENTICATED = [
+  '/api/webhooks/calcom',
+  '/api/cron/imap-poll',
+  // Réservation : l'appelant est un invité sans compte, son authentification
+  // est le jeton nominatif de l'URL, vérifié par le module.
+  '/api/sched',
+];
+
+/**
+ * Surfaces ouvertes aux invités. Elles ne nécessitent AUCUNE session, et
+ * chercher à en rafraîchir une coûterait un aller-retour d'authentification
+ * sur le chemin critique d'une page ouverte depuis un email, pour un résultat
+ * toujours nul.
+ */
+const PUBLIC_BOOKING_PREFIXES = ['/r/', '/b/', '/api/sched/'];
+
+/** Réponses tokenisées : jamais indexées, jamais mises en cache par un tiers. */
+function publicBookingResponse(): NextResponse {
+  const response = NextResponse.next();
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  // Le jeton est dans l'URL : sans cela il partirait dans le `Referer` de la
+  // première ressource externe ouverte depuis la page.
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  return response;
+}
+
+function isPublicBooking(pathname: string): boolean {
+  return PUBLIC_BOOKING_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
@@ -47,6 +82,10 @@ function isApiSelfAuthenticated(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Surfaces de réservation : on sort AVANT de toucher à l'authentification.
+  if (isPublicBooking(pathname)) return publicBookingResponse();
+
   const { response, user } = await getUserFromMiddleware(request);
 
   // Régime API : deny-by-default, 401 (pas de redirect).

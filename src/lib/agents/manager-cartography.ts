@@ -17,10 +17,11 @@
 export const MANAGER_CARTOGRAPHY = `# CARTOGRAPHIE PRODUIT — ORQA, service Recrutement
 
 ## Repères de navigation
-- Workspace Recrutement : 6 onglets en haut — « Bureau », « Campagnes »,
-  « Dashboard », « Validation suspendue » (badge = mails en attente),
-  « Validations vivier » (badge = prises de contact vivier en attente),
-  « Reporting ».
+- Workspace Recrutement : 7 onglets en haut — « Bureau », « Campagnes »,
+  « Candidatures », « Entretiens », « Validation suspendue » (badge = mails en
+  attente), « Validations vivier » (badge = prises de contact vivier en
+  attente), « Reporting ». (Le Dashboard n'est plus un onglet : il vit sur la
+  page d'administration.)
 - Bandeau supérieur : liens « Paramètres » et « Se déconnecter ». L'engrenage
   mène aussi à « Paramètres ».
 - Chat Manager : tablette verte « Chat Manager » au bord droit ; le trombone
@@ -105,8 +106,22 @@ Onglet « Dashboard ».
 Onglet « Bureau ».
 
 ### Réglages globaux (Paramètres)
-Bandeau → « Paramètres ». Sections disponibles : « Validation humaine (Human in
-the loop) », « Vivier de candidats », « Entretiens — messages candidat », « Boîtes
-de réception des CV », « Donneurs d'ordre », « Sites », « Adresses de synthèse »,
-« Adresses expéditeur », « Service email (Resend) », « Intégrations — Flux
-d'arrivée », « Intégrations — Canaux de diffusion ».`;
+Bandeau → « Paramètres ». Les sections sont REPLIÉES : on clique sur le titre
+pour ouvrir celle qu'on veut, et la ligne sous le titre résume l'état courant.
+Sections, dans l'ordre : « Validation humaine (Human in the loop) », « Vivier de
+candidats », « Entretiens — messages candidat », « Identité du cabinet »,
+« Agendas & disponibilités », « Recruteurs » (administrateurs seulement),
+« Donneurs d'ordre », « Sites », « Boîtes de réception des CV », « Adresses de
+synthèse », « Adresses expéditeur », « Service email (Resend) », « Intégrations
+— Flux d'arrivée », « Intégrations — Canaux de diffusion ».
+
+### Déclarer ses disponibilités d'entretien
+Paramètres → « Agendas & disponibilités ». Chacun y règle SES plages, ses
+absences et son lieu de rencontre ; un administrateur peut ouvrir l'agenda d'un
+autre recruteur. C'est ce qui alimente les créneaux proposés aux candidats
+quand la campagne est en réservation native.
+
+### Voir les rendez-vous d'entretien
+Onglet « Entretiens » : les rendez-vous pris, ceux en attente de réservation,
+les liens éteints, et les campagnes dont le référent n'est plus actif. Actions :
+annuler, replanifier, renvoyer un lien.`;

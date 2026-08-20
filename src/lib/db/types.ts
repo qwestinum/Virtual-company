@@ -52,6 +52,12 @@ export type CampaignRow = {
   /** Recruteur RÉFÉRENT (auth.users.id, sans FK — snapshot). Nullable. */
   owner_user_id: string | null;
   /**
+   * Lot 3 — cette campagne réserve-t-elle via le module natif (`sched_*`) ?
+   * `false` (défaut) ⇒ chaîne Cal.com inchangée. Écrit UNIQUEMENT par le
+   * PATCH ciblé : délibérément absent de `campaignToRow`.
+   */
+  scheduling_native?: boolean | null;
+  /**
    * Reporting — dates de cycle de vie (rapport de campagne). Nullable :
    * repli applicatif sur created_at / updated_at pour l'historique.
    */

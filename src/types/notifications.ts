@@ -7,7 +7,8 @@ import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 /** Clés des signaux v1. V2 = étendre cette union + ajouter une définition. */
 export type BusinessSignalKey =
   | 'pending_validations_overdue'
-  | 'interviews_awaiting_decision';
+  | 'interviews_awaiting_decision'
+  | 'interviews_awaiting_pointing';
 
 /**
  * Cible de navigation INTERNE (onglets du WorkspacePane — pas de route Next
@@ -15,7 +16,9 @@ export type BusinessSignalKey =
  */
 export type BusinessSignalTarget =
   | { tab: 'validations' }
-  | { tab: 'candidatures'; stage: CandidateStage };
+  | { tab: 'candidatures'; stage: CandidateStage }
+  /** Page Entretiens : `section` ouvre directement le bon onglet. */
+  | { tab: 'entretiens'; section: 'a_pointer' | 'awaiting' };
 
 /** Un signal actif, prêt à afficher (message + CTA construits côté serveur). */
 export type BusinessSignal = {

@@ -18,11 +18,15 @@
  *   3. Entretien fait
  *   4. RDV pris (réservation Cal.com)
  *   5. Invité (accepté, en attente des étapes d'entretien)
- *   6. À valider (zone grise, décision humaine en attente)
- *   7. Refus auto (zone auto_reject, décision système)
+ *   6. À valider (zone grise OU proposée au refus, décision humaine en attente)
+ *   7. Refus auto (zone auto_reject — LEGACY, ancien régime d'envoi automatique)
  */
 
-import type { DecidedBy, DecisionZone } from '@/types/hitl';
+import {
+  isAwaitingHumanZone,
+  type DecidedBy,
+  type DecisionZone,
+} from '@/types/hitl';
 import type { CandidateStatus } from '@/types/scoring';
 
 export const CANDIDATE_STAGES = [
@@ -45,7 +49,7 @@ export type CandidateStageInput = {
   decisionZone: DecisionZone | null;
   /** Acteur de la décision (candidate_analyses.decided_by). */
   decidedBy: DecidedBy | null;
-  /** Présent dans pending_validations en `pending` (gris en attente d'un humain). */
+  /** Présent dans pending_validations en `pending`/`sending` (attente humaine). */
   isPendingValidation: boolean;
   /** Une réservation Cal.com existe (interview_briefs.status='scheduled'). */
   hasScheduledInterview: boolean;
@@ -87,12 +91,21 @@ export function deriveCandidateStage(input: CandidateStageInput): CandidateStage
   // des étapes d'entretien.
   if (input.status === 'accepted') return 'invite';
 
-  // 6 — gris encore en attente d'une décision humaine.
+  // 6 — encore en attente d'une décision humaine (gris OU proposé au refus).
   if (input.isPendingValidation) return 'a_valider';
 
-  // 7 — rejeté : distinguer le refus HUMAIN d'un gris (zone 'gray' immuable,
-  // décision tranchée) du refus AUTOMATIQUE système (auto_reject / legacy).
-  if (input.decisionZone === 'gray') return 'non_retenu';
+  // 7 — rejeté. Trois cas à ne pas confondre :
+  //   a. un HUMAIN a tranché (quelle que soit la zone) → « Non retenu ». C'est
+  //      le test qui prime : depuis la conformité RGPD, un refus sous le seuil
+  //      bas est lui aussi tranché par une personne, et l'étiqueter « Refus
+  //      auto » raconterait le contraire de ce qui s'est passé.
+  if (input.decidedBy === 'user') return 'non_retenu';
+  //   b. zone en attente d'un humain mais AUCUNE ligne de file : la mise en
+  //      file a échoué (le gate a différé, rien n'est parti). C'est un dossier
+  //      à traiter, pas un refus consommé.
+  if (isAwaitingHumanZone(input.decisionZone)) return 'a_valider';
+  //   c. reste le refus AUTOMATIQUE de l'ancien régime (`auto_reject`, ou
+  //      ligne legacy sans zone) : là, le mail est bien parti tout seul.
   return 'refus_auto';
 }
 
@@ -106,6 +119,7 @@ export const CANDIDATE_STAGE_LABELS: Record<CandidateStage, string> = {
   a_valider: 'À valider',
   sans_suite: 'Sans suite',
   non_retenu: 'Non retenu',
+  // LEGACY : plus jamais produit — l'ancien régime où le refus partait seul.
   refus_auto: 'Refus auto',
 };
 

@@ -1,9 +1,16 @@
 'use client';
 
 /**
- * Pastille de ZONE de décision HITL (figée au scoring). Reflète `decisionZone`
- * (gris = « Zone de validation »), repli sur le statut binaire pour les lignes
- * historiques sans zone.
+ * Pastille de ZONE de décision HITL (figée au scoring).
+ *
+ * Deux libellés à ne surtout pas confondre : « Proposé au refus » (zone
+ * courante — rien n'est parti, un humain doit trancher) et « Refus
+ * automatique » (zone LEGACY — le mail est réellement parti sans validation,
+ * avant la mise en conformité RGPD). Les afficher pareil effacerait la seule
+ * trace lisible de l'ancien régime.
+ *
+ * Repli sur le statut binaire pour les lignes historiques sans zone : elles
+ * datent de l'ancien régime, d'où `auto_reject`.
  */
 
 import type { DecisionZone } from '@/types/hitl';
@@ -19,6 +26,11 @@ function resolve(
       return { label: 'Zone de validation', cls: 'text-orqa-ambre bg-orqa-ambre-bg' };
     case 'auto_accept':
       return { label: 'Acceptation automatique', cls: 'text-orqa-vert bg-orqa-vert-bg' };
+    case 'proposed_reject':
+      return {
+        label: 'Proposé au refus',
+        cls: 'text-orqa-ambre bg-orqa-ambre-bg',
+      };
     default:
       return { label: 'Refus automatique', cls: 'text-orqa-rouge bg-orqa-rouge-bg' };
   }

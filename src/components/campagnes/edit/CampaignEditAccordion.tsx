@@ -17,6 +17,7 @@ import { ChannelsEditBlock } from './ChannelsEditBlock';
 import { FDPEditBlock } from './FDPEditBlock';
 import { FluxEditBlock } from './FluxEditBlock';
 import { LifecycleEditBlock } from './LifecycleEditBlock';
+import { NativeSchedulingBlock } from './NativeSchedulingBlock';
 import { OwnerEditBlock } from './OwnerEditBlock';
 import { DecisionThresholdsBlock } from './DecisionThresholdsBlock';
 import { ScoringEditBlock } from './ScoringEditBlock';
@@ -34,6 +35,7 @@ type BlockKey =
   | 'vivier'
   | 'threshold'
   | 'owner'
+  | 'scheduling'
   | 'lifecycle';
 
 export function CampaignEditAccordion({
@@ -129,6 +131,19 @@ export function CampaignEditAccordion({
         onToggle={() => toggle('owner')}
       >
         <OwnerEditBlock campaignId={campaign.id} />
+      </AccordionItem>
+      <AccordionItem
+        title="Réservation d’entretien"
+        subtitle={
+          campaign.schedulingNative
+            ? 'Native ORQA (disponibilités du référent)'
+            : 'Cal.com (lien d’agenda)'
+        }
+        icon="🗓️"
+        open={expanded === 'scheduling'}
+        onToggle={() => toggle('scheduling')}
+      >
+        <NativeSchedulingBlock campaign={campaign} />
       </AccordionItem>
       <AccordionItem
         title="Cycle de vie"

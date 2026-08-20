@@ -32,6 +32,7 @@ import {
   JOURNEY_TONE_COLORS,
   journeyColumns,
 } from '@/lib/reporting/candidate-journey';
+import type { DecisionZone } from '@/types/hitl';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
   CANDIDATE_STATUS_LABELS,
@@ -143,9 +144,14 @@ const styles = StyleSheet.create({
  */
 function decisionPill(
   status: 'accepted' | 'rejected',
-  zone: 'auto_reject' | 'gray' | 'auto_accept' | undefined,
+  zone: DecisionZone | undefined,
 ): { color: string; label: string } {
+  // `proposed_reject` est en attente, exactement comme un gris : rien n'est
+  // parti. L'afficher « Écarté » annoncerait une décision qui n'existe pas.
   if (zone === 'gray') return { color: '#b45309', label: 'En validation' };
+  if (zone === 'proposed_reject') {
+    return { color: '#b45309', label: 'Proposé au refus' };
+  }
   if (zone === 'auto_accept' || (zone === undefined && status === 'accepted')) {
     return { color: '#15803d', label: CANDIDATE_STATUS_LABELS.accepted };
   }

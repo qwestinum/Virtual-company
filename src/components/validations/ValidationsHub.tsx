@@ -1,21 +1,35 @@
 'use client';
 
 /**
- * Hub « Validation suspendue » (HITL 3 zones, lot 2d).
+ * Hub « Validation suspendue » (HITL 3 zones, lot 2d ; refus groupé).
  *
- * Colonne UNIQUE : les candidatures en ZONE GRISE (ni refus auto ni acceptation
- * auto) à trancher. Chaque carte propose deux actions (accepter / refuser) +
- * relecture du mail avant envoi (cf. ValidationCard). Une candidature traitée
- * disparaît de la file et reste consultable dans l'historique (status 'sent').
+ * Les candidatures en ZONE GRISE (ni refus auto ni acceptation auto) à
+ * trancher. Chaque carte propose deux actions (accepter / refuser) + relecture
+ * du mail avant envoi (cf. ValidationCard). Une candidature traitée disparaît
+ * de la file et reste consultable dans l'historique (status 'sent').
+ *
+ * DEUX SOUS-ONGLETS depuis le refus groupé, et une seule file en dessous : la
+ * partition est stricte (cf. partitionRejectionProposals), rien ne tombe entre
+ * les deux. « À examiner » reste le comportement historique à l'identique ;
+ * « Propositions de refus » ne fait qu'y prélever ce qu'un seuil de campagne
+ * désigne, pour permettre le geste groupé.
  */
 
 import { useEffect, useState } from 'react';
 
 import { hydrateArtifactsForCampaign } from '@/lib/db/sync/artifacts-sync';
-import { formatDateTimeFr } from '@/lib/format/datetime';
-import type { PendingValidation } from '@/types/hitl';
+import type { DecisionZone, PendingValidation } from '@/types/hitl';
 
+import {
+  partitionRejectionProposals,
+  sortRejectionProposals,
+} from '@/lib/hitl/rejection-proposal';
+
+import { RejectionProposalsTab } from './RejectionProposalsTab';
 import { ValidationCard } from './ValidationCard';
+import { ValidationsHistory } from './ValidationsHistory';
+
+type SubTab = 'examine' | 'proposals';
 
 type LoadState =
   | { kind: 'loading' }
@@ -24,6 +38,12 @@ type LoadState =
 
 export function ValidationsHub() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  // Zone FIGÉE AU SCORING de chaque validation, servie par l'API. C'est elle
+  // qui décide du sous-onglet — jamais une comparaison de score au seuil
+  // courant de la campagne, qui re-jugerait un dossier avec un barème qu'il
+  // n'a jamais connu (cf. rejection-proposal.ts).
+  const [zones, setZones] = useState<Record<string, DecisionZone | null>>({});
+  const [tab, setTab] = useState<SubTab>('examine');
   const [history, setHistory] = useState<PendingValidation[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
@@ -34,8 +54,14 @@ export function ValidationsHub() {
       try {
         const res = await fetch('/api/validations', { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as { validations: PendingValidation[] };
-        if (!cancelled) setState({ kind: 'ready', items: json.validations });
+        const json = (await res.json()) as {
+          validations: PendingValidation[];
+          zoneByValidation?: Record<string, DecisionZone | null>;
+        };
+        if (!cancelled) {
+          setState({ kind: 'ready', items: json.validations });
+          setZones(json.zoneByValidation ?? {});
+        }
         const campaigns = [...new Set(json.validations.map((v) => v.campaignId))];
         await Promise.all(campaigns.map((c) => hydrateArtifactsForCampaign(c)));
       } catch (err) {
@@ -89,6 +115,25 @@ export function ValidationsHub() {
     window.setTimeout(() => setFlash(null), 3500);
   };
 
+  // Retire du hub les validations traitées par une fournée (celles qui ont
+  // ABOUTI seulement : les échecs restent `pending`, donc restent visibles).
+  const onBatchDone = (treatedIds: string[], message: string) => {
+    const treated = new Set(treatedIds);
+    setState({ kind: 'ready', items: items.filter((it) => !treated.has(it.id)) });
+    setHistory((h) => [
+      ...items
+        .filter((it) => treated.has(it.id))
+        .map((it) => ({ ...it, status: 'sent' as const, decision: 'reject' as const })),
+      ...h,
+    ]);
+    setFlash(message);
+    window.setTimeout(() => setFlash(null), 6000);
+  };
+
+  const { proposals, toExamine } = partitionRejectionProposals(items, zones);
+  const sortedProposals = sortRejectionProposals(proposals);
+  const shown = tab === 'proposals' ? sortedProposals : toExamine;
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
@@ -110,55 +155,66 @@ export function ValidationsHub() {
         </div>
       ) : null}
 
-      {items.length === 0 ? (
+      <div className="flex items-center gap-1 border-b border-stone-200">
+        <SubTabButton
+          active={tab === 'examine'}
+          label="À examiner"
+          count={toExamine.length}
+          onClick={() => setTab('examine')}
+        />
+        <SubTabButton
+          active={tab === 'proposals'}
+          label="Propositions de refus"
+          count={sortedProposals.length}
+          onClick={() => setTab('proposals')}
+        />
+      </div>
+
+      {tab === 'proposals' ? (
+        <RejectionProposalsTab
+          items={sortedProposals}
+          onSent={onSent}
+          onBatchDone={onBatchDone}
+        />
+      ) : shown.length === 0 ? (
         <p className="font-body text-[13px] text-stone-400 italic rounded-lg border border-dashed border-stone-200 px-4 py-8 text-center">
           Aucune candidature en attente de validation.
         </p>
       ) : (
         <div className="flex flex-col gap-3">
-          {items.map((v) => (
+          {shown.map((v) => (
             <ValidationCard key={v.id} v={v} onSent={onSent} />
           ))}
         </div>
       )}
 
-      {showHistory ? (
-        <section className="flex flex-col gap-2">
-          <h2 className="font-display text-[14px] font-bold text-stone-700">
-            Historique des décisions
-          </h2>
-          {history.length === 0 ? (
-            <p className="font-body text-[12px] text-stone-400 italic">
-              Aucune décision envoyée pour le moment.
-            </p>
-          ) : (
-            history.map((v) => (
-              <div
-                key={v.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="font-body text-[13px] font-semibold text-stone-800 truncate">
-                    {v.candidateName}
-                  </p>
-                  <p className="font-body text-[11px] text-stone-500">
-                    {v.campaignId} · {formatDateTimeFr(v.decidedAt ?? v.updatedAt)}
-                  </p>
-                </div>
-                <span
-                  className={`flex-shrink-0 rounded-full px-2.5 py-1 font-body text-[11px] font-semibold ${
-                    v.decision === 'accept'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-rose-100 text-rose-700'
-                  }`}
-                >
-                  {v.decision === 'accept' ? 'Acceptée' : 'Refusée'}
-                </span>
-              </div>
-            ))
-          )}
-        </section>
-      ) : null}
+      {showHistory ? <ValidationsHistory items={history} /> : null}
     </div>
+  );
+}
+
+function SubTabButton({
+  active,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`-mb-px border-b-2 px-3 py-2 font-body text-[13px] font-semibold ${
+        active
+          ? 'border-stone-800 text-stone-900'
+          : 'border-transparent text-stone-500 hover:text-stone-700'
+      }`}
+    >
+      {label} ({count})
+    </button>
   );
 }

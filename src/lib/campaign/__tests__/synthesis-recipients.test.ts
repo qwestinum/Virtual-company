@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergeSynthesisRecipients } from '@/lib/campaign/synthesis-recipients';
+import {
+  mergeSynthesisRecipients,
+  splitSynthesisRecipients,
+} from '@/lib/campaign/synthesis-recipients';
 
 describe('mergeSynthesisRecipients — référent + configurées, dédup', () => {
   it('référent en tête, puis les configurées', () => {
@@ -27,5 +30,55 @@ describe('mergeSynthesisRecipients — référent + configurées, dédup', () =>
 
   it('ni référent ni configurée → vide (no_recipient chez l’appelant)', () => {
     expect(mergeSynthesisRecipients(null, [])).toEqual([]);
+  });
+});
+
+describe('adresses NON expédiables — écartées, jamais transmises', () => {
+  it('écarte le placeholder du runbook laissé en base', () => {
+    // Cas réel : le seed a laissé `ton-email-de-connexion` comme adresse de
+    // l'administrateur, référent de trois campagnes. Transmise telle quelle,
+    // elle faisait rejeter le message ENTIER par le fournisseur — donc aucun
+    // briefing livré, pour personne, en silence.
+    const { recipients, rejected } = splitSynthesisRecipients(
+      'ton-email-de-connexion',
+      ['drh@corp.fr'],
+    );
+    expect(recipients).toEqual(['drh@corp.fr']);
+    expect(rejected).toEqual(['ton-email-de-connexion']);
+  });
+
+  it('l’envoi survit : les destinataires valides restent servis', () => {
+    expect(
+      mergeSynthesisRecipients('pas-une-adresse', ['drh@corp.fr', 'dir@corp.fr']),
+    ).toEqual(['drh@corp.fr', 'dir@corp.fr']);
+  });
+
+  it('écarte aussi une adresse sans domaine complet', () => {
+    const { rejected } = splitSynthesisRecipients(null, [
+      'jane@localhost',
+      'jane@',
+      '@corp.fr',
+      'jane doe@corp.fr',
+    ]);
+    expect(rejected).toEqual([
+      'jane@localhost',
+      'jane@',
+      '@corp.fr',
+      'jane doe@corp.fr',
+    ]);
+  });
+
+  it('accepte les formes courantes (sous-domaine, +, tirets)', () => {
+    const { recipients, rejected } = splitSynthesisRecipients(null, [
+      'jane.doe+rh@mail.corp.fr',
+      'j-d@corp-rh.fr',
+    ]);
+    expect(rejected).toEqual([]);
+    expect(recipients).toHaveLength(2);
+  });
+
+  it('la dédup passe AVANT le tri : une invalide en double n’est comptée qu’une fois', () => {
+    const { rejected } = splitSynthesisRecipients('BIDON', ['bidon', 'drh@corp.fr']);
+    expect(rejected).toEqual(['BIDON']);
   });
 });

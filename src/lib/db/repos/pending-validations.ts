@@ -8,6 +8,7 @@
  */
 
 import { CLAIM_TTL_MS } from '@/lib/db/claims-policy';
+import { fetchAllKeyset } from '@/lib/db/paginate';
 import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
@@ -116,17 +117,29 @@ function isTableMissing(err: { code?: string; message?: string }): boolean {
  */
 export async function listPendingValidations(): Promise<PendingValidation[]> {
   try {
-    const supabase = requireServerSupabase();
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select('*')
-      .in('status', ['pending', 'sending'])
-      .order('created_at', { ascending: true });
-    if (error) {
-      if (isTableMissing(error)) return [];
-      throw new Error(`listPendingValidations: ${error.message}`);
-    }
-    return (data ?? []).map((r) => rowToDomain(r as PendingValidationRow));
+    const rows = await fetchAllKeyset<PendingValidationRow>({
+      cursorOf: (row) => row.id,
+      fetchPage: async (afterId, limit) => {
+        let query = requireServerSupabase()
+          .from(TABLE)
+          .select('*')
+          .in('status', ['pending', 'sending']);
+        if (afterId !== null) query = query.gt('id', afterId);
+        const { data, error } = await query
+          .order('id', { ascending: true })
+          .limit(limit);
+        if (error) {
+          if (isTableMissing(error)) return [];
+          throw new Error(`listPendingValidations: ${error.message}`);
+        }
+        return (data ?? []) as PendingValidationRow[];
+      },
+    });
+    // Le CURSEUR est la clé primaire (stable, unique) ; l'ORDRE d'affichage,
+    // lui, reste chronologique — les deux sont indépendants.
+    return rows
+      .map((r) => rowToDomain(r))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) return [];
     throw err;
@@ -209,17 +222,24 @@ export async function unvoidPendingValidation(
  * réouverture (restaurer `void → pending`). */
 export async function listVoidValidations(): Promise<PendingValidation[]> {
   try {
-    const supabase = requireServerSupabase();
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select('*')
-      .eq('status', 'void')
-      .order('updated_at', { ascending: false });
-    if (error) {
-      if (isTableMissing(error)) return [];
-      throw new Error(`listVoidValidations: ${error.message}`);
-    }
-    return (data ?? []).map((r) => rowToDomain(r as PendingValidationRow));
+    const rows = await fetchAllKeyset<PendingValidationRow>({
+      cursorOf: (row) => row.id,
+      fetchPage: async (afterId, limit) => {
+        let query = requireServerSupabase().from(TABLE).select('*').eq('status', 'void');
+        if (afterId !== null) query = query.gt('id', afterId);
+        const { data, error } = await query
+          .order('id', { ascending: true })
+          .limit(limit);
+        if (error) {
+          if (isTableMissing(error)) return [];
+          throw new Error(`listVoidValidations: ${error.message}`);
+        }
+        return (data ?? []) as PendingValidationRow[];
+      },
+    });
+    return rows
+      .map((r) => rowToDomain(r))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) return [];
     throw err;

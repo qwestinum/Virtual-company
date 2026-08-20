@@ -8,11 +8,21 @@
  * IMAP la dupliquait (en fait : ne l'avait pas), d'où le bug « le refus part
  * sans validation ». Elle n'existe désormais qu'ici.
  *
- * Lot 2 (HITL 3 zones) — la décision n'est plus dérivée d'une config HITL
- * GLOBALE par type de mail, mais de la ZONE du candidat (calculée UNE fois par
- * `scoreCandidat` à partir des deux seuils de la campagne) :
- *   - `auto_reject` / `auto_accept` → on envoie (refus / invitation auto) ;
- *   - `gray` → on met en file de validation humaine, on n'envoie JAMAIS.
+ * La décision n'est pas dérivée d'une config par type de mail, mais de la ZONE
+ * du candidat (calculée UNE fois par `scoreCandidat` à partir des deux seuils
+ * de la campagne).
+ *
+ * ⚠️ RÈGLE ACTUELLE (mise en conformité RGPD, 18/08/2026) — **AUCUN REFUS NE
+ * PART SANS UN HUMAIN**. Une seule zone envoie encore d'elle-même :
+ *   - `auto_accept` → invitation envoyée (décision FAVORABLE et réversible) ;
+ *   - `proposed_reject` ET `gray` → file de validation humaine, RIEN ne part.
+ *
+ * C'est un renversement de la règle d'origine, où `auto_reject` envoyait le
+ * refus immédiatement. Le refus est désormais *proposé* : il attend un clic.
+ * Écrire ce gate en listant les zones qui mettent en file serait fragile — une
+ * zone ajoutée demain enverrait par défaut. On liste donc celle qui ENVOIE, et
+ * tout le reste attend : le défaut penche du côté qui ne peut pas nuire.
+ *
  * La zone est passée par l'appelant (chat lit `scoringResult.decisionZone`,
  * IMAP lit `candidate.decisionZone` — même champ, même source). Zéro
  * duplication de la logique de zone ici.
@@ -44,13 +54,12 @@ export type GateOutcome =
   | SendResult // a été envoyé (ou skip/échec terminal)
   | { kind: 'queued' } // mis en file de validation (persisté durablement)
   | { kind: 'deferred'; reason: 'enqueue_unpersisted' };
-//   ^ zone grise ET la file n'a PAS persisté → on n'envoie RIEN (un gris n'a
-//     aucune direction de mail décidée : l'auto-envoyer serait la perte
-//     silencieuse interdite). L'appelant DOIT préserver l'item pour réessai
-//     (IMAP : RetryableOutreachError ; chat : on saute, candidat non traité).
+//   ^ zone en attente d'un humain ET la file n'a PAS persisté → on n'envoie
+//     RIEN. L'appelant DOIT préserver l'item pour réessai (IMAP :
+//     RetryableOutreachError ; chat : on saute, candidat non traité).
 
 export interface OutreachGatePorts {
-  /** Envoie le mail maintenant (zones auto). */
+  /** Envoie le mail maintenant (acceptation automatique UNIQUEMENT). */
   send(): Promise<SendResult>;
   /** Met en file de validation. `true` = persisté durablement, `false` sinon. */
   enqueue(): Promise<boolean>;
@@ -60,16 +69,20 @@ export async function gateCandidateOutreach(
   zone: DecisionZone,
   ports: OutreachGatePorts,
 ): Promise<GateOutcome> {
-  // Zones automatiques → envoi immédiat (refus ou invitation).
-  if (zone !== 'gray') {
+  // SEULE zone qui envoie d'elle-même : l'acceptation automatique.
+  // (`auto_reject` est legacy et n'est plus jamais produite ; si une projection
+  // ancienne en présentait une, elle passerait ici par la file — le repli
+  // prudent, jamais l'envoi.)
+  if (zone === 'auto_accept') {
     return await ports.send();
   }
 
-  // Zone grise → validation humaine. On met en file, on n'envoie pas.
+  // Proposé au refus OU gris → validation humaine. On met en file, on n'envoie
+  // pas : c'est ici que se tient la conformité RGPD.
   const persisted = await ports.enqueue();
   if (persisted) return { kind: 'queued' };
 
-  // Gris mais file non persistée → ne JAMAIS envoyer à l'aveugle (un gris n'a
-  // pas de direction décidée). Defer pour les DEUX chemins (chat inclus).
+  // File non persistée → ne JAMAIS envoyer à l'aveugle. Defer pour les DEUX
+  // chemins (chat inclus) : l'item repassera.
   return { kind: 'deferred', reason: 'enqueue_unpersisted' };
 }

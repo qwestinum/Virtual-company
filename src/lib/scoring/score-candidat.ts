@@ -108,10 +108,12 @@ export type ScoreOptions = {
 };
 
 /**
- * Zone de décision HITL (lot 2), PURE. Un knockout force `auto_reject` (un
- * critère rédhibitoire raté n'est jamais « gris »). Bornes : `< bas` refus auto ;
- * `[bas, haut[` zone grise ; `≥ haut` acceptation auto. Poignées collées
- * (`bas == haut`) ⇒ aucune zone grise (binaire). Bord assumé : score 100 avec
+ * Zone de décision HITL, PURE. Bornes : `< bas` **proposé au refus** (aucun
+ * mail, décision humaine attendue) ; `[bas, haut[` zone grise ; `≥ haut`
+ * acceptation auto. Un knockout force `proposed_reject` (un critère
+ * rédhibitoire raté n'est jamais « gris » — mais il n'est pas refusé tout seul
+ * pour autant, cf. mise en conformité RGPD du 18/08/2026). Poignées collées
+ * (`bas == haut`) ⇒ aucune zone grise. Bord assumé : score 100 avec
  * `haut = 100` ⇒ acceptation auto.
  */
 export function classifyDecisionZone(
@@ -120,7 +122,7 @@ export function classifyDecisionZone(
   thresholdHigh: number,
   knockout: boolean,
 ): DecisionZone {
-  if (knockout || totalScore < thresholdLow) return 'auto_reject';
+  if (knockout || totalScore < thresholdLow) return 'proposed_reject';
   if (totalScore < thresholdHigh) return 'gray';
   return 'auto_accept';
 }
@@ -237,7 +239,7 @@ export function scoreCandidat(
     softDenominator > 0 ? (softNumerator / softDenominator) * 100 : 0;
   const bonus = Math.min(signalRaw, SIGNAL_BONUS_TOTAL_MAX);
   let rawScore = baseScore + bonus;
-  // HARD_CAP raté → plafonné sous le seuil BAS ⇒ retombe en `auto_reject`
+  // HARD_CAP raté → plafonné sous le seuil BAS ⇒ retombe en `proposed_reject`
   // (jamais en zone grise ni en acceptation).
   if (capTriggered) rawScore = Math.min(rawScore, thresholdLow - 1);
 

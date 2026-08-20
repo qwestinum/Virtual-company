@@ -560,9 +560,13 @@ export async function dispatchPostAnalysisOutreach(args: {
     // analyses antérieures sans zone. IMPORTANT : un GRIS n'a AUCUNE direction
     // décidée (ni refus ni invitation) — `mode` ne sert qu'aux zones AUTO
     // (envoi immédiat) ; pour le gris, l'enqueue est neutre et l'humain tranche.
+    // Repli côté refus = `proposed_reject`, jamais `auto_reject` : un repli ne
+    // doit pas ressusciter l'envoi automatique supprimé pour conformité RGPD.
     const zone: DecisionZone =
       cv.scoringResult.decisionZone ??
-      (cv.scoringResult.status === 'accepted' ? 'auto_accept' : 'auto_reject');
+      (cv.scoringResult.status === 'accepted'
+        ? 'auto_accept'
+        : 'proposed_reject');
     const accept = zone === 'auto_accept';
     const mode = accept ? 'invite' : 'reject';
     const decision: HitlDecision = accept ? 'accept' : 'reject';
@@ -654,6 +658,10 @@ async function sendChatCandidateMail(args: {
       jobTitle,
       mode,
       uid, // L1 : journalise l'outreach auto → le candidat avance au dashboard.
+      // Chemin chat : l'uid EST l'identifiant d'analyse. On l'envoie
+      // explicitement sous son nom de clé d'idempotence plutôt que de
+      // compter sur un repli implicite côté route.
+      analysisId: uid,
       // Frontière mail/scheduler (non migré, 6c-mail) : projection legacy.
       candidate: cvApplicationToMailCandidate(cv),
     };
@@ -793,6 +801,9 @@ async function enqueuePendingValidation(args: {
         cvArtifactId: args.cvArtifactId,
         payload: {
           uid: args.uid,
+          // Clé d'idempotence du lien natif (ici : l'uid, qui est déjà
+          // l'identifiant d'analyse côté chat).
+          analysisId: args.uid,
           candidate,
           jobTitle: args.jobTitle,
           // Synthèse exposée directement pour la carte (évite de fouiller candidate).
