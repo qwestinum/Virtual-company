@@ -23,6 +23,7 @@ const PatchSchema = z.object({
   userEmail: z.string().email().optional(),
   password: z.string().min(1).max(512).optional(),
   isEnabled: z.boolean().optional(),
+  folder: z.string().max(200).nullable().optional(),
 });
 
 function notConfigured(): NextResponse {
@@ -77,6 +78,7 @@ export async function PATCH(
       userEmail: parsed.userEmail,
       encryptedPassword,
       isEnabled: parsed.isEnabled,
+      folder: parsed.folder,
     });
     if (!updated) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });

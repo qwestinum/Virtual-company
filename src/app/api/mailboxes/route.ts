@@ -27,6 +27,8 @@ const CreateSchema = z.object({
   userEmail: z.string().email(),
   password: z.string().min(1).max(512),
   isEnabled: z.boolean().optional(),
+  /** Dossier IMAP relevé. Vide ⇒ INBOX. */
+  folder: z.string().max(200).nullable().optional(),
 });
 
 function notConfigured(): NextResponse {
@@ -102,6 +104,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       userEmail: parsed.userEmail,
       encryptedPassword: encrypted,
       isEnabled: parsed.isEnabled,
+      folder: parsed.folder,
     });
     ensureSchedulerStarted();
     return NextResponse.json({ mailbox: created });

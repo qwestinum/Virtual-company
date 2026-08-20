@@ -30,6 +30,7 @@ type Mailbox = {
   imap_ssl: boolean;
   user_email: string;
   is_enabled: boolean;
+  folder: string | null;
   last_polled_at: string | null;
   last_error: string | null;
   created_at: string;
@@ -42,6 +43,8 @@ type FormState = {
   imapSsl: boolean;
   userEmail: string;
   password: string;
+  /** Dossier IMAP relevé. Vide ⇒ INBOX. */
+  folder: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -51,6 +54,7 @@ const EMPTY_FORM: FormState = {
   imapSsl: true,
   userEmail: '',
   password: '',
+  folder: '',
 };
 
 export function MailboxesManager() {
@@ -107,6 +111,7 @@ export function MailboxesManager() {
       imapHost: mb.imap_host,
       imapPort: String(mb.imap_port),
       imapSsl: mb.imap_ssl,
+      folder: mb.folder ?? '',
       userEmail: mb.user_email,
       password: '',
     });
@@ -169,6 +174,8 @@ export function MailboxesManager() {
         imapPort: port,
         imapSsl: form.imapSsl,
         userEmail: form.userEmail,
+        // Vide = INBOX : l'API stocke NULL, jamais une chaîne vide.
+        folder: form.folder.trim() || null,
       };
       if (form.password) body.password = form.password;
       const res = await fetch(
@@ -409,6 +416,24 @@ export function MailboxesManager() {
                 className={inputClass}
                 placeholder="recrutement@qwestinum.fr"
               />
+            </Field>
+            <Field label="Dossier relevé (facultatif)">
+              <input
+                type="text"
+                value={form.folder}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, folder: e.target.value }))
+                }
+                className={inputClass}
+                placeholder="INBOX"
+              />
+              <p className="mt-1 font-body text-[11.5px] leading-relaxed text-stone-500">
+                Vide = boîte de réception. Sur une messagerie personnelle,
+                pointer un dossier dédié — alimenté par une règle qui y range
+                les mails portant la référence de campagne — évite de faire
+                passer tout le courrier privé devant l’analyse. Gmail : le nom
+                du libellé.
+              </p>
             </Field>
             <Field
               label={

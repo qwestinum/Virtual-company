@@ -18,6 +18,8 @@ export type MailboxRow = {
   user_email: string;
   encrypted_password: string;
   is_enabled: boolean;
+  /** Dossier IMAP relevé. `null`/vide ⇒ INBOX (cf. `mailboxFolder`). */
+  folder: string | null;
   last_polled_at: string | null;
   last_uid_seen: string | null;
   last_error: string | null;
@@ -46,6 +48,7 @@ export type CreateMailboxInput = {
   userEmail: string;
   encryptedPassword: string;
   isEnabled?: boolean;
+  folder?: string | null;
 };
 
 export async function listMailboxes(): Promise<MailboxPublic[]> {
@@ -103,6 +106,7 @@ export async function insertMailbox(
       user_email: input.userEmail,
       encrypted_password: input.encryptedPassword,
       is_enabled: input.isEnabled ?? true,
+      folder: input.folder?.trim() || null,
     })
     .select('*')
     .single();
@@ -118,6 +122,7 @@ export type UpdateMailboxPatch = {
   userEmail?: string;
   encryptedPassword?: string;
   isEnabled?: boolean;
+  folder?: string | null;
 };
 
 export async function patchMailbox(
@@ -134,6 +139,9 @@ export async function patchMailbox(
   if (patch.encryptedPassword !== undefined)
     row.encrypted_password = patch.encryptedPassword;
   if (patch.isEnabled !== undefined) row.is_enabled = patch.isEnabled;
+  // Chaîne vide = « remettre à INBOX » : on stocke NULL plutôt qu'un '' qui
+  // se lirait comme un dossier nommé « rien ».
+  if (patch.folder !== undefined) row.folder = patch.folder?.trim() || null;
   if (Object.keys(row).length === 0) return null;
   const { data, error } = await supabase
     .from(TABLE)
@@ -240,4 +248,17 @@ export async function listEnabledMailboxEmailsForCampaign(
   return (data ?? [])
     .map((r) => (r as { user_email: string }).user_email)
     .filter((e) => Boolean(e?.trim()));
+}
+
+/**
+ * Dossier IMAP effectif d'une boîte. PURE.
+ *
+ * `INBOX` reste le défaut — aucune boîte existante ne change de comportement.
+ * En pointer un autre (un libellé alimenté par une règle de messagerie) évite
+ * de faire défiler TOUTE la messagerie personnelle du client devant le poller :
+ * moins d'analyses inutiles, et surtout plus de pièces jointes sans rapport
+ * accumulées dans la file de rejeu.
+ */
+export function mailboxFolder(mailbox: { folder?: string | null }): string {
+  return mailbox.folder?.trim() || 'INBOX';
 }

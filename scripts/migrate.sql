@@ -263,12 +263,31 @@ create table if not exists public.mailboxes (
   user_email          text not null,
   encrypted_password  text not null,
   is_enabled          boolean not null default true,
+  folder              text,
   last_polled_at      timestamptz,
   last_uid_seen       text,
   last_error          text,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
+
+-- Dossier IMAP relevé. NULL / vide ⇒ INBOX (comportement historique).
+--
+-- Pourquoi : brancher une messagerie PERSONNELLE fait passer tout son courrier
+-- devant le poller. Mesuré le 20/08/2026 sur une boîte de 25 688 messages :
+-- 107 pièces jointes sans rapport (plans d'accès, procédures) stockées dans la
+-- file de rejeu `imap_unmatched_cvs`, et autant d'analyses inutiles. Pointer un
+-- dossier dédié — alimenté par une règle de messagerie qui y range les mails
+-- portant la référence de campagne — ne présente au poller QUE ce qui le
+-- concerne, sans rien demander au client d'archiver.
+--
+-- ⚠️ Ce n'est PAS un correctif de latence : le coût d'un SELECT s'est révélé
+-- indépendant de la taille du dossier (~10 s sur ce compte, y compris sur un
+-- dossier VIDE, contre 0,2 s sur un autre compte). Cette lenteur-là est
+-- propre au COMPTE (limitation Gmail), et c'est le budget d'ouverture borné
+-- côté poller qui la rend visible.
+alter table public.mailboxes
+  add column if not exists folder text;
 
 create index if not exists mailboxes_is_enabled_idx
   on public.mailboxes (is_enabled);

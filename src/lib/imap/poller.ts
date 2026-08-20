@@ -57,11 +57,13 @@ import {
   isInBackoffWindow,
   MAX_CV_ANALYSIS_ATTEMPTS,
   nextCommitTarget,
+  OperationTimeoutError,
   RetryablePollError,
   shouldProcessUid,
   withTimeout,
 } from '@/lib/imap/poll-retry';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
+import { mailboxFolder } from '@/lib/db/repos/mailboxes';
 import {
   insertArtifactMeta,
   upsertArtifactMeta,
@@ -138,6 +140,56 @@ globalThis.__imapInflightMailboxes__ = inflight;
  * table journal pour audit. Met à jour `last_polled_at`, `last_uid_seen`,
  * `last_error` dans tous les cas.
  */
+/**
+ * Budget TOTAL d'ouverture d'une boîte (connexion + SELECT), partagé entre les
+ * deux étapes.
+ *
+ * Certains comptes répondent LENTEMENT, indépendamment de ce qu'on leur
+ * demande. Mesuré le 20/08/2026 : un compte à ~31 s de connexion et ~10 s par
+ * commande — y compris pour ouvrir un dossier VIDE — quand un autre répond en
+ * 0,2 s. La lenteur est propre au compte (limitation du fournisseur, souvent
+ * déclenchée par un usage intensif), pas à la taille de la boîte.
+ *
+ * Sans borne, une telle boîte épuisait les 60 s de `maxDuration` AVANT de lire
+ * le moindre message, et l'invocation était tuée avant toute écriture d'état :
+ * ni `last_polled_at`, ni `last_error`, ni journal — un silence indiscernable
+ * d'une boîte jamais sélectionnée.
+ *
+ * 20 s : très large pour une boîte saine, et il reste de quoi lire et traiter
+ * dans l'invocation. Au-delà, on ABANDONNE en le DISANT.
+ */
+const MAILBOX_OPEN_BUDGET_MS = 20_000;
+
+/** Raisons pour lesquelles une boîte ACTIVÉE n'a pas été relevée. */
+type MailboxSkipReason =
+  | 'already_in_flight'
+  | 'no_campaign_associated'
+  | 'open_timeout'
+  | 'select_failed';
+
+/**
+ * Trace un saut de boîte.
+ *
+ * Sauter une boîte `is_enabled` sans rien écrire est un défaut
+ * d'observabilité à part entière : un opérateur ne peut pas diagnostiquer un
+ * « rien ». Le 20/08/2026, il a fallu trois requêtes et une hypothèse pour
+ * découvrir ce qu'une ligne de journal aurait dit.
+ */
+async function traceMailboxSkipped(
+  mailbox: MailboxRow,
+  reason: MailboxSkipReason,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  await appendJournalEntry({
+    action: 'imap_mailbox_skipped',
+    actor: 'imap_poller',
+    payload: { mailboxId: mailbox.id, label: mailbox.label, reason, ...extra },
+  }).catch(() => {
+    // Le journal est un confort de diagnostic : son échec ne doit jamais
+    // faire échouer une relève.
+  });
+}
+
 /**
  * Budget de fermeture d'une connexion IMAP.
  *
@@ -219,6 +271,7 @@ export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
   // Anti-overlap : on saute si un autre tick polle déjà cette mailbox.
   // Le scheduler relancera dans 30s, on aura toujours pris la suite.
   if (inflight.has(mailbox.id)) {
+    await traceMailboxSkipped(mailbox, 'already_in_flight');
     return { ...outcome, skipped: true };
   }
   inflight.add(mailbox.id);
@@ -257,9 +310,12 @@ async function pollMailboxImpl(
   }
 
   if (associatedIds.length === 0) {
-    // Mailbox enabled mais sans campagne — on note juste le poll
-    // (preuve qu'on a fait le travail, pas d'erreur).
+    // Boîte activée mais rattachée à AUCUNE campagne : on note le poll (preuve
+    // qu'on a fait le travail, pas d'erreur) — et on le DIT. Sans cette trace,
+    // l'écran affiche « relevée, aucune erreur » alors que rien n'a été fait,
+    // ce qui est le pire des deux mondes.
     await updateMailboxPollState(mailbox.id, { lastError: null });
+    await traceMailboxSkipped(mailbox, 'no_campaign_associated');
     return outcome;
   }
 
@@ -297,20 +353,33 @@ async function pollMailboxImpl(
   // sans plafond, on ne consomme jamais un CV faute de migration.
   const retryStates = await listCvRetryStates(mailbox.id);
 
+  // OUVERTURE BORNÉE (connexion + SELECT). Le budget est partagé entre les
+  // deux étapes : ce qui compte est le temps total avant de pouvoir lire, et
+  // c'est LUI qui doit tenir dans l'invocation.
+  const openDeadline = Date.now() + MAILBOX_OPEN_BUDGET_MS;
+  const openBudgetLeft = () => Math.max(1, openDeadline - Date.now());
+  const folder = mailboxFolder(mailbox);
+
   let client;
   try {
-    client = await openConnection({
-      host: mailbox.imap_host,
-      port: mailbox.imap_port,
-      secure: mailbox.imap_ssl,
-      user: mailbox.user_email,
-      password,
-    });
+    client = await withTimeout(
+      openConnection({
+        host: mailbox.imap_host,
+        port: mailbox.imap_port,
+        secure: mailbox.imap_ssl,
+        user: mailbox.user_email,
+        password,
+      }),
+      openBudgetLeft(),
+      'imap_connect',
+    );
   } catch (err) {
+    const timedOut = err instanceof OperationTimeoutError;
     const msg = err instanceof Error ? err.message || err.name : String(err);
     await updateMailboxPollState(mailbox.id, {
-      lastError: `connect_failed: ${msg}`,
+      lastError: `${timedOut ? 'open_timeout' : 'connect_failed'}: ${msg}`,
     });
+    if (timedOut) await traceMailboxSkipped(mailbox, 'open_timeout', { folder });
     outcome.errors += 1;
     return outcome;
   }
@@ -352,7 +421,32 @@ async function pollMailboxImpl(
   // cycle de 30 s, indéfiniment.
   const fetchedMessages: Array<{ uid?: number; source?: Buffer }> = [];
   try {
-    const lock = await client.getMailboxLock('INBOX');
+    // Dossier configurable (défaut INBOX) et ouverture BORNÉE : sur un compte
+    // lent, le SELECT seul peut consommer tout le budget de l'invocation, et
+    // il est rejoué à chaque passage puisque le serverless ne garde aucune
+    // connexion ouverte entre deux relèves.
+    let lock;
+    try {
+      lock = await withTimeout(
+        client.getMailboxLock(folder),
+        openBudgetLeft(),
+        'imap_select',
+      );
+    } catch (err) {
+      const timedOut = err instanceof OperationTimeoutError;
+      const msg = err instanceof Error ? err.message || err.name : String(err);
+      await updateMailboxPollState(mailbox.id, {
+        lastError: `${timedOut ? 'open_timeout' : 'select_failed'}: ${folder}: ${msg}`,
+      });
+      await traceMailboxSkipped(
+        mailbox,
+        timedOut ? 'open_timeout' : 'select_failed',
+        { folder, detail: msg },
+      );
+      outcome.errors += 1;
+      await closeConnection(client);
+      return outcome;
+    }
     try {
       // Boîte JAMAIS relevée : on se place au bord RÉCENT. Repartir de l'uid 1
       // sur une messagerie personnelle déjà pleine ne remonte jamais jusqu'au
