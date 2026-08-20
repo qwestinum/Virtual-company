@@ -36,14 +36,57 @@ import {
   type BrandingConfig,
 } from '@/types/branding';
 
-/** URL publique du service — sans elle, aucun lien de réservation n'est complet. */
+/**
+ * Première valeur réellement renseignée. Une variable DÉFINIE MAIS VIDE ne
+ * compte pas : sur Vercel on crée volontiers l'entrée avant d'avoir la valeur,
+ * et un `??` s'y arrêterait (`'' ?? x` vaut `''`) en sautant le repli suivant.
+ */
+function firstConfigured(...values: (string | undefined)[]): string | null {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+/** Les variables Vercel ne portent pas de schéma ; un opérateur peut l'oublier. */
+function withScheme(base: string): string {
+  return /^https?:\/\//i.test(base) ? base : `https://${base}`;
+}
+
+/**
+ * URL publique du service — sans elle, aucun lien de réservation n'est complet.
+ *
+ * Repli, du plus explicite au plus désespéré :
+ *
+ *  1. `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` — la réponse VOULUE, la
+ *     seule qu'on maîtrise. C'est elle qu'on pose en production.
+ *  2. `VERCEL_PROJECT_PRODUCTION_URL` — l'ALIAS DE PRODUCTION du projet
+ *     (domaine personnalisé s'il en existe un, sinon `<projet>.vercel.app`).
+ *     STABLE d'un déploiement à l'autre : c'est le seul repli Vercel qui
+ *     produise des liens survivant au déploiement suivant.
+ *  3. `VERCEL_URL` — l'URL du DÉPLOIEMENT (`<projet>-<hash>-<équipe>`), NEUVE
+ *     à chaque déploiement. Gardée en dernier recours parce qu'un lien
+ *     joignable vaut mieux qu'un lien vers `localhost`, mais elle est un
+ *     PIÈGE : le lien meurt au déploiement suivant, et le domaine de l'UID
+ *     d'agenda qui en dérive (`icsDomain`) change avec lui — un déplacement
+ *     duplique le rendez-vous au lieu de le bouger, une annulation est
+ *     ignorée et le créneau reste dans l'agenda du candidat.
+ *  4. `localhost` — développement.
+ */
 export function schedulingBaseUrl(): string {
-  const explicit =
-    process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? '';
-  if (explicit.trim()) return explicit.trim().replace(/\/+$/, '');
-  const vercel = process.env.VERCEL_URL;
-  if (vercel) return `https://${vercel}`;
-  return 'http://localhost:3000';
+  const explicit = firstConfigured(
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+  );
+  const vercel = firstConfigured(
+    // L'alias de production AVANT l'URL de déploiement : voir ci-dessus.
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+  );
+  const base = explicit ?? vercel;
+  if (!base) return 'http://localhost:3000';
+  return withScheme(base).replace(/\/+$/, '');
 }
 
 /**
