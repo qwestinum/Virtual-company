@@ -14,6 +14,11 @@
  *     s'éteint par construction dès que la décision est prise — aucune logique
  *     de stage parallèle.
  */
+import {
+  addDays,
+  upcomingFrenchHolidays,
+  type FrenchHoliday,
+} from '@/lib/calendar/french-holidays';
 import { chunk } from '@/lib/db/paginate';
 import { listBriefsByStatus } from '@/lib/db/repos/interview-briefs';
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
@@ -23,6 +28,8 @@ import {
 } from '@/lib/db/repos/pending-validations';
 import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
+import { listExceptions, listResources, listWeeklyRules } from '@/lib/scheduling';
+import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { BusinessSignal } from '@/types/notifications';
 
 // ─── Helpers PURS (testés) ─────────────────────────────────────────────────
@@ -60,6 +67,60 @@ export function buildInterviewsPointingMessage(count: number): string {
   return count === 1
     ? '1 entretien passé attend votre pointage (réalisé ou absent).'
     : `${count} entretiens passés attendent votre pointage (réalisé ou absent).`;
+}
+
+
+/**
+ * Jours fériés ENCORE PROPOSABLES pour une ressource réservable.
+ *
+ * Bornage sur l'HORIZON, pas sur une fenêtre arbitraire : un férié au-delà de
+ * l'horizon n'est pas offert, donc il n'y a rien à corriger et le signaler
+ * serait du bruit. Le signal s'allume exactement quand la date devient
+ * réservable — soit trois à quatre semaines d'avance aux réglages courants —
+ * et s'éteint par construction dès qu'une absence est posée, ou dès que la
+ * date est passée.
+ *
+ * Pur : la règle se teste sans base ni horloge.
+ */
+export function selectUnblockedHolidays(input: {
+  /** Jour local de la ressource, `YYYY-MM-DD`. */
+  from: string;
+  horizonDays: number;
+  /** Jours réellement travaillés (ISO 1-7). Vide ⇒ ressource non réservable. */
+  openWeekdays: number[];
+  /** Absences déjà déclarées. */
+  blockedDays: string[];
+}): FrenchHoliday[] {
+  // Aucune règle = aucun créneau proposé, donc aucun férié à bloquer.
+  if (input.openWeekdays.length === 0) return [];
+  const until = addDays(input.from, input.horizonDays);
+  const blocked = new Set(input.blockedDays);
+  return upcomingFrenchHolidays({
+    from: input.from,
+    openWeekdays: input.openWeekdays,
+  }).filter((h) => h.day <= until && !blocked.has(h.day));
+}
+
+/** « 2026-11-11 » → « 11 novembre ». Midi UTC : aucune bascule de date. */
+export function formatHolidayDay(day: string): string {
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  });
+}
+
+export function buildHolidaysUnblockedMessage(
+  agendaCount: number,
+  nearest: FrenchHoliday,
+): string {
+  const who =
+    agendaCount === 1
+      ? '1 agenda propose'
+      : `${agendaCount} agendas proposent`;
+  return `${who} encore des créneaux un jour férié — le plus proche : ${formatHolidayDay(
+    nearest.day,
+  )} (${nearest.label}).`;
 }
 
 /**
@@ -206,6 +267,78 @@ async function computeInterviewsAwaitingPointing(
   };
 }
 
+
+/**
+ * Signal 4 — des jours fériés restent PROPOSABLES.
+ *
+ * Le moteur de créneaux ne connaît pas le calendrier civil (cf.
+ * `src/lib/calendar/french-holidays.ts`) : un 11 novembre est offert comme
+ * n'importe quel mercredi. Le bouton « Ajouter les jours fériés » des
+ * disponibilités règle le cas d'un geste, encore faut-il que quelqu'un y
+ * pense — c'est précisément ce qu'un signal est là pour éviter.
+ *
+ * Le jour courant est pris dans le fuseau de CHAQUE ressource : à minuit
+ * passé à Paris, l'UTC est encore la veille, et un férié du lendemain
+ * paraîtrait à tort hors horizon.
+ *
+ * Ressource injoignable ⇒ elle est ignorée, pas le signal entier : un agenda
+ * en panne ne doit pas masquer ce que les autres ont à corriger.
+ */
+async function computeAvailabilityHolidaysUnblocked(
+  nowMs: number,
+): Promise<BusinessSignal | null> {
+  // Les ports du module sont injectés à l'exécution : sans cet appel,
+  // `listResources` LÈVE. Un `.catch(() => [])` ici rendrait « rien à
+  // signaler » sur une panne de configuration — le signal ne se serait jamais
+  // allumé, nulle part, sans que rien ne le dise (défaut attrapé en recette).
+  // On laisse donc remonter : le registre journalise et omet le signal.
+  await ensureSchedulingConfigured();
+  const resources = await listResources({ activeOnly: true });
+  let agendas = 0;
+  let nearest: FrenchHoliday | null = null;
+
+  for (const resource of resources) {
+    const [rules, exceptions] = await Promise.all([
+      listWeeklyRules(resource.externalRef).catch(() => null),
+      listExceptions(resource.externalRef).catch(() => null),
+    ]);
+    if (rules === null || exceptions === null) {
+      // Un agenda injoignable ne masque pas les autres — mais il se voit.
+      console.error(
+        `[notifications] disponibilités illisibles pour ${resource.externalRef}`,
+      );
+      continue;
+    }
+    const unblocked = selectUnblockedHolidays({
+      from: localDay(nowMs, resource.timezone),
+      horizonDays: resource.horizonDays,
+      openWeekdays: [...new Set(rules.map((r) => r.weekday))],
+      blockedDays: exceptions.map((e) => e.day),
+    });
+    if (unblocked.length === 0) continue;
+    agendas += 1;
+    const first = unblocked[0] as FrenchHoliday;
+    if (nearest === null || first.day < nearest.day) nearest = first;
+  }
+
+  if (nearest === null) return null;
+  return {
+    key: 'availability_holidays_unblocked',
+    count: agendas,
+    // Ce signal n'a pas d'ancienneté : il APPROCHE, il ne vieillit pas.
+    oldestDays: 0,
+    message: buildHolidaysUnblockedMessage(agendas, nearest),
+    ctaLabel: 'Ouvrir Agendas & disponibilités',
+    target: { route: '/settings' },
+  };
+}
+
+/** Jour civil `YYYY-MM-DD` tel que le vit la ressource, pas tel que l'UTC. */
+function localDay(nowMs: number, timeZone: string): string {
+  // `en-CA` rend précisément `YYYY-MM-DD`, et `timeZone` fait le décalage.
+  return new Date(nowMs).toLocaleDateString('en-CA', { timeZone });
+}
+
 // ─── Registre ──────────────────────────────────────────────────────────────
 
 export type BusinessSignalDefinition = {
@@ -222,6 +355,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'interviews_awaiting_pointing',
     compute: computeInterviewsAwaitingPointing,
+  },
+  {
+    key: 'availability_holidays_unblocked',
+    compute: computeAvailabilityHolidaysUnblocked,
   },
 ];
 

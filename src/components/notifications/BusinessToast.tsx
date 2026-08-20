@@ -1,8 +1,13 @@
 'use client';
 
 /**
- * Toast MÉTIER agrégé (coin bas-droite) — « des candidats attendent votre
- * action ». Anti-harcèlement :
+ * Toast MÉTIER agrégé (coin bas-droite) — « des actions vous attendent ».
+ *
+ * Le titre ne nomme plus les candidats : tous les signaux ne portent pas sur
+ * un dossier (un jour férié non bloqué est un RÉGLAGE à corriger), et un
+ * bandeau qui annonce autre chose que son contenu se fait ignorer.
+ *
+ * Anti-harcèlement :
  *   - affiché UNE fois par session (sessionStorage), même après navigation ;
  *   - dismissable (mémorisé pour la session) ;
  *   - rien à afficher = rien de rendu (pas de « tout va bien ») ;
@@ -49,7 +54,7 @@ export function BusinessToast({
       <header className="flex items-center justify-between gap-2 border-b border-orqa-ambre/20 px-4 py-2.5">
         <p className="font-display text-[13px] font-bold text-orqa-encre">
           <span aria-hidden className="mr-1.5">⏳</span>
-          Des candidats attendent votre action
+          Des actions vous attendent
         </p>
         <button
           type="button"

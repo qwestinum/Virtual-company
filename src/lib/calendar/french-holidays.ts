@@ -27,7 +27,8 @@ function isoDay(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function addDays(day: string, offset: number): string {
+/** Décale un jour ISO d'un nombre de jours, sans jamais toucher à un fuseau. */
+export function addDays(day: string, offset: number): string {
   const [y, m, d] = day.split('-').map(Number) as [number, number, number];
   const shifted = new Date(Date.UTC(y, m - 1, d) + offset * MS_PER_DAY);
   return isoDay(

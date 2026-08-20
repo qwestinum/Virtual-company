@@ -42,19 +42,6 @@ function fixture(reports: { id: string; analyses: CampaignAnalysisDatum[] }[]) {
   });
 }
 
-/**
- * Budget de temps EXPLICITE pour les rendus PDF.
- *
- * `@react-pdf` construit un vrai document, polices comprises : c'est
- * légitimement lent. Les 5 s par défaut de vitest n'ont jamais été un budget
- * CHOISI, seulement celui qu'on subit — et ces rendus s'en approchaient à
- * ~4,9 s en suite complète. Ils tenaient donc à la charge de la machine : le
- * jour où un test s'ajoute AILLEURS dans la suite, ils tombent, et le rouge
- * accuse un fichier qui n'a pas bougé (constaté le 20/08/2026). On nomme le
- * budget plutôt que de le frôler.
- */
-const PDF_RENDER_TIMEOUT_MS = 30_000;
-
 describe('renderMultiCampaignReportPdf', () => {
   it('génère un PDF non vide avec plusieurs campagnes', async () => {
     const data = fixture([
@@ -68,7 +55,7 @@ describe('renderMultiCampaignReportPdf', () => {
     expect(Buffer.isBuffer(pdf)).toBe(true);
     expect(pdf.length).toBeGreaterThan(1000);
     expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
-  }, PDF_RENDER_TIMEOUT_MS);
+  });
 
   it('rend même pour 0 campagne (période vide)', async () => {
     const data = fixture([]);
@@ -78,5 +65,5 @@ describe('renderMultiCampaignReportPdf', () => {
       generatedAtIso: '2026-06-15T12:32:00.000Z',
     });
     expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
-  }, PDF_RENDER_TIMEOUT_MS);
+  });
 });

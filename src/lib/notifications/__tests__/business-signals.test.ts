@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildHolidaysUnblockedMessage,
   buildInterviewsAwaitingMessage,
   buildInterviewsPointingMessage,
   buildPendingValidationsMessage,
   cutoffIso,
   daysSinceIso,
+  formatHolidayDay,
   selectOverdueRealizedUids,
+  selectUnblockedHolidays,
   selectUnpointedBriefs,
 } from '@/lib/notifications/business-signals';
 
@@ -110,5 +113,68 @@ describe('signal 3 — entretiens passés sans pointage', () => {
   it('le message dit ce qu’on attend : un pointage, pas une décision', () => {
     expect(buildInterviewsPointingMessage(1)).toMatch(/réalisé ou absent/);
     expect(buildInterviewsPointingMessage(3)).toMatch(/^3 entretiens passés/);
+  });
+});
+
+// ─── Signal 4 : jours fériés encore proposables ────────────────────────────
+
+describe('selectUnblockedHolidays', () => {
+  // 2026-11-11 = mercredi (férié) · 2026-11-01 = dimanche (férié)
+  const OUVRE = [1, 2, 3, 4, 5];
+  const base = {
+    from: '2026-10-20',
+    horizonDays: 30,
+    openWeekdays: OUVRE,
+    blockedDays: [] as string[],
+  };
+
+  it('signale un férié réservable dans l’horizon', () => {
+    expect(selectUnblockedHolidays(base).map((h) => h.day)).toContain(
+      '2026-11-11',
+    );
+  });
+
+  it('ignore un férié AU-DELÀ de l’horizon — il n’est pas encore offert', () => {
+    // 12 jours d'horizon : le 11 novembre n'est pas proposable, rien à corriger.
+    expect(
+      selectUnblockedHolidays({ ...base, horizonDays: 12 }),
+    ).toEqual([]);
+  });
+
+  it('s’éteint dès que l’absence est posée', () => {
+    // C'est l'extinction PAR CONSTRUCTION : aucun état parallèle à tenir.
+    expect(
+      selectUnblockedHolidays({ ...base, blockedDays: ['2026-11-11'] }),
+    ).toEqual([]);
+  });
+
+  it('ignore un férié tombant un jour non travaillé', () => {
+    const days = selectUnblockedHolidays(base).map((h) => h.day);
+    expect(days).not.toContain('2026-11-01'); // dimanche
+  });
+
+  it('ne dit rien d’une ressource sans aucune règle', () => {
+    // Sans règle, aucun créneau n'est proposé : il n'y a rien à bloquer, et
+    // réclamer une action serait un faux positif permanent.
+    expect(selectUnblockedHolidays({ ...base, openWeekdays: [] })).toEqual([]);
+  });
+});
+
+describe('message du signal 4', () => {
+  const NOEL = { day: '2026-12-25', label: 'Noël' };
+
+  it('accorde le nombre d’agendas et nomme la date la plus proche', () => {
+    expect(buildHolidaysUnblockedMessage(1, NOEL)).toBe(
+      '1 agenda propose encore des créneaux un jour férié — le plus proche : 25 décembre (Noël).',
+    );
+    expect(buildHolidaysUnblockedMessage(3, NOEL)).toMatch(
+      /^3 agendas proposent/,
+    );
+  });
+
+  it('formate la date sans bascule de fuseau', () => {
+    // Minuit UTC ferait afficher la veille à l'ouest de Greenwich.
+    expect(formatHolidayDay('2026-01-01')).toBe('1 janvier');
+    expect(formatHolidayDay('2026-11-11')).toBe('11 novembre');
   });
 });

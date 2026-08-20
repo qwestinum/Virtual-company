@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { AgentDetailsPanel } from '@/components/agents/AgentDetailsPanel';
@@ -104,6 +105,7 @@ export function WorkspacePane() {
   // Signaux métier : fetch au montage + re-fetch à chaque changement d'onglet
   // (c'est ce re-fetch qui fait décrémenter les badges après une action).
   const businessSignals = useBusinessSignals(tab);
+  const router = useRouter();
 
   const changeTab = (next: Tab) => {
     setCandidaturesStage(null);
@@ -113,6 +115,12 @@ export function WorkspacePane() {
     setTab(next);
   };
   const navigateToSignal = (target: BusinessSignalTarget) => {
+    // Destination hors workspace (un RÉGLAGE, pas un dossier) : on quitte la
+    // page au lieu de chercher un onglet qui n'existe pas.
+    if ('route' in target) {
+      router.push(target.route);
+      return;
+    }
     setCandidaturesCampaignId(null);
     setCandidaturesEverInvited(false);
     setCandidaturesEverInterviewed(false);
