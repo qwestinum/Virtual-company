@@ -120,16 +120,71 @@ serait même pas le même. **Conséquence pratique : lire les hausses de +20 et
 plus comme un signal solide, et les écarts de ±10 comme du bruit.** Six
 dossiers baissent ; aucun ne change de zone de décision.
 
-## 7. Un CV irrécupérable — signal d'un autre sujet
+## 7. Les CV irrécupérables — recensement complet
 
-**Remy FRANCISCO (CAMP-2026-894)** : le binaire du CV est absent du stockage.
-Il est tracé « NON REJOUABLE : binaire absent » plutôt que silencieusement
-omis — un dossier qu'on ne peut plus relire doit se voir.
+Mesuré sur **l'ensemble du parc client**, pas seulement sur le périmètre du
+rejeu : **2 CV sur 81 (2,5 %)** n'ont plus de binaire.
 
-Pourquoi ce binaire manque est une **question ouverte, à instruire à part**.
-Piste connue : le bucket `artifacts` refuse le MIME DOCX, ce qui fait échouer
-l'archivage de certains CV sans casser l'analyse (cf. `project_bucket_mime_docx`).
-Si c'est la cause, d'autres CV sont dans le même cas sans qu'on le sache.
+| Date | Campagne | Candidat | Fichier |
+|---|---|---|---|
+| 19/08 | CAMP-2026-894 | Remy FRANCISCO | `RF_IT_Manager.docx` |
+| 08/08 | CAMP-2026-497 | MASTASS Sara | `CV_MASTASS_Sara_BA_0826.pdf` |
+
+Dans les deux cas, **aucune ligne d'artefact n'existe** (`artifacts_meta`), et
+l'objet est absent du stockage — vérifié en listant les dossiers. Ils ne sont
+pas non plus dans la file des non-rattachés.
+
+### Le mécanisme
+
+Dans `processEmailAttachment`, l'archivage du binaire est **best-effort** :
+
+```ts
+try {
+  const cvUp = await uploadArtifactBinary({ … });
+  await upsertArtifactMeta({ … });      // ← la ligne n'est écrite QU'APRÈS l'upload
+  cvArtifactId = cvId;
+} catch (cvErr) {
+  console.error('[imap-poller] persistance CV échouée', cvErr);   // ← et c'est tout
+}
+```
+
+L'upload a échoué, donc la ligne n'a jamais été écrite — d'où l'absence totale
+de trace. L'analyse, elle, s'est déroulée normalement : le candidat a été scoré
+et le rapport archivé quelques secondes plus tôt, **dans le même bucket**.
+
+### Pourquoi l'upload a échoué : on ne sait pas, et c'est le vrai défaut
+
+**Deux hypothèses écartées, preuve à l'appui :**
+
+- *Le bucket refuserait certains MIME* (piste `project_bucket_mime_docx`) —
+  **faux ici**. Le bucket `artifacts` du projet client n'a **aucune restriction
+  de MIME**, et son `updated_at` est égal à son `created_at` (22/06/2026) : sa
+  configuration n'a jamais été modifiée, donc jamais restreinte, y compris aux
+  dates des deux incidents.
+- *Un format en cause* — **non** : l'un est un `.docx`, l'autre un `.pdf`, à
+  onze jours d'intervalle, sur la même boîte. Aucun motif commun.
+
+Reste l'explication la plus plausible : un **échec transitoire du stockage**,
+survenu entre deux écritures réussies. Elle n'est pas démontrable, et c'est
+précisément le problème : **l'erreur n'est allée que dans `console.error`**, qui
+sur une plateforme serverless n'existe plus quelques heures après. Aucune ligne
+de journal, aucun champ, rien de durable.
+
+### Ce qu'il faudrait (non fait, au backlog)
+
+Le vrai correctif n'est pas de deviner la cause, c'est de **rendre l'échec
+visible** : une action `imap_cv_binary_unstored` au journal, avec l'erreur. Un
+CV perdu doit se voir le jour où il se perd, pas trois semaines plus tard au
+détour d'un audit. C'est la même règle que pour les sauts de boîte mail
+(« un opérateur ne peut pas diagnostiquer un rien »).
+
+### Une voie de récupération existe encore
+
+Le mail d'origine est peut-être **toujours dans la boîte** (uid 263 et 195 sur
+`mb_ca0a5aeb…`). « Non récupérable » veut dire *depuis ORQA* : re-télécharger la
+pièce jointe depuis la messagerie reste possible tant que le mail n'est pas
+supprimé. À faire avant que la boîte ne soit purgée si ces deux dossiers
+comptent.
 
 ## 8. Outillage
 

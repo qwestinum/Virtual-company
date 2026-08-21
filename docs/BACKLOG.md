@@ -828,11 +828,21 @@ Spec : `docs/specs/demo-jobboard.md`. Script commercial :
   anomalie tracée, file de retry, jamais un refus. ⚠️ N'aurait rien changé à
   l'incident du 21/08 : l'extraction y était irréprochable (3 197 caractères
   pour une page). C'est un autre risque, réel mais distinct.
-- **Binaire de CV manquant** : Remy FRANCISCO (CAMP-2026-894) est non rejouable,
-  son binaire est absent du stockage. Piste connue : le bucket `artifacts`
-  refuse le MIME DOCX (`project_bucket_mime_docx`), ce qui fait échouer
-  l'archivage sans casser l'analyse. Si c'est la cause, d'autres CV sont dans
-  le même cas sans qu'on le sache — mesurer, puis corriger le bucket.
+- **Archivage du binaire de CV : un échec INVISIBLE.** Recensé le 21/08 sur le
+  parc client : **2 CV sur 81 (2,5 %)** n'ont plus de binaire (Remy FRANCISCO
+  19/08 `.docx`, MASTASS Sara 08/08 `.pdf`). Dans `processEmailAttachment`,
+  `uploadArtifactBinary` + `upsertArtifactMeta` sont en best-effort et l'erreur
+  ne va que dans `console.error` — sur serverless, elle n'existe plus quelques
+  heures après. D'où : aucune ligne d'artefact, aucune trace, découverte trois
+  semaines plus tard par audit. ⚠️ La piste « le bucket refuse le MIME DOCX »
+  (`project_bucket_mime_docx`) est **FALSIFIÉE pour le projet client** : le
+  bucket n'a aucune restriction et son `updated_at` = `created_at` (22/06), il
+  n'a jamais été reconfiguré. Les deux fichiers sont de formats différents, à
+  onze jours d'intervalle : échec transitoire le plus probable, indémontrable
+  en l'état. **Correctif à faire : journaliser l'échec** (`imap_cv_binary_unstored`,
+  avec l'erreur) — un CV perdu doit se voir le jour où il se perd. Récupération
+  encore possible en attendant : le mail d'origine est peut-être toujours dans
+  la boîte (uid 263 et 195).
 - **Qualité des listes de mots-clés générées** : celles de CAMP-2026-288
   cherchaient « Consultant MOA », « secteur financier », « parcours digitaux » —
   des formulations de fiche de poste, pas de CV. Le correctif rend leur
