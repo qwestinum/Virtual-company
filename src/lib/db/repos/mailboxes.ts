@@ -20,6 +20,12 @@ export type MailboxRow = {
   is_enabled: boolean;
   /** Dossier IMAP relevé. `null`/vide ⇒ INBOX (cf. `mailboxFolder`). */
   folder: string | null;
+  /**
+   * Dernière cause de saut JOURNALISÉE. Sert à ne tracer que les transitions :
+   * une boîte sautée pour la même raison à chaque relève produisait une ligne
+   * de journal par minute. `null` = dernière relève nominale.
+   */
+  last_skip_reason: string | null;
   last_polled_at: string | null;
   last_uid_seen: string | null;
   last_error: string | null;
@@ -155,7 +161,11 @@ export async function patchMailbox(
 
 export async function updateMailboxPollState(
   id: string,
-  state: { lastUidSeen?: string; lastError?: string | null },
+  state: {
+    lastUidSeen?: string;
+    lastError?: string | null;
+    lastSkipReason?: string | null;
+  },
 ): Promise<void> {
   const supabase = requireServerSupabase();
   const row: Partial<MailboxRow> = {
@@ -163,6 +173,9 @@ export async function updateMailboxPollState(
   };
   if (state.lastUidSeen !== undefined) row.last_uid_seen = state.lastUidSeen;
   if (state.lastError !== undefined) row.last_error = state.lastError;
+  if (state.lastSkipReason !== undefined) {
+    row.last_skip_reason = state.lastSkipReason;
+  }
   const { error } = await supabase.from(TABLE).update(row).eq('id', id);
   if (error) throw new Error(`updateMailboxPollState: ${error.message}`);
 }

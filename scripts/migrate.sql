@@ -1887,3 +1887,23 @@ alter table public.demo_job_posts enable row level security;
 create index if not exists demo_job_posts_visible_idx
   on public.demo_job_posts (published_at desc)
   where is_visible;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- Dernière cause de saut d'une boîte — anti-inondation du journal (21/08/2026)
+-- ──────────────────────────────────────────────────────────────────────
+-- `imap_mailbox_skipped` a été ajoutée le 20/08 pour qu'une boîte sautée ne le
+-- soit plus en silence. Bonne intention, mauvais rythme : la ligne était
+-- réécrite À CHAQUE relève. Sur une boîte en `open_timeout` permanent et un
+-- cron à la minute, cela fait 1 440 lignes par jour — mesuré le 21/08 : 475
+-- lignes sur les 500 de la fenêtre du fil d'activité, qui a expulsé tous les
+-- évènements métier hors de sa portée.
+--
+-- Une trace qui se répète à l'identique n'informe plus. On mémorise donc la
+-- DERNIÈRE cause, pour ne journaliser que les TRANSITIONS (première occurrence
+-- ou changement de cause). L'intention d'origine est préservée en entier — un
+-- opérateur voit toujours qu'une boîte est sautée, et pourquoi — sans le bruit.
+--
+-- NULL = aucun saut en cours (dernière relève nominale). Remise à NULL par le
+-- poller à la fin d'un poll abouti, pour qu'une rechute soit re-signalée.
+alter table public.mailboxes
+  add column if not exists last_skip_reason text;

@@ -86,6 +86,39 @@ function mapJournalRow(r: unknown): JournalEntry {
 }
 
 /**
+ * Les N entrées les plus RÉCENTES parmi un ensemble d'actions donné.
+ *
+ * Différence essentielle avec `listJournalEntries({ limit })` : la limite porte
+ * sur les lignes QU'ON VEUT, pas sur les lignes brutes du journal. Charger
+ * large puis jeter ce qu'on ne sait pas afficher a un coût invisible et
+ * redoutable — le 21/08/2026, une action technique écrite à chaque relève
+ * (1 440 lignes/jour) occupait 475 des 500 lignes de la fenêtre du fil
+ * d'activité et EXPULSAIT les évènements métier derrière son bord. Demander
+ * « les 50 derniers évènements affichables » rend ce scénario impossible,
+ * aujourd'hui comme pour toute action bavarde à venir.
+ *
+ * `limit` est appliquée en SQL : aucune troncature silencieuse côté client, et
+ * l'index sur `created_at` fait le travail.
+ */
+export async function listRecentJournalEntriesByActions(
+  actions: string[],
+  limit: number,
+): Promise<JournalEntry[]> {
+  if (actions.length === 0 || limit <= 0) return [];
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from('journal')
+    .select('id, campaign_id, actor, action, payload, created_at')
+    .in('action', actions)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) {
+    throw new Error(`listRecentJournalEntriesByActions: ${error.message}`);
+  }
+  return (data ?? []).map(mapJournalRow);
+}
+
+/**
  * Liste EXHAUSTIVE des entrées du journal pour un ENSEMBLE d'actions données,
  * paginée en interne (pages de 1000) — SANS le plafond 500 de
  * `listJournalEntries`. Réservée aux marqueurs BAS VOLUME (entretien /

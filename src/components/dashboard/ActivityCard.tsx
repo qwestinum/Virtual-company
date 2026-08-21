@@ -36,6 +36,8 @@ const ICONS: Record<ActivityIconKey, string> = {
   pause: '⏸',
   play: '▶️',
   edit: '✏️',
+  archive: '🗂',
+  report: '📊',
 };
 
 export function ActivityCard({ activity, fill = false }: ActivityCardProps) {

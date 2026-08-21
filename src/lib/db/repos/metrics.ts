@@ -10,6 +10,7 @@
 import {
   listJournalEntries,
   listJournalEntriesByActions,
+  listRecentJournalEntriesByActions,
   type JournalEntry,
 } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -65,6 +66,29 @@ export async function fetchCandidateTotalRows(
 export type MetricsRowsResult = {
   rows: JournalEntry[];
 };
+
+/**
+ * Les N dernières entrées PARMI un ensemble d'actions — pour les surfaces dont
+ * la limite doit porter sur ce qu'elles savent utiliser, pas sur le journal
+ * brut (fil d'activité, métriques par agent).
+ *
+ * Charger large puis jeter est un piège coûteux : le 21/08/2026, une action
+ * technique écrite à chaque relève occupait 95 % de la fenêtre de 500 lignes et
+ * évinçait les évènements métier hors de portée du fil. La liste d'actions
+ * passée ici DOIT être dérivée de la structure qui les rend (cf.
+ * `ACTIVITY_FEED_ACTIONS`), jamais recopiée à la main.
+ */
+export async function fetchRecentRowsForActions(
+  actions: string[],
+  limit: number,
+): Promise<MetricsRowsResult | null> {
+  try {
+    return { rows: await listRecentJournalEntriesByActions(actions, limit) };
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return null;
+    throw err;
+  }
+}
 
 /**
  * Récupère la fenêtre d'évènements du journal utilisée pour calculer

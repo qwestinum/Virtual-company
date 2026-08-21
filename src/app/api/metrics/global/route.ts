@@ -18,6 +18,8 @@ import { NextResponse } from 'next/server';
 import { getAdminApiUser } from '@/lib/auth/require-api-user';
 
 import {
+  ACTIVITY_FEED_ACTIONS,
+  AGENT_METRIC_ACTIONS,
   EMPTY_ZONE_COUNTS,
   journalToActivityFeed,
   journalToAgentMetrics,
@@ -29,6 +31,7 @@ import { listCampaigns } from '@/lib/db/repos/campaigns';
 import {
   fetchCandidateTotalRows,
   fetchMetricsRows,
+  fetchRecentRowsForActions,
 } from '@/lib/db/repos/metrics';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -36,6 +39,23 @@ import { ensureSchedulerStarted } from '@/lib/imap/scheduler';
 import { getAgentOrder } from '@/lib/agents/registry';
 
 export const runtime = 'nodejs';
+
+/** Nombre d'items visés par le fil d'activité. */
+const ACTIVITY_ITEMS = 50;
+
+/**
+ * Marge de lignes chargées pour obtenir ces items. Le filtre en base retire le
+ * bruit TECHNIQUE ; il reste un tri sur le CONTENU (un envoi dont le statut
+ * n'est pas `sent` n'est pas un envoi, un mail HITL non parti a son propre
+ * évènement). Cette part-là est bornée par la nature des lignes, pas par le
+ * volume du journal — d'où une marge constante, et non un multiple à faire
+ * grandir. Sans elle, un lot de lignes écartées sur leur contenu raccourcirait
+ * le fil ; avec elle, on ne charge jamais 500 lignes pour en montrer 11.
+ */
+const ACTIVITY_FETCH_ROWS = ACTIVITY_ITEMS * 3;
+
+/** Fenêtre « récente » des métriques par agent — sur les actions d'agent SEULES. */
+const AGENT_WINDOW_ROWS = 500;
 
 export async function GET(): Promise<NextResponse> {
   // Filet de sécurité : le scheduler IMAP démarre au boot (instrumentation),
@@ -102,6 +122,21 @@ export async function GET(): Promise<NextResponse> {
     }),
   );
 
+  // Fil d'activité et métriques agents : deux fenêtres CIBLÉES, en parallèle.
+  // Repli sur la fenêtre brute si le fetch ciblé échoue — dégradé, jamais vide.
+  const [activityResult, agentResult] = await Promise.all([
+    fetchRecentRowsForActions(ACTIVITY_FEED_ACTIONS, ACTIVITY_FETCH_ROWS).catch(
+      () => null,
+    ),
+    isAdmin
+      ? fetchRecentRowsForActions(AGENT_METRIC_ACTIONS, AGENT_WINDOW_ROWS).catch(
+          () => null,
+        )
+      : Promise.resolve<{ rows: typeof result.rows } | null>({ rows: [] }),
+  ]);
+  const activityRows = activityResult?.rows ?? result.rows;
+  const agentRows = agentResult?.rows ?? result.rows;
+
   // Répartition par zone (récit Bureau) — EXHAUSTIF depuis candidate_analyses.
   // Best-effort : un échec retombe sur des zones vides, le reste du payload tient.
   const zones = await zoneDistribution().catch(() => EMPTY_ZONE_COUNTS);
@@ -114,12 +149,14 @@ export async function GET(): Promise<NextResponse> {
     offline: false,
     // Coût IA = donnée ADMIN (member : 0, jamais le chiffre réel).
     kpis: isAdmin ? kpis : { ...kpis, costEstimate: 0 },
-    // Agents + activité = fenêtre RÉCENTE assumée (durée/tokens/coût récents,
-    // fil « qui défile ») — limite légitime, pas un total. Reste sur la
-    // fenêtre 500 (`result.rows`). Métriques par agent = ADMIN uniquement.
-    agents: isAdmin ? journalToAgentMetrics(result.rows, agentIds) : [],
+    // Agents + activité = fenêtres RÉCENTES assumées (limite légitime, pas un
+    // total) — mais des fenêtres sur les lignes QU'ELLES SAVENT UTILISER, et
+    // non sur le journal brut : charger large puis jeter laissait une action
+    // technique bavarde évincer tout le métier (21/08/2026). Métriques par
+    // agent = ADMIN uniquement.
+    agents: isAdmin ? journalToAgentMetrics(agentRows, agentIds) : [],
     candidates,
-    activity: journalToActivityFeed(result.rows, 50),
+    activity: journalToActivityFeed(activityRows, ACTIVITY_ITEMS),
     zones,
   });
 }

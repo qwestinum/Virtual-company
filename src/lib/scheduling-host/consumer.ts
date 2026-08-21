@@ -321,6 +321,10 @@ async function journalBooking(
       analysisId: context?.analysisId ?? null,
       bookingUid: args.booking.id,
       attendeeEmail: args.booking.attendee.email,
+      // Le fil d'activité du Bureau nomme les gens (« Rendez-vous pris avec
+      // Claire Martin ») : sans ce champ il n'a qu'une adresse email, qu'il
+      // refuse d'afficher — un fil qui parle en identifiants ne se lit pas.
+      attendeeName: args.booking.attendee.name,
       startAt: args.booking.startAt,
       // Quel agenda a produit ce rendez-vous — l'équivalent natif de la
       // traçabilité `organizerEmail` du webhook.

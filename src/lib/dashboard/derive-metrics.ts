@@ -163,7 +163,9 @@ export type ActivityIconKey =
   | 'rocket'
   | 'pause'
   | 'play'
-  | 'edit';
+  | 'edit'
+  | 'archive'
+  | 'report';
 
 export type ActivityColorKey =
   | 'green'
@@ -249,6 +251,12 @@ export function journalToGlobalKPIs(
  * n'est pas encore loggée dans le journal. Le composant UI gère ce
  * null en affichant un tiret. La métrique sera réelle en Session 7.
  */
+/**
+ * Actions dont dérivent les métriques par agent. Dérivée de `ACTION_TO_AGENT` :
+ * impossible de la laisser diverger, même raison que `ACTIVITY_FEED_ACTIONS`.
+ */
+export const AGENT_METRIC_ACTIONS: string[] = Object.keys(ACTION_TO_AGENT);
+
 export function journalToAgentMetrics(
   rows: JournalEntry[],
   agentIds: string[],
@@ -532,13 +540,331 @@ export function journalToCandidatesList(
 // ─── Flux d'activité ───────────────────────────────────────────────────
 
 /**
+ * Registre des évènements RENDUS par le fil d'activité.
+ *
+ * ⚠️ Ce registre est la SOURCE UNIQUE : la liste des actions chargées depuis la
+ * base (`ACTIVITY_FEED_ACTIONS`) en dérive par `Object.keys`. C'était le vrai
+ * défaut du 21/08/2026 — la route chargeait les 500 dernières lignes BRUTES du
+ * journal puis jetait celles qu'elle ne savait pas rendre. Une action technique
+ * bavarde (`imap_mailbox_skipped`, écrit à chaque relève sur une boîte en
+ * timeout : 1 440 lignes/jour) remplissait la fenêtre et ÉVINÇAIT les
+ * évènements métier derrière son bord. Mesuré : 475 lignes sur 500, le fil
+ * demandait 50 items et en obtenait 11, et 37 des 50 derniers évènements
+ * affichables étaient hors fenêtre. Le fil n'accumule rien côté client
+ * (`useDashboardData` remplace l'état à chaque poll) : ce qui sort de la
+ * fenêtre disparaît de l'écran.
+ *
+ * Deux règles qui en découlent, à ne pas défaire :
+ *   1. la requête filtre sur CES actions — 50 items demandés, 50 obtenus, quel
+ *      que soit le bruit technique du journal ;
+ *   2. une entrée ici et un renderer sont la MÊME chose. Une liste maintenue à
+ *      côté du `switch` finirait par diverger, et la divergence serait
+ *      silencieuse : l'action resterait invisible sans qu'aucun test ne rougisse.
+ *
+ * Ce qui n'entre PAS dans le fil : les évènements techniques (échecs IMAP,
+ * parses ratés, sauts de boîte) — ils vivent dans le journal et les écrans de
+ * diagnostic ; et les évènements vivier (`vivier_invitation_sent`,
+ * `vivier_application_matched`), dont le payload ne porte qu'un identifiant de
+ * candidat : un fil qui annonce « invitation envoyée à 7f3a-… » est pire que
+ * le silence. À rouvrir le jour où ces payloads porteront un nom.
+ */
+type FeedBase = Pick<ActivityItem, 'id' | 'time' | 'createdAt' | 'campaignId'>;
+type FeedRenderer = (row: JournalEntry, base: FeedBase) => ActivityItem | null;
+
+/** Nom lisible du candidat, quel que soit le champ utilisé par l'émetteur. */
+function candidateNameOf(payload: Record<string, unknown> | undefined): string {
+  for (const key of ['candidate', 'candidateName', 'attendeeName'] as const) {
+    const value = payload?.[key];
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  return 'Candidat';
+}
+
+const ACTIVITY_RENDERERS: Record<string, FeedRenderer> = {
+  imap_cv_analyzed: (row, base) => {
+    const name = candidateNameOf(row.payload);
+    const score = Number(row.payload?.score ?? 0);
+    const aboveThreshold = row.payload?.aboveThreshold === true;
+    return {
+      ...base,
+      message: `CV analysé — ${name} : ${score}%`,
+      iconKey: 'cv',
+      colorKey: aboveThreshold ? 'green' : score >= 60 ? 'orange' : 'red',
+    };
+  },
+
+  demo_jobboard_application_sent: (row, base) => ({
+    ...base,
+    message: `Candidature déposée depuis l’annonce — ${candidateNameOf(row.payload)}`,
+    iconKey: 'announce',
+    colorKey: 'blue',
+  }),
+
+  imap_outreach_mail: (row, base) => {
+    const name = candidateNameOf(row.payload);
+    const mode = row.payload?.mode;
+    const status = row.payload?.status;
+    // Avertissement visible : aucun email exploitable dans le CV →
+    // rien n'a été envoyé, le DRH doit reprendre la main.
+    if (status === 'skipped_no_email') {
+      return {
+        ...base,
+        message: `${mode === 'invite' ? 'Invitation' : 'Refus'} non envoyé — aucun email dans le CV de ${name}, à traiter manuellement`,
+        iconKey: 'mail',
+        colorKey: 'red',
+      };
+    }
+    if (status !== 'sent') return null;
+    if (mode === 'invite') {
+      return {
+        ...base,
+        message: `Invitation envoyée à ${name}`,
+        iconKey: 'mail',
+        colorKey: 'blue',
+      };
+    }
+    return {
+      ...base,
+      message: `Refus envoyé à ${name}`,
+      iconKey: 'mail',
+      colorKey: 'red',
+    };
+  },
+
+  // Un dossier entre dans la file de validation humaine : c'est un fait
+  // métier, pas une étape technique — c'est même le moment où le DRH a
+  // quelque chose à faire.
+  imap_outreach_pending: (row, base) => ({
+    ...base,
+    message: `${candidateNameOf(row.payload)} attend une validation`,
+    iconKey: 'interview',
+    colorKey: 'yellow',
+  }),
+
+  hitl_validation_sent: (row, base) => {
+    const name = candidateNameOf(row.payload);
+    // Le journal dit la vérité sur l'envoi : une décision prise dont le mail
+    // n'est pas parti a son propre évènement (`hitl_mail_not_sent`), on ne
+    // l'annonce donc pas comme un envoi réussi ici.
+    if (row.payload?.mailSent !== true) return null;
+    const accepted = row.payload?.decision === 'accept';
+    return {
+      ...base,
+      message: accepted
+        ? `Invitation envoyée à ${name} — après validation`
+        : `Refus envoyé à ${name} — après validation`,
+      iconKey: 'mail',
+      colorKey: accepted ? 'blue' : 'red',
+    };
+  },
+
+  hitl_mail_not_sent: (row, base) => ({
+    ...base,
+    message: `Décision prise sans envoi — ${candidateNameOf(row.payload)}${
+      row.payload?.cause === 'skipped_by_user' ? ' (choix du recruteur)' : ' (envoi impossible)'
+    }`,
+    iconKey: 'mail',
+    colorKey: 'orange',
+  }),
+
+  imap_outreach_brief: (row, base) => {
+    if (row.payload?.status !== 'sent') return null;
+    return {
+      ...base,
+      message: `Brief entretien préparé pour ${candidateNameOf(row.payload)}`,
+      iconKey: 'calendar',
+      colorKey: 'purple',
+    };
+  },
+
+  interview_brief_queued: (row, base) => ({
+    ...base,
+    message: `Entretien à programmer — ${candidateNameOf(row.payload)}`,
+    iconKey: 'calendar',
+    colorKey: 'yellow',
+  }),
+
+  // Le candidat a choisi son créneau : c'est le fait le plus attendu du cycle.
+  interview_brief_delivered: (row, base) => ({
+    ...base,
+    message: `Rendez-vous pris avec ${candidateNameOf(row.payload)}${formatSlot(row.payload?.startAt)}`,
+    iconKey: 'calendar',
+    colorKey: 'green',
+  }),
+
+  interview_brief_regenerated: (row, base) => ({
+    ...base,
+    message: `Rendez-vous pris avec ${candidateNameOf(row.payload)}${formatSlot(row.payload?.startAt)}`,
+    iconKey: 'calendar',
+    colorKey: 'green',
+  }),
+
+  interview_booking_rescheduled: (row, base) => ({
+    ...base,
+    message: `Rendez-vous déplacé — ${candidateNameOf(row.payload)}${formatSlot(row.payload?.startAt)}`,
+    iconKey: 'calendar',
+    colorKey: 'orange',
+  }),
+
+  interview_booking_cancelled: (row, base) => ({
+    ...base,
+    message: `Rendez-vous annulé — ${candidateNameOf(row.payload)}`,
+    iconKey: 'calendar',
+    colorKey: 'red',
+  }),
+
+  interview_link_reissued: (row, base) => ({
+    ...base,
+    message: `Nouveau créneau proposé à ${candidateNameOf(row.payload)}`,
+    iconKey: 'calendar',
+    colorKey: 'blue',
+  }),
+
+  candidate_interview_marked: (row, base) => {
+    const name = candidateNameOf(row.payload);
+    if (row.payload?.status === 'realized') {
+      return {
+        ...base,
+        message: `Entretien réalisé avec ${name}`,
+        iconKey: 'interview',
+        colorKey: 'teal',
+      };
+    }
+    return {
+      ...base,
+      message: `Entretien non réalisé — ${name}`,
+      iconKey: 'interview',
+      colorKey: 'orange',
+    };
+  },
+
+  candidate_validation_marked: (row, base) => {
+    const name = candidateNameOf(row.payload);
+    if (row.payload?.status === 'validated') {
+      return {
+        ...base,
+        message: `Validation définitive — ${name} (GO)`,
+        iconKey: 'interview',
+        colorKey: 'green',
+      };
+    }
+    return {
+      ...base,
+      message: `Validation refusée — ${name}`,
+      iconKey: 'interview',
+      colorKey: 'red',
+    };
+  },
+
+  candidature_dismissed: (row, base) => ({
+    ...base,
+    // Ton NEUTRE : « sans suite » n'est pas un refus, et le fil ne doit pas le
+    // faire passer pour tel (cf. le 8e stage `sans_suite`).
+    message: `Candidature classée sans suite — ${candidateNameOf(row.payload)}`,
+    iconKey: 'archive',
+    colorKey: 'yellow',
+  }),
+
+  campaign_report_sent: (_row, base) => ({
+    ...base,
+    message: `Rapport de campagne envoyé`,
+    iconKey: 'report',
+    colorKey: 'indigo',
+  }),
+
+  campaign_paused: (row, base) => ({
+    ...base,
+    message: `Campagne ${row.campaignId ?? ''} suspendue`,
+    iconKey: 'pause',
+    colorKey: 'yellow',
+  }),
+
+  campaign_resumed: (row, base) => ({
+    ...base,
+    message: `Campagne ${row.campaignId ?? ''} reprise`,
+    iconKey: 'play',
+    colorKey: 'green',
+  }),
+
+  campaign_closed: (row, base) => ({
+    ...base,
+    message: `Campagne ${row.campaignId ?? ''} clôturée`,
+    iconKey: 'pause',
+    colorKey: 'red',
+  }),
+
+  campaign_activated: (row, base) => ({
+    ...base,
+    message: `Campagne ${row.campaignId ?? ''} activée`,
+    iconKey: 'rocket',
+    colorKey: 'indigo',
+  }),
+
+  threshold_changed: (row, base) => ({
+    ...base,
+    message: `Seuil ajusté à ${row.payload?.threshold}%`,
+    iconKey: 'edit',
+    colorKey: 'orange',
+  }),
+
+  scoring_updated: (_row, base) => ({
+    ...base,
+    message: `Grille de scoring mise à jour`,
+    iconKey: 'edit',
+    colorKey: 'purple',
+  }),
+
+  channel_toggled: (row, base) => ({
+    ...base,
+    message: `Canal ${String(row.payload?.channel ?? '')} ${
+      row.payload?.enabled === true ? 'activé' : 'désactivé'
+    }`,
+    iconKey: 'announce',
+    colorKey: 'teal',
+  }),
+
+  job_writer_rendered: (row, base) => {
+    const title = String(row.payload?.jobTitle ?? '');
+    const channel = String(row.payload?.channel ?? '');
+    return {
+      ...base,
+      message: `Annonce rédigée${title ? ' — ' + title : ''}${channel ? ' (' + channel + ')' : ''}`,
+      iconKey: 'announce',
+      colorKey: 'orange',
+    };
+  },
+
+  campaign_created: (row, base) => ({
+    ...base,
+    message: `Nouvelle campagne créée${
+      row.payload?.campaignName ? ' — ' + String(row.payload.campaignName) : ''
+    }`,
+    iconKey: 'rocket',
+    colorKey: 'indigo',
+  }),
+};
+
+/**
+ * Les actions à CHARGER pour alimenter le fil. Dérivée du registre : impossible
+ * de la laisser diverger des renderers, puisqu'elle EST leur liste de clés.
+ */
+export const ACTIVITY_FEED_ACTIONS: string[] = Object.keys(ACTIVITY_RENDERERS);
+
+/** « à 14:30 » — chaîne vide si l'horodatage est absent ou illisible. */
+function formatSlot(startAt: unknown): string {
+  if (typeof startAt !== 'string') return '';
+  const time = formatClockTime(startAt);
+  return time === '—' ? '' : ` à ${time}`;
+}
+
+/**
  * Convertit les entrées du journal en messages métier pour la carte
  * « Activité en direct ». Le but : tout doit pouvoir se lire par un
  * DRH humain — pas d'identifiant technique, pas d'action_code brut.
  *
- * Les types d'évènements jugés trop techniques (échecs IMAP, parses
- * ratés) sont volontairement filtrés. Le bug correspondant remonte
- * dans Sentry / la console, pas dans la timeline visible.
+ * Un renderer peut encore rendre `null` (un envoi qui n'a pas abouti n'est pas
+ * un envoi) : le filtre en base réduit le bruit, il ne remplace pas le jugement
+ * sur le contenu de la ligne.
  */
 export function journalToActivityFeed(
   rows: JournalEntry[],
@@ -554,171 +880,14 @@ export function journalToActivityFeed(
 }
 
 function activityItemFor(row: JournalEntry): ActivityItem | null {
-  const time = formatClockTime(row.createdAt);
-  const base = { id: row.id, time, createdAt: row.createdAt, campaignId: row.campaignId };
-
-  switch (row.action) {
-    case 'imap_cv_analyzed': {
-      const name = String(row.payload?.candidate ?? 'Candidat');
-      const score = Number(row.payload?.score ?? 0);
-      const aboveThreshold = row.payload?.aboveThreshold === true;
-      return {
-        ...base,
-        message: `CV analysé — ${name} : ${score}%`,
-        iconKey: 'cv',
-        colorKey: aboveThreshold ? 'green' : score >= 60 ? 'orange' : 'red',
-      };
-    }
-    case 'imap_outreach_mail': {
-      const name = String(row.payload?.candidate ?? 'un candidat');
-      const mode = row.payload?.mode;
-      const status = row.payload?.status;
-      // Avertissement visible : aucun email exploitable dans le CV →
-      // rien n'a été envoyé, le DRH doit reprendre la main.
-      if (status === 'skipped_no_email') {
-        return {
-          ...base,
-          message: `${mode === 'invite' ? 'Invitation' : 'Refus'} non envoyé — aucun email dans le CV de ${name}, à traiter manuellement`,
-          iconKey: 'mail',
-          colorKey: 'red',
-        };
-      }
-      if (status !== 'sent') return null;
-      if (mode === 'invite') {
-        return {
-          ...base,
-          message: `Invitation envoyée à ${name}`,
-          iconKey: 'mail',
-          colorKey: 'blue',
-        };
-      }
-      return {
-        ...base,
-        message: `Refus envoyé à ${name}`,
-        iconKey: 'mail',
-        colorKey: 'red',
-      };
-    }
-    case 'imap_outreach_brief': {
-      const name = String(row.payload?.candidate ?? 'un candidat');
-      if (row.payload?.status !== 'sent') return null;
-      return {
-        ...base,
-        message: `Brief entretien préparé pour ${name}`,
-        iconKey: 'calendar',
-        colorKey: 'purple',
-      };
-    }
-    case 'campaign_paused':
-      return {
-        ...base,
-        message: `Campagne ${row.campaignId ?? ''} suspendue`,
-        iconKey: 'pause',
-        colorKey: 'yellow',
-      };
-    case 'campaign_resumed':
-      return {
-        ...base,
-        message: `Campagne ${row.campaignId ?? ''} reprise`,
-        iconKey: 'play',
-        colorKey: 'green',
-      };
-    case 'campaign_closed':
-      return {
-        ...base,
-        message: `Campagne ${row.campaignId ?? ''} clôturée`,
-        iconKey: 'pause',
-        colorKey: 'red',
-      };
-    case 'campaign_activated':
-      return {
-        ...base,
-        message: `Campagne ${row.campaignId ?? ''} activée`,
-        iconKey: 'rocket',
-        colorKey: 'indigo',
-      };
-    case 'threshold_changed': {
-      const next = row.payload?.threshold;
-      return {
-        ...base,
-        message: `Seuil ajusté à ${next}%`,
-        iconKey: 'edit',
-        colorKey: 'orange',
-      };
-    }
-    case 'scoring_updated':
-      return {
-        ...base,
-        message: `Grille de scoring mise à jour`,
-        iconKey: 'edit',
-        colorKey: 'purple',
-      };
-    case 'channel_toggled': {
-      const ch = String(row.payload?.channel ?? '');
-      const enabled = row.payload?.enabled === true;
-      return {
-        ...base,
-        message: `Canal ${ch} ${enabled ? 'activé' : 'désactivé'}`,
-        iconKey: 'announce',
-        colorKey: 'teal',
-      };
-    }
-    case 'candidate_interview_marked': {
-      const name = String(row.payload?.candidate ?? 'Candidat');
-      const status = row.payload?.status;
-      if (status === 'realized') {
-        return {
-          ...base,
-          message: `Entretien réalisé — ${name}`,
-          iconKey: 'interview',
-          colorKey: 'teal',
-        };
-      }
-      return {
-        ...base,
-        message: `Entretien marqué comme non réalisé — ${name}`,
-        iconKey: 'interview',
-        colorKey: 'orange',
-      };
-    }
-    case 'candidate_validation_marked': {
-      const name = String(row.payload?.candidate ?? 'Candidat');
-      const status = row.payload?.status;
-      if (status === 'validated') {
-        return {
-          ...base,
-          message: `Validation définitive — ${name} (GO)`,
-          iconKey: 'interview',
-          colorKey: 'green',
-        };
-      }
-      return {
-        ...base,
-        message: `Validation refusée — ${name}`,
-        iconKey: 'interview',
-        colorKey: 'red',
-      };
-    }
-    case 'job_writer_rendered': {
-      const title = String(row.payload?.jobTitle ?? '');
-      const channel = String(row.payload?.channel ?? '');
-      return {
-        ...base,
-        message: `Annonce rédigée${title ? ' — ' + title : ''}${channel ? ' (' + channel + ')' : ''}`,
-        iconKey: 'announce',
-        colorKey: 'orange',
-      };
-    }
-    case 'campaign_created':
-      return {
-        ...base,
-        message: `Nouvelle campagne créée${row.payload?.campaignName ? ' — ' + String(row.payload.campaignName) : ''}`,
-        iconKey: 'rocket',
-        colorKey: 'indigo',
-      };
-    default:
-      return null;
-  }
+  const render = ACTIVITY_RENDERERS[row.action];
+  if (!render) return null;
+  return render(row, {
+    id: row.id,
+    time: formatClockTime(row.createdAt),
+    createdAt: row.createdAt,
+    campaignId: row.campaignId,
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────

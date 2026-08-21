@@ -153,6 +153,20 @@ describe('booking.created', () => {
     expect(releaseMock).not.toHaveBeenCalled();
   });
 
+  it('le journal porte le NOM de l’invité — le fil du Bureau le lit', async () => {
+    // Couplage à ne pas rompre : `interview_brief_delivered` alimente le fil
+    // d'activité (« Rendez-vous pris avec Claire Martin »). Sans `attendeeName`
+    // dans le payload, le renderer retombe sur « Candidat » — un fil qui ne
+    // nomme personne perd tout son intérêt, et rien ne le signalerait.
+    await handleSchedulingEvent(event());
+    const entry = journalMock.mock.calls[0]![0] as {
+      action: string;
+      payload: Record<string, unknown>;
+    };
+    expect(entry.payload.attendeeName).toBeTruthy();
+    expect(entry.payload.startAt).toBeTruthy();
+  });
+
   it('contexte illisible : on TRACE, et on n’écrit à personne', async () => {
     // Un lien émis par l'hôte porte TOUJOURS un contexte. Sans contexte, la
     // réservation vient d'ailleurs (harnais de démonstration, ligne d'outbox

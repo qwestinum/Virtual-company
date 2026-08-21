@@ -118,6 +118,10 @@ export async function POST(request: Request): Promise<NextResponse> {
       payload: {
         bookingUid: booking.bookingUid,
         attendeeEmail: booking.attendeeEmail,
+        // Cf. le chemin natif : le fil d'activité nomme les gens, il ne peut
+        // pas se contenter d'une adresse.
+        attendeeName: booking.attendeeName,
+        startAt: booking.startTime,
         status: result.status,
         providerMessageId: result.messageId ?? null,
         error: result.error,

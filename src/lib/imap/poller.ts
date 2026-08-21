@@ -168,26 +168,54 @@ type MailboxSkipReason =
   | 'select_failed';
 
 /**
- * Trace un saut de boîte.
+ * Trace un saut de boîte — UNE FOIS PAR TRANSITION, jamais à chaque relève.
  *
  * Sauter une boîte `is_enabled` sans rien écrire est un défaut
  * d'observabilité à part entière : un opérateur ne peut pas diagnostiquer un
  * « rien ». Le 20/08/2026, il a fallu trois requêtes et une hypothèse pour
  * découvrir ce qu'une ligne de journal aurait dit.
+ *
+ * Mais une trace qui se répète à l'identique cesse d'informer et devient une
+ * nuisance : réécrite à chaque poll sur une boîte durablement en échec, elle
+ * produit 1 440 lignes par jour. Le 21/08/2026, elle occupait 475 des 500
+ * lignes de la fenêtre du fil d'activité du Bureau et en avait EXPULSÉ tous
+ * les évènements métier. L'état courant, lui, vit déjà dans `last_error` et
+ * `last_skip_reason` — le journal n'a à porter que le CHANGEMENT.
+ *
+ * On journalise donc à la première occurrence et à chaque changement de cause ;
+ * `last_skip_reason` est remis à `null` par un poll abouti, pour qu'une
+ * rechute soit re-signalée. La mémoire est en BASE et non en process : sur des
+ * invocations isolées (serverless), un marqueur en mémoire ne verrait qu'une
+ * fraction des polls et laisserait passer le bruit.
  */
 async function traceMailboxSkipped(
   mailbox: MailboxRow,
   reason: MailboxSkipReason,
   extra: Record<string, unknown> = {},
 ): Promise<void> {
+  if (mailbox.last_skip_reason === reason) return;
   await appendJournalEntry({
     action: 'imap_mailbox_skipped',
     actor: 'imap_poller',
-    payload: { mailboxId: mailbox.id, label: mailbox.label, reason, ...extra },
+    payload: {
+      mailboxId: mailbox.id,
+      label: mailbox.label,
+      reason,
+      // Ce que le lecteur perd en fréquence, il le gagne en clarté : la trace
+      // DIT qu'elle vaut jusqu'au prochain changement.
+      repeatedUntilChange: true,
+      previousReason: mailbox.last_skip_reason,
+      ...extra,
+    },
   }).catch(() => {
     // Le journal est un confort de diagnostic : son échec ne doit jamais
     // faire échouer une relève.
   });
+  // Mémorisé APRÈS la trace : si l'écriture d'état échoue, on re-journalisera
+  // au prochain poll — un doublon vaut mieux qu'un saut jamais signalé.
+  await updateMailboxPollState(mailbox.id, { lastSkipReason: reason }).catch(
+    () => {},
+  );
 }
 
 /**
@@ -1063,9 +1091,22 @@ async function pollMailboxImpl(
   // ci-dessus), le message interrompu sera re-présenté.
   await commitProgress();
 
-  await updateMailboxPollState(mailbox.id, {
-    lastError: crashError,
-  });
+  await updateMailboxPollState(mailbox.id, { lastError: crashError });
+
+  // Ce poll est allé au bout : la boîte n'est plus sautée. On efface la cause
+  // mémorisée pour qu'une rechute soit re-journalisée au lieu d'être confondue
+  // avec l'épisode précédent.
+  //
+  // Écriture SÉPARÉE et conditionnelle, à dessein : (1) rien à effacer dans le
+  // cas nominal, donc aucun aller-retour de plus par relève ; (2) tant que la
+  // colonne `last_skip_reason` n'est pas migrée, l'échec reste confiné à ce
+  // confort de diagnostic au lieu d'emporter l'écriture d'état du poll — le
+  // code peut donc être déployé avant la migration sans casser la relève.
+  if (mailbox.last_skip_reason) {
+    await updateMailboxPollState(mailbox.id, { lastSkipReason: null }).catch(
+      () => {},
+    );
+  }
   return outcome;
 }
 
