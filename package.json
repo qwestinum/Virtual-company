@@ -17,6 +17,7 @@
     "backfill:from-vivier": "tsx scripts/backfill-from-vivier.ts",
     "seed:volume": "tsx scripts/seed-volume-dev.ts",
     "demo:scheduling": "tsx scripts/scheduling-demo.ts",
+    "reset:demo-jobboard": "tsx scripts/reset-demo-jobboard.ts",
     "check:scheduling": "tsx scripts/check-scheduling-schema.ts",
     "test:regression": "vitest run --config vitest.regression.config.ts"
   },

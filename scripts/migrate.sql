@@ -1845,3 +1845,45 @@ alter table public.campaigns
   drop constraint if exists campaigns_rejection_proposal_chk;
 alter table public.campaigns
   drop column if exists rejection_proposal_threshold;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- JOBBOARD DE DÉMONSTRATION — canal « Annonce générique », août 2026
+-- Spec de référence : docs/specs/demo-jobboard.md
+-- ══════════════════════════════════════════════════════════════════════
+-- Une annonce PUBLIÉE par campagne. Le préfixe `demo_` est délibéré : cette
+-- table préfigure le futur modèle `job_postings` du connecteur APEC sans en
+-- préempter le schéma, et se supprime d'un bloc le jour où le vrai connecteur
+-- arrive. Elle n'existe que pour l'instance de démonstration (surface gardée
+-- par `DEMO_JOBBOARD_ENABLED`, fail-closed).
+--
+-- Le contenu est un SNAPSHOT : ce que l'humain a relu et validé au clic
+-- « Publier » part tel quel, jamais re-généré ensuite — même principe que le
+-- preview HITL des mails. La génération LLM ne réécrit donc JAMAIS une ligne
+-- existante sans un nouveau geste explicite.
+--
+-- ⚠️ Cette table est le SEUL support du contenu publié : il est délibérément
+-- ABSENT de `campaignToRow` / du snapshot PUT `/api/campaigns`. Un onglet
+-- ouvert avant la publication rejouerait sinon son état périmé et effacerait
+-- l'annonce à la première sauvegarde (piège déjà rencontré avec
+-- `scheduling_native`).
+create table if not exists public.demo_job_posts (
+  campaign_id   text primary key references public.campaigns(id) on delete cascade,
+  title         text not null,
+  body          text not null,
+  tags          text[] not null default '{}',
+  -- Dérivés de la FDP AU MOMENT du snapshot (affichage liste). Figés comme le
+  -- reste : l'annonce publique ne doit pas changer sous les pieds du candidat
+  -- parce que quelqu'un a édité la fiche de poste entre-temps.
+  location      text,
+  contract      text,
+  is_visible    boolean not null default false,
+  published_at  timestamptz,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+alter table public.demo_job_posts enable row level security;
+
+-- La liste `/jobs` ne lit que les visibles, triées par date de publication.
+create index if not exists demo_job_posts_visible_idx
+  on public.demo_job_posts (published_at desc)
+  where is_visible;

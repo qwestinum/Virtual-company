@@ -789,3 +789,30 @@ mention du conditionnement admin pour la section Recruteurs.
   « boîte associée > intakeEmail » n'est couverte qu'en unitaire
   (`invitation-send.test.ts`) — un scénario S5 exigerait l'échafaudage
   présélection complet, gain jugé marginal pour l'instant.
+
+---
+
+## Jobboard de démonstration — suites possibles
+
+Spec : `docs/specs/demo-jobboard.md`. Script commercial :
+`docs/ops/script-demo-jobboard.md`.
+
+- **QR code sur le panneau de campagne**, pointant vers `/jobs/<CAMP-…>` pour
+  faire candidater le prospect depuis SON téléphone. Écarté au livrable : le
+  projet n'embarque aucune bibliothèque de génération, et écrire un encodeur QR
+  à la main pour un confort de démonstration serait un mauvais échange. À
+  reprendre le jour où une dépendance est acceptable — ou en repli, un lien
+  court affiché en grand.
+- **Mode instantané** (candidature injectée sans transport, pour supprimer la
+  minute d'attente). Le chemin est analysé et conservé en §6 de la spec :
+  `processEmailAttachment` + mailbox synthétique `mb_demo_jobboard`
+  (`is_enabled = false`). À n'entreprendre que si l'attente devient un vrai
+  obstacle commercial — elle est aujourd'hui un argument, pas un défaut.
+- **Régression S16** : la boucle complète (publier → candidater → mail parti)
+  n'est couverte qu'en unitaire (routes avec transport mocké). Un scénario de
+  régression exigerait une vraie boîte IMAP et une relève — coût élevé, gain
+  faible tant que la surface reste hors production.
+- **Plusieurs annonces par campagne** : le modèle est à UNE annonce par
+  campagne (`campaign_id` en clé primaire). Suffisant pour la démonstration ;
+  le futur connecteur APEC voudra sans doute une annonce par canal, et c'est à
+  ce moment-là que `demo_job_posts` cédera la place à `job_postings`.

@@ -43,6 +43,11 @@ const API_SELF_AUTHENTICATED = [
   // Réservation : l'appelant est un invité sans compte, son authentification
   // est le jeton nominatif de l'URL, vérifié par le module.
   '/api/sched',
+  // Jobboard de démonstration : le candidat n'a pas de compte. La route se
+  // garde elle-même par `DEMO_JOBBOARD_ENABLED` (fail-closed, 404 si absent)
+  // — sans cette entrée, le régime deny-by-default rendrait 401 et le
+  // formulaire public serait inutilisable.
+  '/api/jobs/apply',
 ];
 
 /**
@@ -52,6 +57,16 @@ const API_SELF_AUTHENTICATED = [
  * toujours nul.
  */
 const PUBLIC_BOOKING_PREFIXES = ['/r/', '/b/', '/api/sched/'];
+
+/**
+ * Pages du jobboard de démonstration. Elles n'ont besoin d'AUCUNE exemption
+ * d'authentification — le régime « pages » est une liste blanche, donc tout ce
+ * qui n'y figure pas est déjà public. Elles sont listées ici pour une seule
+ * raison : leur poser `noindex` et `no-store`. Une plateforme d'emploi fictive
+ * hébergée sur une URL publique n'a rien à faire dans un moteur de recherche,
+ * et une annonce dépubliée ne doit pas survivre dans un cache intermédiaire.
+ */
+const DEMO_JOBBOARD_PREFIX = '/jobs';
 
 /** Réponses tokenisées : jamais indexées, jamais mises en cache par un tiers. */
 function publicBookingResponse(): NextResponse {
@@ -66,6 +81,22 @@ function publicBookingResponse(): NextResponse {
 
 function isPublicBooking(pathname: string): boolean {
   return PUBLIC_BOOKING_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+/** `/jobs` et `/jobs/…` — mais pas `/jobsomething`. */
+function isDemoJobboardPage(pathname: string): boolean {
+  return (
+    pathname === DEMO_JOBBOARD_PREFIX ||
+    pathname.startsWith(`${DEMO_JOBBOARD_PREFIX}/`)
+  );
+}
+
+/** Pages publiques non indexables, sans jeton dans l'URL. */
+function noIndexResponse(): NextResponse {
+  const response = NextResponse.next();
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  return response;
 }
 
 function isProtected(pathname: string): boolean {
@@ -85,6 +116,12 @@ export async function proxy(request: NextRequest) {
 
   // Surfaces de réservation : on sort AVANT de toucher à l'authentification.
   if (isPublicBooking(pathname)) return publicBookingResponse();
+
+  // Jobboard de démonstration : pages ouvertes, jamais indexées. Comme pour la
+  // réservation, on sort avant l'authentification — rafraîchir une session
+  // inexistante coûterait un aller-retour sur le chemin critique d'une page
+  // ouverte depuis un téléphone en rendez-vous.
+  if (isDemoJobboardPage(pathname)) return noIndexResponse();
 
   const { response, user } = await getUserFromMiddleware(request);
 
