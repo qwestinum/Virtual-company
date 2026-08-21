@@ -93,16 +93,16 @@ describe('analyzeCVApplication — dispatcher hybride', () => {
     expect(byId.get('lang')!.verificationMethodUsed).toBe('llm_with_quote');
   });
 
-  it('grille tout-déterministe : AUCUN appel verdicts/ledger LLM', async () => {
+  it('tous les mots-clés TROUVÉS : aucun appel verdicts/ledger, économie préservée', async () => {
     const sheet: ScoringSheet = {
       campaignId: 'CAMP-T',
       isValidated: true,
       criteria: [
         buildCriterion({ id: 'a', label: 'React', level: 'important', verificationMethod: 'keywords_exact', keywords: ['React'] }),
-        buildCriterion({ id: 'b', label: 'Kubernetes', level: 'important', verificationMethod: 'keywords_with_variants', keywords: ['Kubernetes', 'k8s'] }),
+        buildCriterion({ id: 'b', label: 'Node', level: 'important', verificationMethod: 'keywords_with_variants', keywords: ['Node'] }),
       ],
     };
-    // Plus de ledger ni de verdicts LLM : seuls candidat + narration sont appelés.
+    // Preuve littérale des deux côtés : ni ledger ni verdicts LLM.
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
       .mockResolvedValueOnce(jsonResult(NARRATION_OK));
@@ -112,11 +112,82 @@ describe('analyzeCVApplication — dispatcher hybride', () => {
 
     expect(chatCompleteJsonMock).toHaveBeenCalledTimes(2);
     const byId = new Map(out.application.scoringResult.breakdown.map((b) => [b.criterionId, b]));
-    expect(byId.get('a')!.llmDecision).toBe('satisfait'); // React présent
-    expect(byId.get('b')!.llmDecision).toBe('non'); // ni Kubernetes ni k8s
-    expect(byId.get('a')!.verificationMethodUsed).toBe('keywords_exact');
+    expect(byId.get('a')!.llmDecision).toBe('satisfait');
+    expect(byId.get('b')!.llmDecision).toBe('satisfait');
+    expect(byId.get('a')!.decidedBy).toBe('keyword_match');
     expect(byId.get('a')!.matchedKeywords).toEqual(['React']);
-    expect(byId.get('b')!.matchedKeywords).toEqual([]); // cherché, rien trouvé
+  });
+
+  it('mot-clé ABSENT : le critère est DÉFÉRÉ au modèle, jamais refusé en local', async () => {
+    // Le défaut du 21/08/2026, en une assertion : un CV qui ne contient pas la
+    // chaîne cherchée doit être LU, pas refusé. Avant, ce critère rendait
+    // « non » sans le moindre appel.
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-T',
+      isValidated: true,
+      criteria: [
+        buildCriterion({ id: 'a', label: 'React', level: 'important', verificationMethod: 'keywords_exact', keywords: ['React'] }),
+        buildCriterion({ id: 'b', label: 'Kubernetes', level: 'important', verificationMethod: 'keywords_with_variants', keywords: ['Kubernetes', 'k8s'] }),
+      ],
+    };
+    const VERDICTS = {
+      verdicts: [
+        { criterionId: '1', llmDecision: 'non', llmJustification: 'Rien sur le sujet.', llmCVQuote: '' },
+      ],
+    };
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(jsonResult(VERDICTS))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet });
+
+    // Le critère sans mot-clé a bien déclenché ledger + verdicts.
+    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(4);
+    // ...et le modèle a reçu CE critère-là, seul.
+    const verdictsUserPrompt = chatCompleteJsonMock.mock.calls[2][0][1].content as string;
+    expect(verdictsUserPrompt).toMatch(/Kubernetes/);
+    expect(verdictsUserPrompt).not.toMatch(/« React »/);
+
+    const byId = new Map(out.application.scoringResult.breakdown.map((b) => [b.criterionId, b]));
+    expect(byId.get('b')!.decidedBy).toBe('llm');
+    expect(byId.get('a')!.decidedBy).toBe('keyword_match');
+  });
+
+  it('INVARIANT : aucun verdict négatif ne sort d’un chemin qui n’a pas lu le CV', async () => {
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-T',
+      isValidated: true,
+      criteria: [
+        buildCriterion({ id: 'a', label: 'Absent1', level: 'critique', verificationMethod: 'keywords_exact', keywords: ['Rust'] }),
+        buildCriterion({ id: 'b', label: 'Absent2', level: 'important', verificationMethod: 'keywords_with_variants', keywords: ['Kubernetes'] }),
+        buildCriterion({ id: 'c', label: 'Absent3', level: 'important', verificationMethod: 'hybrid_keywords_llm', keywords: ['Terraform'] }),
+      ],
+    };
+    const VERDICTS = {
+      verdicts: [
+        { criterionId: '1', llmDecision: 'non', llmJustification: 'Absent du CV.', llmCVQuote: '' },
+        { criterionId: '2', llmDecision: 'non', llmJustification: 'Absent du CV.', llmCVQuote: '' },
+        { criterionId: '3', llmDecision: 'non', llmJustification: 'Absent du CV.', llmCVQuote: '' },
+      ],
+    };
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(jsonResult(VERDICTS))
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet });
+
+    // Aucun mot-clé nulle part ⇒ TOUS les critères ont été lus par le modèle.
+    const negatives = out.application.scoringResult.breakdown.filter(
+      (b) => b.llmDecision === 'non',
+    );
+    expect(negatives).toHaveLength(3);
+    for (const n of negatives) expect(n.decidedBy).toBe('llm');
   });
 });
 
@@ -124,7 +195,7 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
   beforeEach(() => chatCompleteJsonMock.mockReset());
   afterEach(() => vi.restoreAllMocks());
 
-  it('hybride SANS mot-clé gardien → « non » LOCAL, aucun appel verdicts/ledger', async () => {
+  it('hybride SANS mot-clé gardien → DÉFÉRÉ au modèle (plus de « non » local)', async () => {
     const sheet: ScoringSheet = {
       campaignId: 'CAMP-T',
       isValidated: true,
@@ -138,18 +209,30 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
         }),
       ],
     };
+    const VERDICTS = {
+      verdicts: [
+        { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Encadrement d’équipe décrit.', llmCVQuote: 'Management' },
+      ],
+    };
     chatCompleteJsonMock
       .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(jsonResult(VERDICTS))
       .mockResolvedValueOnce(jsonResult(NARRATION_OK));
 
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet });
 
-    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(2); // candidat + narration
+    // Le gardien manque, mais le modèle lit quand même — et peut conclure
+    // POSITIVEMENT, ce que l'ancien veto rendait impossible.
+    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(4);
     const h = out.application.scoringResult.breakdown.find((b) => b.criterionId === 'h')!;
-    expect(h.llmDecision).toBe('non');
+    expect(h.llmDecision).toBe('satisfait');
+    expect(h.decidedBy).toBe('llm');
     expect(h.verificationMethodUsed).toBe('hybrid_keywords_llm');
-    expect(h.matchedKeywords).toEqual([]); // cherché mais rien trouvé
+    // Aucun gardien détecté ⇒ pas de mention contextuelle dans le prompt.
+    const verdictsUserPrompt = chatCompleteJsonMock.mock.calls[2][0][1].content as string;
+    expect(verdictsUserPrompt).not.toMatch(/nécessaires mais pas suffisants/i);
   });
 
   it('hybride AVEC match → batch LLM + mention « nécessaires mais pas suffisants »', async () => {
@@ -190,7 +273,7 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
     expect(h.verificationMethodUsed).toBe('hybrid_keywords_llm');
   });
 
-  it('grille mixte : LLM pur + hybride match + hybride no-match → 1 seul batch sur 2 critères', async () => {
+  it('grille mixte : LLM pur + hybride match + hybride no-match → 1 seul batch sur 3 critères', async () => {
     const sheet: ScoringSheet = {
       campaignId: 'CAMP-T',
       isValidated: true,
@@ -204,6 +287,7 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
       verdicts: [
         { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'ok', llmCVQuote: 'anglais courant' },
         { criterionId: '2', llmDecision: 'satisfait', llmJustification: 'ok', llmCVQuote: 'React' },
+        { criterionId: '3', llmDecision: 'non', llmJustification: 'Rien sur le cloud.', llmCVQuote: '' },
       ],
     };
     chatCompleteJsonMock
@@ -215,10 +299,12 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
     const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
     const out = await analyzeCVApplication({ ...BASE_INPUT, sheet });
 
-    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(4); // 1 seul batch verdicts
+    // Les TROIS critères partent dans le MÊME batch : l'hybride sans gardien
+    // n'est plus tranché à part, il rejoint la file de lecture.
+    expect(chatCompleteJsonMock).toHaveBeenCalledTimes(4);
     const byId = new Map(out.application.scoringResult.breakdown.map((b) => [b.criterionId, b]));
-    expect(byId.get('hn')!.llmDecision).toBe('non'); // hybride sans match, local
-    expect(byId.get('hn')!.matchedKeywords).toEqual([]);
+    expect(byId.get('hn')!.llmDecision).toBe('non');
+    expect(byId.get('hn')!.decidedBy).toBe('llm'); // refusé APRÈS lecture
     expect(byId.get('hm')!.matchedKeywords).toEqual(['React']); // hybride avec match
     expect(byId.get('lang')!.verificationMethodUsed).toBe('llm_with_quote');
   });

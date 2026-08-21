@@ -35,6 +35,7 @@ import {
   DEFAULT_VERIFICATION_METHOD,
   LlmDecisionSchema,
   ScoreResultSchema,
+  VerdictPathSchema,
   type CandidateStatus,
   type CriterionDecision,
   type CriterionFailure,
@@ -87,6 +88,14 @@ export const LlmCriterionVerdictSchema = z.object({
    * (llm_with_quote) ; `[]` = cherché mais rien trouvé (hybride sans match).
    */
   matchedKeywords: z.array(z.string()).optional(),
+  /**
+   * Chemin qui a RÉELLEMENT produit ce verdict, distinct de la méthode
+   * DÉCLARÉE par le critère. Sans lui, un verdict rendu sans lecture du CV
+   * s'affiche sous l'étiquette de sa méthode et rien ne le distingue d'un
+   * jugement éclairé — c'est ce qui a rendu l'incident du 21/08/2026 si long
+   * à lire. `undefined` sur les analyses antérieures à ce champ.
+   */
+  decidedBy: VerdictPathSchema.optional(),
 });
 export type LlmCriterionVerdict = z.infer<typeof LlmCriterionVerdictSchema>;
 
@@ -287,6 +296,11 @@ export function scoreCandidat(
         // clé reste absente, décisions LLM existantes inchangées).
         ...(verdict.matchedKeywords !== undefined
           ? { matchedKeywords: verdict.matchedKeywords }
+          : {}),
+        // Chemin réel, recopié tel quel — l'audit doit pouvoir répondre à
+        // « qui a lu le CV pour rendre ce verdict ? ».
+        ...(verdict.decidedBy !== undefined
+          ? { decidedBy: verdict.decidedBy }
           : {}),
       };
     },

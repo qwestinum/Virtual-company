@@ -56,6 +56,7 @@ import {
   type CVNarration,
 } from '@/types/cv-analysis';
 import type { CVSource } from '@/types/cv-source';
+import { assertNoUnprovenNegative } from '@/lib/scoring/verdict-integrity';
 import {
   LlmDecisionSchema,
   type ScoringCriterion,
@@ -68,38 +69,40 @@ function methodOf(c: ScoringCriterion): VerificationMethod {
   return c.verificationMethod ?? 'llm_with_quote';
 }
 
-/** Méthodes 100% déterministes (vérifiées en local, sans LLM). */
+/**
+ * Méthodes autorisées à CONCLURE en local sur une preuve littérale. L'hybride
+ * en est exclu à dessein : chez lui, un mot-clé trouvé n'est qu'un indice à
+ * faire vérifier en contexte par le modèle.
+ */
 function isKeywordOnlyMethod(method: VerificationMethod): boolean {
   return method === 'keywords_exact' || method === 'keywords_with_variants';
 }
 
-/** Verdict déterministe d'un critère mots-clés, au format `LlmCriterionVerdict`. */
+/**
+ * Verdict déterministe d'un critère mots-clés — UNIQUEMENT quand un mot-clé a
+ * été trouvé. `null` sinon : le critère part alors au modèle.
+ *
+ * C'est la règle issue de l'incident du 21/08/2026 (cf. `verdict-integrity`) :
+ * trouver un mot-clé est une preuve littérale qui autorise à conclure sans
+ * appeler le modèle ; ne PAS le trouver ne prouve rien du tout. Un CV qui dit
+ * « Consultant SI & AMOA » ne contient pas la chaîne « Consultant MOA », et un
+ * parcours « Trade Finance — Société Générale » ne contient pas « secteur
+ * financier » : conclure « non » là-dessus, c'est juger l'orthographe du
+ * candidat, pas ses compétences.
+ */
 function keywordVerdict(
   cvText: string,
   criterion: ScoringCriterion,
-): LlmCriterionVerdict {
+): LlmCriterionVerdict | null {
   const { matched, citation } = findMatchedKeywords(cvText, criterion.keywords ?? []);
-  const found = matched.length > 0;
+  if (matched.length === 0) return null;
   return {
     criterionId: criterion.id,
-    llmDecision: found ? 'satisfait' : 'non',
-    llmJustification: found
-      ? `Mots-clés trouvés dans le CV (vérification déterministe) : ${matched.join(', ')}.`
-      : 'Aucun des mots-clés attendus n’a été trouvé dans le CV (vérification déterministe).',
+    llmDecision: 'satisfait',
+    llmJustification: `Mots-clés trouvés dans le CV (vérification déterministe) : ${matched.join(', ')}.`,
     llmCVQuote: citation,
     matchedKeywords: matched,
-  };
-}
-
-/** Verdict hybride SANS match : `non` immédiat, sans appel LLM (étape 2a). */
-function hybridNoMatchVerdict(criterion: ScoringCriterion): LlmCriterionVerdict {
-  return {
-    criterionId: criterion.id,
-    llmDecision: 'non',
-    llmJustification:
-      'Aucun mot-clé gardien trouvé dans le CV — critère non satisfait (méthode hybride, sans appel LLM).',
-    llmCVQuote: '',
-    matchedKeywords: [],
+    decidedBy: 'keyword_match',
   };
 }
 
@@ -301,36 +304,63 @@ export async function analyzeCVApplication(
     };
   }
 
-  // Dispatcher hybride (cf. docs/specs/scoring-hybrid.md §3a, §5.1) : partition
-  // en 3 voies.
-  //   - déterministe (keywords_exact/with_variants) → vérifié EN LOCAL, sans LLM ;
-  //   - hybride (hybrid_keywords_llm) → pré-check des mots-clés gardiens :
-  //       · aucun trouvé → verdict `non` LOCAL (sans LLM) ;
-  //       · au moins un trouvé → rejoint le batch LLM avec contexte enrichi
-  //         (« nécessaires mais pas suffisants ») ;
-  //   - LLM pur (llm_with_quote / défaut) → batch LLM.
-  // Grille tout-LLM (défaut) ⇒ déterministe/hybride vides, `hybridContext`
-  // vide ⇒ user prompt IDENTIQUE ⇒ mêmes appels, même ordre (non-régression).
+  // Dispatcher (cf. docs/specs/scoring-hybrid.md §3a, §5.1). Depuis le
+  // 21/08/2026, une règle vaut pour TOUTE méthode à mots-clés :
+  //
+  //   un mot-clé ABSENT ne prouve RIEN → le critère part au modèle.
+  //
+  // Le pré-filtre perd donc son droit de VETO : il ne peut plus refuser un
+  // candidat que personne n'a lu (incident CAMP-2026-288 : 0/100 sur un CV
+  // riche, quatre critères éteints sans un seul appel LLM, parce que le CV
+  // disait « Consultant SI & AMOA » et non « Consultant MOA »).
+  //
+  // Ce que fait un mot-clé TROUVÉ dépend en revanche de la méthode, et cette
+  // différence-là est délibérée :
+  //   - `keywords_exact` / `keywords_with_variants` → la présence littérale
+  //     SUFFIT : verdict « satisfait » local, appel LLM économisé.
+  //   - `hybrid_keywords_llm` → la présence est NÉCESSAIRE MAIS PAS
+  //     SUFFISANTE, et le critère part quand même au modèle avec les gardiens
+  //     en contexte. C'est toute la raison d'être de l'hybride : « MOA » peut
+  //     apparaître dans « j'ai assisté le Consultant MOA », où le candidat est
+  //     l'objet et non le sujet. Conclure sur la seule présence y fabriquerait
+  //     des faux POSITIFS, symétriques du faux négatif qu'on vient de corriger.
+  //
+  // Grille tout-LLM (défaut) ⇒ déterministe vide, `hybridContext` vide ⇒ user
+  // prompt IDENTIQUE ⇒ mêmes appels, même ordre (non-régression).
   const deterministicVerdicts: LlmCriterionVerdict[] = [];
   const llmCriteria: ScoringCriterion[] = [];
   const hybridContext = new Map<string, string[]>(); // criterionId → gardiens trouvés
 
   for (const c of input.sheet.criteria) {
     const method = methodOf(c);
-    if (isKeywordOnlyMethod(method)) {
-      deterministicVerdicts.push(keywordVerdict(input.cvText, c));
-    } else if (method === 'hybrid_keywords_llm') {
+    if (method === 'hybrid_keywords_llm') {
+      // Toujours au modèle. Les gardiens trouvés l'aident à trancher ; leur
+      // absence ne le dispense pas de lire.
+      llmCriteria.push(c);
       const { found } = matchKeywordsForHybrid(input.cvText, c.keywords ?? []);
-      if (found.length === 0) {
-        deterministicVerdicts.push(hybridNoMatchVerdict(c)); // étape 2a, sans LLM
-      } else {
-        llmCriteria.push(c); // étape 2b : batch LLM + contexte
-        hybridContext.set(c.id, found);
-      }
-    } else {
-      llmCriteria.push(c); // llm_with_quote / défaut
+      if (found.length > 0) hybridContext.set(c.id, found);
+      continue;
     }
+    if (isKeywordOnlyMethod(method)) {
+      const verdict = keywordVerdict(input.cvText, c);
+      if (verdict) {
+        deterministicVerdicts.push(verdict);
+        continue;
+      }
+      // Aucun mot-clé : on DÉFÈRE, et le modèle reçoit le critère NU — sans la
+      // liste qui vient d'échouer, pour ne pas l'ancrer sur un vocabulaire
+      // dont on vient de constater qu'il ne colle pas à ce CV.
+      llmCriteria.push(c);
+      continue;
+    }
+    llmCriteria.push(c); // llm_with_quote / défaut
   }
+
+  // INVARIANT « un non sans preuve n'est pas un verdict » : le chemin
+  // déterministe ne peut produire que des « satisfait ». Une violation est un
+  // défaut de conception, pas une entrée invalide — on lève plutôt que de
+  // rattraper en silence.
+  assertNoUnprovenNegative(deterministicVerdicts);
 
   let ledgerFailed = false;
   let llmVerdicts: LlmCriterionVerdict[] = [];
@@ -376,11 +406,16 @@ export async function analyzeCVApplication(
         VerdictsResponseSchema,
       );
       llmVerdicts = remapVerdictsToCriteria(r.data.verdicts, llmCriteria).map(
-        (v) =>
+        (v) => ({
+          ...v,
+          // Ces verdicts SORTENT du modèle, qui a reçu le CV : c'est ce qui
+          // les autorise à conclure négativement (cf. `verdict-integrity`).
+          decidedBy: 'llm' as const,
           // Reporte les gardiens trouvés sur le verdict hybride (affichage Phase 4).
-          hybridContext.has(v.criterionId)
-            ? { ...v, matchedKeywords: hybridContext.get(v.criterionId) }
-            : v,
+          ...(hybridContext.has(v.criterionId)
+            ? { matchedKeywords: hybridContext.get(v.criterionId) }
+            : {}),
+        }),
       );
       accumulate(r.raw);
     } catch (err) {

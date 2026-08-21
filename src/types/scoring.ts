@@ -308,6 +308,24 @@ export const LlmDecisionSchema = z.enum(LLM_DECISIONS);
 export type LlmDecision = z.infer<typeof LlmDecisionSchema>;
 
 /**
+ * Chemin qui a RÉELLEMENT produit un verdict — à ne pas confondre avec la
+ * `verificationMethod` DÉCLARÉE par le critère.
+ *
+ * La distinction est née de l'incident du 21/08/2026 : des verdicts estampillés
+ * « keywords_with_variants » avaient été rendus sans qu'aucun modèle n'ouvre le
+ * CV, et rien à l'écran ne le disait. Une méthode déclare une INTENTION ; ce
+ * champ dit ce qui s'est passé.
+ *
+ *   - `keyword_match` : un mot-clé attendu a été trouvé LITTÉRALEMENT dans le
+ *     CV. Preuve suffisante pour conclure « satisfait » sans appeler le modèle.
+ *   - `llm` : le modèle a lu le CV et tranché. SEUL chemin autorisé à rendre
+ *     une décision négative (cf. `verdict-integrity.ts`).
+ */
+export const VERDICT_PATHS = ['keyword_match', 'llm'] as const;
+export const VerdictPathSchema = z.enum(VERDICT_PATHS);
+export type VerdictPath = z.infer<typeof VerdictPathSchema>;
+
+/**
  * Statut métier d'un candidat — DEUX valeurs seulement.
  *
  * Pourquoi 2 et pas plus : un rejet « knockout » et un rejet « par score »
@@ -457,6 +475,11 @@ export const CriterionDecisionSchema = z.object({
    * détectés (keywords_exact/variants, hybride avec match).
    */
   matchedKeywords: z.array(z.string()).optional(),
+  /**
+   * Chemin RÉELLEMENT emprunté pour rendre ce verdict. `undefined` sur les
+   * analyses antérieures à ce champ (juin–août 2026), qu'on ne réécrit pas.
+   */
+  decidedBy: VerdictPathSchema.optional(),
 });
 export type CriterionDecision = z.infer<typeof CriterionDecisionSchema>;
 
