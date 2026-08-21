@@ -816,3 +816,25 @@ Spec : `docs/specs/demo-jobboard.md`. Script commercial :
   campagne (`campaign_id` en clé primaire). Suffisant pour la démonstration ;
   le futur connecteur APEC voudra sans doute une annonce par canal, et c'est à
   ce moment-là que `demo_job_posts` cédera la place à `job_postings`.
+
+
+---
+
+## Scoring — suites de l'incident du veto de pré-filtre
+
+- **Garde-fou d'extraction** (chantier distinct, validé comme légitime) : si le
+  texte extrait est anormalement court au regard du PDF (caractères par page,
+  absence de mots-clés attendus), l'analyse ne doit pas conclure en silence —
+  anomalie tracée, file de retry, jamais un refus. ⚠️ N'aurait rien changé à
+  l'incident du 21/08 : l'extraction y était irréprochable (3 197 caractères
+  pour une page). C'est un autre risque, réel mais distinct.
+- **Binaire de CV manquant** : Remy FRANCISCO (CAMP-2026-894) est non rejouable,
+  son binaire est absent du stockage. Piste connue : le bucket `artifacts`
+  refuse le MIME DOCX (`project_bucket_mime_docx`), ce qui fait échouer
+  l'archivage sans casser l'analyse. Si c'est la cause, d'autres CV sont dans
+  le même cas sans qu'on le sache — mesurer, puis corriger le bucket.
+- **Qualité des listes de mots-clés générées** : celles de CAMP-2026-288
+  cherchaient « Consultant MOA », « secteur financier », « parcours digitaux » —
+  des formulations de fiche de poste, pas de CV. Le correctif rend leur
+  étroitesse inoffensive, mais des listes plus proches du vocabulaire réel des
+  CV économiseraient des appels. À travailler dans `scoring-prompts.ts`.

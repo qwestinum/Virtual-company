@@ -441,6 +441,12 @@ export async function patchPendingValidationDecision(
 
 export type PendingValidationPatch = {
   decision?: HitlDecision;
+  /**
+   * Score affiché sur la carte de validation. Patchable pour qu'un re-scoring
+   * ne laisse pas un chiffre périmé devant le recruteur qui tranche — la carte
+   * doit montrer le score sur lequel il décide, pas celui d'avant le correctif.
+   */
+  score?: number | null;
   confirmed?: boolean;
   status?: PendingValidationStatus;
   mailDraftArtifactId?: string | null;
@@ -457,6 +463,7 @@ function patchToRow(
 ): Partial<PendingValidationRow> {
   const row: Partial<PendingValidationRow> = {};
   if (patch.decision !== undefined) row.decision = patch.decision;
+  if (patch.score !== undefined) row.score = patch.score;
   if (patch.confirmed !== undefined) row.confirmed = patch.confirmed;
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.mailDraftArtifactId !== undefined)

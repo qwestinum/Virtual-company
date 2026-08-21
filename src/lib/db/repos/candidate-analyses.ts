@@ -232,6 +232,60 @@ export async function insertCandidateAnalysis(
 }
 
 /**
+ * RE-SCORE une analyse existante — réparation d'un parc scoré sous une règle
+ * défectueuse (incident du veto de pré-filtre, 21/08/2026).
+ *
+ * Met à jour le résultat, RIEN d'autre. En particulier : ne touche jamais à
+ * l'outreach, aux claims, ni à la file de validation — un dossier re-scoré
+ * remonte devant un humain, il ne déclenche pas d'envoi. Une invitation partie
+ * deux semaines après coup, sur une campagne peut-être pourvue, ferait plus de
+ * mal que le refus initial.
+ *
+ * GARDES EN SQL, pas dans l'appelant : la mise à jour est CONDITIONNÉE à
+ * `decided_by = 'auto'` et `dismissed_at is null`. Une décision humaine et un
+ * classement sans suite sont des actes ; les écraser au motif que le calcul a
+ * changé serait pire que le défaut qu'on répare. Le conditionner ici plutôt
+ * que de le vérifier avant rend le contournement impossible, y compris depuis
+ * un script lancé à la main.
+ *
+ * `decided_by` reste `'auto'` : le re-scoring n'est pas une décision.
+ */
+export type RescoreOutcome = 'rescored' | 'locked' | 'not_found';
+
+export async function rescoreCandidateAnalysis(input: {
+  id: string;
+  application: CVApplication;
+}): Promise<RescoreOutcome> {
+  const supabase = requireServerSupabase();
+  const { scoringResult } = input.application;
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      total_score: scoringResult.totalScore,
+      status: scoringResult.status,
+      criteria_version: scoringResult.criteriaVersion,
+      computed_at: scoringResult.computedAt,
+      application: input.application,
+      decision_zone:
+        scoringResult.decisionZone ?? deriveDecisionZone(scoringResult.status),
+    })
+    .eq('id', input.id)
+    .eq('decided_by', 'auto')
+    .is('dismissed_at', null)
+    .select('id')
+    .maybeSingle();
+  if (error) throw new Error(`rescoreCandidateAnalysis: ${error.message}`);
+  if (data) return 'rescored';
+  // Aucune ligne touchée : soit elle n'existe pas, soit une garde a joué.
+  const { data: existing } = await supabase
+    .from(TABLE)
+    .select('id')
+    .eq('id', input.id)
+    .maybeSingle();
+  return existing ? 'locked' : 'not_found';
+}
+
+/**
  * Variante BEST-EFFORT pour le pipeline d'analyse (route chat + poller
  * IMAP). Avale `SupabaseNotConfiguredError` (démo locale sans base) ;
  * toute autre erreur est loggée serveur sans casser l'analyse en cours.
