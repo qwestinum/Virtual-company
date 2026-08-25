@@ -18,6 +18,7 @@ function facts(over: Partial<CandidateTimelineFacts> = {}): CandidateTimelineFac
     fromVivier: false,
     vivierContactedAt: null,
     vivierAppliedAt: null,
+    corrections: [],
     validatedAt: null,
     invitationSentAt: null,
     rejectionSentAt: null,
@@ -134,5 +135,71 @@ describe('buildCandidateTimeline', () => {
       'Acceptation tranchée en zone de validation · par vanessa.eudaric@biagroupe.fr',
     );
     expect(t.map((e) => e.key)).toContain('invited');
+  });
+});
+
+describe('corrections — le journal est en ajout seul, la frise aussi', () => {
+  it('le fait corrigé RESTE, la correction se pose après lui', () => {
+    const t = buildCandidateTimeline(
+      facts({
+        finalRejectedAt: '2026-08-21T14:32:00.000Z',
+        corrections: [
+          {
+            at: '2026-08-22T09:10:00.000Z',
+            previousLabel: 'Non retenu',
+            nextLabel: 'Verdict final retiré',
+            by: 'sarah@qwestinum.fr',
+            reason: 'erreur de manipulation',
+          },
+        ],
+      }),
+    );
+    const keys = t.map((e) => e.key);
+    // Le refus reste visible — on n'efface pas ce qui s'est produit.
+    expect(keys).toContain('final_rejected');
+    expect(keys.indexOf('correction_0')).toBeGreaterThan(
+      keys.indexOf('final_rejected'),
+    );
+    const correction = t.find((e) => e.key === 'correction_0');
+    expect(correction?.label).toBe('Décision corrigée');
+    expect(correction?.detail).toBe(
+      'Non retenu → Verdict final retiré · par sarah@qwestinum.fr — erreur de manipulation',
+    );
+    // Une correction n'est ni une bonne ni une mauvaise nouvelle.
+    expect(correction?.tone).toBe('neutral');
+  });
+
+  it('deux corrections successives apparaissent toutes les deux, dans l’ordre', () => {
+    const t = buildCandidateTimeline(
+      facts({
+        corrections: [
+          { at: '2026-08-22T09:00:00.000Z', previousLabel: 'Retenu', nextLabel: 'Non retenu', by: null, reason: null },
+          { at: '2026-08-23T09:00:00.000Z', previousLabel: 'Non retenu', nextLabel: 'Retenu', by: null, reason: null },
+        ],
+      }),
+    );
+    const keys = t.map((e) => e.key);
+    expect(keys).toContain('correction_0');
+    expect(keys).toContain('correction_1');
+    expect(keys.indexOf('correction_0')).toBeLessThan(keys.indexOf('correction_1'));
+  });
+
+  it('sans auteur enregistré, le détail ne fabrique aucun nom', () => {
+    const t = buildCandidateTimeline(
+      facts({
+        corrections: [
+          {
+            at: '2026-08-22T09:00:00.000Z',
+            previousLabel: 'Entretien réalisé',
+            nextLabel: 'Marquage d’entretien retiré',
+            by: null,
+            reason: null,
+          },
+        ],
+      }),
+    );
+    expect(t.find((e) => e.key === 'correction_0')?.detail).toBe(
+      'Entretien réalisé → Marquage d’entretien retiré',
+    );
   });
 });

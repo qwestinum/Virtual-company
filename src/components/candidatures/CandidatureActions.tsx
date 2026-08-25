@@ -10,7 +10,12 @@
  *     après un GO : proposer de classer les candidatures restantes)
  *   - toute étape OUVERTE → « Classer sans suite » (dialog motif)
  *   - sans suite         → mention terminale + « Rouvrir »
- *   - terminal           → aucune action (consultation seule)
+ *   - terminal           → « Corriger la décision » (le dossier est clos, mais
+ *     c'est justement là qu'une erreur de manipulation se découvre)
+ *
+ * « Corriger la décision » accompagne TOUTE étape portant une décision (donc
+ * partout sauf `a_valider`) : le geste est le même quelle que soit la famille
+ * corrigée, seul le dialog s'adapte.
  */
 
 import { useState } from 'react';
@@ -22,6 +27,7 @@ import {
 } from '@/lib/dashboard/candidate-actions';
 import type { CandidateListItem } from '@/types/reporting';
 
+import { ActionButton, CorrectionButton } from './CandidatureActionButtons';
 import {
   DismissActionButton,
   DismissedBlock,
@@ -57,9 +63,14 @@ export function CandidatureActions({
   }
   if (isTerminalStage(item.stage)) {
     return (
-      <p className="font-body text-[12px] italic text-stone-400">
-        Dossier clôturé — consultation seule.
-      </p>
+      <div className="flex flex-col gap-2">
+        <p className="font-body text-[12px] italic text-stone-400">
+          Dossier clôturé — consultation seule.
+        </p>
+        <div>
+          <CorrectionButton item={item} onActed={onActed} />
+        </div>
+      </div>
     );
   }
   return null;
@@ -97,6 +108,7 @@ function InterviewMarkAction({
         Non réalisé
       </ActionButton>
       <DismissActionButton item={item} onActed={onActed} />
+      <CorrectionButton item={item} onActed={onActed} />
     </div>
   );
 }
@@ -143,6 +155,7 @@ function FinalDecisionAction({
           Non retenu
         </ActionButton>
         <DismissActionButton item={item} onActed={onActed} />
+        <CorrectionButton item={item} onActed={onActed} />
       </div>
       {goFollowUp && item.campaignId ? (
         <CampaignDismissFlowDialog
@@ -159,34 +172,5 @@ function FinalDecisionAction({
         />
       ) : null}
     </>
-  );
-}
-
-function ActionButton({
-  tone,
-  disabled,
-  onClick,
-  children,
-}: {
-  tone: 'positive' | 'negative' | 'neutral';
-  disabled: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  const cls =
-    tone === 'positive'
-      ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
-      : tone === 'negative'
-        ? 'border-rose-300 text-rose-700 hover:bg-rose-50'
-        : 'border-stone-300 text-stone-600 hover:bg-stone-50';
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded-lg border px-3 py-1.5 font-body text-[12px] font-semibold transition disabled:opacity-50 ${cls}`}
-    >
-      {children}
-    </button>
   );
 }

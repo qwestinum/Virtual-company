@@ -8,6 +8,10 @@
  */
 
 import {
+  INTERVIEW_MARKER_ACTION,
+  VALIDATION_MARKER_ACTION,
+} from '@/lib/candidatures/decision-markers';
+import {
   listJournalEntries,
   listJournalEntriesByActions,
   listRecentJournalEntriesByActions,
@@ -38,8 +42,8 @@ const CANDIDATE_TOTAL_ACTIONS = [
   'imap_outreach_mail',
   'imap_outreach_brief',
   'hitl_validation_sent',
-  'candidate_interview_marked',
-  'candidate_validation_marked',
+  INTERVIEW_MARKER_ACTION,
+  VALIDATION_MARKER_ACTION,
   'job_writer_rendered',
 ];
 

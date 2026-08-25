@@ -14,6 +14,7 @@
  * absence est un jugement, pas une conséquence de l'horloge.
  */
 
+import { CorrectDecisionAction } from '@/components/candidatures/CorrectDecisionAction';
 import type { ScheduledRow } from '@/lib/interviews/pipeline-rows';
 
 export type ScheduledItem = ScheduledRow & {
@@ -47,6 +48,7 @@ export function ScheduledList({
   onDismiss,
   onReschedule,
   onCancel,
+  onCorrected,
 }: {
   rows: ScheduledItem[];
   busyId: string | null;
@@ -56,6 +58,8 @@ export function ScheduledList({
   onDismiss: (row: ScheduledItem) => void;
   onReschedule: (row: ScheduledItem) => void;
   onCancel: (row: ScheduledItem) => void;
+  /** Une décision corrigée change l'étape : la page se recharge. */
+  onCorrected: () => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -164,6 +168,17 @@ export function ScheduledList({
                       >
                         Non retenu
                       </Action>
+                      {/* Le pointage « entretien réalisé » EST une décision, et
+                          c'est ici qu'on la voit : elle se corrige donc ici. */}
+                      {row.analysisId && row.stage === 'entretien_fait' ? (
+                        <CorrectDecisionAction
+                          analysisId={row.analysisId}
+                          candidateName={row.candidateName}
+                          stage="entretien_fait"
+                          variant="link"
+                          onActed={onCorrected}
+                        />
+                      ) : null}
                     </>
                   ) : null}
 

@@ -6,6 +6,13 @@
  * sur des faits absents (la frise se réduit, elle ne casse pas).
  */
 
+import {
+  DECISION_CORRECTED_ACTION,
+  INTERVIEW_MARKER_ACTION,
+  readInterviewMark,
+  readValidationMark,
+  VALIDATION_MARKER_ACTION,
+} from '@/lib/candidatures/decision-markers';
 import { getScheduledInterviewByUid } from '@/lib/db/repos/interview-briefs';
 import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import type { CandidateTimelineFacts } from '@/lib/reporting/candidate-timeline';
@@ -13,10 +20,16 @@ import { DISMISSAL_REASON_LABELS } from '@/types/dismissal';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 
 const OUTREACH_ACTION = 'imap_outreach_mail';
-const INTERVIEW_ACTION = 'candidate_interview_marked';
-const VALIDATION_ACTION = 'candidate_validation_marked';
+const INTERVIEW_ACTION = INTERVIEW_MARKER_ACTION;
+const VALIDATION_ACTION = VALIDATION_MARKER_ACTION;
+/** Corrections de décision — plusieurs par candidature, toutes affichées. */
+const CORRECTION_ACTION = DECISION_CORRECTED_ACTION;
 /** Validation HITL d'un gris envoyée (accept/reject) — par uid. */
 const HITL_SENT_ACTION = 'hitl_validation_sent';
+
+function asText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
 
 function resolveAnalyzedAt(detail: CandidateAnalysisDetail): string {
   return detail.computedAt && !detail.computedAt.startsWith('1970')
@@ -34,7 +47,13 @@ export async function extractCandidateTimelineFacts(
   // rattaché PAR UID (fiable, ≠ email) ; le reste, du journal filtré par uid.
   const [entries, rdv] = await Promise.all([
     listJournalEntriesByActions(
-      [OUTREACH_ACTION, INTERVIEW_ACTION, VALIDATION_ACTION, HITL_SENT_ACTION],
+      [
+        OUTREACH_ACTION,
+        INTERVIEW_ACTION,
+        VALIDATION_ACTION,
+        HITL_SENT_ACTION,
+        CORRECTION_ACTION,
+      ],
       { campaignId: detail.campaignId ?? undefined },
     ).catch(() => []),
     getScheduledInterviewByUid(uid).catch(() => null),
@@ -50,6 +69,7 @@ export async function extractCandidateTimelineFacts(
   let interviewMissedAt: string | null = null;
   let finalValidatedAt: string | null = null;
   let finalRejectedAt: string | null = null;
+  const corrections: CandidateTimelineFacts['corrections'] = [];
 
   for (const e of entries) {
     if (String(e.payload.uid) !== uid) continue;
@@ -59,11 +79,40 @@ export async function extractCandidateTimelineFacts(
       if (mode === 'invite' && !invitationSentAt) invitationSentAt = e.createdAt;
       else if (mode === 'reject' && !rejectionSentAt) rejectionSentAt = e.createdAt;
     } else if (e.action === INTERVIEW_ACTION) {
-      if (status === 'realized' && !interviewRealizedAt) interviewRealizedAt = e.createdAt;
-      else if (status === 'missed' && !interviewMissedAt) interviewMissedAt = e.createdAt;
+      // La frise est une CHRONOLOGIE de faits, pas un état : un marquage
+      // ensuite corrigé reste affiché, suivi de sa correction. `cleared` ne
+      // pose donc aucun fait — c'est l'événement de correction qui parle.
+      switch (readInterviewMark(e.payload)) {
+        case 'realized':
+          if (!interviewRealizedAt) interviewRealizedAt = e.createdAt;
+          break;
+        case 'missed':
+          if (!interviewMissedAt) interviewMissedAt = e.createdAt;
+          break;
+        case 'cleared':
+        case null:
+          break;
+      }
     } else if (e.action === VALIDATION_ACTION) {
-      if (status === 'validated' && !finalValidatedAt) finalValidatedAt = e.createdAt;
-      else if (status === 'rejected' && !finalRejectedAt) finalRejectedAt = e.createdAt;
+      switch (readValidationMark(e.payload)) {
+        case 'validated':
+          if (!finalValidatedAt) finalValidatedAt = e.createdAt;
+          break;
+        case 'rejected':
+          if (!finalRejectedAt) finalRejectedAt = e.createdAt;
+          break;
+        case 'cleared':
+        case null:
+          break;
+      }
+    } else if (e.action === CORRECTION_ACTION) {
+      corrections.push({
+        at: e.createdAt,
+        previousLabel: asText(e.payload.previousLabel),
+        nextLabel: asText(e.payload.nextLabel),
+        by: asText(e.payload.by) ?? asText(e.payload.actorEmail),
+        reason: asText(e.payload.reason),
+      });
     } else if (e.action === HITL_SENT_ACTION) {
       // Validation d'un gris ENVOYÉE. `mailSent` = réalité de l'envoi
       // (journal honnête C5/C6) — un mail non parti a sa trace dédiée
@@ -109,6 +158,8 @@ export async function extractCandidateTimelineFacts(
     interviewMissedAt,
     finalValidatedAt,
     finalRejectedAt,
+    // Ordre d'apparition : la plus ANCIENNE d'abord (le journal arrive DESC).
+    corrections: [...corrections].reverse(),
     dismissedAt: detail.dismissedAt,
     dismissalReasonLabel: detail.dismissalReason
       ? DISMISSAL_REASON_LABELS[detail.dismissalReason]

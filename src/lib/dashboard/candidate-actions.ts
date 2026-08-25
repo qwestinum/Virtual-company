@@ -11,8 +11,17 @@
  * polling du dashboard re-dérivera tout depuis le journal.
  */
 
+import {
+  buildInterviewMarkerEntry,
+  buildValidationMarkerEntry,
+} from '@/lib/candidatures/decision-markers';
 import { useChatStore } from '@/stores/chat-store';
 
+/**
+ * Valeurs offertes par les boutons NORMAUX. La gomme `cleared` existe dans le
+ * vocabulaire (`decision-markers`) mais n'est posée QUE par le flux de
+ * correction : « annuler un marquage » n'est pas une action de pipeline.
+ */
 export type InterviewMark = 'realized' | 'missed';
 export type ValidationMark = 'validated' | 'rejected';
 
@@ -22,15 +31,14 @@ export async function markCandidateInterview(args: {
   campaignId: string | null;
   status: InterviewMark;
 }): Promise<void> {
-  await postJournal({
-    action: 'candidate_interview_marked',
-    campaignId: args.campaignId,
-    payload: {
+  await postJournal(
+    buildInterviewMarkerEntry({
       uid: args.uid,
-      candidate: args.candidateName,
-      status: args.status,
-    },
-  });
+      candidateName: args.candidateName,
+      campaignId: args.campaignId,
+      value: args.status,
+    }),
+  );
   pushChatLine(
     args.status === 'realized'
       ? `J'ai noté que l'entretien avec ${args.candidateName} a eu lieu. Je l'ajoute au compteur entretiens.`
@@ -44,15 +52,14 @@ export async function markCandidateValidation(args: {
   campaignId: string | null;
   status: ValidationMark;
 }): Promise<void> {
-  await postJournal({
-    action: 'candidate_validation_marked',
-    campaignId: args.campaignId,
-    payload: {
+  await postJournal(
+    buildValidationMarkerEntry({
       uid: args.uid,
-      candidate: args.candidateName,
-      status: args.status,
-    },
-  });
+      candidateName: args.candidateName,
+      campaignId: args.campaignId,
+      value: args.status,
+    }),
+  );
   pushChatLine(
     args.status === 'validated'
       ? `${args.candidateName} est validé définitivement. Je le passe en mode GO et je relance les étapes restantes.`

@@ -15,6 +15,17 @@
  * périmètre, pas seulement les 500 dernières entrées de journal.
  */
 
+import {
+  emptyInterviewState,
+  emptyValidationState,
+  foldInterviewMark,
+  foldValidationMark,
+  INTERVIEW_MARKER_ACTION,
+  VALIDATION_MARKER_ACTION,
+  type InterviewMarkEffect,
+  type MarkerState,
+  type ValidationMarkEffect,
+} from '@/lib/candidatures/decision-markers';
 import { listScheduledInterviewUids } from '@/lib/db/repos/interview-briefs';
 import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
@@ -30,8 +41,8 @@ import {
 } from '@/lib/db/repos/candidate-analyses';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
-const INTERVIEW_ACTION = 'candidate_interview_marked';
-const VALIDATION_ACTION = 'candidate_validation_marked';
+const INTERVIEW_ACTION = INTERVIEW_MARKER_ACTION;
+const VALIDATION_ACTION = VALIDATION_MARKER_ACTION;
 
 export type StageSignals = {
   /** uids présents dans la file HITL en `pending` (gris à trancher). */
@@ -86,31 +97,50 @@ export async function loadStageSignals(
     if (uid) pendingUids.add(uid);
   }
 
-  // Journal trié created_at DESC → la PREMIÈRE occurrence par uid est la plus
-  // récente (dernier-gagne). On n'écrase donc jamais une entrée déjà posée.
-  const interviewMarks = new Map<string, 'realized' | 'missed'>();
-  const interviewMarkedAt = new Map<string, string>();
-  const validationMarks = new Map<string, 'validated' | 'rejected'>();
+  // Dernier-gagne délégué à `foldInterviewMark`/`foldValidationMark` : la
+  // comparaison de dates y précède TOUJOURS l'interprétation de la valeur.
+  // L'ancienne boucle filtrait `realized|missed` AVANT de retenir l'uid — un
+  // marqueur gommé (`cleared`) était donc ignoré et le marquage ANTÉRIEUR
+  // reprenait la main : la correction n'aurait rien changé à l'écran.
+  const interviewStates = new Map<string, MarkerState<InterviewMarkEffect>>();
+  const validationStates = new Map<string, MarkerState<ValidationMarkEffect>>();
   for (const entry of markers) {
     const uid = payloadUid(entry.payload);
     if (!uid) continue;
-    const status = entry.payload.status;
     if (entry.action === INTERVIEW_ACTION) {
-      if (
-        !interviewMarks.has(uid) &&
-        (status === 'realized' || status === 'missed')
-      ) {
-        interviewMarks.set(uid, status);
-        interviewMarkedAt.set(uid, entry.createdAt);
-      }
+      interviewStates.set(
+        uid,
+        foldInterviewMark(
+          interviewStates.get(uid) ?? emptyInterviewState(),
+          entry.payload,
+          entry.createdAt,
+        ),
+      );
     } else if (entry.action === VALIDATION_ACTION) {
-      if (
-        !validationMarks.has(uid) &&
-        (status === 'validated' || status === 'rejected')
-      ) {
-        validationMarks.set(uid, status);
-      }
+      validationStates.set(
+        uid,
+        foldValidationMark(
+          validationStates.get(uid) ?? emptyValidationState(),
+          entry.payload,
+          entry.createdAt,
+        ),
+      );
     }
+  }
+
+  // Un marqueur gommé n'entre PAS dans les maps : l'uid en est absent, et
+  // `stageFor` retombe sur les colonnes — exactement comme s'il n'avait
+  // jamais été marqué.
+  const interviewMarks = new Map<string, 'realized' | 'missed'>();
+  const interviewMarkedAt = new Map<string, string>();
+  for (const [uid, state] of interviewStates) {
+    if (state.effect === null || state.at === null) continue;
+    interviewMarks.set(uid, state.effect);
+    interviewMarkedAt.set(uid, state.at);
+  }
+  const validationMarks = new Map<string, 'validated' | 'rejected'>();
+  for (const [uid, state] of validationStates) {
+    if (state.effect !== null) validationMarks.set(uid, state.effect);
   }
 
   return {

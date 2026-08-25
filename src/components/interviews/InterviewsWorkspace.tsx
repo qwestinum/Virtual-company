@@ -266,6 +266,7 @@ export function InterviewsWorkspace({
             onDismiss={setDismissing}
             onReschedule={(row) => void reinvite(row, 'reschedule')}
             onCancel={(row) => void cancelBooking(row)}
+            onCorrected={() => void load()}
           />
         )}
       </div>

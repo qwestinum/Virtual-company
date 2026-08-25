@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { getApiUser } from '@/lib/auth/require-api-user';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 
@@ -19,6 +20,29 @@ const EntrySchema = z.object({
   actor: z.string().min(1).optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
 });
+
+/**
+ * Complète le payload avec l'identité de la session. ADDITIF et
+ * NON DESTRUCTIF : un champ déjà posé par l'appelant n'est jamais écrasé.
+ * Best-effort — une session illisible ne fait pas échouer l'écriture du
+ * journal (perdre une trace serait pire que la perdre sans auteur).
+ */
+async function withActorIdentity(
+  payload: Record<string, unknown> | undefined,
+): Promise<Record<string, unknown>> {
+  const base = payload ?? {};
+  try {
+    const user = await getApiUser();
+    if (!user) return base;
+    return {
+      ...base,
+      actorUserId: base.actorUserId ?? user.id,
+      actorEmail: base.actorEmail ?? user.email ?? null,
+    };
+  } catch {
+    return base;
+  }
+}
 
 export async function POST(request: Request): Promise<NextResponse> {
   let parsed: z.infer<typeof EntrySchema>;
@@ -35,7 +59,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    await appendJournalEntry(parsed);
+    // Identité de l'auteur résolue CÔTÉ SERVEUR, jamais reçue du client.
+    // `actor` reste la chaîne de rôle historique ('user'/'system') que tous
+    // les lecteurs connaissent ; l'identité s'ajoute au payload sans rien
+    // casser (c'est un sac). Sans ça, un marquage d'entretien n'a AUCUN
+    // auteur — et un écran qui doit dire « marqué par Sarah D. » n'a que le
+    // choix entre le silence et l'invention.
+    await appendJournalEntry({
+      ...parsed,
+      payload: await withActorIdentity(parsed.payload),
+    });
     return new NextResponse(null, { status: 204 });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

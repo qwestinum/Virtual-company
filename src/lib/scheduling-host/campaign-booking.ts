@@ -224,6 +224,33 @@ export async function revokeCampaignBookingLink(
 }
 
 /**
+ * État du lien de réservation d'une candidature, pour ANNONCER un effet avant
+ * de l'appliquer (dialog de correction). Sans effet de bord.
+ *
+ * `null` = régime Cal.com ou campagne sans cible : il n'existe AUCUN objet
+ * lien à interroger. L'appelant doit le DIRE plutôt que d'afficher un vide —
+ * « aucun lien » et « pas de notion de lien » ne se lisent pas pareil.
+ */
+export async function bookingLinkStateForAnalysis(
+  campaignId: string | null,
+  analysisId: string,
+): Promise<{ hasActive: boolean; statuses: BookingLink['status'][] } | null> {
+  if (!campaignId || campaignId.startsWith('TASK-')) return null;
+  try {
+    await ensureSchedulingConfigured();
+    const target = await getTarget(campaignId);
+    if (!target) return null;
+    const links = await linksForAnalysis(campaignId, analysisId);
+    return {
+      hasActive: links.some((l) => l.status === 'active'),
+      statuses: links.map((l) => l.status),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Prochaine clé de lien pour une candidature : la génération suivante. Rendue
  * séparément de l'émission pour que l'appelant compose son message avec
  * exactement la clé qui sera utilisée.

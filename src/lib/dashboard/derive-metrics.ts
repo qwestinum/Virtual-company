@@ -22,6 +22,15 @@
  *   sera remplacé par une instrumentation vraie en Session 7.
  */
 
+import {
+  DECISION_CORRECTED_ACTION,
+  foldInterviewMark,
+  foldValidationMark,
+  INTERVIEW_MARKER_ACTION,
+  readInterviewMark,
+  readValidationMark,
+  VALIDATION_MARKER_ACTION,
+} from '@/lib/candidatures/decision-markers';
 import type { JournalEntry } from '@/lib/db/repos/journal';
 
 // ─── Coûts moyens estimés par action (en €) ───────────────────────────
@@ -449,26 +458,25 @@ export function journalToCandidatesList(
       }
     } else if (row.action === 'imap_outreach_brief') {
       if (row.payload?.status === 'sent') entry.briefSent = true;
-    } else if (row.action === 'candidate_interview_marked') {
-      const status = row.payload?.status;
-      if (
-        (status === 'realized' || status === 'missed') &&
-        (entry.interviewMarkedAt == null ||
-          row.createdAt > entry.interviewMarkedAt)
-      ) {
-        entry.interviewMarked = status;
-        entry.interviewMarkedAt = row.createdAt;
-      }
-    } else if (row.action === 'candidate_validation_marked') {
-      const status = row.payload?.status;
-      if (
-        (status === 'validated' || status === 'rejected') &&
-        (entry.validationMarkedAt == null ||
-          row.createdAt > entry.validationMarkedAt)
-      ) {
-        entry.validationMarked = status;
-        entry.validationMarkedAt = row.createdAt;
-      }
+    } else if (row.action === INTERVIEW_MARKER_ACTION) {
+      // Dernier-gagne délégué : la date prime, PUIS la valeur est interprétée.
+      // Un marqueur gommé (`cleared`) remet donc `interviewMarked` à null au
+      // lieu de laisser le marquage antérieur regagner.
+      const next = foldInterviewMark(
+        { effect: entry.interviewMarked, at: entry.interviewMarkedAt },
+        row.payload,
+        row.createdAt,
+      );
+      entry.interviewMarked = next.effect;
+      entry.interviewMarkedAt = next.at;
+    } else if (row.action === VALIDATION_MARKER_ACTION) {
+      const next = foldValidationMark(
+        { effect: entry.validationMarked, at: entry.validationMarkedAt },
+        row.payload,
+        row.createdAt,
+      );
+      entry.validationMarked = next.effect;
+      entry.validationMarkedAt = next.at;
     }
   }
 
@@ -720,39 +728,92 @@ const ACTIVITY_RENDERERS: Record<string, FeedRenderer> = {
     colorKey: 'blue',
   }),
 
-  candidate_interview_marked: (row, base) => {
+  // Les trois valeurs sont rendues explicitement. Un `else` final aurait
+  // affiché « Entretien non réalisé » sur un marquage ANNULÉ — le fil aurait
+  // annoncé un refus là où quelqu'un venait de retirer une décision.
+  [INTERVIEW_MARKER_ACTION]: (row, base) => {
     const name = candidateNameOf(row.payload);
-    if (row.payload?.status === 'realized') {
-      return {
-        ...base,
-        message: `Entretien réalisé avec ${name}`,
-        iconKey: 'interview',
-        colorKey: 'teal',
-      };
+    switch (readInterviewMark(row.payload)) {
+      case 'realized':
+        return {
+          ...base,
+          message: `Entretien réalisé avec ${name}`,
+          iconKey: 'interview',
+          colorKey: 'teal',
+        };
+      case 'missed':
+        return {
+          ...base,
+          message: `Entretien non réalisé — ${name}`,
+          iconKey: 'interview',
+          colorKey: 'orange',
+        };
+      case 'cleared':
+        return {
+          ...base,
+          message: `Marquage d’entretien annulé — ${name}`,
+          iconKey: 'interview',
+          colorKey: 'indigo',
+        };
+      default:
+        // Valeur illisible : on ne DEVINE pas (l'ancien `else` disait « non
+        // réalisé »), mais on ne fait pas disparaître la ligne non plus — une
+        // action chargée et jamais rendue est le défaut du 21/08.
+        return {
+          ...base,
+          message: `Décision d’entretien mise à jour — ${name}`,
+          iconKey: 'interview',
+          colorKey: 'indigo',
+        };
     }
-    return {
-      ...base,
-      message: `Entretien non réalisé — ${name}`,
-      iconKey: 'interview',
-      colorKey: 'orange',
-    };
   },
 
-  candidate_validation_marked: (row, base) => {
+  [VALIDATION_MARKER_ACTION]: (row, base) => {
     const name = candidateNameOf(row.payload);
-    if (row.payload?.status === 'validated') {
-      return {
-        ...base,
-        message: `Validation définitive — ${name} (GO)`,
-        iconKey: 'interview',
-        colorKey: 'green',
-      };
+    switch (readValidationMark(row.payload)) {
+      case 'validated':
+        return {
+          ...base,
+          message: `Validation définitive — ${name} (GO)`,
+          iconKey: 'interview',
+          colorKey: 'green',
+        };
+      case 'rejected':
+        return {
+          ...base,
+          message: `Validation refusée — ${name}`,
+          iconKey: 'interview',
+          colorKey: 'red',
+        };
+      case 'cleared':
+        return {
+          ...base,
+          message: `Verdict final annulé — ${name}`,
+          iconKey: 'interview',
+          colorKey: 'indigo',
+        };
+      default:
+        return {
+          ...base,
+          message: `Verdict final mis à jour — ${name}`,
+          iconKey: 'interview',
+          colorKey: 'indigo',
+        };
     }
+  },
+
+  // Correction d'une décision posée par erreur — jamais une suppression : un
+  // nouveau marqueur est posé, et CET événement dit pourquoi.
+  [DECISION_CORRECTED_ACTION]: (row, base) => {
+    const name = candidateNameOf(row.payload);
+    const from = String(row.payload?.previousLabel ?? '');
+    const to = String(row.payload?.nextLabel ?? '');
+    const arrow = from && to ? ` (${from} → ${to})` : '';
     return {
       ...base,
-      message: `Validation refusée — ${name}`,
+      message: `Décision corrigée — ${name}${arrow}`,
       iconKey: 'interview',
-      colorKey: 'red',
+      colorKey: 'indigo',
     };
   },
 

@@ -63,6 +63,19 @@ export type CandidateTimelineFacts = {
   finalValidatedAt: string | null;
   /** Journal candidate_validation_marked = rejected. */
   finalRejectedAt: string | null;
+  /**
+   * Corrections de décision (`decision_corrected`), de la plus ancienne à la
+   * plus récente. Une LISTE, pas un fait daté unique : un dossier peut être
+   * corrigé deux fois, et masquer la première réécrirait l'histoire.
+   */
+  corrections: {
+    at: string;
+    previousLabel: string | null;
+    nextLabel: string | null;
+    /** `null` = auteur non enregistré (marqueur antérieur à la capture). */
+    by: string | null;
+    reason: string | null;
+  }[];
   /** candidate_analyses.dismissed_at — classement sans suite (terminal). */
   dismissedAt: string | null;
   /** Libellé du motif de classement (null si non classée). */
@@ -94,7 +107,16 @@ const STEP_RANK: Record<string, number> = {
   final_validated: 8,
   final_rejected: 8,
   dismissed: 9,
+  // Après tout le reste : une correction suit le fait qu'elle corrige, et le
+  // marqueur qu'elle pose est horodaté à la même seconde qu'elle.
+  correction: 10,
 };
+
+/** Rang d'un événement — les corrections sont numérotées (clé React unique). */
+function rankOf(key: string): number {
+  if (key.startsWith('correction_')) return STEP_RANK.correction;
+  return STEP_RANK[key] ?? 99;
+}
 
 /**
  * Assemble la frise. Événements omis si leur date est absente/sentinelle.
@@ -209,9 +231,30 @@ export function buildCandidateTimeline(
     'neutral',
   );
 
+  // Corrections — le journal est en AJOUT SEUL : le fait corrigé reste dans la
+  // frise, la correction se pose APRÈS lui. On ne réécrit jamais l'histoire,
+  // on l'allonge.
+  facts.corrections.forEach((c, i) => {
+    const transition =
+      c.previousLabel && c.nextLabel
+        ? `${c.previousLabel} → ${c.nextLabel}`
+        : (c.nextLabel ?? c.previousLabel);
+    const author = c.by ? ` · par ${c.by}` : '';
+    const detail = [transition ? `${transition}${author}` : author.trim(), c.reason]
+      .filter((part): part is string => Boolean(part && part.trim()))
+      .join(' — ');
+    push(
+      `correction_${i}`,
+      c.at,
+      'Décision corrigée',
+      detail || null,
+      'neutral',
+    );
+  });
+
   events.sort((a, b) => {
-    const ra = STEP_RANK[a.key] ?? 99;
-    const rb = STEP_RANK[b.key] ?? 99;
+    const ra = rankOf(a.key);
+    const rb = rankOf(b.key);
     if (ra !== rb) return ra - rb;
     if (a.at !== b.at) return a.at < b.at ? -1 : 1;
     return a.key < b.key ? -1 : 1;
