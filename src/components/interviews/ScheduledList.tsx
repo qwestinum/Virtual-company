@@ -15,12 +15,13 @@
  */
 
 import { CorrectDecisionAction } from '@/components/candidatures/CorrectDecisionAction';
+import { ReferentMention } from '@/components/referent/ReferentMention';
 import type { ScheduledRow } from '@/lib/interviews/pipeline-rows';
+import type { RowReferent } from '@/lib/interviews/referent-resolution';
 
 export type ScheduledItem = ScheduledRow & {
   campaignName: string | null;
-  ownerName: string | null;
-};
+} & RowReferent;
 
 const SECTIONS: {
   key: ScheduledRow['section'];
@@ -112,7 +113,14 @@ export function ScheduledList({
                         'hors campagne'
                       )}
                       {row.campaignName ? ` · ${row.campaignName}` : ''}
-                      {row.ownerName ? ` · ${row.ownerName}` : ''}
+                      {' · '}
+                      {/* Celui qui TIENT le rendez-vous — la ressource est
+                          figée à la réservation et ne suit pas un changement
+                          de référent. Quand les deux diffèrent, on le dit. */}
+                      <ReferentMention
+                        referent={row.referent}
+                        supersededBy={row.supersededBy}
+                      />
                       {row.interviewLocation ? ` · ${row.interviewLocation}` : ''}
                     </p>
                   </div>

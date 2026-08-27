@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { analysisIdForValidation } from '@/lib/hitl/analysis-key';
-import type { ReferentInfo } from '@/lib/hitl/referent-filter';
+import type { ReferentInfo } from '@/lib/referent/filter';
 import { decideGrayValidation } from '@/lib/hitl/decide-gray-validation';
 import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import { formatDateTimeFr } from '@/lib/format/datetime';
@@ -25,7 +25,7 @@ import {
 } from '@/stores/artifacts-store';
 import type { HitlDecision, PendingValidation } from '@/types/hitl';
 
-import { ReferentMention } from './ReferentMention';
+import { ReferentMention } from '@/components/referent/ReferentMention';
 
 async function openArtifact(artifact: Artifact): Promise<void> {
   if (artifact.storagePath) {

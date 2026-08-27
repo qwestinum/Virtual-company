@@ -13,12 +13,13 @@
  * colonne vide qu'on prendrait pour une anomalie.
  */
 
+import { ReferentMention } from '@/components/referent/ReferentMention';
+import type { RowReferent } from '@/lib/interviews/referent-resolution';
 import type { AwaitingRow } from '@/lib/interviews/pipeline-rows';
 
 export type AwaitingItem = AwaitingRow & {
   campaignName: string | null;
-  ownerName: string | null;
-};
+} & RowReferent;
 
 const LINK_LABEL: Record<NonNullable<AwaitingRow['linkStatus']>, string> = {
   active: 'lien actif',
@@ -74,7 +75,10 @@ export function AwaitingList({
                 )}
                 {row.campaignName ? ` · ${row.campaignName}` : ''}
                 {row.jobTitle ? ` · ${row.jobTitle}` : ''}
-                {row.ownerName ? ` · réf. ${row.ownerName}` : ''}
+                {' · '}
+                {/* Le référent de la CAMPAGNE : c'est son agenda que le
+                    candidat verra en ouvrant son lien. */}
+                <ReferentMention referent={row.referent} />
               </p>
             </div>
 

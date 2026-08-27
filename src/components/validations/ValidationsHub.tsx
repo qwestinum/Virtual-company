@@ -12,7 +12,7 @@
  * partition est stricte (cf. partitionRejectionProposals), rien ne tombe entre
  * les deux.
  *
- * Par-dessus, un FILTRE par recruteur référent (cf. referent-filter) : une
+ * Par-dessus, un FILTRE par recruteur référent (cf. lib/referent/filter) : une
  * commodité de LECTURE, jamais une restriction d'accès — tout reste
  * consultable et actionnable par tout le monde.
  */
@@ -27,7 +27,7 @@ import {
   myCampaignsCount,
   referentSelectionKey,
   type ReferentSelection,
-} from '@/lib/hitl/referent-filter';
+} from '@/lib/referent/filter';
 import {
   partitionRejectionProposals,
   sortRejectionProposals,
@@ -35,7 +35,7 @@ import {
 import type { PendingValidation } from '@/types/hitl';
 
 import { EmptyQueueNotice } from './EmptyQueueNotice';
-import { ReferentFilterBar } from './ReferentFilterBar';
+import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
 import { RejectionProposalsTab } from './RejectionProposalsTab';
 import { SubTabButton } from './SubTabButton';
 import { useValidationsQueue } from './use-validations-queue';

@@ -27,19 +27,24 @@ vi.mock('@/lib/db/repos/pending-validations', () => ({
 vi.mock('@/lib/db/repos/candidate-analyses', () => ({
   listAllCandidateAnalyses: vi.fn(),
 }));
-vi.mock('@/lib/db/repos/campaigns', () => ({ listCampaignOwners: vi.fn() }));
+vi.mock('@/lib/db/repos/campaigns', () => ({ listCampaignSummaries: vi.fn() }));
 vi.mock('@/lib/db/repos/recruiters', () => ({ listRecruiters: vi.fn() }));
 
 import { GET } from '@/app/api/validations/route';
 import { getApiUser } from '@/lib/auth/require-api-user';
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
-import { listCampaignOwners } from '@/lib/db/repos/campaigns';
+import { listCampaignSummaries } from '@/lib/db/repos/campaigns';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { listRecruiters } from '@/lib/db/repos/recruiters';
 import type { PendingValidation } from '@/types/hitl';
 
 const queue = vi.mocked(listPendingValidations);
-const owners = vi.mocked(listCampaignOwners);
+const owners = vi.mocked(listCampaignSummaries);
+
+/** Projection minimale servie par `listCampaignSummaries`. */
+function summary(id: string, ownerUserId: string | null) {
+  return { id, name: `Campagne ${id}`, ownerUserId, schedulingNative: false };
+}
 const recruiters = vi.mocked(listRecruiters);
 const analyses = vi.mocked(listAllCandidateAnalyses);
 const user = vi.mocked(getApiUser);
@@ -97,8 +102,8 @@ describe('GET /api/validations — contexte référent', () => {
     ]);
     owners.mockResolvedValue(
       new Map([
-        ['CAMP-2026-001', 'u-sarah'],
-        ['CAMP-2026-002', null],
+        ['CAMP-2026-001', summary('CAMP-2026-001', 'u-sarah')],
+        ['CAMP-2026-002', summary('CAMP-2026-002', null)],
       ]),
     );
     recruiters.mockResolvedValue([recruiter('u-sarah', 'Sarah Dupont', true)]);
@@ -121,7 +126,9 @@ describe('GET /api/validations — contexte référent', () => {
 
   it('rend un recruteur DÉSACTIVÉ avec isActive:false (pas un null muet)', async () => {
     queue.mockResolvedValue([validation('val-1', 'CAMP-2026-003')]);
-    owners.mockResolvedValue(new Map([['CAMP-2026-003', 'u-yann']]));
+    owners.mockResolvedValue(
+      new Map([['CAMP-2026-003', summary('CAMP-2026-003', 'u-yann')]]),
+    );
     recruiters.mockResolvedValue([recruiter('u-yann', 'Yann Bernard', false)]);
 
     const json = await (await GET(request)).json();

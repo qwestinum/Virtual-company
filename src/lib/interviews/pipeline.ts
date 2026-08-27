@@ -12,16 +12,26 @@
  * d'analyse. Une seule requête pour toute la page (`uidIn`), bas volume.
  */
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
-import { listCampaigns } from '@/lib/db/repos/campaigns';
+import {
+  listCampaignSummaries,
+  type CampaignSummary,
+} from '@/lib/db/repos/campaigns';
 import { listBriefsByStatus } from '@/lib/db/repos/interview-briefs';
+import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import { listRecruiters } from '@/lib/db/repos/recruiters';
+import type { ReferentInfo } from '@/lib/referent/filter';
 import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
-import { listLinksForTarget, listOrphanTargets } from '@/lib/scheduling';
+import { listBookings, listLinksForTarget, listOrphanTargets } from '@/lib/scheduling';
 import { parseBookingContext } from '@/lib/scheduling-host/campaign-booking';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { InterviewBrief } from '@/types/interview-brief';
 
+import {
+  organizerEmailsByBooking,
+  resolveRowReferent,
+  type RowReferent,
+} from './referent-resolution';
 import {
   buildAwaitingRows,
   buildScheduledRows,
@@ -36,7 +46,7 @@ export type OrphanRow = {
   activeLinks: number;
 };
 
-type Decorated<T> = T & { campaignName: string | null; ownerName: string | null };
+type Decorated<T> = T & { campaignName: string | null } & RowReferent;
 
 export type InterviewPipeline = {
   awaiting: Decorated<AwaitingRow>[];
@@ -102,14 +112,28 @@ export async function loadInterviewPipeline(
     ),
   ];
 
-  const [analyses, signals, campaigns, recruiters] = await Promise.all([
+  const [analyses, signals, recruiters, orphanTargets] = await Promise.all([
     uids.length > 0
       ? listAllCandidateAnalyses({ uidIn: uids }).catch(() => [])
       : Promise.resolve([]),
     loadStageSignals(campaignId ? { campaignId } : {}).catch(() => null),
-    listCampaigns().catch(() => []),
     listRecruiters().catch(() => []),
+    (async () => {
+      await ensureSchedulingConfigured();
+      return listOrphanTargets();
+    })().catch(() => []),
   ]);
+
+  // Campagnes RÉELLEMENT en jeu : celles des briefings, plus celles que le
+  // bandeau des cibles orphelines doit nommer. Projection minimale chunkée —
+  // `listCampaigns()` n'a pas de `.range()` et retombait sous le plafond
+  // PostgREST de 1000, silencieusement.
+  const campaigns = await listCampaignSummaries([
+    ...[...awaitingBriefs, ...scheduledBriefs]
+      .map((b) => b.campaignId)
+      .filter((c): c is string => c !== null),
+    ...orphanTargets.map((o) => o.target.externalRef),
+  ]).catch(() => new Map<string, CampaignSummary>());
 
   const analysisByUid = new Map(analyses.map((a) => [a.uid, a]));
   const stageOf = (uid: string): string | null => {
@@ -120,9 +144,14 @@ export async function loadInterviewPipeline(
   const analysisIdOf = (uid: string): string | null =>
     analysisByUid.get(uid)?.id ?? null;
 
-  // Liens natifs, campagne par campagne — uniquement celles qui en ont.
+  // Liens natifs + TITULAIRES des rendez-vous, campagne par campagne —
+  // uniquement celles qui tournent en réservation native.
   const linkStatusByAnalysis = new Map<string, AwaitingRow['linkStatus']>();
-  const nativeCampaigns = campaigns.filter(
+  // bookingUid → identifiant du recruteur qui TIENT le rendez-vous. La
+  // ressource est FIGÉE à la confirmation : c'est la source autoritaire, elle
+  // ne suit pas un re-pointage de la cible.
+  const holderIdByBooking = new Map<string, string>();
+  const nativeCampaigns = [...campaigns.values()].filter(
     (c) => c.schedulingNative && (!campaignId || c.id === campaignId),
   );
   if (nativeCampaigns.length > 0) {
@@ -138,18 +167,74 @@ export async function loadInterviewPipeline(
           linkStatusByAnalysis.set(key, link.status);
         }
       }
+      const bookings = await listBookings({
+        targetExternalRef: campaign.id,
+        status: 'confirmed',
+      }).catch(() => []);
+      for (const booking of bookings) {
+        holderIdByBooking.set(booking.id, booking.resourceExternalRef);
+      }
     }
   }
 
-  const campaignNames = new Map(campaigns.map((c) => [c.id, c.name]));
-  const ownerNames = new Map(recruiters.map((r) => [r.id, r.displayName]));
-  const ownerByCampaign = new Map(
-    campaigns.map((c) => [c.id, c.ownerUserId ? ownerNames.get(c.ownerUserId) ?? null : null]),
+  const recruiterById = new Map(recruiters.map((r) => [r.id, r]));
+  const recruiterByEmail = new Map(
+    recruiters.map((r) => [r.email.trim().toLowerCase(), r]),
   );
-  const decorate = <T extends { campaignId: string | null }>(row: T) => ({
+  const toInfo = (r: { id: string; displayName: string; isActive: boolean }) => ({
+    id: r.id,
+    displayName: r.displayName,
+    isActive: r.isActive,
+  });
+
+  // Régime Cal.com : AUCUNE colonne ne porte le titulaire d'un rendez-vous.
+  // Le seul endroit où l'information existe est le payload du webhook, capté à
+  // la réservation. Lecture EXHAUSTIVE mais bornée par les candidatures
+  // arrivées en phase entretien (même classe de volume que les marqueurs
+  // d'étape déjà chargés), et seulement s'il reste des rendez-vous que le
+  // chemin natif n'explique pas — une installation 100 % native ne paie rien.
+  const unexplained = scheduledBriefs.some(
+    (b) => b.bookingUid !== null && !holderIdByBooking.has(b.bookingUid),
+  );
+  const organizerByBooking = unexplained
+    ? organizerEmailsByBooking(
+        await listJournalEntriesByActions([
+          'interview_brief_delivered',
+          'interview_brief_regenerated',
+        ]).catch(() => []),
+      )
+    : new Map<string, string>();
+
+  const holderOf = (bookingUid: string | null): ReferentInfo | null => {
+    if (!bookingUid) return null;
+    const nativeId = holderIdByBooking.get(bookingUid);
+    if (nativeId) {
+      const recruiter = recruiterById.get(nativeId);
+      return recruiter ? toInfo(recruiter) : null;
+    }
+    const email = organizerByBooking.get(bookingUid);
+    const recruiter = email ? recruiterByEmail.get(email) : undefined;
+    return recruiter ? toInfo(recruiter) : null;
+  };
+
+  const campaignNames = new Map(
+    [...campaigns.values()].map((c) => [c.id, c.name]),
+  );
+  const referentOfCampaign = (id: string | null): ReferentInfo | null => {
+    const ownerId = id ? (campaigns.get(id)?.ownerUserId ?? null) : null;
+    const recruiter = ownerId ? recruiterById.get(ownerId) : undefined;
+    return recruiter ? toInfo(recruiter) : null;
+  };
+
+  const decorate = <T extends { campaignId: string | null; bookingUid?: string | null }>(
+    row: T,
+  ): Decorated<T> => ({
     ...row,
     campaignName: row.campaignId ? (campaignNames.get(row.campaignId) ?? null) : null,
-    ownerName: row.campaignId ? (ownerByCampaign.get(row.campaignId) ?? null) : null,
+    ...resolveRowReferent(
+      referentOfCampaign(row.campaignId),
+      holderOf(row.bookingUid ?? null),
+    ),
   });
 
   const awaitingBuilt = buildAwaitingRows(awaitingBriefs.map(toFacts), {
@@ -177,7 +262,7 @@ export async function loadInterviewPipeline(
     .filter((r) => r.section === 'verdict_attendu')
     .map(decorate);
 
-  const orphans = (await listOrphanTargets().catch(() => []))
+  const orphans = orphanTargets
     .filter((o) => !campaignId || o.target.externalRef === campaignId)
     .map((o) => ({
       campaignId: o.target.externalRef,

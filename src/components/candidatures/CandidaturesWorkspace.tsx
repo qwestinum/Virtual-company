@@ -19,6 +19,7 @@ import {
   useCampaignsStore,
 } from '@/stores/campaigns-store';
 import type { CandidateListItem } from '@/types/reporting';
+import { activeReferentOf } from '@/lib/referent/filter';
 
 import { CandidatureFullPage } from './CandidatureFullPage';
 import { CandidaturePanel } from './CandidaturePanel';
@@ -104,12 +105,18 @@ export function CandidaturesWorkspace({
     setFilters,
     counts,
     rows,
+    referents,
     listTotal,
     loadingList,
     page,
     setPage,
     refresh,
   } = useCandidatures();
+
+  // Référent ACTIF de la campagne d'une fiche — même règle et même rendu que
+  // la file des validations et l'onglet Entretiens (cf. lib/referent/filter).
+  const referentOf = (campaignId: string | null) =>
+    campaignId ? activeReferentOf(campaignId, referents) : null;
 
   const [panelItem, setPanelItem] = useState<CandidateListItem | null>(null);
   const [fullItem, setFullItem] = useState<CandidateListItem | null>(null);
@@ -294,6 +301,7 @@ export function CandidaturesWorkspace({
       {panelItem ? (
         <CandidaturePanel
           item={panelItem}
+          referent={referentOf(panelItem.campaignId)}
           campaignLabel={labelOf(panelItem.campaignId)}
           jobTitle={titleOf(panelItem.campaignId)}
           onClose={() => setPanelItem(null)}
@@ -305,6 +313,7 @@ export function CandidaturesWorkspace({
       {fullItem ? (
         <CandidatureFullPage
           item={fullItem}
+          referent={referentOf(fullItem.campaignId)}
           onClose={() => setFullItem(null)}
           onActed={onActed}
         />

@@ -45,18 +45,26 @@ export function referentSelectionKey(selection: ReferentSelection): string {
 }
 
 /**
- * Référent ACTIF d'une campagne, ou `null` (pas de référent, campagne inconnue,
- * ou recruteur désactivé). POINT UNIQUE : le filtre et la mention portée par la
- * carte lisent tous deux cette fonction, pour qu'un dossier ne puisse pas
+ * Un référent DÉSACTIVÉ n'en est plus un pour l'affichage : il devient
+ * « référent non défini ». POINT UNIQUE de cette règle — la mention portée par
+ * une carte et le filtre la lisent tous deux, pour qu'un dossier ne puisse pas
  * s'afficher « Réf. X » tout en étant classé ailleurs par le filtre.
+ */
+export function asActiveReferent(
+  referent: ReferentInfo | null | undefined,
+): ReferentInfo | null {
+  return referent && referent.isActive ? referent : null;
+}
+
+/**
+ * Référent ACTIF d'une campagne, ou `null` (pas de référent, campagne inconnue,
+ * ou recruteur désactivé).
  */
 export function activeReferentOf(
   campaignId: string,
   referentByCampaign: ReferentByCampaign,
 ): ReferentInfo | null {
-  const referent = referentByCampaign[campaignId];
-  if (!referent || !referent.isActive) return null;
-  return referent;
+  return asActiveReferent(referentByCampaign[campaignId]);
 }
 
 /** « Sarah Dupont » → « Sarah D. ». Un nom d'un seul mot est rendu tel quel. */
@@ -79,17 +87,48 @@ export function initialsOf(displayName: string): string {
 type WithCampaign = { campaignId: string };
 
 /**
- * Une validation entre-t-elle dans la sélection ? `all` laisse tout passer.
+ * Comment lire le référent d'une ligne. Sur la file des validations c'est
+ * celui de la campagne ; sur un rendez-vous DÉJÀ PRIS, c'est celui qui le
+ * TIENT — une réservation ne suit pas un changement de référent, et filtrer
+ * sur autre chose que ce qui est affiché ferait mentir l'écran.
+ *
+ * D'où cette forme générique : le noyau ne sait pas d'où vient le référent, il
+ * sait seulement qu'une ligne en a un (ou n'en a pas).
  */
+export type ReferentOf<V> = (item: V) => ReferentInfo | null;
+
+/** Une ligne entre-t-elle dans la sélection ? `all` laisse tout passer. */
+export function matchesReferentBy<V>(
+  item: V,
+  referentOf: ReferentOf<V>,
+  selection: ReferentSelection,
+): boolean {
+  if (selection.kind === 'all') return true;
+  const referent = asActiveReferent(referentOf(item));
+  if (selection.kind === 'none') return referent === null;
+  return referent?.id === selection.id;
+}
+
+export function filterByReferentBy<V>(
+  items: readonly V[],
+  referentOf: ReferentOf<V>,
+  selection: ReferentSelection,
+): V[] {
+  if (selection.kind === 'all') return [...items];
+  return items.filter((item) => matchesReferentBy(item, referentOf, selection));
+}
+
+/** Variante campagne — la file des validations, où le référent EST celui de la campagne. */
 export function matchesReferent(
   item: WithCampaign,
   referentByCampaign: ReferentByCampaign,
   selection: ReferentSelection,
 ): boolean {
-  if (selection.kind === 'all') return true;
-  const referent = activeReferentOf(item.campaignId, referentByCampaign);
-  if (selection.kind === 'none') return referent === null;
-  return referent?.id === selection.id;
+  return matchesReferentBy(
+    item,
+    (v) => activeReferentOf(v.campaignId, referentByCampaign),
+    selection,
+  );
 }
 
 export function filterByReferent<V extends WithCampaign>(
@@ -97,9 +136,10 @@ export function filterByReferent<V extends WithCampaign>(
   referentByCampaign: ReferentByCampaign,
   selection: ReferentSelection,
 ): V[] {
-  if (selection.kind === 'all') return [...items];
-  return items.filter((item) =>
-    matchesReferent(item, referentByCampaign, selection),
+  return filterByReferentBy(
+    items,
+    (v) => activeReferentOf(v.campaignId, referentByCampaign),
+    selection,
   );
 }
 
@@ -117,14 +157,14 @@ export type ReferentOption = {
  * (compte décroissant, puis nom), puis « Référent non défini » — présent
  * seulement s'il y a quelque chose dedans.
  */
-export function buildReferentOptions(
-  items: readonly WithCampaign[],
-  referentByCampaign: ReferentByCampaign,
+export function buildReferentOptionsBy<V>(
+  items: readonly V[],
+  referentOf: ReferentOf<V>,
 ): ReferentOption[] {
   const byRecruiter = new Map<string, { name: string; count: number }>();
   let none = 0;
   for (const item of items) {
-    const referent = activeReferentOf(item.campaignId, referentByCampaign);
+    const referent = asActiveReferent(referentOf(item));
     if (!referent) {
       none += 1;
       continue;
@@ -161,15 +201,34 @@ export function buildReferentOptions(
  * Compte du raccourci « Mes campagnes ». `null` (pas de session résolue) ⇒ 0 :
  * le raccourci se retire plutôt que de promettre une liste vide.
  */
+export function myReferentCountBy<V>(
+  items: readonly V[],
+  referentOf: ReferentOf<V>,
+  currentUserId: string | null,
+): number {
+  if (!currentUserId) return 0;
+  return items.filter(
+    (item) => asActiveReferent(referentOf(item))?.id === currentUserId,
+  ).length;
+}
+
+export function buildReferentOptions(
+  items: readonly WithCampaign[],
+  referentByCampaign: ReferentByCampaign,
+): ReferentOption[] {
+  return buildReferentOptionsBy(items, (v) =>
+    activeReferentOf(v.campaignId, referentByCampaign),
+  );
+}
+
 export function myCampaignsCount(
   items: readonly WithCampaign[],
   referentByCampaign: ReferentByCampaign,
   currentUserId: string | null,
 ): number {
-  if (!currentUserId) return 0;
-  return items.filter(
-    (item) =>
-      activeReferentOf(item.campaignId, referentByCampaign)?.id ===
-      currentUserId,
-  ).length;
+  return myReferentCountBy(
+    items,
+    (v) => activeReferentOf(v.campaignId, referentByCampaign),
+    currentUserId,
+  );
 }

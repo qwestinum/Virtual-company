@@ -19,7 +19,7 @@ import {
   referentSelectionKey,
   shortRecruiterName,
   type ReferentByCampaign,
-} from '@/lib/hitl/referent-filter';
+} from '@/lib/referent/filter';
 
 const SARAH = { id: 'u-sarah', displayName: 'Sarah Dupont', isActive: true };
 const MARC = { id: 'u-marc', displayName: 'Marc Lefèvre', isActive: true };

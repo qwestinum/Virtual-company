@@ -24,14 +24,24 @@ import { Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { CandidatureDismissDialog } from '@/components/candidatures/CandidatureDismissDialog';
+import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
 import {
   markCandidateInterview,
   markCandidateValidation,
 } from '@/lib/dashboard/candidate-actions';
 import type { InterviewPipeline } from '@/lib/interviews/pipeline';
+import type { RowReferent } from '@/lib/interviews/referent-resolution';
+import {
+  ALL_REFERENTS,
+  buildReferentOptionsBy,
+  filterByReferentBy,
+  myReferentCountBy,
+  type ReferentSelection,
+} from '@/lib/referent/filter';
 
 import { AwaitingList, type AwaitingItem } from './AwaitingList';
 import { InterviewSignals } from './InterviewSignals';
+import { InterviewTabs, type InterviewTabKey } from './InterviewTabs';
 import { NoShowDialog, type NoShowChoice } from './NoShowDialog';
 import { ScheduledList, type ScheduledItem } from './ScheduledList';
 
@@ -44,7 +54,14 @@ const EMPTY: InterviewPipeline = {
 };
 
 type Row = AwaitingItem | ScheduledItem;
-type PageTab = 'scheduled' | 'awaiting' | 'verdict';
+type PageTab = InterviewTabKey;
+
+/**
+ * Le filtre porte sur le recruteur AFFICHÉ — celui qui TIENT le rendez-vous
+ * pour un créneau déjà pris, le référent de la campagne pour une invitation en
+ * attente. Filtrer sur autre chose que ce qui est écrit ferait mentir l'écran.
+ */
+const referentOfRow = (row: RowReferent) => row.referent;
 
 export function InterviewsWorkspace({
   initialSection = null,
@@ -53,6 +70,10 @@ export function InterviewsWorkspace({
   initialSection?: 'a_pointer' | 'awaiting' | null;
 }) {
   const [pipeline, setPipeline] = useState<InterviewPipeline>(EMPTY);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Commodité de LECTURE : aucune restriction d'accès, aucune persistance.
+  const [referentFilter, setReferentFilter] =
+    useState<ReferentSelection>(ALL_REFERENTS);
   // Défaut : les entretiens. C'est l'agenda de la semaine — ce qu'on vient
   // regarder en ouvrant la page ; les invitations en attente sont une file
   // qu'on traite, pas ce qu'on consulte en premier.
@@ -69,7 +90,11 @@ export function InterviewsWorkspace({
     try {
       const res = await fetch('/api/interviews', { cache: 'no-store' });
       if (!res.ok) return;
-      setPipeline((await res.json()) as InterviewPipeline);
+      const json = (await res.json()) as InterviewPipeline & {
+        currentUserId?: string | null;
+      };
+      setPipeline(json);
+      setCurrentUserId(json.currentUserId ?? null);
     } catch {
       // Réseau KO : on garde l'état précédent plutôt que de vider l'écran.
     } finally {
@@ -182,6 +207,22 @@ export function InterviewsWorkspace({
     }
   }
 
+  // Le filtre s'applique aux LISTES. Les compteurs d'alerte, eux, restent sur
+  // le pipeline complet (cf. plus bas) : un filtre de confort ne masque jamais
+  // un dossier en souffrance.
+  const allRows: RowReferent[] = [
+    ...pipeline.awaiting,
+    ...pipeline.scheduled,
+    ...pipeline.verdict,
+  ];
+  const options = buildReferentOptionsBy(allRows, referentOfRow);
+  const myCount = myReferentCountBy(allRows, referentOfRow, currentUserId);
+  const filter = <T extends RowReferent>(rows: T[]) =>
+    filterByReferentBy(rows, referentOfRow, referentFilter);
+  const awaiting = filter(pipeline.awaiting);
+  const scheduled = filter(pipeline.scheduled);
+  const verdictRows = filter(pipeline.verdict);
+
   return (
     <div className="h-full overflow-auto px-6 py-6">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -206,27 +247,40 @@ export function InterviewsWorkspace({
 
         <InterviewSignals orphans={pipeline.orphans} />
 
-        <nav className="flex flex-wrap gap-1 border-b border-stone-200">
-          <Tab
-            active={tab === 'scheduled'}
-            onClick={() => setTab('scheduled')}
-            label="Entretiens"
-            count={pipeline.counts.scheduled}
-            alert={pipeline.counts.toPoint}
-          />
-          <Tab
-            active={tab === 'awaiting'}
-            onClick={() => setTab('awaiting')}
-            label="En attente de réservation"
-            count={pipeline.counts.awaiting}
-          />
-          <Tab
-            active={tab === 'verdict'}
-            onClick={() => setTab('verdict')}
-            label="En attente de verdict"
-            count={pipeline.counts.verdict}
-          />
-        </nav>
+        <ReferentFilterBar
+          options={options}
+          selection={referentFilter}
+          onChange={setReferentFilter}
+          myCount={myCount}
+          currentUserId={currentUserId}
+        />
+
+        <InterviewTabs
+          active={tab}
+          onSelect={setTab}
+          tabs={[
+            {
+              key: 'scheduled',
+              label: 'Entretiens',
+              count: scheduled.length,
+              total: pipeline.counts.scheduled,
+              // Compte d'ALERTE : toujours celui du pipeline complet.
+              alert: pipeline.counts.toPoint,
+            },
+            {
+              key: 'awaiting',
+              label: 'En attente de réservation',
+              count: awaiting.length,
+              total: pipeline.counts.awaiting,
+            },
+            {
+              key: 'verdict',
+              label: 'En attente de verdict',
+              count: verdictRows.length,
+              total: pipeline.counts.verdict,
+            },
+          ]}
+        />
 
         {pipeline.counts.unresolved > 0 ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12.5px] text-amber-900">
@@ -251,14 +305,14 @@ export function InterviewsWorkspace({
           </p>
         ) : tab === 'awaiting' ? (
           <AwaitingList
-            rows={pipeline.awaiting}
+            rows={awaiting}
             busyId={busyId}
             onReinvite={(row) => void reinvite(row, 'reinvite')}
             onDismiss={setDismissing}
           />
         ) : (
           <ScheduledList
-            rows={tab === 'verdict' ? pipeline.verdict : pipeline.scheduled}
+            rows={tab === 'verdict' ? verdictRows : scheduled}
             busyId={busyId}
             onRealized={(row) => void mark(row, 'realized')}
             onMissed={setNoShow}
@@ -295,39 +349,5 @@ export function InterviewsWorkspace({
         />
       ) : null}
     </div>
-  );
-}
-
-function Tab({
-  active,
-  onClick,
-  label,
-  count,
-  alert = 0,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-  alert?: number;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`-mb-px border-b-2 px-3 py-2 font-body text-[13px] font-semibold ${
-        active
-          ? 'border-stone-800 text-stone-900'
-          : 'border-transparent text-stone-500 hover:text-stone-700'
-      }`}
-    >
-      {label}
-      <span className="ml-1.5 text-stone-400">{count}</span>
-      {alert > 0 ? (
-        <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 align-middle font-data text-[10px] font-bold text-white">
-          {alert}
-        </span>
-      ) : null}
-    </button>
   );
 }

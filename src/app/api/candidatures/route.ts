@@ -24,6 +24,7 @@ import {
   CANDIDATE_STAGES,
   type CandidateStage,
 } from '@/lib/reporting/candidate-stage';
+import { loadReferentContext } from '@/lib/referent/context';
 import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
 import type {
   CandidateAnalysisFilters,
@@ -104,7 +105,14 @@ export async function GET(request: Request): Promise<NextResponse> {
           (!everInterviewed || signals.interviewMarks.get(c.uid) === 'realized'),
       );
       const rows = filtered.slice(offset, offset + limit);
-      return NextResponse.json({ rows, total: filtered.length });
+      // Référent des campagnes de la PAGE — la fiche candidature ne doit pas
+      // être le seul écran à taire qui est responsable du dossier. Une passe
+      // pour la page, jamais une requête par ligne.
+      return NextResponse.json({
+        rows,
+        total: filtered.length,
+        ...(await loadReferentContext(rows.map((r) => r.campaignId))),
+      });
     }
 
     // Pas de filtre d'étape : pagination SQL exacte.
@@ -116,7 +124,11 @@ export async function GET(request: Request): Promise<NextResponse> {
       ...c,
       stage: stageFor(c, signals),
     }));
-    return NextResponse.json({ rows, total });
+    return NextResponse.json({
+      rows,
+      total,
+      ...(await loadReferentContext(rows.map((r) => r.campaignId))),
+    });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json({ error: 'supabase_not_configured' }, { status: 503 });

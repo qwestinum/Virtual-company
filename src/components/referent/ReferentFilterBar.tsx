@@ -18,7 +18,7 @@ import {
   referentSelectionKey,
   type ReferentOption,
   type ReferentSelection,
-} from '@/lib/hitl/referent-filter';
+} from '@/lib/referent/filter';
 
 export function ReferentFilterBar({
   options,

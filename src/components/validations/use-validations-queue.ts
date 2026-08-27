@@ -16,7 +16,7 @@
 import { useEffect, useState } from 'react';
 
 import { hydrateArtifactsForCampaign } from '@/lib/db/sync/artifacts-sync';
-import type { ReferentByCampaign } from '@/lib/hitl/referent-filter';
+import type { ReferentByCampaign } from '@/lib/referent/filter';
 import type { DecisionZone, PendingValidation } from '@/types/hitl';
 
 export type QueueState =

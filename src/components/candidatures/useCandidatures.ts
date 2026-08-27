@@ -7,6 +7,7 @@ import {
   type CandidateStageCounts,
   emptyStageCounts,
 } from '@/lib/reporting/candidate-stage';
+import type { ReferentByCampaign } from '@/lib/referent/filter';
 import type { CandidateListItem } from '@/types/reporting';
 
 export const CANDIDATURES_PAGE_SIZE = 50;
@@ -76,6 +77,9 @@ export function useCandidatures() {
   const [counts, setCounts] = useState<CandidateStageCounts>(emptyStageCounts());
   const [perimeterTotal, setPerimeterTotal] = useState(0);
   const [refreshToken, setRefreshToken] = useState(0);
+  // Référent des campagnes de la page courante, servi avec la liste (une passe
+  // serveur, jamais une requête par fiche).
+  const [referents, setReferents] = useState<ReferentByCampaign>({});
 
   // Debounce de la recherche (la liste ne refetch pas à chaque frappe).
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -154,10 +158,12 @@ export function useCandidatures() {
         const json = (await res.json()) as {
           rows: CandidateListItem[];
           total: number;
+          referentByCampaign?: ReferentByCampaign;
         };
         if (!cancelled) {
           setRows(json.rows);
           setListTotal(json.total);
+          setReferents(json.referentByCampaign ?? {});
         }
       } catch {
         // silencieux
@@ -216,6 +222,7 @@ export function useCandidatures() {
     counts,
     perimeterTotal,
     rows,
+    referents,
     listTotal,
     loadingList,
     page,

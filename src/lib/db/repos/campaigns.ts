@@ -237,31 +237,53 @@ export async function patchCampaign(
 }
 
 /**
- * Référent (`owner_user_id`) des campagnes demandées — projection MINIMALE.
+ * Projection MINIMALE des campagnes demandées : de quoi nommer une campagne,
+ * dire qui en est le référent et savoir sous quel régime de réservation elle
+ * tourne. Rien de plus.
  *
  * Pourquoi pas `listCampaigns()` : elle n'a pas de `.range()` et retombe donc
  * sous le plafond PostgREST de 1000 lignes (règle « zéro troncature
- * silencieuse »). Ici la borne ne dépend PAS du volume de la table : on
- * n'interroge que les ids présents dans la file, par chunks calibrés sous le
- * cap. Une campagne absente de la table (ligne orpheline) ne figure pas dans
- * la Map — l'appelant lit ça comme « référent non défini », jamais comme une
- * erreur.
+ * silencieuse ») — au-delà, les campagnes les plus récentes sortiraient de la
+ * liste SANS erreur, et leurs lignes s'afficheraient « référent non défini »
+ * sans que rien ne le dise. Ici la borne ne dépend PAS du volume de la table :
+ * on n'interroge que les ids réellement nécessaires, par chunks calibrés sous
+ * le cap. Une campagne absente (ligne orpheline) ne figure pas dans la Map —
+ * l'appelant lit ça comme « inconnue », jamais comme une erreur.
  */
-export async function listCampaignOwners(
+export type CampaignSummary = {
+  id: string;
+  name: string;
+  ownerUserId: string | null;
+  schedulingNative: boolean;
+};
+
+export async function listCampaignSummaries(
   campaignIds: readonly string[],
-): Promise<Map<string, string | null>> {
+): Promise<Map<string, CampaignSummary>> {
   const ids = [...new Set(campaignIds)];
-  const owners = new Map<string, string | null>();
-  if (ids.length === 0) return owners;
+  const out = new Map<string, CampaignSummary>();
+  if (ids.length === 0) return out;
   const supabase = requireServerSupabase();
   for (const part of chunk(ids, 300)) {
     const { data, error } = await supabase
       .from(TABLE)
-      .select('id, owner_user_id')
+      .select('id, name, owner_user_id, scheduling_native')
       .in('id', part);
-    if (error) throw new Error(`listCampaignOwners: ${error.message}`);
-    const rows = (data ?? []) as { id: string; owner_user_id: string | null }[];
-    for (const row of rows) owners.set(row.id, row.owner_user_id ?? null);
+    if (error) throw new Error(`listCampaignSummaries: ${error.message}`);
+    const rows = (data ?? []) as {
+      id: string;
+      name: string;
+      owner_user_id: string | null;
+      scheduling_native?: boolean | null;
+    }[];
+    for (const row of rows) {
+      out.set(row.id, {
+        id: row.id,
+        name: row.name,
+        ownerUserId: row.owner_user_id ?? null,
+        schedulingNative: row.scheduling_native === true,
+      });
+    }
   }
-  return owners;
+  return out;
 }

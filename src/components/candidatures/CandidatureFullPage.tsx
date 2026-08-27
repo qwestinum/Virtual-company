@@ -21,6 +21,8 @@ import {
 } from '@/lib/reporting/candidate-stage';
 import type { TimelineEvent } from '@/lib/reporting/candidate-timeline';
 import type { CandidateAnalysisDetail, CandidateListItem } from '@/types/reporting';
+import { ReferentMention } from '@/components/referent/ReferentMention';
+import type { ReferentInfo } from '@/lib/referent/filter';
 
 import { CandidatureActions } from './CandidatureActions';
 import {
@@ -46,10 +48,13 @@ export function CandidatureFullPage({
   item,
   onClose,
   onActed,
+  referent = null,
 }: {
   item: CandidateListItem;
   onClose: () => void;
   onActed: () => void;
+  /** Référent ACTIF de la campagne (cf. activeReferentOf) — `null` assumé. */
+  referent?: ReferentInfo | null;
 }) {
   const [data, setData] = useState<DetailResponse | null>(null);
   const [error, setError] = useState(false);
@@ -146,7 +151,12 @@ export function CandidatureFullPage({
           ) : !data ? (
             <Centered>Chargement…</Centered>
           ) : (
-            <Body data={data} item={liveItem} onActed={handleActed} />
+            <Body
+              data={data}
+              item={liveItem}
+              onActed={handleActed}
+              referent={referent}
+            />
           )}
         </div>
       </div>
@@ -172,10 +182,12 @@ function Body({
   data,
   item,
   onActed,
+  referent,
 }: {
   data: DetailResponse;
   item: CandidateListItem;
   onActed: () => void;
+  referent: ReferentInfo | null;
 }) {
   const { candidate, vivierOrigin, cvArtifactId, timeline, stage } = data;
   const { application } = candidate;
@@ -207,6 +219,8 @@ function Body({
               ) : (
                 'Hors campagne'
               )}
+              {' · '}
+              <ReferentMention referent={referent} />
             </p>
           </div>
         </div>

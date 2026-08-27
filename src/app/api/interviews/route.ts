@@ -19,7 +19,8 @@ export const runtime = 'nodejs';
 
 export async function GET(request: Request): Promise<NextResponse> {
   // Métier : accessible à toute session (aucun cloisonnement de données).
-  if (!(await getApiUser())) return unauthorizedResponse();
+  const user = await getApiUser();
+  if (!user) return unauthorizedResponse();
 
   const url = new URL(request.url);
   try {
@@ -27,7 +28,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       campaignId: url.searchParams.get('campaignId'),
     });
     after(() => drainSchedulingEvents());
-    return NextResponse.json(pipeline, {
+    // Identité du lecteur pour le raccourci « Mes campagnes » — rendue par la
+    // ROUTE et non par la page, exactement comme la file des validations : un
+    // seul chemin, quel que soit le point de montage.
+    return NextResponse.json({ ...pipeline, currentUserId: user.id }, {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (err) {

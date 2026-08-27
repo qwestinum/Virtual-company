@@ -16,6 +16,8 @@ import {
   type CandidateStage,
 } from '@/lib/reporting/candidate-stage';
 import type { CandidateAnalysisDetail, CandidateListItem } from '@/types/reporting';
+import { ReferentMention } from '@/components/referent/ReferentMention';
+import type { ReferentInfo } from '@/lib/referent/filter';
 
 import { CandidatureActions } from './CandidatureActions';
 import { DetailPieces, SectionLabel } from './CandidatureDetailBlocks';
@@ -33,6 +35,7 @@ type DetailResponse = {
 export function CandidaturePanel({
   item,
   campaignLabel,
+  referent = null,
   jobTitle,
   onClose,
   onOpenFull,
@@ -40,6 +43,8 @@ export function CandidaturePanel({
 }: {
   item: CandidateListItem;
   campaignLabel: string | null;
+  /** Référent ACTIF de la campagne (cf. activeReferentOf) — `null` assumé. */
+  referent?: ReferentInfo | null;
   /** Intitulé du poste seul — mis en évidence en chip sous le nom. */
   jobTitle: string | null;
   onClose: () => void;
@@ -120,11 +125,15 @@ export function CandidaturePanel({
                 <JobTitleChip title={jobTitle} />
                 <span className="shrink-0 font-inter text-[13px] text-orqa-gris">
                   {item.campaignId ?? 'Sans campagne'}
+                  {' · '}
+                  <ReferentMention referent={referent} />
                 </span>
               </div>
             ) : (
-              <p className="truncate font-inter text-[13px] text-orqa-gris">
+              <p className="font-inter text-[13px] text-orqa-gris">
                 {campaignLabel ?? (item.campaignId ?? 'Sans campagne')}
+                {' · '}
+                <ReferentMention referent={referent} />
               </p>
             )}
             <p className="font-data text-[11.5px] text-orqa-ciel">{item.id}</p>

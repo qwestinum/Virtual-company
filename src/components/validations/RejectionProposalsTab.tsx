@@ -24,7 +24,7 @@ import {
   syncSelectionToFilter,
   toggleSelection,
 } from '@/lib/hitl/bulk-selection';
-import type { ReferentInfo } from '@/lib/hitl/referent-filter';
+import type { ReferentInfo } from '@/lib/referent/filter';
 import type { PendingValidation } from '@/types/hitl';
 
 import { BulkRejectDialog } from './BulkRejectDialog';

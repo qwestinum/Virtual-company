@@ -851,32 +851,36 @@ Spec : `docs/specs/demo-jobboard.md`. Script commercial :
 
 ---
 
-## `listCampaigns()` sans `.range()` — plafond PostgREST sur l'onglet Entretiens
+## `listCampaigns()` sans `.range()` — plafond PostgREST, appelants restants
 
-**Statut** : sans effet au volume actuel, à corriger au prochain passage.
-**Code concerné** : `src/lib/interviews/pipeline.ts` (~l.143), qui charge TOUTES
-les campagnes pour résoudre le référent de chacune.
+**Statut** : sans effet au volume actuel. L'onglet Entretiens a été traité
+(27/08/2026) ; les autres appelants restent à convertir au prochain passage.
 
 `listCampaigns()` (`src/lib/db/repos/campaigns.ts`) n'a pas de `.range()` : elle
 retombe donc sous le **plafond PostgREST de 1000 lignes**, silencieusement —
 exactement la classe de défaut que la règle « zéro troncature silencieuse »
 élimine ailleurs. Au-delà de 1000 campagnes, les plus récentes (tri
-`created_at` croissant) sortiraient de la liste et leurs entretiens
-s'afficheraient « référent non défini » sans qu'aucune erreur ne le dise.
+`created_at` croissant) sortiraient de la liste sans qu'aucune erreur ne le
+dise.
 
-**Piste** : `listCampaignOwners(ids)` (ajoutée pour le filtre par référent des
-validations) fait déjà exactement ce travail — projection `id, owner_user_id`,
-chunkée sur les ids réellement nécessaires, donc insensible au volume de la
-table. `pipeline.ts` n'a besoin que du référent, pas de la campagne entière :
-la substitution est mécanique. À faire le jour où on touche ce fichier, pas
-avant — le volume actuel (quelques dizaines de campagnes) ne le justifie pas.
+**Appelants restants** : `lib/imap/poller.ts`, `lib/interviews/board.ts`,
+`api/campaigns`, `api/metrics/global`, `api/manager/chat`,
+`api/imap/unmatched/[id]/replay`.
+
+**Piste** : `listCampaignSummaries(ids)` — projection `id, name, owner_user_id,
+scheduling_native`, chunkée sur les ids réellement nécessaires, donc insensible
+au volume de la table. Elle convient dès que l'appelant sait quelles campagnes
+il lui faut ; ceux qui ont réellement besoin de TOUTES les campagnes (le
+poller, le sélecteur de `api/campaigns`) demandent un keyset sur
+`listCampaigns` elle-même — c'est le seul cas qui vaut un vrai correctif.
 
 ---
 
 ## `ValidationCard.tsx` au-dessus de la limite des 200 lignes
 
 **Statut** : dette de forme, aucun impact fonctionnel.
-**Code concerné** : `src/components/validations/ValidationCard.tsx` (323 lignes).
+**Code concerné** : `src/components/validations/ValidationCard.tsx` (323 lignes)
+et `src/components/interviews/InterviewsWorkspace.tsx` (351 lignes).
 
 La règle du projet est « un composant = un fichier, max 200 lignes ». La carte
 les dépasse depuis le lot HITL 2d ; le filtre par référent n'y a ajouté qu'une
@@ -884,6 +888,12 @@ prop et un `<span>` (délibérément — on ne refactore pas un composant sensib
 passant). Le hub, lui, a été redécoupé à cette occasion (`use-validations-queue`,
 `SubTabButton`, `EmptyQueueNotice`) et repasse sous la limite.
 
-**Piste** : extraire le bloc « brouillon de mail » (choix de la décision,
-composition, relecture, envoi) — c'est le seul vrai seam : la carte redevient
-un résumé de candidature, l'éditeur devient un composant à part.
+**Piste** : pour la carte, extraire le bloc « brouillon de mail » (choix de la
+décision, composition, relecture, envoi) — c'est le seul vrai seam : la carte
+redevient un résumé de candidature, l'éditeur devient un composant à part.
+Pour l'onglet Entretiens, extraire les handlers d'action (réinvitation,
+pointage, verdict, annulation) dans un `useInterviewActions` : le composant ne
+garderait que l'agencement. Les extractions déjà faites (`InterviewTabs`,
+`ReferentFilterBar`, `use-validations-queue`, `SubTabButton`,
+`EmptyQueueNotice`) ont pris le plus facile ; ce qui reste demande de déplacer
+de la logique, pas du balisage.
