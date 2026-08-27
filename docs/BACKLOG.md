@@ -848,3 +848,42 @@ Spec : `docs/specs/demo-jobboard.md`. Script commercial :
   des formulations de fiche de poste, pas de CV. Le correctif rend leur
   étroitesse inoffensive, mais des listes plus proches du vocabulaire réel des
   CV économiseraient des appels. À travailler dans `scoring-prompts.ts`.
+
+---
+
+## `listCampaigns()` sans `.range()` — plafond PostgREST sur l'onglet Entretiens
+
+**Statut** : sans effet au volume actuel, à corriger au prochain passage.
+**Code concerné** : `src/lib/interviews/pipeline.ts` (~l.143), qui charge TOUTES
+les campagnes pour résoudre le référent de chacune.
+
+`listCampaigns()` (`src/lib/db/repos/campaigns.ts`) n'a pas de `.range()` : elle
+retombe donc sous le **plafond PostgREST de 1000 lignes**, silencieusement —
+exactement la classe de défaut que la règle « zéro troncature silencieuse »
+élimine ailleurs. Au-delà de 1000 campagnes, les plus récentes (tri
+`created_at` croissant) sortiraient de la liste et leurs entretiens
+s'afficheraient « référent non défini » sans qu'aucune erreur ne le dise.
+
+**Piste** : `listCampaignOwners(ids)` (ajoutée pour le filtre par référent des
+validations) fait déjà exactement ce travail — projection `id, owner_user_id`,
+chunkée sur les ids réellement nécessaires, donc insensible au volume de la
+table. `pipeline.ts` n'a besoin que du référent, pas de la campagne entière :
+la substitution est mécanique. À faire le jour où on touche ce fichier, pas
+avant — le volume actuel (quelques dizaines de campagnes) ne le justifie pas.
+
+---
+
+## `ValidationCard.tsx` au-dessus de la limite des 200 lignes
+
+**Statut** : dette de forme, aucun impact fonctionnel.
+**Code concerné** : `src/components/validations/ValidationCard.tsx` (323 lignes).
+
+La règle du projet est « un composant = un fichier, max 200 lignes ». La carte
+les dépasse depuis le lot HITL 2d ; le filtre par référent n'y a ajouté qu'une
+prop et un `<span>` (délibérément — on ne refactore pas un composant sensible en
+passant). Le hub, lui, a été redécoupé à cette occasion (`use-validations-queue`,
+`SubTabButton`, `EmptyQueueNotice`) et repasse sous la limite.
+
+**Piste** : extraire le bloc « brouillon de mail » (choix de la décision,
+composition, relecture, envoi) — c'est le seul vrai seam : la carte redevient
+un résumé de candidature, l'éditeur devient un composant à part.

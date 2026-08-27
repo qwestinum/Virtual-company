@@ -16,9 +16,19 @@
 import { useRef, useState } from 'react';
 
 import { runBulkReject } from '@/lib/hitl/bulk-reject';
+import {
+  emptySelection,
+  isAllSelected,
+  selectedAmong,
+  setAllSelected,
+  syncSelectionToFilter,
+  toggleSelection,
+} from '@/lib/hitl/bulk-selection';
+import type { ReferentInfo } from '@/lib/hitl/referent-filter';
 import type { PendingValidation } from '@/types/hitl';
 
 import { BulkRejectDialog } from './BulkRejectDialog';
+import { EmptyQueueNotice } from './EmptyQueueNotice';
 import { ValidationCard } from './ValidationCard';
 
 /** Au-delà, on le DIT plutôt que de laisser la page ramer sans explication. */
@@ -28,13 +38,22 @@ export function RejectionProposalsTab({
   items,
   onSent,
   onBatchDone,
+  referentOf,
+  filterKey,
+  maskedByFilter,
 }: {
   items: PendingValidation[];
   onSent: (v: PendingValidation, message: string) => void;
   /** Retire du hub les validations effectivement traitées + rend le bilan. */
   onBatchDone: (treatedIds: string[], message: string) => void;
+  /** Référent ACTIF de la campagne d'une validation (cf. activeReferentOf). */
+  referentOf: (campaignId: string) => ReferentInfo | null;
+  /** Clé de la sélection du filtre « Référent » — change ⇒ sélection vidée. */
+  filterKey: string;
+  /** Propositions présentes mais écartées par le filtre (état vide honnête). */
+  maskedByFilter: number;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selection, setSelection] = useState(() => emptySelection(filterKey));
   const [confirming, setConfirming] = useState(false);
   const [running, setRunning] = useState(false);
   // Garde SYNCHRONE : `disabled={running}` ne prend effet qu'au re-render
@@ -46,16 +65,15 @@ export function RejectionProposalsTab({
     total: number;
   } | null>(null);
 
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // JAMAIS de sélection invisible : changer de filtre repart d'une ardoise
+  // propre. Ajustement PENDANT LE RENDU (pas un effet) — sinon un compteur
+  // « 12 sélectionnées » survivrait une frame à un filtre qui n'en montre plus
+  // que trois. Logique pure et testée : cf. lib/hitl/bulk-selection.
+  const synced = syncSelectionToFilter(selection, filterKey, running);
+  if (synced !== selection) setSelection(synced);
 
-  const allSelected = items.length > 0 && selected.size === items.length;
-  const chosen = items.filter((v) => selected.has(v.id));
+  const allSelected = isAllSelected(items, synced);
+  const chosen = selectedAmong(items, synced);
 
   const runBatch = async (sendMail: boolean) => {
     if (runningRef.current) return;
@@ -72,7 +90,7 @@ export function RejectionProposalsTab({
         onProgress: (done, total) => setProgress({ done, total }),
       });
       const treated = report.outcomes.filter((o) => o.ok).map((o) => o.id);
-      setSelected(new Set());
+      setSelection(emptySelection(filterKey));
       setConfirming(false);
       onBatchDone(
         treated,
@@ -89,10 +107,10 @@ export function RejectionProposalsTab({
 
   if (items.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-stone-200 px-4 py-8 text-center font-body text-[13px] italic text-stone-400">
-        Aucune proposition de refus. Le seuil se règle dans les paramètres de
-        décision de chaque campagne.
-      </p>
+      <EmptyQueueNotice
+        maskedByFilter={maskedByFilter}
+        emptyLabel="Aucune proposition de refus. Le seuil se règle dans les paramètres de décision de chaque campagne."
+      />
     );
   }
 
@@ -113,8 +131,12 @@ export function RejectionProposalsTab({
             type="checkbox"
             checked={allSelected}
             onChange={() =>
-              setSelected(
-                allSelected ? new Set() : new Set(items.map((v) => v.id)),
+              setSelection(
+                setAllSelected(
+                  synced,
+                  items.map((v) => v.id),
+                  !allSelected,
+                ),
               )
             }
           />
@@ -130,7 +152,7 @@ export function RejectionProposalsTab({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setSelected(new Set())}
+              onClick={() => setSelection(emptySelection(filterKey))}
               className="rounded-md border border-stone-300 bg-white px-2.5 py-1 font-body text-[12px] font-semibold text-stone-600 hover:bg-stone-50"
             >
               Tout désélectionner
@@ -150,13 +172,17 @@ export function RejectionProposalsTab({
         <div key={v.id} className="flex items-start gap-2">
           <input
             type="checkbox"
-            checked={selected.has(v.id)}
-            onChange={() => toggle(v.id)}
+            checked={synced.ids.has(v.id)}
+            onChange={() => setSelection(toggleSelection(synced, v.id))}
             className="mt-4"
             aria-label={`Sélectionner ${v.candidateName}`}
           />
           <div className="min-w-0 flex-1">
-            <ValidationCard v={v} onSent={onSent} />
+            <ValidationCard
+              v={v}
+              onSent={onSent}
+              referent={referentOf(v.campaignId)}
+            />
           </div>
         </div>
       ))}

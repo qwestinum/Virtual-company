@@ -10,85 +10,67 @@
  *
  * DEUX SOUS-ONGLETS depuis le refus groupé, et une seule file en dessous : la
  * partition est stricte (cf. partitionRejectionProposals), rien ne tombe entre
- * les deux. « À examiner » reste le comportement historique à l'identique ;
- * « Propositions de refus » ne fait qu'y prélever ce qu'un seuil de campagne
- * désigne, pour permettre le geste groupé.
+ * les deux.
+ *
+ * Par-dessus, un FILTRE par recruteur référent (cf. referent-filter) : une
+ * commodité de LECTURE, jamais une restriction d'accès — tout reste
+ * consultable et actionnable par tout le monde.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { hydrateArtifactsForCampaign } from '@/lib/db/sync/artifacts-sync';
-import type { DecisionZone, PendingValidation } from '@/types/hitl';
-
+import {
+  activeReferentOf,
+  ALL_REFERENTS,
+  buildReferentOptions,
+  filterByReferent,
+  myCampaignsCount,
+  referentSelectionKey,
+  type ReferentSelection,
+} from '@/lib/hitl/referent-filter';
 import {
   partitionRejectionProposals,
   sortRejectionProposals,
 } from '@/lib/hitl/rejection-proposal';
+import type { PendingValidation } from '@/types/hitl';
 
+import { EmptyQueueNotice } from './EmptyQueueNotice';
+import { ReferentFilterBar } from './ReferentFilterBar';
 import { RejectionProposalsTab } from './RejectionProposalsTab';
+import { SubTabButton } from './SubTabButton';
+import { useValidationsQueue } from './use-validations-queue';
 import { ValidationCard } from './ValidationCard';
 import { ValidationsHistory } from './ValidationsHistory';
 
 type SubTab = 'examine' | 'proposals';
 
-type LoadState =
-  | { kind: 'loading' }
-  | { kind: 'ready'; items: PendingValidation[] }
-  | { kind: 'error'; message: string };
-
 export function ValidationsHub() {
-  const [state, setState] = useState<LoadState>({ kind: 'loading' });
-  // Zone FIGÉE AU SCORING de chaque validation, servie par l'API. C'est elle
-  // qui décide du sous-onglet — jamais une comparaison de score au seuil
-  // courant de la campagne, qui re-jugerait un dossier avec un barème qu'il
-  // n'a jamais connu (cf. rejection-proposal.ts).
-  const [zones, setZones] = useState<Record<string, DecisionZone | null>>({});
+  const {
+    state,
+    zones,
+    referents,
+    currentUserId,
+    history,
+    loadHistory,
+    applySent,
+    applyBatchDone,
+  } = useValidationsQueue();
+  // Filtre de LECTURE, volontairement NON persisté (ni URL, ni localStorage) :
+  // un filtre oublié qui masque des dossiers est pire que pas de filtre.
+  const [referentFilter, setReferentFilter] =
+    useState<ReferentSelection>(ALL_REFERENTS);
   const [tab, setTab] = useState<SubTab>('examine');
-  const [history, setHistory] = useState<PendingValidation[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/validations', { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as {
-          validations: PendingValidation[];
-          zoneByValidation?: Record<string, DecisionZone | null>;
-        };
-        if (!cancelled) {
-          setState({ kind: 'ready', items: json.validations });
-          setZones(json.zoneByValidation ?? {});
-        }
-        const campaigns = [...new Set(json.validations.map((v) => v.campaignId))];
-        await Promise.all(campaigns.map((c) => hydrateArtifactsForCampaign(c)));
-      } catch (err) {
-        if (!cancelled)
-          setState({
-            kind: 'error',
-            message: err instanceof Error ? err.message : 'load_failed',
-          });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const flashMessage = (message: string, ms: number) => {
+    setFlash(message);
+    window.setTimeout(() => setFlash(null), ms);
+  };
 
-  const loadHistory = async () => {
-    setShowHistory((s) => !s);
-    if (history.length > 0) return;
-    try {
-      const res = await fetch('/api/validations?status=sent', { cache: 'no-store' });
-      if (res.ok) {
-        const json = (await res.json()) as { validations: PendingValidation[] };
-        setHistory(json.validations);
-      }
-    } catch {
-      // historique best-effort
-    }
+  const toggleHistory = () => {
+    setShowHistory((v) => !v);
+    void loadHistory();
   };
 
   if (state.kind === 'loading') {
@@ -109,30 +91,32 @@ export function ValidationsHub() {
   const { items } = state;
 
   const onSent = (v: PendingValidation, message: string) => {
-    setState({ kind: 'ready', items: items.filter((it) => it.id !== v.id) });
-    setHistory((h) => [{ ...v, status: 'sent' }, ...h]);
-    setFlash(message);
-    window.setTimeout(() => setFlash(null), 3500);
+    applySent(v);
+    flashMessage(message, 3500);
   };
 
-  // Retire du hub les validations traitées par une fournée (celles qui ont
-  // ABOUTI seulement : les échecs restent `pending`, donc restent visibles).
   const onBatchDone = (treatedIds: string[], message: string) => {
-    const treated = new Set(treatedIds);
-    setState({ kind: 'ready', items: items.filter((it) => !treated.has(it.id)) });
-    setHistory((h) => [
-      ...items
-        .filter((it) => treated.has(it.id))
-        .map((it) => ({ ...it, status: 'sent' as const, decision: 'reject' as const })),
-      ...h,
-    ]);
-    setFlash(message);
-    window.setTimeout(() => setFlash(null), 6000);
+    applyBatchDone(treatedIds);
+    flashMessage(message, 6000);
   };
 
+  // La PARTITION reste faite sur la file ENTIÈRE (zone figée au scoring) : le
+  // filtre est posé PAR-DESSUS, il ne redistribue rien entre les sous-onglets.
+  // Les totaux non filtrés restent affichés — un dossier caché reste compté.
   const { proposals, toExamine } = partitionRejectionProposals(items, zones);
   const sortedProposals = sortRejectionProposals(proposals);
-  const shown = tab === 'proposals' ? sortedProposals : toExamine;
+
+  const referentOf = (id: string) => activeReferentOf(id, referents);
+  const filterKey = referentSelectionKey(referentFilter);
+  const options = buildReferentOptions(items, referents);
+  const myCount = myCampaignsCount(items, referents, currentUserId);
+
+  const visibleExamine = filterByReferent(toExamine, referents, referentFilter);
+  const visibleProposals = filterByReferent(
+    sortedProposals,
+    referents,
+    referentFilter,
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -143,7 +127,7 @@ export function ValidationsHub() {
         </p>
         <button
           type="button"
-          onClick={() => void loadHistory()}
+          onClick={toggleHistory}
           className="font-body text-[12px] font-semibold text-stone-500 hover:text-stone-800"
         >
           {showHistory ? 'Masquer l’historique' : 'Historique'}
@@ -155,66 +139,59 @@ export function ValidationsHub() {
         </div>
       ) : null}
 
+      <ReferentFilterBar
+        options={options}
+        selection={referentFilter}
+        onChange={setReferentFilter}
+        myCount={myCount}
+        currentUserId={currentUserId}
+      />
+
       <div className="flex items-center gap-1 border-b border-stone-200">
         <SubTabButton
           active={tab === 'examine'}
           label="À examiner"
-          count={toExamine.length}
+          count={visibleExamine.length}
+          total={toExamine.length}
           onClick={() => setTab('examine')}
         />
         <SubTabButton
           active={tab === 'proposals'}
           label="Propositions de refus"
-          count={sortedProposals.length}
+          count={visibleProposals.length}
+          total={sortedProposals.length}
           onClick={() => setTab('proposals')}
         />
       </div>
 
       {tab === 'proposals' ? (
         <RejectionProposalsTab
-          items={sortedProposals}
+          items={visibleProposals}
           onSent={onSent}
           onBatchDone={onBatchDone}
+          referentOf={referentOf}
+          filterKey={filterKey}
+          maskedByFilter={sortedProposals.length - visibleProposals.length}
         />
-      ) : shown.length === 0 ? (
-        <p className="font-body text-[13px] text-stone-400 italic rounded-lg border border-dashed border-stone-200 px-4 py-8 text-center">
-          Aucune candidature en attente de validation.
-        </p>
+      ) : visibleExamine.length === 0 ? (
+        <EmptyQueueNotice
+          maskedByFilter={toExamine.length}
+          emptyLabel="Aucune candidature en attente de validation."
+        />
       ) : (
         <div className="flex flex-col gap-3">
-          {shown.map((v) => (
-            <ValidationCard key={v.id} v={v} onSent={onSent} />
+          {visibleExamine.map((v) => (
+            <ValidationCard
+              key={v.id}
+              v={v}
+              onSent={onSent}
+              referent={referentOf(v.campaignId)}
+            />
           ))}
         </div>
       )}
 
       {showHistory ? <ValidationsHistory items={history} /> : null}
     </div>
-  );
-}
-
-function SubTabButton({
-  active,
-  label,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  count: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`-mb-px border-b-2 px-3 py-2 font-body text-[13px] font-semibold ${
-        active
-          ? 'border-stone-800 text-stone-900'
-          : 'border-transparent text-stone-500 hover:text-stone-700'
-      }`}
-    >
-      {label} ({count})
-    </button>
   );
 }

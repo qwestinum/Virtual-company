@@ -7,6 +7,7 @@
  */
 
 import { parseLifecycle, reconcileLifecycle } from '@/lib/campaign/lifecycle';
+import { chunk } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { CampaignRow } from '@/lib/db/types';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
@@ -233,4 +234,34 @@ export async function patchCampaign(
     .maybeSingle();
   if (error) throw new Error(`patchCampaign: ${error.message}`);
   return data ? rowToCampaign(data as CampaignRow) : null;
+}
+
+/**
+ * Référent (`owner_user_id`) des campagnes demandées — projection MINIMALE.
+ *
+ * Pourquoi pas `listCampaigns()` : elle n'a pas de `.range()` et retombe donc
+ * sous le plafond PostgREST de 1000 lignes (règle « zéro troncature
+ * silencieuse »). Ici la borne ne dépend PAS du volume de la table : on
+ * n'interroge que les ids présents dans la file, par chunks calibrés sous le
+ * cap. Une campagne absente de la table (ligne orpheline) ne figure pas dans
+ * la Map — l'appelant lit ça comme « référent non défini », jamais comme une
+ * erreur.
+ */
+export async function listCampaignOwners(
+  campaignIds: readonly string[],
+): Promise<Map<string, string | null>> {
+  const ids = [...new Set(campaignIds)];
+  const owners = new Map<string, string | null>();
+  if (ids.length === 0) return owners;
+  const supabase = requireServerSupabase();
+  for (const part of chunk(ids, 300)) {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('id, owner_user_id')
+      .in('id', part);
+    if (error) throw new Error(`listCampaignOwners: ${error.message}`);
+    const rows = (data ?? []) as { id: string; owner_user_id: string | null }[];
+    for (const row of rows) owners.set(row.id, row.owner_user_id ?? null);
+  }
+  return owners;
 }

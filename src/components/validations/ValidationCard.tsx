@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { analysisIdForValidation } from '@/lib/hitl/analysis-key';
+import type { ReferentInfo } from '@/lib/hitl/referent-filter';
 import { decideGrayValidation } from '@/lib/hitl/decide-gray-validation';
 import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import { formatDateTimeFr } from '@/lib/format/datetime';
@@ -23,6 +24,8 @@ import {
   type Artifact,
 } from '@/stores/artifacts-store';
 import type { HitlDecision, PendingValidation } from '@/types/hitl';
+
+import { ReferentMention } from './ReferentMention';
 
 async function openArtifact(artifact: Artifact): Promise<void> {
   if (artifact.storagePath) {
@@ -49,9 +52,12 @@ function candidateSummary(v: PendingValidation): string | null {
 export function ValidationCard({
   v,
   onSent,
+  referent = null,
 }: {
   v: PendingValidation;
   onSent: (v: PendingValidation, message: string) => void;
+  /** Référent ACTIF de la campagne (cf. activeReferentOf) — `null` assumé. */
+  referent?: ReferentInfo | null;
 }) {
   const [chosen, setChosen] = useState<HitlDecision | null>(null);
   const [subject, setSubject] = useState('');
@@ -166,6 +172,8 @@ export function ValidationCard({
           <p className="font-body text-[12px] text-stone-500">
             {v.campaignId}
             {v.candidateEmail ? ` · ${v.candidateEmail}` : ''}
+            {' · '}
+            <ReferentMention referent={referent} />
           </p>
         </div>
         {v.score != null ? (

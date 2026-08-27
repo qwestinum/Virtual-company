@@ -10,7 +10,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { getApiUser } from '@/lib/auth/require-api-user';
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import { listCampaignOwners } from '@/lib/db/repos/campaigns';
+import { listRecruiters } from '@/lib/db/repos/recruiters';
 import { chunk } from '@/lib/db/paginate';
 import {
   getPendingValidation,
@@ -20,6 +23,7 @@ import {
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { mergePendingValidationEnqueue } from '@/lib/hitl/enqueue-merge';
+import type { ReferentInfo } from '@/lib/hitl/referent-filter';
 import {
   HitlDecisionSchema,
   type DecisionZone,
@@ -66,10 +70,71 @@ export async function GET(request: Request): Promise<NextResponse> {
         zoneByValidation[v.id] = uid ? (zoneByUid.get(uid) ?? null) : null;
       }
     }
-    return NextResponse.json({ validations, zoneByValidation });
+    // Référent de CHAQUE campagne présente dans la file, en UNE passe pour
+    // toute la page (deux requêtes), jamais une par carte.
+    const { referentByCampaign, currentUserId } =
+      await loadReferentContext(validations);
+    return NextResponse.json({
+      validations,
+      zoneByValidation,
+      referentByCampaign,
+      currentUserId,
+    });
   } catch (err) {
     console.error('[api/validations] GET failed', err);
     return NextResponse.json({ validations: [], zoneByValidation: {} });
+  }
+}
+
+/**
+ * Contexte « référent » de la file : qui pilote chaque campagne, et qui
+ * regarde. DEUX requêtes pour toute la page — `listCampaignOwners`
+ * (projection minimale, chunkée, donc insensible au volume de la table
+ * `campaigns`) puis le référentiel des recruteurs, qui tient en quelques
+ * lignes.
+ *
+ * Les recruteurs DÉSACTIVÉS sont chargés eux aussi : c'est `isActive` qui
+ * permet à l'affichage de dire « référent non défini » plutôt que d'exhiber
+ * le nom de quelqu'un qui a quitté l'espace.
+ *
+ * `currentUserId` est rendu ICI plutôt que passé par la page, parce que le hub
+ * a deux points de montage (`/validations` et l'onglet du workspace) : un seul
+ * chemin vaut mieux que deux props à tenir synchronisées.
+ *
+ * Fail-soft intégral : toute panne rend un contexte vide (aucun référent, pas
+ * de raccourci « Mes campagnes »), jamais une erreur. Le filtre est un
+ * confort de lecture — il ne doit jamais emporter la file elle-même.
+ */
+async function loadReferentContext(
+  validations: readonly PendingValidation[],
+): Promise<{
+  referentByCampaign: Record<string, ReferentInfo | null>;
+  currentUserId: string | null;
+}> {
+  try {
+    const campaignIds = [...new Set(validations.map((v) => v.campaignId))];
+    const [owners, recruiters, user] = await Promise.all([
+      listCampaignOwners(campaignIds),
+      listRecruiters().catch(() => []),
+      getApiUser().catch(() => null),
+    ]);
+    const byId = new Map(recruiters.map((r) => [r.id, r]));
+    const referentByCampaign: Record<string, ReferentInfo | null> = {};
+    for (const campaignId of campaignIds) {
+      const ownerId = owners.get(campaignId) ?? null;
+      const recruiter = ownerId ? byId.get(ownerId) : undefined;
+      referentByCampaign[campaignId] = recruiter
+        ? {
+            id: recruiter.id,
+            displayName: recruiter.displayName,
+            isActive: recruiter.isActive,
+          }
+        : null;
+    }
+    return { referentByCampaign, currentUserId: user?.id ?? null };
+  } catch (err) {
+    console.error('[api/validations] referent enrichment failed', err);
+    return { referentByCampaign: {}, currentUserId: null };
   }
 }
 
