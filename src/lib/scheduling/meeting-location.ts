@@ -25,6 +25,24 @@ export function resolveMeetingLocation(params: {
   return params.targetOverride ?? params.resourceDefault ?? null;
 }
 
+/**
+ * Un lieu est-il RÉELLEMENT exploitable ? Un type sans détail n'en est pas un :
+ * « Par téléphone » sans consigne ne dit pas qui appelle qui, « Sur place »
+ * sans adresse n'indique nulle part où aller.
+ *
+ * Le module lit déjà cette règle à la relecture (`parseMeetingLocation` rend
+ * `null` sur un détail vide) ; l'exposer permet aux écrans de la dire AVANT
+ * l'enregistrement, plutôt que de laisser l'utilisateur croire qu'il a posé un
+ * lieu qui disparaîtra silencieusement au prochain chargement.
+ */
+export function isMeetingLocationComplete(
+  location: MeetingLocation | null,
+): boolean {
+  if (!location) return false;
+  const detail = describeMeetingLocation(location);
+  return Boolean(detail && detail.trim());
+}
+
 /** Garde de forme sur une valeur venue de la base ou d'un appelant non typé. */
 export function parseMeetingLocation(value: unknown): MeetingLocation | null {
   if (!value || typeof value !== 'object') return null;

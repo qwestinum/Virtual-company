@@ -17,6 +17,7 @@ import {
   canEmitBookingLink,
   emitCampaignBookingLink,
   isNativeSchedulingCampaign,
+  resolveCampaignMeetingLocation,
 } from '@/lib/scheduling-host/campaign-booking';
 import { resolveOrganizationName } from '@/types/branding';
 import { getCampaign } from '@/lib/db/repos/campaigns';
@@ -177,7 +178,16 @@ export type BuildInterviewMailResult = {
    * Pourquoi l'envoi est bloqué — les deux régimes échouent pour des raisons
    * différentes, et le message rendu au DRH doit le dire.
    */
-  blockedReason?: 'agenda_link_not_configured' | 'native_link_unavailable';
+  blockedReason?:
+    | 'agenda_link_not_configured'
+    | 'native_link_unavailable'
+    /**
+     * Régime natif, référent réservable — mais AUCUN lieu d'entretien (ni sur
+     * l'agenda du référent, ni en surcharge de campagne). Distinguée de
+     * `native_link_unavailable` parce que le geste de réparation n'est pas le
+     * même : renseigner un lieu, et non ouvrir des disponibilités.
+     */
+    | 'meeting_location_missing';
   mail: { subject: string; html: string };
 };
 
@@ -203,6 +213,19 @@ async function resolveInvitationLink(
         args.campaignId,
       );
       return { link: '', reason: 'native_link_unavailable' };
+    }
+    // Un lien ne s'émet pas vers un rendez-vous sans lieu : le candidat
+    // réserverait un créneau sans savoir où il se tient, et le mail de
+    // confirmation omettrait purement et simplement la ligne « Où ». La sonde
+    // du gate a déjà vérifié ce point, mais elle a pu tourner il y a plusieurs
+    // secondes — c'est ici que rien n'est encore parti.
+    const place = await resolveCampaignMeetingLocation(args.campaignId);
+    if (!place.resolved) {
+      console.error(
+        '[interview-mail] campagne en réservation native sans lieu d’entretien',
+        args.campaignId,
+      );
+      return { link: '', reason: 'meeting_location_missing' };
     }
     const settings = await getAppSettings().catch(() => null);
     const url = await emitCampaignBookingLink({

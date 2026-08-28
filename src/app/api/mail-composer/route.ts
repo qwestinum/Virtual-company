@@ -14,7 +14,10 @@ import { NextResponse } from 'next/server';
 import { getSynthesisReplyToForCampaign } from '@/lib/campaign/synthesis-recipients';
 import { z } from 'zod';
 
-import { buildInterviewMail } from '@/lib/agents/server/interview-mail';
+import {
+  buildInterviewMail,
+  type BuildInterviewMailResult,
+} from '@/lib/agents/server/interview-mail';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import {
   claimOutreach,
@@ -132,6 +135,18 @@ function buildMarkdownTrace(
     .join('\n');
 }
 
+/** Un message par cause : chacune se répare dans un écran différent. */
+const BLOCKED_MESSAGES: Record<
+  NonNullable<BuildInterviewMailResult['blockedReason']>,
+  string
+> = {
+  agenda_link_not_configured: 'Lien d’agenda non configuré dans les paramètres.',
+  native_link_unavailable:
+    'Réservation native : le recruteur référent de cette campagne n’a pas de disponibilités configurées.',
+  meeting_location_missing:
+    'Réservation native : aucun lieu d’entretien n’est renseigné (agenda du référent ou lieu de la campagne). Sans lui, le candidat réserverait sans savoir où se tient le rendez-vous.',
+};
+
 export async function POST(request: Request): Promise<NextResponse> {
   let parsed: RequestBody;
   try {
@@ -200,17 +215,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       draft: parsed.draft,
     });
     if (result.blocked) {
-      // Deux régimes, deux causes — et deux gestes différents pour le DRH :
-      // renseigner un lien dans les réglages, ou donner des disponibilités au
-      // référent de la campagne.
-      const native = result.blockedReason === 'native_link_unavailable';
+      // Trois causes — et trois gestes différents pour le DRH : renseigner un
+      // lien dans les réglages, donner des disponibilités au référent, ou lui
+      // poser un lieu d'entretien. Un message générique renverrait au mauvais
+      // écran, ce qui coûte plus cher qu'un blocage.
+      const reason = result.blockedReason ?? 'agenda_link_not_configured';
       return NextResponse.json(
-        {
-          error: native ? 'native_link_unavailable' : 'agenda_link_not_configured',
-          message: native
-            ? 'Réservation native : le recruteur référent de cette campagne n’a pas de disponibilités configurées.'
-            : 'Lien d’agenda non configuré dans les paramètres.',
-        },
+        { error: reason, message: BLOCKED_MESSAGES[reason] },
         { status: 503 },
       );
     }

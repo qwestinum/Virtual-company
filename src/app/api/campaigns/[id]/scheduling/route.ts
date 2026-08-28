@@ -17,7 +17,8 @@ import { NextResponse } from 'next/server';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { listRecruiters } from '@/lib/db/repos/recruiters';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
-import { getTarget, getTargetImpact } from '@/lib/scheduling';
+import { getTargetImpact } from '@/lib/scheduling';
+import { resolveCampaignMeetingLocation } from '@/lib/scheduling-host/campaign-booking';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 
 export const runtime = 'nodejs';
@@ -40,18 +41,28 @@ export async function GET(
         activeLinks: 0,
         bookings: [],
         meetingLocationOverride: null,
+        inheritedMeetingLocation: null,
       });
     }
 
     await ensureSchedulingConfigured();
-    const [impact, target] = await Promise.all([getTargetImpact(id), getTarget(id)]);
-    const meetingLocationOverride = target?.meetingLocationOverride ?? null;
+    // Le lieu HÉRITÉ voyage avec la surcharge : un écran qui propose
+    // « hériter du référent » doit montrer ce dont il hérite. Annoncer un
+    // héritage sans dire lequel laisse croire au recruteur qu'il a posé le
+    // lieu qu'il avait en tête — c'est exactement le malentendu à couper.
+    const [impact, place] = await Promise.all([
+      getTargetImpact(id),
+      resolveCampaignMeetingLocation(id),
+    ]);
+    const meetingLocationOverride = place.override;
+    const inheritedMeetingLocation = place.inherited;
     if (!impact) {
       return NextResponse.json({
         native: true,
         activeLinks: 0,
         bookings: [],
         meetingLocationOverride,
+        inheritedMeetingLocation,
       });
     }
 
@@ -63,6 +74,7 @@ export async function GET(
     return NextResponse.json({
       native: true,
       meetingLocationOverride,
+      inheritedMeetingLocation,
       activeLinks: impact.activeLinks,
       bookings: impact.confirmedUpcomingBookings.map((b) => ({
         recruiterName: names.get(b.resourceExternalRef) ?? 'un recruteur',

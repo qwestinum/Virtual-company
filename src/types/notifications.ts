@@ -9,7 +9,8 @@ export type BusinessSignalKey =
   | 'pending_validations_overdue'
   | 'interviews_awaiting_decision'
   | 'interviews_awaiting_pointing'
-  | 'availability_holidays_unblocked';
+  | 'availability_holidays_unblocked'
+  | 'availability_meeting_location_missing';
 
 /**
  * Cible de navigation INTERNE (onglets du WorkspacePane — pas de route Next

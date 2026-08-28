@@ -129,8 +129,10 @@ export async function dispatchImapCandidateOutreach(
       campaignId: isTaskOwner ? null : input.campaignId,
       payload: {
         // Une seule cause côté métier : rien pour réserver. Le détail (lien
-        // Cal.com absent vs référent sans disponibilités) se lit sur la
-        // campagne — le journal dit le FAIT, pas le régime.
+        // Cal.com absent, référent sans disponibilités, ou aucun lieu
+        // d'entretien) se lit sur la campagne — le journal dit le FAIT, pas le
+        // régime. Le motif précis, lui, est rendu par `imap_outreach_skipped`
+        // en aval, quand la composition a été tentée.
         reason: 'agenda_link_not_configured',
         candidate: candidate.candidateName,
         uid: input.uid,

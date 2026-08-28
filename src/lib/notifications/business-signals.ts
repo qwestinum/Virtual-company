@@ -28,7 +28,7 @@ import {
 } from '@/lib/db/repos/pending-validations';
 import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
-import { getResource, listExceptions, listWeeklyRules } from '@/lib/scheduling';
+import { getResource, isMeetingLocationComplete, listExceptions, listWeeklyRules } from '@/lib/scheduling';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { BusinessSignal } from '@/types/notifications';
 
@@ -324,6 +324,52 @@ async function computeAvailabilityHolidaysUnblocked(
   };
 }
 
+/**
+ * SIGNAL 5 — agenda sans lieu d'entretien.
+ *
+ * Un agenda ouvert mais sans lieu ne fait pas échouer une réservation : il
+ * fait pire. L'invitation est BLOQUÉE au moment de l'envoi (`canEmitBookingLink`)
+ * — donc découverte en pleine campagne, sur un candidat retenu, par quelqu'un
+ * qui ne sait pas encore que la cause est dans ses propres réglages. Le signal
+ * existe pour que ce blocage soit connu AVANT d'avoir un candidat à inviter.
+ *
+ * Trois précisions qui comptent :
+ *   - réglage PERSONNEL, donc lu dans le contexte (réclamer à Paul de remplir
+ *     l'agenda de Marie ne mène à rien) ;
+ *   - on n'alerte QUE si des plages sont ouvertes : sans règle hebdomadaire,
+ *     l'agenda est en cours de configuration et le signal 4 comme celui-ci
+ *     harcèleraient quelqu'un qui n'a pas fini de saisir ;
+ *   - la surcharge de campagne ne rattrape rien ici : elle est PAR campagne,
+ *     et l'agenda sert toutes les autres.
+ */
+async function computeAvailabilityMeetingLocationMissing(
+  _nowMs: number,
+  ctx: SignalContext,
+): Promise<BusinessSignal | null> {
+  if (!ctx.recruiterId) return null;
+
+  // Même raison qu'au signal 4 : sans les ports, `getResource` LÈVE, et un
+  // `.catch(() => null)` éteindrait le signal partout sans que rien ne le dise.
+  await ensureSchedulingConfigured();
+  const resource = await getResource(ctx.recruiterId);
+  if (!resource || !resource.isActive) return null;
+  if (isMeetingLocationComplete(resource.meetingLocation)) return null;
+
+  const rules = await listWeeklyRules(resource.externalRef);
+  if (rules.length === 0) return null; // agenda encore en construction
+
+  return {
+    key: 'availability_meeting_location_missing',
+    count: 1,
+    // Ce signal ne vieillit pas : il est vrai ou il ne l'est pas.
+    oldestDays: 0,
+    message:
+      'Ton agenda n’indique aucun lieu d’entretien : aucune invitation ne peut partir pour les campagnes dont tu es référent.',
+    ctaLabel: 'Renseigner le lieu de l’entretien',
+    target: { route: '/settings' },
+  };
+}
+
 /** Jour civil `YYYY-MM-DD` tel que le vit la ressource, pas tel que l'UTC. */
 function localDay(nowMs: number, timeZone: string): string {
   // `en-CA` rend précisément `YYYY-MM-DD`, et `timeZone` fait le décalage.
@@ -364,6 +410,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'availability_holidays_unblocked',
     compute: computeAvailabilityHolidaysUnblocked,
+  },
+  {
+    key: 'availability_meeting_location_missing',
+    compute: computeAvailabilityMeetingLocationMissing,
   },
 ];
 

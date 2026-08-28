@@ -147,6 +147,7 @@ export {
 // Lieu de rencontre — opaque, résolu en un point unique
 export {
   describeMeetingLocation,
+  isMeetingLocationComplete,
   parseMeetingLocation,
   resolveMeetingLocation,
 } from './meeting-location';

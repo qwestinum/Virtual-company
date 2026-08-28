@@ -28,13 +28,15 @@ import {
   getTarget,
   listLinksForTarget,
   repointTarget,
+  resolveMeetingLocation,
   revokeLink,
   type Booking,
   type BookingLink,
+  type MeetingLocation,
 } from '@/lib/scheduling';
 
 import { ensureSchedulingConfigured } from './configure';
-import { recruiterCanHostBookings } from './recruiter-resource';
+import { getRecruiterResource, recruiterCanHostBookings } from './recruiter-resource';
 
 /** Durée de vie d'un lien d'invitation — alignée sur le lien CV signé. */
 const LINK_TTL_DAYS = 30;
@@ -92,9 +94,63 @@ export async function canEmitBookingLink(campaignId: string): Promise<boolean> {
     if (!campaign?.ownerUserId) return false;
     const recruiter = await getRecruiter(campaign.ownerUserId);
     if (!recruiter?.isActive) return false;
-    return await recruiterCanHostBookings(campaign.ownerUserId);
+    if (!(await recruiterCanHostBookings(campaign.ownerUserId))) return false;
+    // Un agenda ouvert ne suffit pas : sans lieu, le candidat réserverait un
+    // rendez-vous dont personne ne lui dit où il se tient. C'est le seul
+    // endroit qui le garantit pour TOUS les chemins d'envoi (chat, poller,
+    // réinvitation, refus groupé) — l'écran, lui, ne fait que prévenir.
+    const location = await resolveCampaignMeetingLocation(campaignId);
+    return location.resolved !== null;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Où se tient un entretien de cette campagne — les trois faits d'un coup.
+ *
+ * `resolved` est ce que le candidat verra ; il vaut la surcharge de campagne
+ * si elle existe, sinon le lieu du référent. La résolution elle-même reste
+ * celle du module (`resolveMeetingLocation`) : on ne réécrit pas la règle ici,
+ * on lui fournit ses deux entrées. `inherited` est rendu à part parce qu'un
+ * écran qui propose « hériter du référent » doit pouvoir MONTRER ce dont il
+ * hérite — annoncer un héritage sans dire lequel n'aide personne.
+ *
+ * Fail-soft : une lecture impossible rend trois `null`. L'appelant qui décide
+ * d'envoyer (la sonde) traite alors « inconnu » comme « pas de lieu », ce qui
+ * bloque — c'est le bon sens de la panne pour une garde.
+ */
+export async function resolveCampaignMeetingLocation(campaignId: string): Promise<{
+  /** Lieu du référent de la campagne. */
+  inherited: MeetingLocation | null;
+  /** Lieu propre à la campagne, s'il a été posé. */
+  override: MeetingLocation | null;
+  /** Ce qui sera réellement annoncé au candidat. */
+  resolved: MeetingLocation | null;
+}> {
+  const empty = { inherited: null, override: null, resolved: null };
+  try {
+    await ensureSchedulingConfigured();
+    const campaign = await getCampaign(campaignId);
+    if (!campaign) return empty;
+    const [resource, target] = await Promise.all([
+      campaign.ownerUserId
+        ? getRecruiterResource(campaign.ownerUserId)
+        : Promise.resolve(null),
+      getTarget(campaignId),
+    ]);
+    const inherited = resource?.meetingLocation ?? null;
+    const override = target?.meetingLocationOverride ?? null;
+    return {
+      inherited,
+      override,
+      resolved: resolveMeetingLocation({
+        resourceDefault: inherited,
+        targetOverride: override,
+      }),
+    };
+  } catch {
+    return empty;
   }
 }
 

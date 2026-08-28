@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { isSlotClaimConflict, isUniqueViolation } from '../errors';
 import {
   describeMeetingLocation,
+  isMeetingLocationComplete,
   parseMeetingLocation,
   resolveMeetingLocation,
 } from '../meeting-location';
@@ -73,6 +74,57 @@ describe('resolveMeetingLocation', () => {
     expect(
       resolveMeetingLocation({ resourceDefault: null, targetOverride: null }),
     ).toBeNull();
+  });
+});
+
+describe('isMeetingLocationComplete', () => {
+  it('un type sans son détail n’est pas un lieu', () => {
+    // Le cas réel : « Par téléphone » choisi, consigne jamais saisie. Il
+    // s'enregistrait, se relisait comme « aucun lieu », et on retombait en
+    // silence sur le lien de visioconférence du référent.
+    expect(isMeetingLocationComplete({ type: 'phone', payload: { instructions: '' } })).toBe(
+      false,
+    );
+    expect(isMeetingLocationComplete({ type: 'phone', payload: { instructions: '   ' } })).toBe(
+      false,
+    );
+    expect(isMeetingLocationComplete({ type: 'video', payload: { url: '' } })).toBe(false);
+    expect(isMeetingLocationComplete({ type: 'in_person', payload: { address: '' } })).toBe(
+      false,
+    );
+  });
+
+  it('accepte les trois formes renseignées', () => {
+    expect(
+      isMeetingLocationComplete({ type: 'video', payload: { url: 'https://visio/1' } }),
+    ).toBe(true);
+    expect(
+      isMeetingLocationComplete({ type: 'in_person', payload: { address: '1 rue A' } }),
+    ).toBe(true);
+    expect(
+      isMeetingLocationComplete({ type: 'phone', payload: { instructions: 'On vous appelle.' } }),
+    ).toBe(true);
+  });
+
+  it('« aucun lieu » n’est pas complet — et c’est ce qui bloque l’invitation', () => {
+    expect(isMeetingLocationComplete(null)).toBe(false);
+  });
+
+  it('dit la MÊME chose que la relecture, sur toutes les formes', () => {
+    // L'invariant qui manquait : ce que l'écran juge acceptable et ce que la
+    // base rendra doivent coïncider. Tant qu'ils divergeaient, un lieu pouvait
+    // s'enregistrer puis disparaître sans un mot.
+    const cases = [
+      { type: 'video', payload: { url: '' } },
+      { type: 'video', payload: { url: 'https://a' } },
+      { type: 'in_person', payload: { address: '  ' } },
+      { type: 'in_person', payload: { address: '1 rue A' } },
+      { type: 'phone', payload: { instructions: '' } },
+      { type: 'phone', payload: { instructions: 'On vous appelle.' } },
+    ] as const;
+    for (const value of cases) {
+      expect(isMeetingLocationComplete(value)).toBe(parseMeetingLocation(value) !== null);
+    }
   });
 });
 

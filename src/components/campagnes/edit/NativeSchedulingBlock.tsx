@@ -15,7 +15,9 @@
 import { useEffect, useState } from 'react';
 
 import { MeetingLocationField } from '@/components/settings/availability/MeetingLocationField';
-import type { MeetingLocation } from '@/lib/scheduling';
+import { isMeetingLocationComplete, type MeetingLocation } from '@/lib/scheduling';
+
+import { InheritedMeetingLocationNote } from './InheritedMeetingLocationNote';
 import { useCampaignsStore, type ActiveCampaign } from '@/stores/campaigns-store';
 
 export function NativeSchedulingBlock({ campaign }: { campaign: ActiveCampaign }) {
@@ -25,6 +27,8 @@ export function NativeSchedulingBlock({ campaign }: { campaign: ActiveCampaign }
   /** Lieu PROPRE à la campagne (vit sur la cible, pas sur la ligne campagne). */
   const [override, setOverride] = useState<MeetingLocation | null>(null);
   const [savedOverride, setSavedOverride] = useState<MeetingLocation | null>(null);
+  /** Lieu du référent — ce dont la campagne hérite quand elle ne surcharge pas. */
+  const [inherited, setInherited] = useState<MeetingLocation | null>(null);
 
   useEffect(() => {
     if (!campaign.schedulingNative) return;
@@ -38,9 +42,11 @@ export function NativeSchedulingBlock({ campaign }: { campaign: ActiveCampaign }
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as {
           meetingLocationOverride: MeetingLocation | null;
+          inheritedMeetingLocation: MeetingLocation | null;
         };
         setOverride(data.meetingLocationOverride);
         setSavedOverride(data.meetingLocationOverride);
+        setInherited(data.inheritedMeetingLocation);
       } catch {
         // Lecture KO : le champ reste vide, l'enregistrement dira pourquoi.
       }
@@ -138,7 +144,14 @@ export function NativeSchedulingBlock({ campaign }: { campaign: ActiveCampaign }
             changent de régime.
           </p>
           <div style={{ borderTop: '1px solid var(--dash-border)', paddingTop: 10 }}>
-            <MeetingLocationField value={override} onChange={setOverride} />
+            <MeetingLocationField
+              value={override}
+              onChange={setOverride}
+              // Ici, le neutre est un VRAI choix : hériter du référent. C'est
+              // pourquoi il reste sélectionnable, contrairement à l'agenda.
+              noneOption={{ label: 'Hériter du référent', selectable: true }}
+              neutralNote={<InheritedMeetingLocationNote location={inherited} />}
+            />
             <p className="font-body" style={{ fontSize: 11.5, color: 'var(--dash-text-secondary)', marginTop: 6 }}>
               Renseigné, ce lieu remplace celui du référent pour CETTE campagne
               (entretien sur site client, par exemple). Les rendez-vous déjà
@@ -146,7 +159,11 @@ export function NativeSchedulingBlock({ campaign }: { campaign: ActiveCampaign }
             </p>
             <button
               type="button"
-              disabled={busy || JSON.stringify(override) === JSON.stringify(savedOverride)}
+              disabled={
+                busy ||
+                JSON.stringify(override) === JSON.stringify(savedOverride) ||
+                (override !== null && !isMeetingLocationComplete(override))
+              }
               onClick={() => void saveOverride()}
               className="font-body"
               style={{

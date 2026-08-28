@@ -18,6 +18,7 @@ const {
   emitLinkMock,
   isNativeMock,
   canEmitMock,
+  resolveLocationMock,
 } = vi.hoisted(() => ({
   getAppSettingsMock: vi.fn(),
   getCampaignMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   emitLinkMock: vi.fn(),
   isNativeMock: vi.fn(),
   canEmitMock: vi.fn(),
+  resolveLocationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/repos/app-settings', () => ({ getAppSettings: getAppSettingsMock }));
@@ -34,6 +36,7 @@ vi.mock('@/lib/scheduling-host/campaign-booking', () => ({
   emitCampaignBookingLink: emitLinkMock,
   isNativeSchedulingCampaign: isNativeMock,
   canEmitBookingLink: canEmitMock,
+  resolveCampaignMeetingLocation: resolveLocationMock,
 }));
 
 import {
@@ -54,6 +57,10 @@ const CANDIDATE: MailCandidate = {
 };
 
 const NATIVE_URL = 'https://orqa.test/r/AbCdEf123456';
+const VIDEO_LOCATION = {
+  type: 'video' as const,
+  payload: { url: 'https://teams.test/salle-perso' },
+};
 const LEGACY_LINK = 'https://cal.com/legacy/entretien';
 
 beforeEach(() => {
@@ -77,6 +84,11 @@ beforeEach(() => {
   isNativeMock.mockResolvedValue(true);
   emitLinkMock.mockResolvedValue(NATIVE_URL);
   canEmitMock.mockResolvedValue(true);
+  resolveLocationMock.mockResolvedValue({
+    inherited: VIDEO_LOCATION,
+    override: null,
+    resolved: VIDEO_LOCATION,
+  });
 });
 
 describe('flag ON — invitation', () => {
@@ -207,5 +219,56 @@ describe('flag OFF — le chemin historique est intact', () => {
     });
     expect(await canInviteForCampaign('CAMP-0001')).toBe(false);
     expect(canEmitMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('flag ON — aucun lieu d’entretien', () => {
+  it('ne compose RIEN et n’émet AUCUN lien', async () => {
+    // Le cas observé : agenda ouvert, référent actif, mais lieu jamais
+    // renseigné (ou « Par téléphone » sans consigne, qui se relit comme
+    // « aucun lieu »). Le candidat aurait réservé un créneau sans savoir où
+    // se tient le rendez-vous — la ligne « Où » disparaît simplement du mail.
+    resolveLocationMock.mockResolvedValue({
+      inherited: null,
+      override: null,
+      resolved: null,
+    });
+
+    const out = await buildInterviewMail({
+      mode: 'invite',
+      campaignId: 'CAMP-0001',
+      jobTitle: 'Comptable',
+      candidate: CANDIDATE,
+      analysisId: 'can_imap_box-a_102',
+      uid: '102',
+    });
+
+    expect(out.blocked).toBe(true);
+    // La cause est NOMMÉE : le geste de réparation n'est pas le même que pour
+    // un référent sans disponibilités.
+    expect(out.blockedReason).toBe('meeting_location_missing');
+    // Aucun jeton ne doit rester derrière un envoi qui n'aura pas lieu.
+    expect(emitLinkMock).not.toHaveBeenCalled();
+    expect(out.mail.html).toBe('');
+  });
+
+  it('un REFUS part normalement — il ne promet aucun rendez-vous', async () => {
+    resolveLocationMock.mockResolvedValue({
+      inherited: null,
+      override: null,
+      resolved: null,
+    });
+
+    const out = await buildInterviewMail({
+      mode: 'reject',
+      campaignId: 'CAMP-0001',
+      jobTitle: 'Comptable',
+      candidate: CANDIDATE,
+      analysisId: 'can_imap_box-a_102',
+      uid: '102',
+    });
+
+    expect(out.blocked).toBe(false);
+    expect(emitLinkMock).not.toHaveBeenCalled();
   });
 });

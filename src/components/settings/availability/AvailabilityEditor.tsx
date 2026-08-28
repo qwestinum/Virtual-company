@@ -18,7 +18,7 @@ import {
   validateRules,
   type RuleDraft,
 } from '@/lib/interviews/availability-form';
-import type { MeetingLocation, Slot } from '@/lib/scheduling';
+import { isMeetingLocationComplete, type MeetingLocation, type Slot } from '@/lib/scheduling';
 
 import { AvailabilityPreview } from './AvailabilityPreview';
 import { ExceptionsEditor, type ExceptionDraft } from './ExceptionsEditor';
@@ -110,10 +110,15 @@ export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
         return;
       }
       apply(data);
+      // Deux façons d'enregistrer un agenda qui n'invitera personne : sans
+      // plage ouverte, ou sans lieu. On nomme celle qui s'applique plutôt que
+      // de rendre un « enregistré » qui laisserait croire que tout est prêt.
       setMessage(
         totalOpenMinutes(rules) === 0
           ? 'Enregistré — mais aucune plage n’est ouverte : aucun créneau ne sera proposé.'
-          : 'Disponibilités enregistrées.',
+          : !data.resource?.meetingLocation
+            ? 'Enregistré — mais aucun lieu d’entretien n’est renseigné : aucune invitation ne pourra partir.'
+            : 'Disponibilités enregistrées.',
       );
     } catch {
       setMessage('Erreur réseau — rien n’a été enregistré.');
@@ -121,6 +126,10 @@ export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
       setSaving(false);
     }
   }
+
+  // Un type choisi sans son détail ne s'enregistre pas : le serveur le refuse,
+  // et l'écran doit le dire avant le clic plutôt qu'après.
+  const locationIncomplete = location !== null && !isMeetingLocationComplete(location);
 
   if (loading) {
     return (
@@ -136,14 +145,30 @@ export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
       <SlotSettingsRow value={settings} onChange={setSettings} />
       <WeeklyRulesEditor rules={rules} onChange={setRules} />
       <ExceptionsEditor exceptions={exceptions} onChange={setExceptions} />
-      <MeetingLocationField value={location} onChange={setLocation} />
+      <MeetingLocationField
+        value={location}
+        onChange={setLocation}
+        required
+        // Pas d'entrée « non précisé » : sur un agenda, ne rien choisir n'est
+        // pas un choix, c'est une invitation qui ne partira jamais. L'entrée
+        // neutre reste VISIBLE pour les agendas d'avant cette règle (elle dit
+        // ce qu'il manque), mais on ne peut plus y revenir.
+        noneOption={{ label: '— Choisir un lieu —', selectable: false }}
+        neutralNote={
+          <p>
+            Tant qu’aucun lieu n’est choisi, aucune invitation ne peut partir
+            pour les campagnes dont tu es référent : le candidat réserverait un
+            rendez-vous sans savoir où il a lieu.
+          </p>
+        }
+      />
       <AvailabilityPreview slots={preview} timezone={settings.timezone} />
 
       <div className="flex items-center gap-3">
         <button
           type="button"
           className="rounded-md bg-stone-800 px-3 py-1.5 font-body text-[13px] font-semibold text-white hover:bg-stone-700 disabled:opacity-50"
-          disabled={saving}
+          disabled={saving || locationIncomplete}
           onClick={() => void save()}
         >
           {saving ? 'Enregistrement…' : 'Enregistrer les disponibilités'}

@@ -50,6 +50,17 @@ const MESSAGES: Record<string, { status: number; message: string }> = {
   },
 };
 
+/**
+ * Le motif précis quand il en existe un. « Pas de disponibilités » et « pas de
+ * lieu » se réparent dans deux blocs différents du même écran : renvoyer le
+ * message générique enverrait chercher au mauvais endroit.
+ */
+const LINK_UNAVAILABLE_MESSAGES: Record<string, string> = {
+  meeting_location_missing:
+    'Impossible d’émettre un lien : aucun lieu d’entretien n’est renseigné (agenda du référent ou lieu de la campagne).',
+  agenda_link_not_configured: 'Lien d’agenda non configuré dans les paramètres.',
+};
+
 export async function POST(request: Request): Promise<NextResponse> {
   const user = await getApiUser();
   if (!user) return unauthorizedResponse();
@@ -76,8 +87,12 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const known = MESSAGES[outcome.status];
     if (known) {
+      const detail =
+        'error' in outcome && outcome.error
+          ? LINK_UNAVAILABLE_MESSAGES[outcome.error]
+          : undefined;
       return NextResponse.json(
-        { error: outcome.status, message: known.message },
+        { error: outcome.status, message: detail ?? known.message },
         { status: known.status },
       );
     }
