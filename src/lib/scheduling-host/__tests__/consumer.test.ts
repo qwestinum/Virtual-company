@@ -23,7 +23,7 @@ const {
   sendEmailMock,
   getBookingMock,
   seriesMock,
-  recipientsMock,
+  audienceMock,
 } = vi.hoisted(() => ({
   claimMock: vi.fn(),
   confirmMock: vi.fn(),
@@ -36,7 +36,7 @@ const {
   sendEmailMock: vi.fn(),
   getBookingMock: vi.fn(),
   seriesMock: vi.fn(),
-  recipientsMock: vi.fn(),
+  audienceMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/repos/booking-events', () => ({
@@ -55,7 +55,7 @@ vi.mock('@/lib/interview/deliver-brief', () => ({
 }));
 vi.mock('@/lib/email/client', () => ({ sendEmail: sendEmailMock }));
 vi.mock('@/lib/campaign/synthesis-recipients', () => ({
-  getSynthesisRecipientsForCampaign: recipientsMock,
+  getSynthesisAudienceForCampaign: audienceMock,
 }));
 vi.mock('@/lib/scheduling', async () => {
   const actual = await vi.importActual<typeof import('@/lib/scheduling')>(
@@ -104,7 +104,7 @@ beforeEach(() => {
   factsMock.mockResolvedValue(1);
   briefMock.mockResolvedValue(null);
   journalMock.mockResolvedValue(undefined);
-  recipientsMock.mockResolvedValue([]);
+  audienceMock.mockResolvedValue({ to: [], cc: [], rejected: [] });
 });
 
 describe('booking.created', () => {
@@ -223,7 +223,11 @@ describe('booking.cancelled', () => {
   });
 
   it('prévient l’équipe avec un .ics d’ANNULATION (le créneau doit quitter l’agenda)', async () => {
-    recipientsMock.mockResolvedValue(['drh@cabinet.fr']);
+    audienceMock.mockResolvedValue({
+      to: ['jane@cabinet.fr'],
+      cc: ['drh@cabinet.fr'],
+      rejected: [],
+    });
     briefMock.mockResolvedValue({
       campaignId: 'CAMP-0001',
       candidateName: 'Alice Martin',
@@ -242,10 +246,15 @@ describe('booking.cancelled', () => {
     );
 
     const sent = sendEmailMock.mock.calls[0]![0] as {
+      to: string[];
+      cc?: string[];
       subject: string;
       attachments?: { content: string; filename: string }[];
     };
     expect(sent.subject).toMatch(/annulé/i);
+    // Le référent est l'interlocuteur ; la synthèse est tenue informée.
+    expect(sent.to).toEqual(['jane@cabinet.fr']);
+    expect(sent.cc).toEqual(['drh@cabinet.fr']);
     const ics = Buffer.from(sent.attachments![0]!.content, 'base64').toString('utf8');
     // Sans CANCEL + SEQUENCE incrémenté, le rendez-vous resterait affiché.
     expect(ics).toContain('METHOD:CANCEL');
@@ -317,7 +326,7 @@ describe('booking.rescheduled', () => {
   });
 
   it('sans adresse de synthèse : rien n’est envoyé, l’événement reste acquitté', async () => {
-    recipientsMock.mockResolvedValue([]);
+    audienceMock.mockResolvedValue({ to: [], cc: [], rejected: [] });
     await handleSchedulingEvent(
       event({
         type: 'booking.rescheduled',
@@ -329,7 +338,11 @@ describe('booking.rescheduled', () => {
   });
 
   it('invitation d’agenda à jour : UID de la SÉRIE, rang incrémenté', async () => {
-    recipientsMock.mockResolvedValue(['drh@cabinet.fr']);
+    audienceMock.mockResolvedValue({
+      to: ['jane@cabinet.fr'],
+      cc: ['drh@cabinet.fr'],
+      rejected: [],
+    });
     getBookingMock.mockResolvedValue({ id: 'bk-2', rescheduledFrom: 'bk-1' });
     seriesMock.mockResolvedValue({ rootId: 'bk-1', sequence: 1 });
     sendEmailMock.mockResolvedValue({ ok: true, messageId: 'm-1' });

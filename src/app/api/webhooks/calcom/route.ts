@@ -10,7 +10,8 @@
  *     requête non authentifiée est rejetée (sinon envoi de CV forgeable).
  *   - IDEMPOTENCE par uid de booking : un rejeu ne renvoie rien. Sur échec
  *     transitoire, le claim est relâché pour autoriser le rejeu Cal.com.
- *   - Destinataire = adresses de synthèse UNIQUEMENT (jamais le payload).
+ *   - Destinataires = référent de la campagne en principal, adresses de
+ *     synthèse en copie — UNIQUEMENT (jamais l'adresse du payload).
  *   - Scope = BOOKING_CREATED seul (annulation/repro gérées par Cal.com).
  */
 

@@ -76,12 +76,25 @@ logique de lien s'applique au preview, jamais seulement à l'envoi.
 ## 4. Synthèse par campagne
 
 - **Destinataires des briefs d'entretien**
-  (`getSynthesisRecipientsForCampaign`) : l'adresse du **référent actif** en
+  (`getSynthesisAudienceForCampaign`) : l'adresse du **référent actif** en
   tête + les adresses de synthèse **cochées** des Paramètres, **dédup
   insensible à la casse** (jamais de double envoi). Sans contexte campagne
   (booking non rapproché) : liste configurée seule. `no_recipient` seulement
   si ni référent ni configurée. Invariant du modèle settings : cochées ⊆
   connues (`resolveActiveSynthesis` filtre).
+- **Principal vs copie** (01/09/2026) : le briefing s'adresse au **référent**
+  — lui seul est en **destinataire principal** (`to`) ; les adresses de
+  synthèse partent en **copie** (`cc`). C'est le geste d'une équipe réelle :
+  on écrit à la personne qui doit agir, on tient les autres informés.
+  Répartition **pure et testée** (`splitSynthesisAudience`). Sans référent
+  (aucun, désactivé, adresse non expédiable, hors contexte campagne), la
+  **1ʳᵉ adresse de synthèse** prend la place du principal : un message sans
+  destinataire principal n'est pas expédiable et le fournisseur le rejette —
+  on ne troque pas une convention contre un envoi qui n'arrive à personne.
+  `to` vide = il n'y a personne du tout ⇒ `no_recipient` ; **jamais** un
+  message en copie seule. Surfaces : briefing d'entretien (Cal.com et natif),
+  notice « réservation non rapprochée », mails de déplacement/annulation du
+  module natif.
 - **`replyTo` des mails candidat** (invitation/refus, IMAP + mail-composer) :
   référent → 1ʳᵉ adresse de synthèse → env `EMAIL_DRH`. Une réponse du
   candidat arrive chez SON recruteur. **Inchangé délibérément** : invitation

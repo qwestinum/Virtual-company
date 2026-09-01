@@ -3,8 +3,9 @@
  *
  * Appelé par le webhook BOOKING_CREATED, APRÈS vérification de signature et
  * réservation d'idempotence. Résout le briefing en attente par EMAIL ; à
- * défaut, régénère la trame à la volée (repli). Délivre par MAIL aux adresses
- * de SYNTHÈSE (jamais l'email du payload), CV en pièce jointe depuis le vivier.
+ * défaut, régénère la trame à la volée (repli). Délivre par MAIL au recruteur
+ * RÉFÉRENT de la campagne, les adresses de SYNTHÈSE en COPIE (jamais l'email du
+ * payload), CV en pièce jointe depuis le vivier.
  *
  * Canal agenda : aucun — Cal.com pose lui-même le RDV dans l'agenda du
  * recruteur (calendrier connecté). ORQA n'assure que le canal mail confidentiel.
@@ -29,7 +30,10 @@ import {
   type BookingDelivery,
 } from '@/lib/db/repos/interview-briefs';
 import { getVivierCandidateByEmail } from '@/lib/db/repos/vivier';
-import { getSynthesisRecipientsForCampaign } from '@/lib/campaign/synthesis-recipients';
+import {
+  getSynthesisAudienceForCampaign,
+  type SynthesisAudience,
+} from '@/lib/campaign/synthesis-recipients';
 import {
   sendEmail,
   type EmailAttachment,
@@ -144,7 +148,7 @@ function slug(input: string): string {
 }
 
 async function sendBrief(args: {
-  recipients: string[];
+  audience: SynthesisAudience;
   candidate: MailCandidate;
   jobTitle: string | null;
   ownerLabel: string;
@@ -213,7 +217,9 @@ async function sendBrief(args: {
     icsAttached: icsAttachment !== null,
   });
   return sendEmail({
-    to: args.recipients,
+    // Le référent est l'interlocuteur du briefing ; la synthèse suit en copie.
+    to: args.audience.to,
+    ...(args.audience.cc.length > 0 ? { cc: args.audience.cc } : {}),
     subject,
     html,
     ...(attachments.length > 0 ? { attachments } : {}),
@@ -241,14 +247,14 @@ export async function deliverBriefForBooking(
 
   // ── Cas nominal : un briefing était en attente ─────────────────────
   if (pending) {
-    // Destinataires PAR CAMPAGNE : référent + adresses de synthèse (dédup).
-    const recipients = await getSynthesisRecipientsForCampaign(pending.campaignId);
-    if (recipients.length === 0) {
+    // Destinataires PAR CAMPAGNE : référent en principal, synthèse en copie.
+    const audience = await getSynthesisAudienceForCampaign(pending.campaignId);
+    if (audience.to.length === 0) {
       return { ok: false, status: 'no_recipient', retryable: false };
     }
     const ownerLabel = pending.campaignId ?? pending.taskId ?? 'la campagne';
     const send = await sendBrief({
-      recipients,
+      audience,
       candidate: pending.candidate,
       jobTitle: pending.jobTitle,
       ownerLabel,
@@ -280,8 +286,8 @@ export async function deliverBriefForBooking(
   if (!analysis) {
     // Candidat non retrouvé : on NOTIFIE la synthèse (l'info ne se perd
     // jamais). Pas de campagne identifiable ⇒ liste configurée seule.
-    const recipients = await getSynthesisRecipientsForCampaign(null);
-    if (recipients.length === 0) {
+    const audience = await getSynthesisAudienceForCampaign(null);
+    if (audience.to.length === 0) {
       return { ok: false, status: 'no_recipient', retryable: false };
     }
     const notice = buildUnmatchedBookingMail({
@@ -289,12 +295,17 @@ export async function deliverBriefForBooking(
       attendeeName: input.attendeeName,
       startAt: input.startTime,
     });
-    await sendEmail({ to: recipients, subject: notice.subject, html: notice.html });
+    await sendEmail({
+      to: audience.to,
+      ...(audience.cc.length > 0 ? { cc: audience.cc } : {}),
+      subject: notice.subject,
+      html: notice.html,
+    });
     return { ok: true, status: 'unmatched', retryable: false };
   }
 
-  const recipients = await getSynthesisRecipientsForCampaign(analysis.campaignId);
-  if (recipients.length === 0) {
+  const audience = await getSynthesisAudienceForCampaign(analysis.campaignId);
+  if (audience.to.length === 0) {
     return { ok: false, status: 'no_recipient', retryable: false };
   }
 
@@ -319,7 +330,7 @@ export async function deliverBriefForBooking(
 
   const ownerLabel = analysis.campaignId ?? 'la campagne';
   const send = await sendBrief({
-    recipients,
+    audience,
     candidate,
     jobTitle: null,
     ownerLabel,

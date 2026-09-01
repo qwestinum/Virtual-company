@@ -72,8 +72,15 @@ export type EmailAttachment = {
 };
 
 export type SendEmailInput = {
-  /** Destinataire(s). Resend accepte une adresse ou un tableau d'adresses. */
+  /** Destinataire(s) principal(aux). Resend accepte une adresse ou un tableau. */
   to: string | string[];
+  /**
+   * Destinataire(s) en COPIE. Le destinataire principal est celui à qui le
+   * message s'adresse (le recruteur référent d'une campagne) ; les adresses de
+   * synthèse sont mises en copie — elles suivent, elles ne sont pas
+   * l'interlocuteur. Omis ou vide ⇒ aucun en-tête `Cc`.
+   */
+  cc?: string | string[];
   subject: string;
   /** Contenu HTML. Le texte brut est dérivé automatiquement. */
   html: string;
@@ -88,6 +95,12 @@ export type SendEmailResult = {
   messageId: string | null;
   error?: string;
 };
+
+/** Un champ destinataire porte-t-il au moins une adresse ? */
+function hasRecipient(value: string | string[] | undefined): boolean {
+  if (!value) return false;
+  return Array.isArray(value) ? value.length > 0 : value.trim().length > 0;
+}
 
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
   // Clé + expéditeur résolus dynamiquement depuis /settings (repli env). La clé
@@ -117,6 +130,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       to: input.to,
       subject: input.subject,
       html: input.html,
+      ...(hasRecipient(input.cc) ? { cc: input.cc } : {}),
       ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       ...(input.attachments && input.attachments.length > 0
         ? { attachments: input.attachments }

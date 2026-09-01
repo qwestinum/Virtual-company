@@ -8,6 +8,15 @@
  * liste globale. Dédup insensible à la casse : si son adresse est déjà
  * configurée, un seul envoi. Fail-soft : tout échec de résolution du
  * référent ⇒ la liste configurée seule (comportement historique).
+ *
+ * PRINCIPAL vs COPIE (01/09/2026) : le message s'adresse au RÉFÉRENT — lui
+ * seul est destinataire principal ; les adresses de synthèse sont mises en
+ * COPIE. C'est ce que ferait une équipe RH réelle : on écrit à la personne
+ * qui doit agir, on tient les autres informés. Sans référent, la place de
+ * principal revient à la 1re adresse de synthèse : un message sans
+ * destinataire principal n'est pas expédiable, et le fournisseur le
+ * rejetterait — on ne remplace pas une convention de politesse par un envoi
+ * qui n'arrive à personne.
  */
 
 import { getCampaign } from '@/lib/db/repos/campaigns';
@@ -78,27 +87,55 @@ async function ownerEmailFor(campaignId: string | null): Promise<string | null> 
 }
 
 /**
- * Destinataires effectifs pour une campagne (null = pas de contexte campagne
- * → liste configurée seule). Liste vide possible : ni référent ni adresse
- * configurée — l'appelant garde son traitement `no_recipient`.
+ * Répartition PURE entre destinataire principal (`to`) et copies (`cc`).
+ *
+ * Le principal est le RÉFÉRENT ; tout le reste — les adresses de synthèse
+ * configurées — part en copie. Le référent n'apparaît jamais deux fois : la
+ * dédup en amont l'a déjà retiré des configurées.
+ *
+ * Sans référent (aucun, désactivé, adresse non expédiable, ou hors contexte
+ * campagne), la 1re adresse de synthèse tient la place du principal et les
+ * suivantes restent en copie. `to` vide ⇒ il n'y a AUCUN destinataire du tout
+ * (l'appelant garde son `no_recipient`), jamais un message en copie seule.
  */
-export async function getSynthesisRecipientsForCampaign(
+export type SynthesisAudience = {
+  to: string[];
+  cc: string[];
+  rejected: string[];
+};
+
+export function splitSynthesisAudience(
+  ownerEmail: string | null,
+  configured: string[],
+): SynthesisAudience {
+  const { recipients, rejected } = splitSynthesisRecipients(ownerEmail, configured);
+  // `splitSynthesisRecipients` place déjà le référent en tête quand il est
+  // expédiable : le premier de la liste EST le principal, dans les deux cas.
+  return { to: recipients.slice(0, 1), cc: recipients.slice(1), rejected };
+}
+
+/**
+ * Audience effective d'une campagne (null = pas de contexte campagne → liste
+ * configurée seule). `to` vide = ni référent ni adresse configurée —
+ * l'appelant garde son traitement `no_recipient`.
+ */
+export async function getSynthesisAudienceForCampaign(
   campaignId: string | null,
-): Promise<string[]> {
+): Promise<SynthesisAudience> {
   const [configured, ownerEmail] = await Promise.all([
     getSynthesisEmails(),
     ownerEmailFor(campaignId),
   ]);
-  const { recipients, rejected } = splitSynthesisRecipients(ownerEmail, configured);
-  if (rejected.length > 0) {
+  const audience = splitSynthesisAudience(ownerEmail, configured);
+  if (audience.rejected.length > 0) {
     // Trace SYSTÉMATIQUE : une adresse écartée est une configuration à
     // corriger, pas un détail. Sans elle, on remplacerait un échec bruyant
     // par un silence — l'inverse de ce qu'on cherche.
     console.error(
-      `[synthesis-recipients] adresses écartées (invalides) pour ${campaignId ?? 'hors campagne'} : ${rejected.join(', ')}`,
+      `[synthesis-recipients] adresses écartées (invalides) pour ${campaignId ?? 'hors campagne'} : ${audience.rejected.join(', ')}`,
     );
   }
-  return recipients;
+  return audience;
 }
 
 /**
@@ -111,5 +148,5 @@ export async function getSynthesisRecipientsForCampaign(
 export async function getSynthesisReplyToForCampaign(
   campaignId: string | null,
 ): Promise<string | null> {
-  return (await getSynthesisRecipientsForCampaign(campaignId))[0] ?? null;
+  return (await getSynthesisAudienceForCampaign(campaignId)).to[0] ?? null;
 }

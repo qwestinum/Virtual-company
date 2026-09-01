@@ -15,7 +15,10 @@
  * Le rapprochement se fait par le CONTEXTE du lien (uid + analyse + campagne),
  * jamais par l'email : c'est tout l'intérêt d'avoir émis un lien nominatif.
  */
-import { getSynthesisRecipientsForCampaign } from '@/lib/campaign/synthesis-recipients';
+import {
+  getSynthesisAudienceForCampaign,
+  type SynthesisAudience,
+} from '@/lib/campaign/synthesis-recipients';
 import { buildInterviewIcs } from '@/lib/calendar/ics';
 import {
   claimBookingEventDelivery,
@@ -217,7 +220,8 @@ async function onBookingRescheduled(event: SchedEvent): Promise<void> {
 }
 
 /**
- * Mail COURT aux adresses de synthèse, avec l'invitation d'agenda à jour.
+ * Mail COURT au recruteur référent (adresses de synthèse en COPIE), avec
+ * l'invitation d'agenda à jour.
  *
  * ORQA porte TOUTE la communication vers l'équipe : le module se tait de ce
  * côté (`notifyOrganizer: false`). Sans ces messages, un déplacement ou une
@@ -235,10 +239,10 @@ async function notifySynthesis(
   eventBooking: SchedEventBooking,
   brief: { campaignId: string | null; candidateName: string; jobTitle: string | null } | null,
 ): Promise<'sent' | 'skipped_no_recipient' | 'send_failed'> {
-  const recipients = await getSynthesisRecipientsForCampaign(
+  const audience = await getSynthesisAudienceForCampaign(
     brief?.campaignId ?? null,
-  ).catch(() => [] as string[]);
-  if (recipients.length === 0) return 'skipped_no_recipient';
+  ).catch(() => ({ to: [], cc: [], rejected: [] }) as SynthesisAudience);
+  if (audience.to.length === 0) return 'skipped_no_recipient';
 
   // Série résolue depuis la base : l'événement ne porte que son parent direct.
   const full = await getBooking(eventBooking.id).catch(() => null);
@@ -271,7 +275,9 @@ async function notifySynthesis(
   const by =
     eventBooking.cancelledBy === 'attendee' ? 'le candidat' : 'le cabinet';
   const result = await sendEmail({
-    to: recipients,
+    // Le référent tient le créneau ; la synthèse est tenue informée.
+    to: audience.to,
+    ...(audience.cc.length > 0 ? { cc: audience.cc } : {}),
     subject: cancelled
       ? `Entretien annulé — ${who}, ${when}`
       : `Entretien déplacé — ${who}, ${when}`,
