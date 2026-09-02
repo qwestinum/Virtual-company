@@ -33,6 +33,13 @@ type ChatMessage = { role: string; content: string };
 
 export type RecordedEmail = {
   to: string | string[];
+  /**
+   * Destinataires en COPIE. Enregistré comme le reste : sans lui, une
+   * régression qui remettrait les adresses de synthèse en destinataire
+   * principal passerait inaperçue — l'assertion ne verrait qu'un `to`
+   * plausible.
+   */
+  cc: string | string[] | null;
   subject: string;
   html: string;
   replyTo: string | null;
@@ -50,7 +57,13 @@ export function buildEmailClientMock(
   return {
     ...actual,
     sendEmail: async (input) => {
-      sentEmails.push({ to: input.to, subject: input.subject, html: input.html, replyTo: input.replyTo ?? null });
+      sentEmails.push({
+        to: input.to,
+        cc: input.cc ?? null,
+        subject: input.subject,
+        html: input.html,
+        replyTo: input.replyTo ?? null,
+      });
       return { ok: true, messageId: `mock_msg_${sentEmails.length}` };
     },
   };

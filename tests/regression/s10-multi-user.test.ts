@@ -475,13 +475,15 @@ describe('S10 — synthèse par campagne (webhook Cal.com réel)', () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as { status: string }).status).toBe('delivered');
 
-    // Destinataires : référent EN TÊTE + configurées, doublon à casse
-    // différente (ADMIN.S10@…) DÉDUPLIQUÉ — jamais de double envoi.
+    // Destinataires : le RÉFÉRENT seul en principal, les adresses de synthèse
+    // en COPIE. Le doublon à casse différente (ADMIN.S10@…) est DÉDUPLIQUÉ —
+    // jamais de double envoi, et jamais le référent une seconde fois en copie.
     const brief = sentEmails.find(
       (m) => Array.isArray(m.to) && m.to.includes('admin.s10@test.local'),
     );
     expect(brief).toBeDefined();
-    expect(brief!.to).toEqual(['admin.s10@test.local', 'drh.s10@test.local']);
+    expect(brief!.to).toEqual(['admin.s10@test.local']);
+    expect(brief!.cc).toEqual(['drh.s10@test.local']);
 
     // Traçabilité multi-agendas : QUEL agenda a produit le RDV.
     const entries = await readRows<{
