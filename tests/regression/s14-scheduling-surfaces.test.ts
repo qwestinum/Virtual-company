@@ -38,6 +38,7 @@ import { POST as cancelRoute } from '@/app/api/sched/bookings/[manageToken]/canc
 import { POST as rescheduleRoute } from '@/app/api/sched/bookings/[manageToken]/reschedule/route';
 
 import { db } from './helpers/db';
+import { raceUntilContended } from './helpers/race';
 
 const PREFIX = 'SCHED-TREG2-';
 const suffix = Math.random().toString(36).slice(2, 8);
@@ -260,22 +261,36 @@ describe('S14.1 — états du lien', () => {
 
 describe('S14.2 — verdicts de course', () => {
   it('rend slot_taken quand deux invités confirment EN MÊME TEMPS', async () => {
-    const [a, b] = [await link('race-a'), await link('race-b')];
-    const slot = (await fetchSlots(a))[0] as Slot;
-
     // La concurrence VRAIE est nécessaire : les deux confirmations passent la
     // revalidation avant que l'une d'elles n'insère, et c'est l'index unique
-    // qui tranche. C'est le seul chemin qui produit `slot_taken`.
-    const [first, second] = await Promise.all([
-      book(a, slot.startAt),
-      book(b, slot.startAt),
-    ]);
+    // qui tranche. C'est le seul chemin qui produit `slot_taken` — d'où la
+    // reprise sur un créneau neuf tant qu'aucune course n'a réellement eu lieu.
+    await raceUntilContended(async (attempt) => {
+      // Une adresse par tentative : le budget de réservation est de 10 par
+      // minute et par adresse, et une fournée de reprises l'épuiserait — le
+      // test se ferait alors limiter au lieu de mesurer la course.
+      const ip = `10.14.${attempt}.1`;
+      const [a, b] = [
+        await link(`race-a-${attempt}`),
+        await link(`race-b-${attempt}`),
+      ];
+      // Lecture préalable des DEUX liens : sans elle, la seconde requête part
+      // avec le coût de connexion en plus et la première a fini avant qu'elle
+      // n'ait lu quoi que ce soit.
+      const [slotsA] = await Promise.all([fetchSlots(a, ip), fetchSlots(b, ip)]);
+      const slot = slotsA[0] as Slot;
 
-    const results = [first, second];
-    expect(results.filter((r) => r.response.ok)).toHaveLength(1);
-    const loser = results.find((r) => !r.response.ok);
-    expect(loser?.response.status).toBe(409);
-    expect(loser?.payload.reason).toBe('slot_taken');
+      const [first, second] = await Promise.all([
+        book(a, slot.startAt, ip),
+        book(b, slot.startAt, ip),
+      ]);
+
+      const results = [first, second];
+      expect(results.filter((r) => r.response.ok)).toHaveLength(1);
+      const loser = results.find((r) => !r.response.ok);
+      expect(loser?.response.status).toBe(409);
+      return (loser?.payload.reason as string | undefined) ?? null;
+    });
   });
 
   it('rend invalid_slot quand le créneau était DÉJÀ pris avant la demande', async () => {

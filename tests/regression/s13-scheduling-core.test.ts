@@ -39,6 +39,7 @@ import {
 } from '@/lib/scheduling';
 
 import { db } from './helpers/db';
+import { raceUntilContended } from './helpers/race';
 
 const REF_PREFIX = 'SCHED-TREG-';
 const suffix = Math.random().toString(36).slice(2, 8);
@@ -203,30 +204,38 @@ describe('S13.1 — émission de liens', () => {
 
 describe('S13.2 — concurrence sur un créneau', () => {
   it('ne laisse qu’UN gagnant quand deux invités confirment le même créneau', async () => {
-    const [tokenA, tokenB] = await Promise.all([
-      freshLink('race-a'),
-      freshLink('race-b'),
-    ]);
-    const slot = (await slotsOf(tokenA))[0];
-    expect(slot).toBeDefined();
+    await raceUntilContended(async (attempt) => {
+      const [tokenA, tokenB] = await Promise.all([
+        freshLink(`race-a-${attempt}`),
+        freshLink(`race-b-${attempt}`),
+      ]);
+      // Lecture préalable des DEUX liens : le premier accès porte le coût de
+      // connexion et de cache. Sans elle, la seconde confirmation part avec un
+      // handicap qui suffit à faire terminer la première avant qu'elle n'ait
+      // lu quoi que ce soit — et il n'y a plus de course à observer.
+      const [slotsA] = await Promise.all([slotsOf(tokenA), slotsOf(tokenB)]);
+      const slot = slotsA[0];
+      expect(slot).toBeDefined();
 
-    const [first, second] = await Promise.all([
-      confirmBooking({ token: tokenA, startAt: slot!.startAt, attendee: attendee() }),
-      confirmBooking({ token: tokenB, startAt: slot!.startAt, attendee: attendee() }),
-    ]);
+      const outcomes = await Promise.all([
+        confirmBooking({ token: tokenA, startAt: slot!.startAt, attendee: attendee() }),
+        confirmBooking({ token: tokenB, startAt: slot!.startAt, attendee: attendee() }),
+      ]);
 
-    const outcomes = [first, second];
-    expect(outcomes.filter((r) => r.ok)).toHaveLength(1);
-    const loser = outcomes.find((r) => !r.ok);
-    expect(loser && !loser.ok && loser.reason).toBe('slot_taken');
+      // Vrai à CHAQUE tentative, qu'il y ait eu course ou non.
+      expect(outcomes.filter((r) => r.ok)).toHaveLength(1);
 
-    // Et la base le confirme : une seule réservation tient ce créneau.
-    const { data } = await db()
-      .from('sched_bookings')
-      .select('id')
-      .eq('start_at', slot!.startAt)
-      .eq('status', 'confirmed');
-    expect(data ?? []).toHaveLength(1);
+      // Et la base le confirme : une seule réservation tient ce créneau.
+      const { data } = await db()
+        .from('sched_bookings')
+        .select('id')
+        .eq('start_at', slot!.startAt)
+        .eq('status', 'confirmed');
+      expect(data ?? []).toHaveLength(1);
+
+      const loser = outcomes.find((r) => !r.ok);
+      return loser && !loser.ok ? loser.reason : null;
+    });
   });
 });
 
