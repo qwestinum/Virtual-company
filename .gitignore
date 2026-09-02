@@ -77,3 +77,14 @@ scripts/*-tmp[0-9].ts
 
 # fichier utilitaire de diagnostic du 18/08 — ne teste rien, à supprimer.
 /tests/regression/zz-dbg.test.ts
+
+# rapports d'effacement RGPD (`npm run purge:candidate --report …`) : ce sont
+# des LIVRABLES clients, et leur référence de demande porte très souvent le nom
+# de la personne concernée (« demande de Jean Dupont du 27/08 » — la forme
+# naturelle). Les committer graverait dans l'historique git, à perpétuité,
+# l'identité de quelqu'un dont on vient précisément d'effacer les données.
+# Ils vivent sur la machine de l'opérateur et se transmettent au responsable de
+# traitement ; ils se régénèrent d'une commande.
+rapport-effacement*.md
+rapport-rgpd*.md
+rapport-bisseg*.md

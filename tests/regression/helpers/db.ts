@@ -122,6 +122,16 @@ export async function cleanAll(): Promise<void> {
     col: 'candidate_email',
     like: `%@${TEST_EMAIL_DOMAIN}`,
   });
+  // Les BRIEFINGS aussi, et pas seulement par campagne : le filtre par
+  // campagne ne voit que les campagnes ENCORE présentes, donc un briefing dont
+  // la campagne a déjà été supprimée devient inatteignable et survit à tous les
+  // nettoyages suivants. Conséquence observée le 02/09/2026 : S17 réutilise un
+  // `booking_uid` fixe (`cal-s17-booking`) et l'index unique le refusait
+  // — un scénario juste qui échouait sur un résidu de la veille.
+  await del('interview_briefs', {
+    col: 'candidate_email',
+    like: `%@${TEST_EMAIL_DOMAIN}`,
+  });
 
   // Boîtes mail de test. La colonne est `user_email` — pas `email` (les
   // associations `campaign_mailboxes` partent en cascade).

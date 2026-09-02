@@ -1907,3 +1907,61 @@ create index if not exists demo_job_posts_visible_idx
 -- poller à la fin d'un poll abouti, pour qu'une rechute soit re-signalée.
 alter table public.mailboxes
   add column if not exists last_skip_reason text;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- EFFACEMENT RGPD — registre des demandes exécutées (septembre 2026)
+-- Procédure de référence : docs/ops/purge-rgpd-candidat.md
+-- ══════════════════════════════════════════════════════════════════════
+-- ORQA est SOUS-TRAITANT : il efface sur instruction écrite du responsable de
+-- traitement, et doit pouvoir DÉMONTRER l'exécution (art. 5.2). Effacer sans
+-- rien garder rendrait la preuve impossible ; garder l'identité de la personne
+-- effacée serait un contresens. D'où cette table, et sa forme.
+--
+-- ⚠️ `subject_hash` est une EMPREINTE SALÉE de l'adresse, JAMAIS l'adresse.
+-- La correspondance nominative « qui a demandé quoi » appartient au
+-- responsable de traitement, qui la conserve de son côté. ORQA n'a besoin que
+-- de deux choses : prouver qu'une demande RÉFÉRENCÉE a été exécutée, et
+-- reconnaître un rejeu sur la même personne (idempotence). L'empreinte suffit
+-- aux deux et ne reconstitue rien.
+--
+-- Le sel vient de GDPR_SUBJECT_PEPPER (env, côté serveur). Sans lui, une
+-- empreinte d'adresse électronique se retrouve par dictionnaire en quelques
+-- minutes — une empreinte non salée ne serait donc pas une pseudonymisation.
+--
+-- `scope` ne porte QUE des COMPTEURS (jamais un extrait, jamais un nom).
+create table if not exists public.gdpr_erasure_requests (
+  id            uuid        primary key default gen_random_uuid(),
+  -- Référence de l'instruction ÉCRITE du responsable de traitement.
+  request_ref   text        not null,
+  -- HMAC-SHA256(adresse normalisée, pepper). Jamais l'adresse.
+  subject_hash  text        not null,
+  environment   text        not null,        -- ref du projet Supabase visé
+  status        text        not null default 'dry_run',
+  received_at   timestamptz,                 -- réception de la demande (client)
+  instructed_by text,                        -- auteur de l'instruction, côté client
+  executed_at   timestamptz,
+  executed_by   text,                        -- opérateur ORQA
+  reason        text,
+  scope         jsonb       not null default '{}'::jsonb,  -- COMPTEURS uniquement
+  created_at    timestamptz not null default now()
+);
+alter table public.gdpr_erasure_requests enable row level security;
+
+-- CHECK `status` — BLOC CANONIQUE (règle « état final » du fichier). Une
+-- contrainte inline ne s'applique QU'AUX créations fraîches : sur une base où
+-- la table préexiste, elle ne serait jamais posée. Drop + add, jamais deux
+-- blocs empilés.
+alter table public.gdpr_erasure_requests
+  drop constraint if exists gdpr_erasure_requests_status_chk;
+alter table public.gdpr_erasure_requests
+  add constraint gdpr_erasure_requests_status_chk
+  check (status in ('dry_run', 'executed', 'partial'));
+
+-- Une demande peut être exécutée en DEUX TEMPS et sur PLUSIEURS environnements :
+-- la clé naturelle est (référence, sujet, environnement), et un rejeu MET À
+-- JOUR la ligne au lieu d'en empiler une seconde.
+create unique index if not exists gdpr_erasure_requests_key_idx
+  on public.gdpr_erasure_requests (request_ref, subject_hash, environment);
+
+create index if not exists gdpr_erasure_requests_subject_idx
+  on public.gdpr_erasure_requests (subject_hash, created_at desc);
