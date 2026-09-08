@@ -23,4 +23,11 @@ export const BUSINESS_NOTIFICATION_THRESHOLDS = {
    * N jours sans créneau choisi. Sert le badge d'ancienneté, pas un toast.
    */
   invitationAgeDays: 5,
+  /**
+   * Signal 5 — offre APEC suspendue, republication encore possible pendant
+   * moins de N jours. L'Apec ferme la fenêtre 30 jours après la PUBLICATION
+   * (API_361) ; une semaine d'avance laisse le temps d'agir sans que le signal
+   * devienne du bruit de fond.
+   */
+  apecRepublishWarningDays: 7,
 } as const;

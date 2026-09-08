@@ -8,6 +8,20 @@
  *   - mode `go`    : après un GO définitif (poste pourvu) — propose de classer
  *     les candidatures restantes SANS clôturer. Non bloquant (« Plus tard »).
  * Jamais silencieux : le récapitulatif est affiché AVANT toute action.
+ *
+ * ── LA DÉPUBLICATION APEC EST PROPOSÉE, JAMAIS AUTOMATIQUE ──────────────────
+ *
+ * Retirer l'annonce d'apec.fr est une action SORTANTE et visible du public. Ce
+ * projet a déjà renversé exactement cette règle pour les refus (« aucun refus
+ * n'est envoyé automatiquement »), et une clôture par erreur passé les 30 jours
+ * de la fenêtre de republication serait sans retour arrière. La case est donc
+ * cochée par défaut — c'est presque toujours ce qu'on veut — mais le geste
+ * reste celui du recruteur.
+ *
+ * Elle est tentée APRÈS la clôture : fermer la campagne est l'intention
+ * principale, et un incident de communication avec l'Apec ne doit pas
+ * l'empêcher. Si la dépublication échoue, on le DIT, et le signal métier
+ * « offre en ligne sur une campagne clôturée » la rattrape.
  */
 
 import { Loader2, X } from 'lucide-react';
@@ -18,6 +32,9 @@ import {
   CANDIDATE_STAGE_RIBBON_ORDER,
   type CandidateStageCounts,
 } from '@/lib/reporting/candidate-stage';
+import { useApecUnpublish } from '@/lib/jobboards/adep/use-apec-unpublish';
+
+import { CampaignApecUnpublishOption } from './CampaignApecUnpublishOption';
 
 type Recap = { counts: CandidateStageCounts; total: number; hasRetenu: boolean };
 type Summary = {
@@ -45,6 +62,7 @@ export function CampaignDismissFlowDialog({
   );
   const [dismissOpen, setDismissOpen] = useState(true);
   const [sendMail, setSendMail] = useState(true);
+  const apec = useApecUnpublish(campaignId, mode === 'close');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +89,7 @@ export function CampaignDismissFlowDialog({
     };
   }, [campaignId, mode]);
 
+
   async function confirm() {
     setBusy(true);
     setError(null);
@@ -93,6 +112,15 @@ export function CampaignDismissFlowDialog({
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { summary?: Summary | null };
+
+      // La clôture a réussi : on tente la dépublication. Un échec ici ne la
+      // remet pas en cause — on le dit, et le signal métier rattrape.
+      const apecError = await apec.unpublishIfRequested();
+      if (apecError) {
+        setError(apecError);
+        return;
+      }
+
       onDone(data.summary ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur réseau.');
@@ -178,6 +206,14 @@ export function CampaignDismissFlowDialog({
             ) : null}
           </>
         )}
+
+        {mode === 'close' ? (
+          <CampaignApecUnpublishOption
+            live={apec.live}
+            checked={apec.checked}
+            onChange={apec.setChecked}
+          />
+        ) : null}
 
         {error ? <p className="mb-3 font-body text-[12px] text-rose-600">{error}</p> : null}
         <div className="flex justify-end gap-2">

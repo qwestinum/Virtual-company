@@ -20,6 +20,9 @@ import {
   type FrenchHoliday,
 } from '@/lib/calendar/french-holidays';
 import { chunk } from '@/lib/db/paginate';
+import { listLiveJobPostings } from '@/lib/db/repos/job-postings';
+import { listCampaignSummaries } from '@/lib/db/repos/campaigns';
+import { republishDaysLeft } from '@/lib/jobboards/adep/panel-state';
 import { listBriefsByStatus } from '@/lib/db/repos/interview-briefs';
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
@@ -370,6 +373,86 @@ async function computeAvailabilityMeetingLocationMissing(
   };
 }
 
+/**
+ * Signaux 5 et 6 — les offres APEC encore vivantes.
+ *
+ * Une seule lecture pour les deux : `listLiveJobPostings` s'appuie sur l'index
+ * partiel `job_postings_live_idx` (publiées ou suspendues). Balayer la table
+ * pour jeter ensuite serait exactement le défaut du fil d'activité du 21/08.
+ *
+ * Les deux signaux sont COMMUNS — une offre en ligne concerne le cabinet, pas
+ * un recruteur. Ils n'ont donc pas de `SignalContext`.
+ */
+async function computeApecRepublicationWindow(
+  nowMs: number,
+): Promise<BusinessSignal | null> {
+  const postings = await listLiveJobPostings();
+  const warning = BUSINESS_NOTIFICATION_THRESHOLDS.apecRepublishWarningDays;
+  const now = new Date(nowMs);
+
+  // ⚠️ La fenêtre court depuis la PUBLICATION, pas depuis la suspension : une
+  // offre publiée le 1er et suspendue le 28 n'a plus que deux jours.
+  const closing = postings.filter((p) => {
+    if (p.remoteStatus !== 'SUSPENDUE') return false;
+    const left = republishDaysLeft(p.publishedAt, now);
+    return left !== null && left > 0 && left <= warning;
+  });
+  if (closing.length === 0) return null;
+
+  const soonest = Math.min(
+    ...closing.map((p) => republishDaysLeft(p.publishedAt, now) ?? warning),
+  );
+  return {
+    key: 'apec_republication_window_closing',
+    count: closing.length,
+    oldestDays: warning - soonest,
+    message:
+      closing.length === 1
+        ? `1 offre APEC suspendue ne pourra plus être republiée dans ${soonest} jour${soonest > 1 ? 's' : ''} — il faudra en créer une nouvelle.`
+        : `${closing.length} offres APEC suspendues ne pourront plus être republiées d’ici ${soonest} jour${soonest > 1 ? 's' : ''}.`,
+    ctaLabel: 'Voir les campagnes',
+    target: { route: '/rh/recrutement' },
+  };
+}
+
+/**
+ * Une offre encore PUBLIÉE sur une campagne clôturée.
+ *
+ * C'est la vraie faute que ce connecteur peut produire : des candidats
+ * postulent à un poste pourvu et reçoivent, au mieux, un classement sans
+ * suite. Le signal s'éteint dès la dépublication.
+ */
+async function computeApecLiveOnClosedCampaign(
+  nowMs: number,
+): Promise<BusinessSignal | null> {
+  const postings = (await listLiveJobPostings()).filter(
+    (p) => p.remoteStatus === 'PUBLIEE',
+  );
+  if (postings.length === 0) return null;
+
+  const summaries = await listCampaignSummaries(postings.map((p) => p.campaignId));
+  const orphans = postings.filter(
+    (p) => summaries.get(p.campaignId)?.status === 'closed',
+  );
+  if (orphans.length === 0) return null;
+
+  const oldest = orphans.reduce(
+    (max, p) => Math.max(max, p.publishedAt ? daysSinceIso(p.publishedAt, nowMs) : 0),
+    0,
+  );
+  return {
+    key: 'apec_offer_live_on_closed_campaign',
+    count: orphans.length,
+    oldestDays: oldest,
+    message:
+      orphans.length === 1
+        ? 'Une offre est toujours en ligne sur l’APEC alors que sa campagne est clôturée — des candidats peuvent encore postuler.'
+        : `${orphans.length} offres sont toujours en ligne sur l’APEC alors que leur campagne est clôturée.`,
+    ctaLabel: 'Voir les campagnes',
+    target: { route: '/rh/recrutement' },
+  };
+}
+
 /** Jour civil `YYYY-MM-DD` tel que le vit la ressource, pas tel que l'UTC. */
 function localDay(nowMs: number, timeZone: string): string {
   // `en-CA` rend précisément `YYYY-MM-DD`, et `timeZone` fait le décalage.
@@ -414,6 +497,14 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'availability_meeting_location_missing',
     compute: computeAvailabilityMeetingLocationMissing,
+  },
+  {
+    key: 'apec_republication_window_closing',
+    compute: (nowMs) => computeApecRepublicationWindow(nowMs),
+  },
+  {
+    key: 'apec_offer_live_on_closed_campaign',
+    compute: (nowMs) => computeApecLiveOnClosedCampaign(nowMs),
   },
 ];
 

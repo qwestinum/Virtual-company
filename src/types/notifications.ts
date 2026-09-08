@@ -10,7 +10,11 @@ export type BusinessSignalKey =
   | 'interviews_awaiting_decision'
   | 'interviews_awaiting_pointing'
   | 'availability_holidays_unblocked'
-  | 'availability_meeting_location_missing';
+  | 'availability_meeting_location_missing'
+  /** Une offre APEC suspendue dont la fenêtre de republication se referme. */
+  | 'apec_republication_window_closing'
+  /** Une offre APEC toujours en ligne alors que la campagne est clôturée. */
+  | 'apec_offer_live_on_closed_campaign';
 
 /**
  * Cible de navigation INTERNE (onglets du WorkspacePane — pas de route Next
