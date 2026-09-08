@@ -43,7 +43,13 @@ const owners = vi.mocked(listCampaignSummaries);
 
 /** Projection minimale servie par `listCampaignSummaries`. */
 function summary(id: string, ownerUserId: string | null) {
-  return { id, name: `Campagne ${id}`, ownerUserId, schedulingNative: false };
+  return {
+    id,
+    name: `Campagne ${id}`,
+    ownerUserId,
+    schedulingNative: false,
+    status: 'active' as const,
+  };
 }
 const recruiters = vi.mocked(listRecruiters);
 const analyses = vi.mocked(listAllCandidateAnalyses);
@@ -80,6 +86,7 @@ function recruiter(id: string, displayName: string, isActive: boolean) {
     role: 'member' as const,
     isActive,
     createdAt: '2026-01-01T00:00:00.000Z',
+    hasAdepNumeroDossier: false,
   };
 }
 

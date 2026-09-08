@@ -13,11 +13,12 @@
  * réception sont deux concepts distincts ; confondre les deux permettait
  * d'« activer » une campagne sans aucun flux de réception configuré.
  *
- * Le canal « Annonce générique » est le seul à déployer un panneau : il porte
- * un CONTENU (l'annonce publiée sur le jobboard de démonstration), là où les
- * autres ne sont qu'une intention de diffusion. Le panneau se retire de
- * lui-même hors instance de démonstration — il n'y a donc pas de flag à
- * consulter ici.
+ * DEUX canaux déploient un panneau, et pour la même raison : ils portent un
+ * CONTENU réellement publié quelque part, là où les autres ne sont qu'une
+ * intention de diffusion. « Annonce générique » alimente le jobboard de
+ * démonstration ; « APEC » envoie l'offre sur apec.fr. Les deux panneaux se
+ * retirent d'eux-mêmes quand leur surface n'existe pas (la route rend 404) —
+ * il n'y a donc aucun flag à consulter ici.
  */
 
 import { useState } from 'react';
@@ -31,6 +32,7 @@ import {
   type PublicationChannel,
 } from '@/types/publication-channel';
 
+import { ApecPanel } from './ApecPanel';
 import { GenericJobAdPanel } from './GenericJobAdPanel';
 import { SaveBanner } from './SaveBanner';
 
@@ -101,6 +103,7 @@ export function ChannelsEditBlock({ campaign }: ChannelsEditBlockProps) {
             {channel === 'generic' && enabled && (
               <GenericJobAdPanel campaignId={campaign.id} />
             )}
+            {channel === 'apec' && enabled && <ApecPanel campaignId={campaign.id} />}
           </div>
         );
       })}

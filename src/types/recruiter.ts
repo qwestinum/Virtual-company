@@ -24,5 +24,12 @@ export const RecruiterSchema = z.object({
    * les actions passées restent attribuées. Jamais de suppression. */
   isActive: z.boolean(),
   createdAt: z.string(),
+  /**
+   * Le recruteur a-t-il un identifiant Apec ? PRÉSENCE seulement — jamais la
+   * valeur. C'est un identifiant de personne autant qu'un secret d'accès :
+   * l'écran a besoin de savoir si la publication est possible, pas de lire le
+   * numéro. `.default(false)` pour les enregistrements antérieurs.
+   */
+  hasAdepNumeroDossier: z.boolean().default(false),
 });
 export type Recruiter = z.infer<typeof RecruiterSchema>;

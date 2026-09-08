@@ -255,6 +255,8 @@ export type CampaignSummary = {
   name: string;
   ownerUserId: string | null;
   schedulingNative: boolean;
+  /** Statut de la campagne — aussi fondamental que son nom pour un lecteur. */
+  status: CampaignStatus;
 };
 
 export async function listCampaignSummaries(
@@ -267,7 +269,7 @@ export async function listCampaignSummaries(
   for (const part of chunk(ids, 300)) {
     const { data, error } = await supabase
       .from(TABLE)
-      .select('id, name, owner_user_id, scheduling_native')
+      .select('id, name, owner_user_id, scheduling_native, status')
       .in('id', part);
     if (error) throw new Error(`listCampaignSummaries: ${error.message}`);
     const rows = (data ?? []) as {
@@ -275,6 +277,7 @@ export async function listCampaignSummaries(
       name: string;
       owner_user_id: string | null;
       scheduling_native?: boolean | null;
+      status?: CampaignStatus | null;
     }[];
     for (const row of rows) {
       out.set(row.id, {
@@ -282,6 +285,7 @@ export async function listCampaignSummaries(
         name: row.name,
         ownerUserId: row.owner_user_id ?? null,
         schedulingNative: row.scheduling_native === true,
+        status: row.status ?? 'draft',
       });
     }
   }

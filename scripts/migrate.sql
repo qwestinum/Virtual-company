@@ -1965,3 +1965,111 @@ create unique index if not exists gdpr_erasure_requests_key_idx
 
 create index if not exists gdpr_erasure_requests_subject_idx
   on public.gdpr_erasure_requests (subject_hash, created_at desc);
+
+-- ══════════════════════════════════════════════════════════════════════
+-- Connecteur APEC ADEP V5 — publication d'offres (lot 2)
+-- ══════════════════════════════════════════════════════════════════════
+-- Spec : docs/specs/apec-adep-connector.md
+--
+-- Une ligne = UNE tentative de publication d'une campagne sur un canal. Il
+-- peut y en avoir PLUSIEURS par campagne : republier après fermeture crée une
+-- offre neuve chez l'Apec, sous une nouvelle référence (§3.2). D'où un `id`
+-- propre plutôt qu'une clé primaire (campagne, canal).
+--
+-- ⚠️ CETTE TABLE N'ENTRE JAMAIS DANS LE SNAPSHOT CAMPAGNE. `campaignToRow` ne
+-- la connaît pas, et le type `CampaignSnapshot` l'interdit à la compilation.
+-- C'est le piège déjà payé deux fois (`scheduling_native`, `demo_job_posts`) :
+-- un onglet ouvert avant la publication réécrirait son état périmé au premier
+-- autosave et effacerait le lien avec l'offre Apec.
+create table if not exists public.job_postings (
+  id                   text        primary key,
+  campaign_id          text        not null references public.campaigns(id) on delete cascade,
+  channel              text        not null,
+
+  -- Référence CLIENT : ≤ 20 caractères, et UNIQUE chez l'Apec à jamais.
+  -- L'unicité locale n'est pas un confort : c'est le verrou qui empêche deux
+  -- instances serverless de lancer deux `openPosition` concurrents pour la
+  -- même campagne (§3.3). La base est la seule chose partagée entre elles.
+  client_reference     text        not null unique,
+
+  apec_position_numero text,
+
+  -- Notre transaction, réservée AVANT l'appel. `reserved` sans suite signale
+  -- un incident : la ligne existe, l'offre peut-être pas.
+  attempt_state        text        not null default 'reserved',
+  tracking_id          text,
+
+  -- L'offre TELLE QU'ELLE EST PARTIE. Figée, comme `demo_job_posts`.
+  request_snapshot     jsonb,
+  request_xml          text,       -- secrets CAVIARDÉS avant écriture
+  ack_raw              text,
+
+  -- L'état chez l'Apec : un CACHE horodaté, jamais une vérité locale (§3.4).
+  remote_status        text,
+  remote_status_at     timestamptz,
+  remote_is_editable   boolean,
+  remote_url           text,
+
+  published_at         timestamptz,
+  suspended_at         timestamptz,
+  closed_at            timestamptz,
+
+  last_error_code      text,
+  last_error_message   text,
+
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+alter table public.job_postings enable row level security;
+
+-- CHECK `attempt_state` — BLOC CANONIQUE (règle « état final »). Drop + add,
+-- jamais deux blocs empilés : c'est l'incident `pending_validations_status`
+-- du 30/07/2026 qu'on n'a pas envie de rejouer.
+alter table public.job_postings
+  drop constraint if exists job_postings_attempt_state_chk;
+alter table public.job_postings
+  add constraint job_postings_attempt_state_chk
+  check (attempt_state in ('reserved', 'sent', 'acknowledged', 'failed'));
+
+create index if not exists job_postings_campaign_idx
+  on public.job_postings (campaign_id, channel, created_at desc);
+
+-- Le signal « fenêtre de republication » balaie les offres encore vivantes :
+-- on indexe exactement ce qu'il lit, pas la table entière.
+create index if not exists job_postings_live_idx
+  on public.job_postings (remote_status, published_at)
+  where remote_status in ('PUBLIEE', 'SUSPENDUE');
+
+-- ── Identifiant Apec du recruteur ─────────────────────────────────────
+-- `numeroDossier` désigne une PERSONNE physique (« le recruteur est le
+-- destinataire des candidatures générées sur son offre »). Chiffré avec le
+-- même mécanisme que les identifiants IMAP (AES-256-GCM,
+-- MAILBOX_ENCRYPTION_KEY) : sans la clé maîtresse, un accès à la base ne rend
+-- rien. Nullable — un recruteur sans numéro ne peut simplement pas publier,
+-- et l'écran le dit AVANT de proposer le bouton.
+alter table public.recruiters
+  add column if not exists adep_numero_dossier text;
+
+-- ── Réglages APEC du cabinet ──────────────────────────────────────────
+-- Ce qu'ORQA ne possède pas et qui ne change JAMAIS d'une offre à l'autre :
+-- code NAF, description d'entreprise, affichage du logo, mode client
+-- (direct/indirect), et les valeurs par défaut proposées au formulaire.
+-- Le reste — contrat, lieu, salaire, expérience — se décide PAR OFFRE et
+-- n'a rien à faire ici : le figer en réglage ferait publier la mauvaise
+-- valeur à la première offre qui sort de l'ordinaire.
+--
+-- ⚠️ Aucun secret ici. `atsId`, la clé Argon2 et le `numeroDossier` vivent
+-- respectivement en variables d'environnement et dans `recruiters`.
+alter table public.app_settings
+  add column if not exists adep_config jsonb;
+
+-- ── Code INSEE du site ────────────────────────────────────────────────
+-- L'Apec veut un code commune officiel (`37261`), pas un nom de ville. Le site
+-- porte déjà `city` et `postal_code` ; le code INSEE est la clé que l'Apec
+-- attend, il est STABLE, et il se saisit une fois — le formulaire de
+-- publication peut toujours le surcharger pour une offre délocalisée.
+--
+-- ⚠️ Paris (75056), Lyon (69123) et Marseille (13055) sont REFUSÉS par l'Apec :
+-- il faut le code de l'arrondissement. Le validateur le dit, avec la plage.
+alter table public.sites
+  add column if not exists insee_code text;

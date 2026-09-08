@@ -601,6 +601,75 @@ const ACTIVITY_RENDERERS: Record<string, FeedRenderer> = {
     };
   },
 
+  // ── APEC ──
+  // Une offre publiée sur apec.fr est un fait métier visible du public : c'est
+  // exactement ce que le fil doit porter. Le mode SIMULATION est dit — un fil
+  // qui annoncerait « publiée » sur une publication de recette ferait croire à
+  // une diffusion qui n'a pas eu lieu.
+  apec_offer_published: (row, base) => {
+    const simulated = row.payload?.simulated === true;
+    const numero = row.payload?.apecPositionNumero;
+    return {
+      ...base,
+      message: simulated
+        ? `Offre APEC publiée en simulation — ${row.payload?.clientReference ?? 'campagne'}`
+        : `Offre publiée sur l’APEC${typeof numero === 'string' ? ` — nº ${numero}` : ''}`,
+      iconKey: 'announce',
+      colorKey: simulated ? 'orange' : 'green',
+    };
+  },
+
+  apec_offer_publish_failed: (row, base) => {
+    const issues = row.payload?.issues;
+    const first =
+      Array.isArray(issues) && issues.length > 0
+        ? (issues[0] as { message?: string }).message
+        : typeof row.payload?.reason === 'string'
+          ? row.payload.reason
+          : null;
+    return {
+      ...base,
+      message: `Publication APEC refusée${first ? ` — ${first}` : ''}`,
+      iconKey: 'announce',
+      colorKey: 'red',
+    };
+  },
+
+  apec_offer_suspended: (row, base) => ({
+    ...base,
+    message: `Offre APEC dépubliée${
+      row.payload?.alreadyInState === true ? ' (elle l’était déjà)' : ''
+    }`,
+    iconKey: 'announce',
+    colorKey: 'orange',
+  }),
+
+  apec_offer_republished: (row, base) => ({
+    ...base,
+    message: 'Offre APEC remise en ligne',
+    iconKey: 'announce',
+    colorKey: 'green',
+  }),
+
+  // Écrite UNIQUEMENT sur transition (cf. la route) : l'Apec valide, suspend
+  // ou ferme de son côté, et c'est ce changement-là qui intéresse.
+  apec_offer_status_changed: (row, base) => {
+    const labels: Record<string, string> = {
+      AVALIDER: 'en attente de validation par un consultant Apec',
+      PUBLIEE: 'publiée',
+      SUSPENDUE: 'suspendue',
+      FERMEE: 'fermée',
+      AMODIFIER: 'à modifier',
+    };
+    const status = String(row.payload?.status ?? '');
+    return {
+      ...base,
+      message: `Offre APEC ${labels[status] ?? `au statut ${status}`}`,
+      iconKey: 'announce',
+      colorKey: status === 'PUBLIEE' ? 'green' : status === 'FERMEE' ? 'red' : 'orange',
+    };
+  },
+
   demo_jobboard_application_sent: (row, base) => ({
     ...base,
     message: `Candidature déposée depuis l’annonce — ${candidateNameOf(row.payload)}`,

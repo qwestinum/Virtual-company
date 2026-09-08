@@ -85,6 +85,8 @@ export type SiteRow = {
   type: string | null;
   city: string | null;
   postal_code: string | null;
+  /** Code commune INSEE — requis par l'Apec pour publier une offre. */
+  insee_code: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;

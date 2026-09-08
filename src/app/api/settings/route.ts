@@ -22,6 +22,7 @@ import {
 } from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG, VivierConfigSchema } from '@/types/vivier-settings';
 import { BrandingConfigSchema, DEFAULT_BRANDING_CONFIG } from '@/types/branding';
+import { AdepConfigSchema, DEFAULT_ADEP_CONFIG } from '@/types/adep-settings';
 import { invalidateSchedulingConfig } from '@/lib/scheduling-host/configure';
 
 export const runtime = 'nodejs';
@@ -44,6 +45,7 @@ const PatchSchema = z.object({
   vivierConfig: VivierConfigSchema.optional(),
   interviewConfig: InterviewConfigSchema.optional(),
   brandingConfig: BrandingConfigSchema.optional(),
+  adepConfig: AdepConfigSchema.optional(),
   // Write-only : `''` efface la clé, une valeur non vide la pose. Jamais
   // renvoyée par le GET (seul `resendApiKeyConfigured` l'est).
   resendApiKey: z.string().max(2048).optional(),
@@ -79,6 +81,7 @@ function emptyPayload() {
       vivierConfig: DEFAULT_VIVIER_CONFIG,
       interviewConfig: DEFAULT_INTERVIEW_CONFIG,
       brandingConfig: DEFAULT_BRANDING_CONFIG,
+      adepConfig: DEFAULT_ADEP_CONFIG,
       resendApiKeyConfigured: false,
       updatedAt: new Date(0).toISOString(),
     },

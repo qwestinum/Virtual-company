@@ -22,6 +22,7 @@ import {
 } from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 import { DEFAULT_BRANDING_CONFIG, type BrandingConfig } from '@/types/branding';
+import { DEFAULT_ADEP_CONFIG, type AdepConfig } from '@/types/adep-settings';
 
 const TABLE = 'app_settings';
 
@@ -51,6 +52,8 @@ export type AppSettings = {
   interviewConfig: InterviewConfig;
   /** Identité du cabinet (logo, couleur) — habille les surfaces candidat. */
   brandingConfig: BrandingConfig;
+  /** Réglages APEC du cabinet (NAF, description, mode client, défauts). */
+  adepConfig: AdepConfig;
   /**
    * Clé API Resend : write-only. On n'expose JAMAIS la valeur en clair (ni au
    * client, ni dans cet objet de domaine) — seulement un booléen « configurée ».
@@ -81,6 +84,7 @@ type AppSettingsRow = {
   vivier_config: VivierConfig | null;
   interview_config: InterviewConfig | null;
   branding_config: BrandingConfig | null;
+  adep_config: AdepConfig | null;
   resend_api_key: string | null;
   updated_at: string;
 };
@@ -144,6 +148,8 @@ function rowToDomain(row: AppSettingsRow): AppSettings {
       ...DEFAULT_BRANDING_CONFIG,
       ...(row.branding_config ?? {}),
     },
+    // Idem : une row antérieure à la migration APEC n'a pas la colonne.
+    adepConfig: { ...DEFAULT_ADEP_CONFIG, ...(row.adep_config ?? {}) },
     // Jamais la valeur : seulement la présence (write-only côté UI).
     resendApiKeyConfigured: (row.resend_api_key ?? '').length > 0,
     updatedAt: row.updated_at,
@@ -212,6 +218,7 @@ export type AppSettingsPatch = {
   vivierConfig?: VivierConfig;
   interviewConfig?: InterviewConfig;
   brandingConfig?: BrandingConfig;
+  adepConfig?: AdepConfig;
   /** Write-only : `''` (ou null) efface la clé, une valeur non vide la pose. */
   resendApiKey?: string | null;
 };
@@ -239,6 +246,7 @@ export async function patchAppSettings(
     row.interview_config = patch.interviewConfig;
   if (patch.brandingConfig !== undefined)
     row.branding_config = patch.brandingConfig;
+  if (patch.adepConfig !== undefined) row.adep_config = patch.adepConfig;
   // Write-only : `''` efface (null), valeur non vide pose la clé.
   if (patch.resendApiKey !== undefined)
     row.resend_api_key = patch.resendApiKey ? patch.resendApiKey : null;

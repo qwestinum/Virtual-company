@@ -26,6 +26,12 @@ export const SiteSchema = z.object({
   type: z.string().nullable(),
   city: z.string().nullable(),
   postalCode: z.string().nullable(),
+  /**
+   * Code commune INSEE (`37261`). L'Apec l'exige pour publier une offre et
+   * n'accepte pas un nom de ville. Nullable : les sites existants n'en ont
+   * pas, et seule la publication APEC en a besoin.
+   */
+  inseeCode: z.string().nullable(),
   /** Soft-archive : un site archivé est masqué des listes mais reste
    *  résolvable pour les campagnes historiques et l'audit. */
   archivedAt: z.string().nullable(),
@@ -40,6 +46,7 @@ export const SiteCreateSchema = z.object({
   type: z.string().max(120).nullish(),
   city: z.string().max(120).nullish(),
   postalCode: z.string().max(20).nullish(),
+  inseeCode: z.string().max(5).nullish(),
 });
 export type SiteCreateInput = z.infer<typeof SiteCreateSchema>;
 

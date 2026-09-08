@@ -20,6 +20,7 @@ export function siteRowToDomain(row: SiteRow): Site {
     type: row.type,
     city: row.city,
     postalCode: row.postal_code,
+    inseeCode: row.insee_code ?? null,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -65,6 +66,7 @@ export async function insertSite(
       type: input.type ?? null,
       city: input.city ?? null,
       postal_code: input.postalCode ?? null,
+      insee_code: input.inseeCode ?? null,
     })
     .select('*')
     .single();
@@ -82,6 +84,7 @@ export async function patchSite(
   if (patch.type !== undefined) row.type = patch.type ?? null;
   if (patch.city !== undefined) row.city = patch.city ?? null;
   if (patch.postalCode !== undefined) row.postal_code = patch.postalCode ?? null;
+  if (patch.inseeCode !== undefined) row.insee_code = patch.inseeCode ?? null;
   if (Object.keys(row).length === 0) return null;
   const { data, error } = await supabase
     .from(TABLE)
