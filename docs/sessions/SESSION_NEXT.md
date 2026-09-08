@@ -1,132 +1,146 @@
-# Brief — prochaine session (réécrit le 21/08/2026)
+# Brief — prochaine session (réécrit le 09/09/2026)
 
-Compte-rendu de la session précédente :
-`docs/sessions/SESSION_2026-08-20_21_IMAP_UX.md`. **À lire avant de coder** : il
-contient les pièges opérationnels IMAP/Vercel qui ont coûté la moitié de la
-session, et une explication que j'ai donnée puis corrigée (le coût d'un SELECT
-IMAP ne dépend PAS de la taille du dossier).
+Le chantier courant est le **connecteur APEC / ADEP V5**. Source de vérité :
+**`docs/specs/apec-adep-connector.md`** — à lire avant de toucher au connecteur.
+Exploitation : `docs/ops/apec-mise-en-service.md`.
 
----
-
-## 0. ÉTAT
-
-**Le module de réservation natif est livré et poussé** (lots 1-2-3). La
-coexistence tient : `campaigns.scheduling_native` vaut `false` par défaut, donc
-la chaîne Cal.com reste seule en service tant que personne ne bascule une
-campagne. Les lots 4 (extinction du stock Cal.com) et 5 (décommission) restent
-à faire — `docs/specs/scheduling-module.md`.
-
-Sont également sur `main` et poussés : « aucun refus envoyé automatiquement »
-(RGPD), le refus groupé, la refonte Paramètres, le multi-utilisateur, les jours
-fériés, le signal 4, et la fiabilisation IMAP.
-
-Dev est vert : typecheck, **1554** tests unitaires, **110** de régression
-(S1-S15), build, lint identique à la baseline.
+> Le brief précédent (21/08, IMAP et conformité prod) est archivé en §5. Ce qu'il
+> contient reste vrai, mais ce n'est plus le sujet.
 
 ---
 
-## 1. BLOQUANT — mettre la production en conformité
+## 0. ÉTAT — lots 0 à 4 livrés, aucun appel réel
 
-Le CODE est déployé ; la BASE et l'ENVIRONNEMENT ne le sont pas
-nécessairement. Tant que ces trois points ne sont pas faits, des écrans
-entiers répondront 500 en prod.
+Le connecteur est **complet et commité** (6 commits, `feat(adep): lot 0` à
+`docs(adep)`), **jamais poussé** au moment d'écrire — le DO pousse lui-même.
 
-### 1.1 Migration Supabase PROD
+| Lot | Contenu | État |
+|---|---|---|
+| 0 | noyau pur : namespaces, nomenclature, Argon2, constructeur XML SEP, parseur d'acquittement, 96 codes d'erreur, validateur métier, sonde XSD | ✅ |
+| 1 | port `JobBoardPublisher`, mock **couturé au transport**, règle « jamais un second `openPosition` » | ✅ |
+| 2 | migration `job_postings`, réservation avant appel, mapping, panneau APEC dans le bloc Canaux | ✅ |
+| 3 | `createHttpAdepTransport` (aucun retry), `resolveTransport` fail-closed, `npm run adep:probe` | ✅ |
+| 4 | 2 signaux métier, case de dépublication dans `CampaignDismissFlowDialog` | ✅ |
+
+**Le connecteur tourne en mode SIMULATION** tant que `ADEP_ENABLED` n'est pas
+posé (`1` exactement — `true` ne suffit pas), et **il le dit à l'écran**. Aucune
+offre n'est jamais partie chez l'Apec.
+
+Dev vert au moment du commit : typecheck, **2097 tests** (7 sautés quand
+`xmllint` est absent), 221 fichiers.
+
+### Les trois règles du connecteur, à ne pas éroder
+
+1. **Jamais un second `openPosition`.** `uncertain` (on ne sait pas) n'est PAS
+   `unavailable` (vérifié : rien n'existe). Les confondre fabrique des doublons
+   indélébiles sur apec.fr. Seul `certainlyNotSent` se rejoue tel quel.
+2. **Le statut est un CACHE, jamais une vérité.** L'Apec seule sait où en est une
+   offre ; « Relire le statut » va le lui demander.
+3. **La dépublication est PROPOSÉE, jamais automatique.** Même raison que « aucun
+   refus n'est envoyé automatiquement » : c'est une action sortante et visible du
+   public, et au-delà de J+30 elle n'a pas de retour arrière.
+
+---
+
+## 1. Migration APEC — AVANT tout déploiement
 
 `scripts/migrate.sql`, **fichier entier**, **deux exécutions successives** (règle
-absolue), puis **Dashboard → Reload schema cache**.
+absolue), puis **Dashboard Supabase → Reload schema cache**. Sans le rechargement
+du cache PostgREST, les lectures rendent « not found in schema cache » et le
+panneau se retire **en silence**.
 
-Ce que la prod n'a probablement pas encore : les 9 tables `sched_*` + la
-fonction `sched_rate_limit_hit`, `campaigns.scheduling_native`,
-`app_settings.branding_config`, `interview_booking_events`, le CHECK étendu
-`candidate_analyses_decision_zone_chk` (valeur `proposed_reject`), et
-**`mailboxes.folder`** (ajoutée le 21/08 — sans elle, toute création ou édition
-de boîte mail échoue en 500 ; c'est exactement ce qui a fait rougir S1/S11/S15
-en dev avant application).
+Quatre objets ajoutés par le chantier :
 
-Contrôle : `npm run check:scheduling` → `TOUT EST EN PLACE`.
-⚠️ Vérifier avec un vrai `SELECT` : `select(head: true)` ne remonte PAS
-l'absence d'une table.
+| Objet | Nature |
+|---|---|
+| `job_postings` | table + CHECK `attempt_state` + 2 index |
+| `recruiters.adep_numero_dossier` | colonne, **chiffrée** (AES-256-GCM, mécanisme IMAP) |
+| `app_settings.adep_config` | colonne jsonb |
+| `sites.insee_code` | colonne — l'Apec veut un code commune, pas un nom de ville |
 
-### 1.2 Variables d'environnement
+⚠️ **Pas encore appliquée en dev au 09/09** — les tests unitaires ne la
+touchent pas (repos mockés), ils ne prouvent donc rien de la base. C'est le
+point de reprise immédiat, avec un contrôle POSITIF : un vrai `SELECT`,
+`select(head: true)` ne remonte PAS l'absence d'une table.
 
-| Variable | Pourquoi | État |
+---
+
+## 2. Les quatre restes ouverts — et qui les bloque
+
+| Reste | Bloqué par | Ce qu'on fait en attendant |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` | base des liens `/r/` et `/b/` **et** du domaine de l'UID iCalendar. À poser sur l'**alias de production** (`orqa-bia-prod.vercel.app` — pas besoin d'un domaine acheté). Sans elle, le repli prend l'URL du *déploiement*, qui change à chaque mise en ligne : liens morts et rendez-vous dupliqués à la première modification. | **à vérifier** |
-| `CRON_SECRET` | fail-closed : sans lui la route cron répond 500 et la relève mail s'arrête. | posé sur la démo (vérifié : la route rend **401**, pas 500) — **à vérifier en prod client** |
+| **Le WSDL de PRODUCTION n'a jamais été vu** | l'Apec (accès) | `adep:probe` compare le `targetNamespace` réellement servi à notre constante et **refuse de continuer** en cas d'écart |
+| **Formulaire du bloc client réel (mode indirect)** | convention Apec Cabinets / ETT / PRISME non signée | le bloc est construit, validé et testé de bout en bout ; seul l'écran ne le saisit pas. Le mode `broker` dans les réglages du cabinet est le déclencheur naturel |
+| **Les 8 questions au support** | envoi à `supportadep@apec.fr` | bloc rédigé, `docs/ops/apec-questions-support.md`. Chaque point porte **l'hypothèse retenue** : le code n'attend personne, mais il dit ce qu'il suppose |
+| **Premier appel réel** | les trois lignes ci-dessus | `npm run adep:probe -- --env <fichier>` en dry-run d'abord, `--execute` ensuite. ⚠️ Si la sonde rend `uncertain`, **NE PAS la relancer** : vérifier sur apec.fr sous la référence affichée |
 
-Poser une variable ne suffit pas : **Vercel les attache par déploiement**, il
-faut redéployer.
-
-### 1.3 Savoir qui pointe où
-
-Deux instances coexistent et **ne partagent pas la même base** :
-
-- `virtual-company-chi.vercel.app` (démo) ;
-- `orqa-bia-prod.vercel.app` (prod client).
-
-Avant tout diagnostic « ça ne marche pas », **établir quel projet Supabase
-chaque instance interroge**. Une heure a été perdue le 20/08 à chercher pourquoi
-un `git push` ne changeait rien : la boîte concernée vivait dans le projet du
-`.env.local`, relevé par le `next dev` local, pas par l'instance déployée.
+Un cinquième reste est **traité le 09/09** : le pré-remplissage de l'offre APEC
+depuis l'annonce générique (§3).
 
 ---
 
-## 2. Suites du chantier IMAP
+## 3. Pré-remplissage depuis l'annonce générique (09/09, en cours)
 
-Le gros est fait (démarrage au bord récent, fermeture et ouverture bornées,
-dossier configurable, `imap_mailbox_skipped`). Ce qui reste :
+Ce que le recruteur a validé ne se ressaisit pas : à l'ouverture du panneau, le
+titre et le corps de l'offre APEC viennent de l'annonce générique publiée, à
+défaut de la génération existante, en restant **éditables** (le format Apec n'est
+pas celui du canal générique).
 
-- **Le signal 4 n'a aucun badge.** Il n'apparaît que dans le toast, une fois
-  par session de navigateur, sur `/rh/recrutement`. Les trois autres signaux ont
-  un badge d'onglet ; celui-ci vise `/settings`, qui n'en est pas un. Piste :
-  pastille sur le lien « Paramètres » du `TopBanner`
-  (`src/components/navigation/TopBanner.tsx:69`). Coût : le bandeau devrait
-  consommer les signaux (un fetch de plus par page).
-- **Une boîte au compte LENT reste irrelevable sur Vercel.** L'ouverture est
-  maintenant bornée à 20 s et l'échec est tracé, mais un compte à ~10 s par
-  commande n'entrera jamais dans `maxDuration = 60`. Trois sorties, aucune
-  n'est du code : laisser le compte respirer (la limitation du fournisseur
-  s'atténue), utiliser une boîte dédiée, ou monter `maxDuration` **si le plan
-  Vercel le permet** (`src/app/api/cron/imap-poll/route.ts:27`, Hobby plafonne
-  à 60).
-- **`imap_unmatched_cvs` : 107 lignes parasites en dev**, résidu du crawl du
-  20/08 (plans d'accès, procédures). Sans effet sur les candidatures, mais elles
-  pollueront le futur écran de rejeu. Purge ciblée par `mailbox_id` si besoin.
-- **UI de rejeu des `imap_unmatched_cvs`** — toujours au backlog, API only.
+**Le snapshot APEC est distinct et figé à sa propre publication.** Une
+modification de l'annonce générique après coup ne touche PAS l'offre déjà
+publiée — et le panneau le dit, plutôt que de laisser croire à une synchro.
 
 ---
 
-## 3. Chantiers candidats (à arbitrer avec le DO)
+## 4. Ce qui attend ailleurs (inchangé)
 
-- **Cartographie produit du Manager** — les surfaces récentes (référent, section
-  Recruteurs, sans-suite, dialog de clôture, **disponibilités**, **onglet
-  Entretiens**, **dossier relevé**) sont inconnues de
-  `manager-cartography.ts` : le Manager ne sait pas y orienter et avouera son
-  incertitude. Quasi-obligatoire, et le lot 3 vient d'en ajouter.
+- **Cartographie produit du Manager** — le panneau APEC s'ajoute à la liste des
+  surfaces qu'il ignore (référent, Entretiens, disponibilités, sans-suite). Il
+  avouera son incertitude plutôt que d'inventer un menu, mais la dette grandit.
 - **Lots 4-5 du module de réservation** : extinction du stock Cal.com puis
   décommission (`docs/specs/scheduling-module.md`).
-- **Lot audit 🟠 résiduel** (`docs/audit/audit-orqa.md`) : I1 (`send_failed`
-  jamais re-tenté + brief mis en file quand même), I2 (couche d'audit poller en
-  `.catch(() => {})`), puis I3/I4, I15/I16, I17.
-- **Settings I12** : sauvegarde optimiste sans rollback (`SettingsHub`).
-- **`/validations-vivier` hors préfixe proxy** (SEC-7 résiduel).
-- **Fériés hors métropole** : Alsace-Moselle (Vendredi saint, 26 décembre) et
-  outre-mer sont volontairement hors périmètre — les poser sans savoir où
-  travaille la personne bloquerait des journées ouvrées à tort.
+- **Lot audit 🟠 résiduel** (`docs/audit/audit-orqa.md`) : I1, I2, puis I3/I4,
+  I15/I16, I17. **Settings I12** : sauvegarde optimiste sans rollback.
+- **UI de rejeu des `imap_unmatched_cvs`** (API only aujourd'hui).
 - Voir `docs/BACKLOG.md` pour le reste.
 
 ---
 
-## 4. OUT (ne pas entamer sans décision)
+## 5. Archive du brief du 21/08 — IMAP et conformité prod
+
+Toujours valable, simplement moins prioritaire que le connecteur. Compte-rendu :
+`docs/sessions/SESSION_2026-08-20_21_IMAP_UX.md`.
+
+- **Migration prod** : les 9 tables `sched_*` + `sched_rate_limit_hit`,
+  `campaigns.scheduling_native`, `app_settings.branding_config`,
+  `interview_booking_events`, le CHECK `candidate_analyses_decision_zone_chk`
+  étendu à `proposed_reject`, et **`mailboxes.folder`** (sans elle, toute
+  création ou édition de boîte mail échoue en 500). Contrôle :
+  `npm run check:scheduling`.
+- **`NEXT_PUBLIC_APP_URL`** sur l'alias de production, et **`CRON_SECRET`**
+  (fail-closed). Poser une variable ne suffit pas : Vercel les attache **par
+  déploiement**, il faut redéployer.
+- **Savoir qui pointe où** : `virtual-company-chi` (démo) et `orqa-bia-prod`
+  (prod client) **ne partagent pas la même base**. Établir quel projet Supabase
+  chaque instance interroge AVANT tout diagnostic.
+- **Le signal 4 n'a aucun badge** (il vise `/settings`, qui n'est pas un onglet).
+- **Une boîte au compte LENT reste irrelevable sur Vercel** : ~10 s par commande
+  n'entre jamais dans `maxDuration = 60`. Aucune des trois sorties n'est du code.
+- **`imap_unmatched_cvs` : 107 lignes parasites en dev**, résidu du crawl du
+  20/08.
+
+---
+
+## 6. OUT (ne pas entamer sans décision)
 
 - n8n / event bus externe (post-MVP).
-- Cloisonnement de données par recruteur — le modèle « espace commun » est un
-  CHOIX validé, ne pas le remettre en cause au détour d'un ticket.
-- **V2 du module de réservation** : synchronisation Google/Outlook (OAuth),
-  liens visio uniques par RDV, rappels J-1, réémission automatique après
-  annulation. La couture existe, ne pas l'implémenter.
-- Option B Cal.com (Team payante) — sans objet.
+- Cloisonnement de données par recruteur — « espace commun » est un CHOIX validé.
+- **V2 du module de réservation** : synchronisation Google/Outlook, visio par
+  RDV, rappels J-1, réémission automatique. La couture existe, ne pas
+  l'implémenter.
+- **Mode indirect ADEP sans convention signée** — le formulaire bâtirait sur une
+  hypothèse (§2.4 de la spec).
+- Fériés hors métropole (Alsace-Moselle, outre-mer).
 
 ---
 
@@ -136,13 +150,11 @@ dossier configurable, `imap_mailbox_skipped`). Ce qui reste :
   guards sur la DÉFINITION, **double application en dev avant la prod**.
 - Cadrage + inventaire EXHAUSTIF des lecteurs avant de coder (réflexe DO).
 - `npm run typecheck` + `npm test` avant commit ; `npm run test:regression`
-  (**S1-S15**, base DEV, application fermée) avant tout push.
+  (base DEV, application fermée) avant tout push.
 - Le DO pousse lui-même (`! git push origin main`).
-- **Une instance Vercel ne relève JAMAIS le mail toute seule** : le
-  `setInterval` est désactivé si `process.env.VERCEL`, `vercel.json` est `{}`,
-  c'est **cron-job.org** qui appelle `/api/cron/imap-poll`. Son historique
-  affiche « Échec (délai d'attente) » dès 30 s alors que la fonction dispose de
-  60 s : ce n'est pas un échec de la relève.
+- **Une instance Vercel ne relève JAMAIS le mail toute seule** : c'est
+  **cron-job.org** qui appelle `/api/cron/imap-poll`. Son « Échec (délai
+  d'attente) » à 30 s n'est pas un échec de la relève.
 - **Le poller lit le dossier configuré (défaut INBOX).** Un mail de test envoyé
   *depuis* la boîte surveillée part dans `\Sent` et restera invisible.
 - **Jamais deux poller sur une même base** (`next dev` local + cron déployé).
