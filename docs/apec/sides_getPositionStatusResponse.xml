@@ -1,0 +1,15 @@
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+   <soap:Body>
+      <getPositionStatusResponse xmlns="http://adep.apec.fr/hrxml/sides" xmlns:ns2="http://ns.hr-xml.org/2006-02-28">
+         <onePosition>
+            <apecPositionNumero>177855077W</apecPositionNumero>
+            <status>PUBLIEE</status>
+            <isEditable>false</isEditable>
+            <positionUrl>https://wwwrec1.apec.fr/candidat/recherche-emploi.html/emploi/detail-offre/177855077W</positionUrl>
+         </onePosition>
+         <uniquePayloadTrackingId>
+            <ns2:IdValue>8hsldfg6dggd3dcvcfsdgdjdfdggggfuffdfdgdffdf9fdll0r0tct3gss5h86128868128</ns2:IdValue>
+         </uniquePayloadTrackingId>
+      </getPositionStatusResponse>
+   </soap:Body>
+</soap:Envelope>

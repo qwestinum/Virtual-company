@@ -1,0 +1,20 @@
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sid="https://adep.apec.fr/hrxml/sides" xmlns:ns="http://ns.hr-xml.org/2006-02-28">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <sid:getPositionStatusRequest>		 
+		 <sid:authentication>
+            <sid:atsId>ID_ATS</sid:atsId>
+            <sid:numeroDossier>NUMERO_DOSSIER_INTERLOCUTEUR</sid:numeroDossier>
+            <sid:atsPassword>PASSWORD_SHA_512</sid:atsPassword>
+        </sid:authentication>		 
+         <sid:uniquePayloadTrackingId idOwner="CLIENT">
+            <ns:IdValue>v5-doc-adep-sides-get-1002</ns:IdValue>
+         </sid:uniquePayloadTrackingId>
+         <!--Optional:-->
+         <sid:clientPositionId validFrom="?" validTo="?" idOwner="?">
+            <!--1 or more repetitions:-->
+            <ns:IdValue name="?">v5-doc-adep-sides-1003</ns:IdValue>
+         </sid:clientPositionId>
+      </sid:getPositionStatusRequest>
+   </soapenv:Body>
+</soapenv:Envelope>

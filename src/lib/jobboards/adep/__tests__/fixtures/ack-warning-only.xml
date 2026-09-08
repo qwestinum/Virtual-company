@@ -1,0 +1,30 @@
+<?xml version="1.0" ?>
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+  <S:Body>
+    <ns3:openPositionResponse xmlns:ns2="http://ns.hr-xml.org/2006-02-28" xmlns:ns3="http://adep.apec.fr/hrxml/sep">
+      <ns2:PayloadResponseSummary>
+        <ns2:UniquePayloadTrackingId idOwner="CLIENT">
+          <ns2:IdValue>orqa-CAMP-2026-301-1757000112233</ns2:IdValue>
+        </ns2:UniquePayloadTrackingId>
+      </ns2:PayloadResponseSummary>
+      <ns2:PayloadDisposition>
+        <ns2:EntityDisposition>
+          <ns2:EntityShortName>Position opening</ns2:EntityShortName>
+          <ns2:EntityInstanceXPath>/PositionOpening</ns2:EntityInstanceXPath>
+          <ns2:EntityException>
+            <ns2:Exception>
+              <ns2:ExceptionIdentifier>409</ns2:ExceptionIdentifier>
+              <ns2:ExceptionSeverity>Warning</ns2:ExceptionSeverity>
+              <ns2:ExceptionMessage>API_409_INVALID_PRESENTATION_DESCRIPTION_ERROR</ns2:ExceptionMessage>
+            </ns2:Exception>
+            <ns2:Exception>
+              <ns2:ExceptionSeverity>Informational</ns2:ExceptionSeverity>
+              <ns2:ExceptionMessage>API_411_INVALID_URL_VIDEO_ERROR</ns2:ExceptionMessage>
+            </ns2:Exception>
+          </ns2:EntityException>
+        </ns2:EntityDisposition>
+      </ns2:PayloadDisposition>
+      <ns3:apecPositionNumero>177596708W</ns3:apecPositionNumero>
+    </ns3:openPositionResponse>
+  </S:Body>
+</S:Envelope>

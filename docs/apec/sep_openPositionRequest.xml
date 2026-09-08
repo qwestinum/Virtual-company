@@ -1,0 +1,96 @@
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+    <SOAP-ENV:Header xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" />
+    <S:Body>
+        <ns2:openPositionRequest xmlns:ns2="https://adep.apec.fr/hrxml/sep" xmlns:ns3="http://ns.hr-xml.org/2006-02-28">            
+		<ns2:authentication>
+            <ns2:atsId>ID_ATS</ns2:atsId>
+            <ns2:numeroDossier>NUMERO_DOSSIER_INTERLOCUTEUR</ns2:numeroDossier>
+            <ns2:atsPassword>PASSWORD_SHA_512</ns2:atsPassword>
+        </ns2:authentication>
+            <ns2:UniquePayloadTrackingId idOwner="CLIENT">
+                <ns3:IdValue>v5-doc-adep-1027</ns3:IdValue>
+            </ns2:UniquePayloadTrackingId>
+            <ns2:position>
+                <ns3:PositionSupplier relationship="self" />
+                <ns3:PositionProfile xml:lang="fr">
+                    <ns3:ProfileId idOwner="CLIENT">
+                        <ns3:IdValue>v5-doc-adep-1017</ns3:IdValue>
+                    </ns3:ProfileId>
+                    <ns3:ProfileName>APEC</ns3:ProfileName>
+                    <ns3:PositionDateInfo />
+                    <ns3:Organization>
+                     </ns3:Organization>
+                    <ns3:PositionDetail>
+                        <ns3:IndustryCode classificationName="INSEE">7810Z</ns3:IndustryCode>
+                        <ns3:PhysicalLocation>
+                            <ns3:Name>LOCATION_ZONE_DEPLACEMENT</ns3:Name>
+                            <ns3:Area type="APEC">
+                                <ns3:Value>AUCUN</ns3:Value>
+                            </ns3:Area>
+                        </ns3:PhysicalLocation>
+                        <ns3:PhysicalLocation>
+                            <ns3:Name>LOCATION_CODE</ns3:Name>
+                            <ns3:Area type="INSEE">
+                                <ns3:Value>06088</ns3:Value>
+                            </ns3:Area>
+                        </ns3:PhysicalLocation>
+                        <ns3:PositionTitle>Homologateur Type S47U2J7Z H/F</ns3:PositionTitle>
+                        <ns3:PositionClassification>Direct Hire</ns3:PositionClassification>
+                        <ns3:Competency name="GLOBAL_EXPERIENCE_LEVEL">
+                            <ns3:CompetencyEvidence>
+                                <ns3:StringValue>3</ns3:StringValue>
+                            </ns3:CompetencyEvidence>
+                        </ns3:Competency>
+                        <ns3:Competency name="INTERNATIONAL_PROFILE" />
+                        <ns3:RemunerationPackage>
+                            <ns3:BasePay>
+                                <ns3:BasePayAmountMin>35000</ns3:BasePayAmountMin>
+                                <ns3:BasePayAmountMax>40000</ns3:BasePayAmountMax>
+                            </ns3:BasePay>
+                            <ns3:OtherPay>
+                                <ns3:OtherPayCalculation>Négociable</ns3:OtherPayCalculation>
+                            </ns3:OtherPay>
+                        </ns3:RemunerationPackage>
+                        <ns3:UserArea>
+                            <ns2:StatusJob>CADRE_PRIVE</ns2:StatusJob>
+                            <ns2:DisplayedPay>2</ns2:DisplayedPay>
+                            <ns2:JobType>1</ns2:JobType>
+                            <ns2:PartTime>false</ns2:PartTime>
+                        </ns3:UserArea>
+                    </ns3:PositionDetail>
+                    <ns3:FormattedPositionDescription>
+                        <ns3:Name>POSITION_TYPE</ns3:Name>
+                        <ns3:Value>ODD</ns3:Value>
+                    </ns3:FormattedPositionDescription>
+                    <ns3:FormattedPositionDescription>
+                        <ns3:Name>POSITION_DESCRIPTION</ns3:Name>
+                        <ns3:Value><![CDATA[Notre client, entreprise reconnue spécialisée en Gros Œuvre, développe ses activités en Indre-et-Loire.<br/>Dans ce contexte, nous recherchons un profil capable de réaliser les opérations de conduite de travaux en Gros Œuvre, en neuf et réhabilitation, dans le respect des objectifs de délais et de qualité fixés. <br/>Vous assurez la préparation technique et humaine des chantiers, la gestion des approvisionnements, les réunions, le suivi d'avancement des plannings conformément aux moyens définis par le Directeur travaux de la société. Vous intervenez sur des chantiers régionaux variés de moyenne ou grande envergure : logements collectifs et individuels, bâtiments tertiaires et industriels.<br/>Vous disposez d'une première expérience significative en Conduite de travaux Gros Œuvre et souhaitez vous impliquer dans un environnement PME.]]></ns3:Value>
+                    </ns3:FormattedPositionDescription>
+                    <ns3:FormattedPositionDescription>
+                        <ns3:Name>PROFILE_DESCRIPTION</ns3:Name>
+                        <ns3:Value><![CDATA[De formation bac+ 2, vous possédez obligatoirement une expérience dans l’intérim sur un implant à forte volumétrie De formation bac+ 2, vous possédez obligatoirement une expérience dans l’intérim sur un implant à forte volumétrie]]></ns3:Value>
+                    </ns3:FormattedPositionDescription>
+                    <ns3:FormattedPositionDescription>
+                        <ns3:Name>ORGANIZATION_DESCRIPTION</ns3:Name>
+                        <ns3:Value><![CDATA[De formation bac+ 2, vous possédez obligatoirement une expérience dans l’intérim sur un implant à forte volumétrie De formation bac+ 2, vous possédez obligatoirement une expérience dans l’intérim sur un implant à forte volumétrie]]></ns3:Value>
+                    </ns3:FormattedPositionDescription>
+                    <ns3:FormattedPositionDescription>
+                        <ns3:Name>ORGANIZATION_NAME</ns3:Name>
+                        <ns3:Value><![CDATA[l'entreprise de demain]]></ns3:Value>
+                    </ns3:FormattedPositionDescription>
+                    <ns3:FormattedPositionDescription>
+                        <ns3:Name>POSITION_DISPLAY_LOGO</ns3:Name>
+                        <ns3:Value>true</ns3:Value>
+                    </ns3:FormattedPositionDescription>
+                    <ns3:HowToApply>
+                        <ns3:ApplicationMethod>
+                            <ns3:InternetEmailAddress>apply@apec.fr</ns3:InternetEmailAddress>
+                            <ns3:InternetWebAddress />
+                        </ns3:ApplicationMethod>
+                    </ns3:HowToApply>
+                </ns3:PositionProfile>
+                <ns3:NumberToFill>1</ns3:NumberToFill>
+            </ns2:position>
+        </ns2:openPositionRequest>
+    </S:Body>
+</S:Envelope>

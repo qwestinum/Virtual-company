@@ -1,0 +1,190 @@
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+   <soap:Body>
+      <openPositionResponse xmlns="https://adep.apec.fr/hrxml/sides" xmlns:ns2="http://ns.hr-xml.org/2006-02-28">
+         <ns2:PayloadResponseSummary>
+            <ns2:UniquePayloadTrackingId idOwner="CLIENT">
+               <ns2:IdValue>v4-doc-adep-sides-1003</ns2:IdValue>
+            </ns2:UniquePayloadTrackingId>
+            <ns2:TransactionReceiptTimestamp>2017-01-16T17:09:54.426+01:00</ns2:TransactionReceiptTimestamp>
+            <ns2:AcknowledgementCreationTimestamp>2017-01-16T17:09:54.426+01:00</ns2:AcknowledgementCreationTimestamp>
+            <ns2:ReceivedPayloadSummary>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/WorkSite</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>2</ns2:Count>
+                  <ns2:EntityShortName>Staffing Work Site</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/PositionContact</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Position Contact</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/PositionHeader/PositionDescription</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Position Description</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/OrderId</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Order ID</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Staffing Position</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/PositionHeader/PositionId</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Position ID</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/@xml:lang</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Order Language</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/PositionHeader/PositionQuantity</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Position Quantity</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/PositionHeader/PositionTitle</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Position Title</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/Rates</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>2</ns2:Count>
+                  <ns2:EntityShortName>Rates</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/PositionRequirements</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Position Requirements</ns2:EntityShortName>
+               </ns2:EntityInfo>
+               <ns2:EntityInfo>
+                  <ns2:EntityInstanceAxisXPath>//position/staffingOrder/StaffingPosition/PositionRequirements/Competency</ns2:EntityInstanceAxisXPath>
+                  <ns2:Count>1</ns2:Count>
+                  <ns2:EntityShortName>Competency</ns2:EntityShortName>
+               </ns2:EntityInfo>
+            </ns2:ReceivedPayloadSummary>
+         </ns2:PayloadResponseSummary>
+         <ns2:PayloadDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>fr</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Order Language</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/@xml:lang</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>v5-doc-adep-sides-10</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Order ID</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/OrderId</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>7820Z</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Position ID</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/PositionHeader/PositionId</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>Homologateur Type SG</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Position Title</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/PositionHeader/PositionTitle</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>&lt;b>Entreprise&amp;nbsp;:</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Position Description</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/PositionHeader/PositionDescription</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>1.0</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Position Quantity</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/PositionHeader/PositionQuantity</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>?</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Position Contact</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/PositionContact</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>?</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Position Requirements</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/PositionRequirements</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>3</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Competency</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/PositionRequirements/Competency</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>minPayRate</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Rates</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/Rates</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>maxPayRate</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Rates</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/Rates</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>06088</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Staffing Work Site</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/WorkSite</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>AUCUN</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Staffing Work Site</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition/WorkSite</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+            <ns2:EntityDisposition>
+               <ns2:EntityIdentifier idOwner="UNKNOWN">
+                  <ns2:IdValue>?</ns2:IdValue>
+               </ns2:EntityIdentifier>
+               <ns2:EntityShortName>Staffing Position</ns2:EntityShortName>
+               <ns2:EntityInstanceXPath>//position/staffingOrder/StaffingPosition</ns2:EntityInstanceXPath>
+               <ns2:EntityNoException>true</ns2:EntityNoException>
+            </ns2:EntityDisposition>
+         </ns2:PayloadDisposition>
+		 <apecPositionNumero>XXXXXXXXW</apecPositionNumero>
+      </openPositionResponse>
+   </soap:Body>
+</soap:Envelope>

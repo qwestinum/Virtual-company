@@ -1,0 +1,20 @@
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://ns.hr-xml.org/2006-02-28" xmlns:ns2="https://adep.apec.fr/hrxml/sep">
+    <soapenv:Header />
+    <soapenv:Body>
+		<ns2:getPositionStatusRequest>
+			<ns2:authentication>
+				<ns2:atsId>ID_ATS</ns2:atsId>
+				<ns2:numeroDossier>EMAIL_INTERLOCUTEUR</ns2:numeroDossier>
+				<ns2:atsPassword>PASSWORD_SHA_512</ns2:atsPassword>
+			</ns2:authentication>
+            <ns2:UniquePayloadTrackingId>
+                <ns:IdValue>v5-sep-get-pos-1055</ns:IdValue>
+            </ns2:UniquePayloadTrackingId>
+            <ns2:clientPositionId>
+                <ns:IdValue>v5-doc-adep-1017</ns:IdValue>
+            </ns2:clientPositionId>
+            <ns2:numberLimit>1</ns2:numberLimit>
+        </ns2:getPositionStatusRequest>
+    </soapenv:Body>
+</soapenv:Envelope>
+

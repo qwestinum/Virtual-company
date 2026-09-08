@@ -1,0 +1,18 @@
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:Header/>
+	<s:Body xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+		<getPositionRequest xmlns="http://adep.apec.fr/hrxml/sep">
+			<authentication>
+				<atsId>ID_ATS</atsId>
+				<numeroDossier>NUMERO_DOSSIER_INTERLOCUTEUR</numeroDossier>
+				<atsPassword>PASSWORD_SHA_512</atsPassword>
+			</authentication>
+			<UniquePayloadTrackingId idOwner="CLIENT">
+				<IdValue xmlns="http://ns.hr-xml.org/2006-02-28">L198-tes2t04062026_174446_0000</IdValue>
+			</UniquePayloadTrackingId>
+			<apecPositionNumero idOwner="CLIENT">
+				<IdValue xmlns="http://ns.hr-xml.org/2006-02-28">177879976W</IdValue>
+			</apecPositionNumero>
+		</getPositionRequest>
+	</s:Body>
+</s:Envelope>

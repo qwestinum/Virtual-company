@@ -1,0 +1,113 @@
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+    <S:Body>
+        <ns2:openPositionRequest xmlns:ns2="https://adep.apec.fr/hrxml/sides" xmlns="http://ns.hr-xml.org/2006-02-28">
+			<ns2:authentication>
+				<ns2:atsId>ID_ATS</ns2:atsId>
+				<ns2:numeroDossier>NUMERO_DOSSIER_INTERLOCUTEUR</ns2:numeroDossier>
+				<ns2:atsPassword>PASSWORD_SHA_512</ns2:atsPassword>
+			</ns2:authentication>
+            <ns2:uniquePayloadTrackingId idOwner="CLIENT">
+                <IdValue>v5-doc-adep-sides-1003</IdValue>
+            </ns2:uniquePayloadTrackingId>
+            <ns2:position>
+                <ns2:staffingOrder xml:lang="fr">
+                    <OrderId idOwner="CLIENT">
+                        <IdValue>v5-doc-adep-sides-1003</IdValue>
+                    </OrderId>
+                    <ReferenceInformation />
+                    <CustomerReportingRequirements />
+                    <OrderClassification orderStatus="new" orderType="ODD" />
+                    <OrderContact contactType="placed by">
+                        <ContactInfo>
+                            <PersonName />
+                            <ContactMethod>
+                                <InternetEmailAddress>test@apec.fr</InternetEmailAddress>
+                            </ContactMethod>
+                        </ContactInfo>
+                    </OrderContact>
+                    <PositionQuantity>1</PositionQuantity>
+                    <MultiVendorDistribution>true</MultiVendorDistribution>
+                    <StaffingPosition>
+                        <PositionHeader>
+                            <PositionId>
+                                <Id>7820Z</Id>
+                                <Domain>
+                                    <IdIssuer>INSEE</IdIssuer>
+                                    <IdType>NAF</IdType>
+                                </Domain>
+                            </PositionId>
+                            <PositionTitle>Homologateur Type SG57HF39 H/F</PositionTitle>
+                            <PositionType>CDI</PositionType>
+                            <PositionDescription><![CDATA[<b>Entreprise&nbsp;:</b><br/><br/>TTY est un réseau de cabinets de recrutement en CDI, CDD et intérim, de profils spécialisés en ingénierie, informatique et tertiaire<br/><br/><br/><b>Poste et missions&nbsp;:</b><br/><br/>TTY Yvelines, cabinet de recrutement en CDI, CDD, Intérim, recherche pour l'un de ses client un Assistant Administratif / ADV (H/F) au sein d'une équipe de Chefs de projets.<br/>Fonctions principales :<br/>- Demande et réceptions de devis auprès des prestataires partenaires de l'entreprise.<br/>- Suivi des fournisseurs et de l'exécution des prestations.<br/>- Suivi de la facturation.<br/><br/><br/><b>Profil&nbsp;:</b><br/><br/>De formation Bac à Bac + 2, vous maîtrisez les outils bureautique et avez déjà utilisé un logiciel de gestion. Vous avez des bases en comptabilité et bénéficiez d'un bon relationnel ainsi que d'une bonne capacité à travailler en équipe. Votre rigueur et votre réactivité feront la différence.]]></PositionDescription>
+                            <Quantity>1</Quantity>
+                        </PositionHeader>
+                        <CustomerReportingRequirements />
+                        <PositionDateRange>
+                            <StartDate>2016-05-19</StartDate>
+                        </PositionDateRange>
+                        <PositionContact contactType="recipient">
+                            <ContactInfo>
+                                <PersonName>
+                                    <GivenName>John</GivenName>
+                                    <FamilyName>Doe</FamilyName>
+                                    <Affix type="formOfAddress">2</Affix>
+                                    <Affix type="qualification">Toto est content</Affix>
+                                </PersonName>
+                                <ContactMethod>
+                                    <InternetWebAddress>http://XXX.fr/jobs/7/10857995</InternetWebAddress>
+                                </ContactMethod>
+                            </ContactInfo>
+                        </PositionContact>
+                        <Rates rateStatus="proposed" rateType="minPayRate">
+                            <Amount currency="EUR" rateAmountPeriod="yearly">28000</Amount>
+                            <Class>regular</Class>
+                            <StartDate>2016-05-19</StartDate>
+                        </Rates>
+                        <Rates rateStatus="proposed" rateType="maxPayRate">
+                            <Amount currency="EUR" rateAmountPeriod="yearly">50000</Amount>
+                            <Class>regular</Class>
+                            <StartDate>2016-05-19</StartDate>
+                        </Rates>
+                        <WorkSite>
+                            <WorkSiteId>
+                                <Id>06088</Id>
+                                <Domain>
+                                    <IdIssuer>INSEE</IdIssuer>
+                                    <IdType>LOCATION_CODE</IdType>
+                                </Domain>
+                            </WorkSiteId>
+                        </WorkSite>
+                        <WorkSite>
+                            <WorkSiteId>
+                                <Id>AUCUN</Id>
+                                <Domain>
+                                    <IdIssuer>APEC</IdIssuer>
+                                    <IdType>LOCATION_ZONE_DEPLACEMENT</IdType>
+                                </Domain>
+                            </WorkSiteId>
+                        </WorkSite>
+                        <PositionRequirements interviewRequired="false" resumeRequired="false">
+                            <Competency name="GLOBAL_EXPERIENCE_LEVEL">
+                                <CompetencyEvidence>
+                                    <StringValue>3</StringValue>
+                                </CompetencyEvidence>
+                            </Competency>
+                        </PositionRequirements>
+                    </StaffingPosition>
+                    <UserArea>
+                        <ns2:DisplayLogoType>true</ns2:DisplayLogoType>
+                        <ns2:StatusJob>CADRE_PRIVE</ns2:StatusJob>
+                        <ns2:JobType>5</ns2:JobType>
+                        <ns2:Duration>12</ns2:Duration>
+                        <ns2:DisplayedPay>3</ns2:DisplayedPay>
+                        <ns2:PartTime>true</ns2:PartTime>
+                        <ns2:PartTimeDuration>1</ns2:PartTimeDuration>
+                        <ns2:OrganizationName>Entreprise de demain</ns2:OrganizationName>
+                        <ns2:OrganizationDescription><![CDATA[De formation bac+ 2, vous possédez obligatoirement une expérience dans l’intérim sur un implant à forte volumétrie, dans un milieu exigeant.Impliqué(e) et dynamique, vous faites preuve d’esprit d’équipe et vous aimez vous investir dans votre travail. Vos qualités relationnelles vous permettent d’accueillir et de renseigner avec professionnalisme et convivialité les candidats, les collaborateurs intérimaires et le client final Le premier entretien téléphonique se basera uniquement sur votre expérience d’un implant.]]></ns2:OrganizationDescription>
+                        <ns2:ProfileDescription><![CDATA[De formation bac+ 2, vous possédez obligatoirement une expérience dans l’intérim sur un implant à forte volumétrie, dans un milieu exigeant.Impliqué(e) et dynamique, vous faites preuve d’esprit d’équipe et vous aimez vous investir dans votre travail. Vos qualités relationnelles vous permettent d’accueillir et de renseigner avec professionnalisme et convivialité les candidats, les collaborateurs intérimaires et le client final Le premier entretien téléphonique se basera uniquement sur votre expérience d’un implant.]]></ns2:ProfileDescription>
+                    </UserArea>
+                </ns2:staffingOrder>
+            </ns2:position>
+        </ns2:openPositionRequest>
+    </S:Body>
+</S:Envelope>

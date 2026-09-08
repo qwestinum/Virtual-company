@@ -1,0 +1,16 @@
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+   <soap:Body>
+      <ns3:getPositionStatusResponse xmlns:ns2="http://ns.hr-xml.org/2006-02-28" xmlns:ns3="http://adep.apec.fr/hrxml/sep">
+         <ns2:onePosition>
+            <ns2:apecPositionNumero>177596708W</ns2:apecPositionNumero>
+            <ns2:clientPositionId>26335625/CDGTB/78L</ns2:clientPositionId>
+            <ns2:status>PUBLIEE</ns2:status>
+            <ns2:isEditable>true</ns2:isEditable>
+            <ns2:positionUrl>https://wwwrec1.apec.fr/candidat/recherche-emploi.html/emploi/detail-offre/177596708W</ns2:positionUrl>
+         </ns2:onePosition>
+         <ns2:uniquePayloadTrackingId idOwner="CLIENT">
+            <ns2:IdValue>863f90d03g586128868128-test1234s55</ns2:IdValue>
+         </ns2:uniquePayloadTrackingId>
+      </ns3:getPositionStatusResponse>
+   </soap:Body>
+</soap:Envelope>

@@ -1,0 +1,112 @@
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+   <soap:Body>
+      <ns3:getPositionResponse xmlns:ns2="http://ns.hr-xml.org/2006-02-28" xmlns:ns3="http://adep.apec.fr/hrxml/sep">
+         <ns3:position>
+            <ns2:PositionRecordInfo>
+               <ns2:Status>SUSPENDUE</ns2:Status>
+            </ns2:PositionRecordInfo>
+            <ns2:PositionSupplier relationship="broker"/>
+            <ns2:PositionProfile>
+               <ns2:ProfileId idOwner="CLIENT">
+                  <ns2:IdValue>L192-04062026_174256_0000</ns2:IdValue>
+               </ns2:ProfileId>
+               <ns2:Organization>
+                  <ns2:OrganizationName>GLS TEST</ns2:OrganizationName>
+                  <ns2:LegalId idOwner="INSEE">
+                     <ns2:IdValue>71200001700012</ns2:IdValue>
+                  </ns2:LegalId>
+                  <ns2:IndustryCode classificationName="INSEE">8292Z</ns2:IndustryCode>
+               </ns2:Organization>
+               <ns2:PositionDetail>
+                  <ns2:IndustryCode classificationName="INSEE">8292Z</ns2:IndustryCode>
+                  <ns2:PhysicalLocation>
+                     <ns2:Name>LOCATION_CODE</ns2:Name>
+                     <ns2:Area type="INSEE">
+                        <ns2:Value>84138</ns2:Value>
+                     </ns2:Area>
+                  </ns2:PhysicalLocation>
+                  <ns2:PhysicalLocation>
+                     <ns2:Name>LOCATION_ZONE_DEPLACEMENT</ns2:Name>
+                     <ns2:Area type="APEC">
+                        <ns2:Value>REGIONAL</ns2:Value>
+                     </ns2:Area>
+                  </ns2:PhysicalLocation>
+                  <ns2:PositionTitle>Testeur F/H</ns2:PositionTitle>
+                  <ns2:Competency name="GLOBAL_EXPERIENCE_LEVEL">
+                     <ns2:CompetencyEvidence>
+                        <ns2:StringValue>6</ns2:StringValue>
+                     </ns2:CompetencyEvidence>
+                  </ns2:Competency>
+                  <ns2:RemunerationPackage>
+                     <ns2:BasePay>
+                        <ns2:BasePayAmountMin>19000</ns2:BasePayAmountMin>
+                        <ns2:BasePayAmountMax>21000</ns2:BasePayAmountMax>
+                     </ns2:BasePay>
+                  </ns2:RemunerationPackage>
+                  <ns2:UserArea>
+                     <ns3:Duration>6</ns3:Duration>
+                     <ns3:PartTime>true</ns3:PartTime>
+                     <ns3:PartTimeDuration>2</ns3:PartTimeDuration>
+                     <ns3:RemoteWork>TOTAL_POSSIBLE</ns3:RemoteWork>
+                     <ns3:JobType>2</ns3:JobType>
+                     <ns3:StatusJob>CADRE_PRIVE</ns3:StatusJob>
+                     <ns3:DatePositionTaken>2026-06-05+02:00</ns3:DatePositionTaken>
+                     <ns3:ReleaseDate>2026-06-05+02:00</ns3:ReleaseDate>
+                     <ns3:DisplayedPay>2</ns3:DisplayedPay>
+                     <ns3:NumeroDossier>xxxxxxxxxW</ns3:NumeroDossier>
+                     <ns3:IsEditable>true</ns3:IsEditable>
+                  </ns2:UserArea>
+               </ns2:PositionDetail>
+               <ns2:FormattedPositionDescription>
+                  <ns2:Name>POSITION_DESCRIPTION</ns2:Name>
+                  <ns2:Value>Nous cherchons un développeur JAVA pour faire du Java en tant que développeur test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test</ns2:Value>
+               </ns2:FormattedPositionDescription>
+               <ns2:FormattedPositionDescription>
+                  <ns2:Name>POSITION_DISPLAY_LOGO</ns2:Name>
+                  <ns2:Value>false</ns2:Value>
+               </ns2:FormattedPositionDescription>
+               <ns2:FormattedPositionDescription>
+                  <ns2:Name>POSITION_TYPE</ns2:Name>
+                  <ns2:Value>ODD</ns2:Value>
+               </ns2:FormattedPositionDescription>
+               <ns2:FormattedPositionDescription>
+                  <ns2:Name>PRESENTATION_DESCRIPTION</ns2:Name>
+                  <ns2:Value>Nos conseils aux candidats</ns2:Value>
+               </ns2:FormattedPositionDescription>
+               <ns2:FormattedPositionDescription>
+                  <ns2:Name>RECRUITMENT_DESCRIPTION</ns2:Name>
+                  <ns2:Value>Notre processus de recrutement</ns2:Value>
+               </ns2:FormattedPositionDescription>
+               <ns2:FormattedPositionDescription>
+                  <ns2:Name>ORGANIZATION_NAME</ns2:Name>
+                  <ns2:Value>MON ENTREPRISE</ns2:Value>
+               </ns2:FormattedPositionDescription>
+               <ns2:FormattedPositionDescription>
+                  <ns2:Name>ORGANIZATION_DESCRIPTION</ns2:Name>
+                  <ns2:Value>Nous cherchons un développeur JAVA pour faire du Java en tant que développeur test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test</ns2:Value>
+               </ns2:FormattedPositionDescription>
+               <ns2:FormattedPositionDescription>
+                  <ns2:Name>PROFILE_DESCRIPTION</ns2:Name>
+                  <ns2:Value>Nous cherchons un développeur JAVA pour faire du Java en tant que développeur test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test test</ns2:Value>
+               </ns2:FormattedPositionDescription>
+               <ns2:HowToApply>
+                  <ns2:ApplicationMethod>
+                     <ns2:InternetEmailAddress>test@uuuj.fr</ns2:InternetEmailAddress>
+                     <ns2:InternetWebAddress>https://gls.org/offre-FULL-1</ns2:InternetWebAddress>
+                  </ns2:ApplicationMethod>
+               </ns2:HowToApply>
+            </ns2:PositionProfile>
+            <ns2:NumberToFill>2</ns2:NumberToFill>
+         </ns3:position>
+         <ns3:clientPositionId>
+            <ns2:IdValue>L192-04062026_174256_0000</ns2:IdValue>
+         </ns3:clientPositionId>
+         <ns3:apecPositionNumero>
+            <ns2:IdValue>xxxxxxxxxW</ns2:IdValue>
+         </ns3:apecPositionNumero>
+         <ns3:uniquePayloadTrackingId idOwner="CLIENT">
+            <ns2:IdValue>L198-tes2t04062026_174446_0000</ns2:IdValue>
+         </ns3:uniquePayloadTrackingId>
+      </ns3:getPositionResponse>
+   </soap:Body>
+</soap:Envelope>

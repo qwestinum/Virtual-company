@@ -1,0 +1,46 @@
+<?xml version="1.0" ?>
+<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+  <S:Body>
+    <ns3:openPositionResponse xmlns:ns2="http://ns.hr-xml.org/2006-02-28" xmlns:ns3="http://adep.apec.fr/hrxml/sep">
+      <ns2:PayloadResponseSummary>
+        <ns2:UniquePayloadTrackingId idOwner="CLIENT">
+          <ns2:IdValue>orqa-CAMP-2026-288-1757000000000</ns2:IdValue>
+        </ns2:UniquePayloadTrackingId>
+        <ns2:TransactionReceiptTimestamp>2026-09-08T15:55:02.475+02:00</ns2:TransactionReceiptTimestamp>
+        <ns2:AcknowledgementCreationTimestamp>2026-09-08T15:55:48.369+02:00</ns2:AcknowledgementCreationTimestamp>
+      </ns2:PayloadResponseSummary>
+      <ns2:PayloadDisposition>
+        <ns2:EntityDisposition>
+          <ns2:EntityIdentifier idOwner="UNKNOWN">
+            <ns2:IdValue>fr</ns2:IdValue>
+          </ns2:EntityIdentifier>
+          <ns2:EntityShortName>Order Language</ns2:EntityShortName>
+          <ns2:EntityInstanceXPath>//position/@xml:lang</ns2:EntityInstanceXPath>
+          <ns2:EntityNoException>true</ns2:EntityNoException>
+        </ns2:EntityDisposition>
+        <ns2:EntityDisposition>
+          <ns2:EntityIdentifier idOwner="UNKNOWN">
+            <ns2:IdValue>CDI</ns2:IdValue>
+          </ns2:EntityIdentifier>
+          <ns2:EntityShortName>Position Type</ns2:EntityShortName>
+          <ns2:EntityInstanceXPath>//position/PositionProfile/PositionDetail/UserArea/JobType</ns2:EntityInstanceXPath>
+          <ns2:EntityNoException>true</ns2:EntityNoException>
+        </ns2:EntityDisposition>
+        <ns2:EntityDisposition>
+          <ns2:EntityIdentifier idOwner="CLIENT">
+            <ns2:IdValue>CAMP-2026-288</ns2:IdValue>
+          </ns2:EntityIdentifier>
+          <ns2:EntityShortName>Staffing Order</ns2:EntityShortName>
+          <ns2:EntityInstanceXPath>//position</ns2:EntityInstanceXPath>
+          <ns2:EntityException>
+            <ns2:Exception>
+              <ns2:ExceptionIdentifier>330</ns2:ExceptionIdentifier>
+              <ns2:ExceptionSeverity>Fatal</ns2:ExceptionSeverity>
+              <ns2:ExceptionMessage>API_330_CLIENT_INDIRECT_ACCESS_ERROR</ns2:ExceptionMessage>
+            </ns2:Exception>
+          </ns2:EntityException>
+        </ns2:EntityDisposition>
+      </ns2:PayloadDisposition>
+    </ns3:openPositionResponse>
+  </S:Body>
+</S:Envelope>
