@@ -47,9 +47,17 @@ export function ApecPublishedCard({
   const now = new Date();
   const phase = adepPhase(posting);
   const notice = republishNotice(posting, now);
+  // ⚠️ « inconnu » ne se dit QUE si l'Apec a répondu sans statut. Tant que rien
+  // n'a été lu (`remoteStatusAt` vide — le cas juste après une création, dont
+  // l'acquittement ne porte qu'un numéro), on dit que la lecture n'a pas encore
+  // eu lieu : « inconnu » après un succès se lit comme un échec, et envoie
+  // chercher un problème qui n'existe pas.
+  const neverRead = !posting.remoteStatusAt;
   const statusLabel = posting.remoteStatus
     ? (ADEP_STATUS_LABELS[posting.remoteStatus] ?? posting.remoteStatus)
-    : 'inconnu';
+    : neverRead
+      ? 'créée — statut pas encore lu chez l’Apec'
+      : 'inconnu';
 
   if (phase === 'uncertain') {
     return (
@@ -111,7 +119,11 @@ export function ApecPublishedCard({
             <em style={{ color: 'var(--dash-text-secondary)', fontStyle: 'normal' }}>
               {` — lu${formatPublishedAt(posting.remoteStatusAt)}`}
             </em>
-          ) : null}
+          ) : (
+            <em style={{ color: 'var(--dash-text-secondary)', fontStyle: 'normal' }}>
+              {' — « Relire le statut » pour le demander'}
+            </em>
+          )}
         </span>
       </div>
       {posting.remoteUrl ? (

@@ -139,6 +139,61 @@ describe('ordre des opérations', () => {
   });
 });
 
+describe('statut juste après la publication', () => {
+  it('enchaîne une LECTURE : le statut est daté, jamais blanc', async () => {
+    // `openPosition` acquitte, il ne renseigne pas l'état de l'offre — son
+    // acquittement ne porte qu'un numéro. Sans cette lecture, l'écran affichait
+    // « inconnu » juste après un succès, ce qui se lit comme un échec.
+    const transport = new MockAdepTransport({ numeros: ['177596708W'] });
+    await publishToAdep({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      offer: OFFER,
+      deps: deps(transport),
+    });
+
+    expect(transport.calls.map((c) => c.operation)).toEqual([
+      'openPosition',
+      'getPositionStatus',
+    ]);
+    expect(patch).toHaveBeenCalledWith(
+      'JOBP-CAMP-2026-288',
+      expect.objectContaining({
+        attemptState: 'acknowledged',
+        remoteStatus: expect.any(String),
+        remoteStatusAt: expect.any(String),
+      }),
+    );
+  });
+
+  it('une lecture qui échoue n’emporte PAS la publication réussie', async () => {
+    // L'offre existe chez l'Apec et son numéro est en base : faire échouer la
+    // publication parce que la relecture a raté serait perdre cette vérité —
+    // et la reprise reposterait une seconde offre.
+    const transport = new MockAdepTransport({
+      numeros: ['177596708W'],
+      failures: { getPositionStatus: [{ kind: 'not_sent' }] },
+    });
+    const result = await publishToAdep({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      offer: OFFER,
+      deps: deps(transport),
+    });
+
+    expect(result.outcome.kind).toBe('published');
+    expect(patch).toHaveBeenCalledWith(
+      'JOBP-CAMP-2026-288',
+      expect.objectContaining({
+        attemptState: 'acknowledged',
+        apecPositionNumero: '177596708W',
+        // Jamais lu ⇒ l'écran dira « statut pas encore lu », pas « inconnu ».
+        remoteStatusAt: null,
+      }),
+    );
+  });
+});
+
 describe('conflit de réservation', () => {
   it('n’envoie RIEN quand la référence est déjà réservée', async () => {
     // Deux instances serverless concurrentes : le perdant doit s'arrêter net.

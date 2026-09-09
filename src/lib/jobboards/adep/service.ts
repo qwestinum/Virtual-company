@@ -213,10 +213,33 @@ export async function publishToAdep(input: {
   switch (outcome.kind) {
     case 'published':
     case 'already_published': {
-      const status = outcome.kind === 'already_published' ? outcome.status : null;
+      // `openPosition` ACQUITTE, il ne renseigne pas l'état de l'offre : son
+      // acquittement ne porte qu'un numéro. On enchaîne donc une LECTURE, pour
+      // que l'écran affiche un statut daté au lieu d'un blanc juste après un
+      // succès. (`already_published` vient déjà d'une lecture : rien à faire.)
+      //
+      // BEST-EFFORT STRICT : cette lecture ne peut pas faire échouer une
+      // publication qui a réussi. L'offre existe chez l'Apec, le numéro est en
+      // base ; si la lecture rate — latence de propagation, réseau — on laisse
+      // `remoteStatusAt` à `null` et l'écran dit « statut pas encore lu »,
+      // jamais « inconnu ». Le bouton « Relire le statut » reste la reprise.
+      //
+      // Deux filets, et ils ne couvrent pas la même chose : `getStatus` rend un
+      // VERDICT pour tout ce qui est prévu (transport, faute SOAP, référence
+      // inconnue) — d'où le test sur `found` ; le `catch` ne couvre que
+      // l'imprévu, une exception qui échapperait au publisher. Sans lui, un
+      // défaut interne de lecture ferait perdre une publication réussie, et la
+      // reprise reposterait une SECONDE offre.
+      const status =
+        outcome.kind === 'already_published'
+          ? outcome.status
+          : await publisher
+              .getStatus({ clientReference, remoteId: outcome.remoteId })
+              .then((read) => (read.kind === 'found' ? read.status : null))
+              .catch(() => null);
       posting = await patchJobPosting(reservation.posting.id, {
         attemptState: 'acknowledged',
-        apecPositionNumero: outcome.remoteId,
+        apecPositionNumero: status?.apecPositionNumero ?? outcome.remoteId,
         publishedAt: at,
         remoteStatus: status?.status ?? null,
         remoteStatusAt: status ? at : null,

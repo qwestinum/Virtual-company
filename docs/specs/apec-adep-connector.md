@@ -1175,6 +1175,40 @@ bouge pas, le brouillon suit.
 `prefillFromJobPost` fait tomber les deux tests de longueur ; un brouillon
 construit sans le pré-remplissage en fait tomber trois.
 
+### 6quater.4 « Inconnu » après un succès se lit comme un échec
+
+Défaut trouvé en recette : le statut affiché juste après une publication
+réussie disait « inconnu ». Cause : `openPosition` **acquitte**, il ne renseigne
+pas l'état de l'offre — son acquittement ne porte qu'un numéro. La ligne était
+donc écrite avec `remote_status = null`, et l'écran traduisait ce vide en
+« inconnu », mot qui envoie chercher un problème inexistant.
+
+Deux correctifs, et l'ordre compte :
+
+1. **L'écran ne peut plus mentir.** `remote_status_at` distinguait déjà « jamais
+   lu » de « lu et vide » ; la carte s'en sert : sans lecture, elle dit
+   « créée — statut pas encore lu chez l'Apec » et renvoie au bouton. « Inconnu »
+   ne subsiste que pour le cas où l'Apec a répondu SANS statut.
+2. **Une lecture est enchaînée** après une création (`getPositionStatus`), pour
+   que le cas nominal montre un statut daté plutôt qu'une attente.
+
+Le second sans le premier n'aurait rien réglé : il suffit que la lecture échoue
+— latence de propagation, réseau — pour retomber sur le vide. C'est le premier
+qui tient la garantie ; le second améliore le cas nominal.
+
+**Best-effort strict**, et deux filets qui ne couvrent pas la même chose :
+`getStatus` rend un VERDICT pour tout ce qui est prévu (transport, faute SOAP,
+référence inconnue) — d'où le test sur `found` ; le `catch` ne couvre que
+l'imprévu. Une lecture ratée ne doit JAMAIS emporter une publication réussie :
+l'offre existe chez l'Apec, son numéro est en base, et perdre cette vérité
+ferait reposter une SECONDE offre à la reprise.
+
+Sonde : faire lever la lecture non aboutie fait tomber le test. ⚠️ Une première
+version du test passait sans rien prouver — il injectait une panne
+`kind: 'transport'` qui n'existe pas dans le mock (`timeout | not_sent |
+respond`), donc aucune panne n'était injectée. C'est le typecheck qui l'a dit,
+et la sonde qui l'a confirmé : un test vert qui ne mord pas ne prouve rien.
+
 ---
 
 ## 7. Phase 2 — lots révisés
