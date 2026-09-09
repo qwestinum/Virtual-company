@@ -1,186 +1,145 @@
-# Questions au support ADEP — bloc prêt à envoyer
+# Mail au support ADEP — version du 09/09/2026
 
-> Destinataire : **supportadep@apec.fr**
-> Contexte : intégration ADEP V5 / HR-XML **SEP**, multi-diffuseur QWESTINUM.
-> État au 08/09/2026 : connecteur développé contre la documentation v1.0.12 et
-> le WSDL de l'environnement de test ; **aucun appel réel n'a encore été fait**.
+> **Prêt à envoyer**, tel quel, à `supportadep@apec.fr`.
 >
-> Chaque point indique l'**hypothèse retenue** en attendant votre réponse : le
-> développement n'attend personne, mais il dit ce qu'il suppose. Si une
-> hypothèse est fausse, dites-le simplement — nous corrigerons avant le premier
-> envoi réel.
+> Deux règles de rédaction, à conserver si le message évolue :
+> **(1)** chaque question porte l'**hypothèse retenue** en attendant la réponse —
+> le développement n'attend personne, mais il dit ce qu'il suppose ;
+> **(2)** aucun secret dans le corps du message (ni mot de passe, ni sel, ni clé,
+> ni numéro de dossier). L'`atsId` y figure : il identifie le compte et n'est pas
+> un élément d'authentification.
+>
+> Historique : les questions sur l'espace de noms et sur le vecteur de test
+> Argon2 ont été **retirées** — les appels réels du 09/09 y ont répondu.
 
 ---
 
-## 1. Authentification
+**Objet :** ADEP V5 / SEP — paramètres Argon2 de production, fermeture d'une offre de test, et questions d'intégration
 
-**1.1 — Un vecteur de test Argon2.**
-La documentation donne deux implémentations (Java et Python) mais aucun couple
-(mot de passe, sel, paramètres) → clé attendue. Nous ne pouvons donc pas
-vérifier notre calcul hors ligne. Pourriez-vous nous fournir un jeu d'essai,
-même fictif ?
+Bonjour,
 
-*Notre hypothèse* : Argon2id, mémoire 4096 Kio, version 19, itérations et
-parallélisme reçus par courriel, sel **décodé depuis le base64** avant usage,
-longueur de sortie **256 octets**, encodage base64 **sans padding** — soit une
-clé de 342 caractères. Nous avons croisé deux implémentations indépendantes
-(bibliothèque Rust et `argon2-cffi`, celle du code de votre documentation) :
-elles produisent le même résultat.
+Nous intégrons ADEP V5 (flux **SEP**, multi-diffuseur) pour le compte de
+QWESTINUM. Le connecteur est développé et fonctionne de bout en bout sur votre
+environnement de test : nous avons créé, le 9 septembre, l'offre
+**179240002W** (référence `SONDE-20260909-…`), puis relu son statut
+(`AVALIDER`).
 
-**1.2 — L'exemple du §IV.**
-L'`atsPassword` littéral du chapitre IV fait 128 caractères hexadécimaux, ce
-qui ne correspond pas à une sortie Argon2 de 256 octets ; les exemples de flux
-portent d'ailleurs le placeholder `PASSWORD_SHA_512`. Nous les avons traités
-comme des reliquats de la V4. Est-ce bien le cas ?
+Trois demandes concrètes, puis quelques questions d'intégration.
 
 ---
 
-## 2. Espace de noms
+## 1. Paramètres Argon2 pour la PRODUCTION — bloquant
 
-**2.1 — Requêtes en `http://` ou `https://` ?**
-Deux des exemples de flux SEP fournis (`sep_openPositionRequest.xml`,
-`sep_getPositionStatusRequest.xml`) déclarent
-`xmlns:ns2="https://adep.apec.fr/hrxml/sep`", alors que
-`sep_getPositionRequest.xml` et toutes les réponses utilisent `http://`.
+Vous nous avez transmis, pour la production, un `atsId` (**138**) et un numéro
+de dossier, mais **pas** de mot de passe ni de paramètres Argon2 (sel, nombre
+d'itérations, degré de parallélisme) : nous n'en disposons que pour
+l'environnement de test (`atsId` 139).
 
-*Notre hypothèse* : `http://adep.apec.fr/hrxml/sep`, conformément au
-`targetNamespace` du WSDL de test. Nous avons vérifié qu'un flux en `https://`
-est effectivement rejeté par vos schémas. **Confirmez-vous que le WSDL de
-PRODUCTION déclare la même valeur ?**
+Nous avons vérifié **en lecture seule**, sans créer aucune offre — en
+interrogeant le statut d'une référence inexistante : la clé calculée avec les
+paramètres de test est **refusée en production**
+(`API_102_ATS_PASSWORD_INVALID_ERROR`). La même vérification répond « offre
+inconnue » sur l'environnement de test, ce qui confirme que notre calcul est
+correct.
 
----
-
-## 3. Domaines de valeurs et bornes
-
-**3.1 — `GLOBAL_EXPERIENCE_LEVEL`.**
-Le chapitre XII.3 indique « 1 caractère » pour `CompetencyEvidence/StringValue`,
-alors que `NIVEAU_EXPERIENCE_DOMAIN` va jusqu'à **12**. Les valeurs 10, 11 et 12
-sont-elles utilisables ?
-*Notre hypothèse* : oui, le domaine fait foi.
-
-**3.2 — `UserArea/Duration`.**
-Le chapitre X.1.4 indique « la durée doit être exprimée en mois dont la valeur
-minimum est de 0 (0 correspond à la valeur < 1 mois) », tandis que
-`API_394_INVALID_DURATION_ERROR` dit « un nombre entre 1 et 99 ».
-*Notre hypothèse* : nous appliquons la borne la plus stricte (1 à 99). Une durée
-« moins d'un mois » est-elle possible, et sous quelle valeur ?
-
-**3.3 — Fonction du contact de suivi.**
-Le chapitre X.1.2 indique 128 caractères maximum pour
-`howToApply.PersonName.Affix[type='qualification']`, l'erreur `API_404` indique
-80.
-*Notre hypothèse* : 80.
-
-**3.4 — `Competency name="INTERNATIONAL_PROFILE"`.**
-L'élément figure, vide, dans votre exemple officiel ; il n'apparaît dans aucun
-tableau de champs, mais l'erreur `API_335_INVALID_PRF_INN_ERROR` existe.
-Est-il obligatoire, facultatif, ou ignoré ?
-*Notre hypothèse* : nous reproduisons l'exemple — élément présent et vide.
-
-**3.5 — Les expressions régulières `URL_CANDIDATURE` et `URL_VIDEO`.**
-Elles sont annoncées « décrites ci-après dans le document » (catalogue des
-erreurs, §418) mais n'y figurent que sous forme d'images, illisibles par un
-programme. Pourriez-vous nous en transmettre le texte ?
-*Notre hypothèse* : URL de candidature en `http(s)://` ; vidéo restreinte à
-YouTube, Vimeo et Dailymotion.
-
----
-
-## 4. Acquittements et cycle de vie
-
-**4.1 — `apecPositionNumero` sur un rejet.**
-Le schéma le déclare `minOccurs="0"` dans `OpenPositionResponseTypeApec`. Sur un
-acquittement portant une exception `Fatal`, est-il absent, ou présent et à
-ignorer ?
-*Notre hypothèse* : absent. Nous forçons la valeur à « aucun numéro » dès qu'une
-exception `Fatal` est présente, pour que notre reprise par référence client
-reste possible.
-
-**4.2 — Reprise après incident de communication.**
-Notre règle : si un `openPosition` n'aboutit pas proprement (délai dépassé,
-coupure), **nous ne le rejouons jamais**. Nous appelons `getPositionStatus` avec
-la référence client pour savoir si l'offre existe. De même, nous interprétons un
-`API_390_MORE_THAN_ONE_REF_FOUND_ERROR` en réponse à un `openPosition` comme
-« cette référence est déjà prise », et nous allons lire l'offre correspondante.
-**Cette lecture est-elle la bonne façon de procéder de votre point de vue ?**
-Y a-t-il un délai après lequel une offre créée devient interrogeable ?
-
-**4.3 — Unicité de la référence client.**
-Nous comprenons qu'un `ProfileId` ne peut jamais être réutilisé, même après
-fermeture de l'offre. Nos republications prennent donc une référence neuve
-(`CAMP-2026-288`, puis `CAMP-2026-288-2`). Est-ce correct ?
-
-**4.4 — Fenêtre de republication.**
-`API_361` indique qu'une offre publiée il y a plus de 30 jours ne peut plus être
-republiée. Ces 30 jours courent-ils depuis la **publication initiale** ou depuis
-la **suspension** ? Nous avons retenu la publication initiale, qui est la
-lecture littérale du message.
-
----
-
-## 5. Habilitations
-
-**5.1 — Mode client.**
-Notre compte de test est en mode direct (`relationship="self"`). Notre modèle
-cible est le mode **indirect** (`broker`), pour publier au nom de nos clients.
-Quelles démarches faut-il engager, et quelle convention faut-il détenir ?
-
-**5.2 — Types de contrat autorisés.**
-`API_320` mentionne que « en fonction de la société, un recruteur peut se voir
-refuser certains types de contrat ». Pouvez-vous nous indiquer les types de
-contrat ouverts à notre convention, afin que nous les proposions — et seulement
-ceux-là — dans notre interface ?
-
----
-
-## 5ter. Paramètres Argon2 de PRODUCTION — demande
-
-Vous nous avez transmis, pour la **production**, un `atsId` et un numéro de
-dossier, mais pas de mot de passe ni de paramètres Argon2 (sel, itérations,
-parallélisme) : nous n'en avons que pour l'environnement de **test**.
-
-Nous avons vérifié, **en lecture seule** (interrogation du statut d'une
-référence inexistante, aucune offre créée) : la clé calculée avec les paramètres
-de test est **refusée en production** — `API_102_ATS_PASSWORD_INVALID_ERROR`.
-Sur l'environnement de test, la même méthode répond « offre inconnue », donc
-notre calcul est bon.
-
-Pourriez-vous nous transmettre, pour le compte de production, le **mot de
-passe** et les **paramètres Argon2** (sel, nombre d'itérations, degré de
-parallélisme) ? Un sel différent produisant une clé entièrement différente, il
-ne s'agit pas d'un ajustement mais d'un recalcul complet de notre côté.
+**Pourriez-vous nous transmettre le mot de passe et les paramètres Argon2 du
+compte de production ?** Un sel différent produisant une clé entièrement
+différente, il ne s'agit pas d'un ajustement mais d'un recalcul complet de notre
+côté.
 
 Nous confirmons au passage que le WSDL de production déclare bien le même espace
 de noms que celui de test (`http://adep.apec.fr/hrxml/sep`).
 
+## 2. Fermeture de l'offre de test 179240002W
+
+L'offre **179240002W** (« SONDE TECHNIQUE ADEP — ne pas traiter »,
+confidentielle, ODC) est en statut `AVALIDER` sur l'environnement de test. Nous
+ne pouvons pas la retirer nous-mêmes : `updatePositionStatus` avec
+`newPositionStatus = SUSPENDUE` rend
+`API_352_INVALID_STATUS_TRANSITION_ERROR`.
+
+**Pourriez-vous la fermer ?** Et nous confirmer la règle : une offre en attente
+de validation refuse-t-elle **tout** changement de statut, y compris une
+fermeture demandée par le diffuseur ? Nous avons retiré le bouton correspondant
+de notre interface en conséquence.
+
+## 3. Habilitations
+
+**3.1 — Mode client.** Notre compte est en mode direct (`relationship="self"`).
+Notre modèle cible est le mode **indirect** (`broker`), pour publier au nom de
+nos clients. Quelles démarches engager, et quelle convention faut-il détenir ?
+
+**3.2 — Types de contrat autorisés.** `API_320` indique qu'« en fonction de la
+société, un recruteur peut se voir refuser certains types de contrat ».
+Pourriez-vous nous indiquer ceux qui sont ouverts à notre convention, afin que
+nous ne proposions que ceux-là dans notre interface ?
+
 ---
 
-## 5bis. Une offre de test à fermer
+## 4. Domaines de valeurs et bornes
 
-Notre sonde technique a créé, sur l'environnement de test, l'offre
-**`179240002W`** intitulée « SONDE TECHNIQUE ADEP — ne pas traiter »
-(confidentielle, ODC). Elle est en statut `AVALIDER` et nous ne pouvons pas la
-retirer nous-mêmes : `updatePositionStatus SUSPENDUE` rend `API_352`
-(« changement de statut non autorisé depuis l'état actuel »).
+**4.1 — `GLOBAL_EXPERIENCE_LEVEL`.** Le chapitre XII.3 indique « 1 caractère »
+pour `CompetencyEvidence/StringValue`, alors que `NIVEAU_EXPERIENCE_DOMAIN` va
+jusqu'à **12**. Les valeurs 10 à 12 sont-elles utilisables ?
+*Hypothèse retenue : oui, le domaine fait foi.*
 
-Pourriez-vous la fermer ? Et, si possible, nous confirmer la règle : une offre
-en attente de validation n'accepte-t-elle **aucun** changement de statut, y
-compris une fermeture par le diffuseur ? Nous avons retiré le bouton
-correspondant de notre interface en conséquence.
+**4.2 — `UserArea/Duration`.** Le chapitre X.1.4 indique une valeur minimum de
+**0** (« 0 correspond à moins d'un mois »), tandis que `API_394` annonce « un
+nombre entre **1** et 99 ». Laquelle fait foi, et comment exprimer une durée de
+moins d'un mois ?
+*Hypothèse retenue : la borne la plus stricte, 1 à 99.*
+
+**4.3 — Fonction du contact de suivi.** Le chapitre X.1.2 indique 128 caractères
+pour `howToApply.PersonName.Affix[type='qualification']` ; l'erreur `API_404`
+indique 80.
+*Hypothèse retenue : 80.*
+
+**4.4 — `Competency name="INTERNATIONAL_PROFILE"`.** L'élément figure, vide,
+dans votre exemple officiel ; il n'apparaît dans aucun tableau de champs, mais
+l'erreur `API_335` existe. Obligatoire, facultatif, ou ignoré ?
+*Hypothèse retenue : nous reproduisons l'exemple — élément présent et vide.*
+
+**4.5 — Expressions régulières `URL_CANDIDATURE` et `URL_VIDEO`.** Elles sont
+annoncées « décrites ci-après » (catalogue des erreurs, §418) mais n'y figurent
+que sous forme d'images, illisibles par un programme. Pourriez-vous nous en
+transmettre le texte ?
+*Hypothèse retenue : candidature en `http(s)://` ; vidéo restreinte à YouTube,
+Vimeo et Dailymotion.*
+
+## 5. Acquittements et cycle de vie
+
+**5.1 — `apecPositionNumero` sur un rejet.** Le schéma le déclare
+`minOccurs="0"`. Sur un acquittement portant une exception `Fatal`, est-il
+absent, ou présent et à ignorer ?
+*Hypothèse retenue : absent. Nous forçons « aucun numéro » dès qu'une exception
+`Fatal` est présente, afin que notre reprise par référence client reste
+possible.*
+
+**5.2 — Reprise après incident de communication.** Notre règle : si un
+`openPosition` n'aboutit pas proprement (délai dépassé, coupure), **nous ne le
+rejouons jamais**. Nous appelons `getPositionStatus` avec la référence client
+pour savoir si l'offre existe. De même, nous interprétons un `API_390` en
+réponse à un `openPosition` comme « cette référence est déjà prise », et nous
+allons lire l'offre correspondante. **Est-ce la bonne façon de procéder de votre
+point de vue ?** Existe-t-il un délai après lequel une offre créée devient
+interrogeable ?
+
+**5.3 — Unicité de la référence client.** Nous comprenons qu'un `ProfileId` ne
+peut jamais être réutilisé, même après fermeture de l'offre. Nos republications
+prennent donc une référence neuve (`CAMP-2026-288`, puis `CAMP-2026-288-2`).
+Est-ce correct ?
+
+**5.4 — Fenêtre de republication.** `API_361` indique qu'une offre publiée il y
+a plus de 30 jours ne peut plus être republiée. Ces 30 jours courent-ils depuis
+la **publication initiale** ou depuis la **suspension** ?
+*Hypothèse retenue : la publication initiale, lecture littérale du message.*
 
 ---
 
-## 6. Point d'organisation
+Nous restons à votre disposition pour tout élément complémentaire, et vous
+remercions par avance.
 
-Nous avons développé et validé le connecteur hors ligne :
+Bien cordialement,
 
-* le flux `openPositionRequest` est **conforme aux schémas** de votre WSDL de
-  test (validé par `xmllint` contre les XSD embarqués) ;
-* les règles de gestion du catalogue d'erreurs sont vérifiées **avant** envoi
-  (longueurs, communes interdites, cohérence contrat/durée, dates…), pour que
-  vos rejets restent l'exception.
-
-Notre premier appel réel sera un `openPosition` unique sur l'environnement de
-test, avec une offre explicitement intitulée « SONDE TECHNIQUE ADEP — ne pas
-traiter », en offre confidentielle (ODC). **Souhaitez-vous être prévenus avant,
-et faut-il une démarche particulière pour la faire retirer ensuite ?**
+QWESTINUM — intégration ADEP V5
+`atsId` test 139 · `atsId` production 138
