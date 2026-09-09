@@ -40,6 +40,8 @@ export type ApecPanelState = {
   prefill: AdepPrefill | null;
   /** Une pré-rédaction est en cours (le modèle écrit). */
   drafting: boolean;
+  /** Retour neutre d'une action qui a abouti sans rien changer. */
+  notice: string | null;
   /**
    * Le rapport COMPLET a tourné sur l'offre telle qu'elle est.
    *
@@ -68,6 +70,8 @@ export function useApecPanel(campaignId: string): ApecPanelState {
   const [prefill, setPrefill] = useState<AdepPrefill | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [verified, setVerified] = useState(false);
+  /** Message NEUTRE (ni erreur ni succès bruyant) — « rien n'a changé ». */
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -193,9 +197,26 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     async (action: 'suspend' | 'republish' | 'refresh') => {
       setBusy(true);
       setError(null);
+      setNotice(null);
       try {
         const result = await transitionApec(campaignId, action);
         setState((s) => (s ? { ...s, posting: result.posting } : s));
+        // Une transition peut ABOUTIR sans rien changer : l'Apec refuse
+        // (fenêtre de republication fermée), ou n'est pas joignable. Sans ce
+        // message, l'écran restait identique et le bouton passait pour mort.
+        const outcome = result.outcome;
+        if (outcome && outcome.kind === 'refused') {
+          setError(
+            outcome.issues[0]?.message ??
+              'L’Apec a refusé cette opération.',
+          );
+        } else if (outcome && outcome.kind === 'unavailable') {
+          setError(outcome.reason);
+        } else if (action === 'refresh' && result.changed === false) {
+          // « Relire » qui ne change rien est un SUCCÈS, pas une panne : on le
+          // dit sans crier, plutôt que de laisser l'écran muet.
+          setNotice('Statut relu — il n’a pas changé.');
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Action impossible.');
       } finally {
@@ -214,6 +235,7 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     error,
     prefill,
     drafting,
+    notice,
     verified,
     patch,
     verify,

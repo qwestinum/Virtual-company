@@ -1209,6 +1209,41 @@ version du test passait sans rien prouver — il injectait une panne
 respond`), donc aucune panne n'était injectée. C'est le typecheck qui l'a dit,
 et la sonde qui l'a confirmé : un test vert qui ne mord pas ne prouve rien.
 
+### 6quater.5 Deux boutons qui « ne font rien » — deux causes, aucune commune
+
+Recette : « Relire le statut » et « Dépublier » restaient sans effet, en
+silence. Deux défauts empilés, indépendants, et le second vaut aussi en RÉEL.
+
+**(1) La simulation était amnésique.** `resolveTransport` construisait un
+`new MockAdepTransport()` **vierge à chaque requête HTTP**. L'offre publiée à la
+requête précédente n'existait donc plus pour la suivante : `getPositionStatus`
+rendait `not_found` (aucun patch, écran figé) et `suspend` rendait `refused`.
+Le mock tient un état — c'est délibéré, l'Apec en tient un — mais son état ne
+survivait pas à la requête.
+
+⚠️ **Les tests ne pouvaient pas le voir** : ils injectent la MÊME instance du
+début à la fin, ce que la vraie vie ne fait jamais. Le correctif amorce le mock
+depuis `job_postings` (`mockSeedFromPosting`), et non depuis un singleton de
+process : entre deux invocations serverless, seule la base est partagée — un
+singleton mentirait exactement de la même façon, une instance plus tard. Le
+statut absent du cache est DÉDUIT des dates (`suspendedAt` / `publishedAt`)
+plutôt que de laisser le mock ignorer une offre qui existe ; sans numéro Apec,
+aucun amorçage — prétendre le contraire ferait « réussir » une dépublication sur
+une offre jamais partie.
+
+**(2) L'échec était silencieux, et ça vaut en production.** `transitionApec` ne
+regardait que le CORPS de la réponse : la route rend 409 (refusé par l'Apec —
+fenêtre de republication fermée) ou 503 (injoignable) avec un JSON parfaitement
+lisible, donc `data` n'était jamais `null` et rien n'était levé. Le hook posait
+un `posting` inchangé et l'écran restait identique. Désormais `res.ok` compte
+autant que le corps, et le hook DIT l'issue : le message de refus, la raison
+d'indisponibilité, et — cas nominal qu'il ne faut pas déguiser en panne — un
+« Statut relu — il n'a pas changé » neutre quand la lecture aboutit sans
+changement.
+
+Sondes : retirer l'amorçage fait tomber les deux tests de service ; ignorer
+`res.ok` fait tomber deux des trois tests du client.
+
 ---
 
 ## 7. Phase 2 — lots révisés

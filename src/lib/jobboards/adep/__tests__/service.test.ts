@@ -34,6 +34,7 @@ import {
   publishToAdep,
   resolveAdepCredentials,
   resolveTransport,
+  refreshAdepStatus,
   transitionAdepPosting,
 } from '../service';
 import { SAMPLE_CREDENTIALS, SAMPLE_OFFER } from './fixtures/sample-offer';
@@ -190,6 +191,57 @@ describe('statut juste après la publication', () => {
         // Jamais lu ⇒ l'écran dira « statut pas encore lu », pas « inconnu ».
         remoteStatusAt: null,
       }),
+    );
+  });
+});
+
+describe('le mock ne se souvient de rien d’une requête à l’autre', () => {
+  // Défaut de recette : « Relire le statut » et « Dépublier » ne faisaient
+  // RIEN. `resolveTransport` construit un `new MockAdepTransport()` VIERGE à
+  // chaque appel de route ; l'offre publiée à la requête précédente n'existait
+  // donc plus pour la suivante. Les tests ne l'avaient pas vu parce qu'ils
+  // injectent la MÊME instance du début à la fin — ce que la vraie vie ne fait
+  // jamais. La seule chose partagée entre deux requêtes est la BASE : le mock
+  // doit donc être amorcé depuis `job_postings`.
+  const LIVE = posting({
+    apecPositionNumero: '177596708W',
+    attemptState: 'acknowledged',
+    remoteStatus: 'PUBLIEE',
+    remoteStatusAt: '2026-09-08T09:00:00.000Z',
+    publishedAt: '2026-09-08T09:00:00.000Z',
+  });
+
+  it('relire le statut d’une offre connue de la BASE la retrouve', async () => {
+    current.mockResolvedValue(LIVE);
+    const result = await refreshAdepStatus({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      // Pas de transport injecté : on prend le chemin RÉEL de la route, celui
+      // qui fabrique son mock à partir de rien.
+      deps: { credentials: async () => SAMPLE_CREDENTIALS, trackingId: () => 'trk' },
+    });
+
+    expect(result.simulated).toBe(true);
+    expect(result.posting?.remoteStatus).toBe('PUBLIEE');
+    expect(patch).toHaveBeenCalledWith(
+      LIVE.id,
+      expect.objectContaining({ remoteStatus: 'PUBLIEE' }),
+    );
+  });
+
+  it('dépublier une offre connue de la BASE la dépublie', async () => {
+    current.mockResolvedValue(LIVE);
+    const result = await transitionAdepPosting({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      action: 'suspend',
+      deps: { credentials: async () => SAMPLE_CREDENTIALS, trackingId: () => 'trk' },
+    });
+
+    expect(result.outcome.kind).toBe('changed');
+    expect(patch).toHaveBeenCalledWith(
+      LIVE.id,
+      expect.objectContaining({ remoteStatus: 'SUSPENDUE' }),
     );
   });
 });

@@ -97,8 +97,18 @@ export async function transitionApec(
       body: JSON.stringify({ action }),
     },
   );
-  const data = (await res.json().catch(() => null)) as TransitionResponse | null;
-  if (!data) throw new Error(await readError(res));
+  const data = (await res.json().catch(() => null)) as
+    | (TransitionResponse & { error?: string; message?: string })
+    | null;
+  // ⚠️ `res.ok` compte AUTANT que le corps. La route rend 409 (refusé par
+  // l'Apec) ou 503 (injoignable) avec un JSON parfaitement lisible : se
+  // contenter de « le corps a été parsé » avalait ces deux cas, et le bouton
+  // paraissait ne rien faire.
+  if (!res.ok || !data) {
+    throw new Error(
+      data?.message ?? data?.error ?? (await readError(res)),
+    );
+  }
   return data;
 }
 

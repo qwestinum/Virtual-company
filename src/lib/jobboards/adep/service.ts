@@ -22,7 +22,7 @@
 
 import { redactCredentials } from './build-open-position';
 import { createHttpAdepTransport, endpointFromWsdlUrl } from './http-transport';
-import { MockAdepTransport } from './mock-transport';
+import { MockAdepTransport, type MockPosition } from './mock-transport';
 import { AdepSepPublisher, defaultTrackingId } from './publisher';
 import type { AdepTransport } from './transport';
 import {
@@ -36,7 +36,13 @@ import { getAdepNumeroDossier } from '@/lib/db/repos/recruiters';
 import { resolveAtsPasswordFromEnv } from './argon2';
 import { buildClientReference, nextAttempt } from './reference';
 import type { PublishOutcome, TransitionOutcome } from '../types';
-import type { AdepCredentials, AdepOffer, AdepPositionStatusResult } from '@/types/adep';
+import {
+  ADEP_POSITION_STATUSES,
+  type AdepCredentials,
+  type AdepOffer,
+  type AdepPositionStatus,
+  type AdepPositionStatusResult,
+} from '@/types/adep';
 
 /** `ADEP_ENABLED` — fail-closed strict, comme `DEMO_JOBBOARD_ENABLED`. */
 export function isAdepEnabled(env: Partial<Record<string, string>> = process.env): boolean {
@@ -112,10 +118,26 @@ export type AdepServiceDeps = {
 export function resolveTransport(
   deps: AdepServiceDeps,
   env: Partial<Record<string, string>> = process.env,
+  /**
+   * Ce que la BASE sait déjà de l'offre. Sert UNIQUEMENT à amorcer le mock.
+   *
+   * ⚠️ Sans lui, la simulation est amnésique : chaque requête HTTP construit un
+   * mock vierge, et « Relire le statut » ou « Dépublier » ne trouvaient plus
+   * l'offre publiée à la requête précédente — les deux boutons ne faisaient
+   * RIEN. Les tests ne l'avaient pas vu parce qu'ils injectent la même instance
+   * du début à la fin, ce que la vraie vie ne fait jamais. La seule chose
+   * partagée entre deux requêtes est la base : c'est donc d'elle que l'état
+   * doit venir, pas d'un singleton de process (qui mentirait de la même façon
+   * entre deux instances serverless).
+   */
+  seed?: MockPosition[],
 ): { transport: AdepTransport; simulated: boolean } {
   if (deps.transport) return { transport: deps.transport, simulated: false };
   if (!isAdepEnabled(env)) {
-    return { transport: new MockAdepTransport(), simulated: true };
+    return {
+      transport: new MockAdepTransport(seed?.length ? { seed } : {}),
+      simulated: true,
+    };
   }
   const wsdlUrl = env.ADEP_WSDL_URL?.trim();
   if (!wsdlUrl) {
@@ -129,6 +151,39 @@ export function resolveTransport(
   return {
     transport: createHttpAdepTransport({ endpoint: endpointFromWsdlUrl(wsdlUrl) }),
     simulated: false,
+  };
+}
+
+/**
+ * Reconstitue, pour le mock, ce que l'Apec « saurait » de cette offre.
+ *
+ * Le cache local EST la vérité en simulation — il n'y a pas d'autre source. En
+ * revanche il ne suffit pas toujours : une offre acquittée dont le statut n'a
+ * jamais été relu n'a pas de `remoteStatus`, et on le DÉDUIT des dates plutôt
+ * que de laisser le mock ignorer une offre qui existe.
+ *
+ * `null` quand il n'y a rien à amorcer : sans numéro Apec, l'offre n'a jamais
+ * été acquittée, et prétendre le contraire ferait « réussir » une dépublication
+ * sur une offre qui n'est jamais partie.
+ */
+export function mockSeedFromPosting(posting: JobPosting): MockPosition | null {
+  if (!posting.apecPositionNumero) return null;
+  const status: AdepPositionStatus =
+    (ADEP_POSITION_STATUSES as readonly string[]).includes(posting.remoteStatus ?? '')
+      ? (posting.remoteStatus as AdepPositionStatus)
+      : posting.suspendedAt
+        ? 'SUSPENDUE'
+        : posting.publishedAt
+          ? 'PUBLIEE'
+          : 'AVALIDER';
+  return {
+    clientPositionId: posting.clientReference,
+    apecPositionNumero: posting.apecPositionNumero,
+    status,
+    isEditable: posting.remoteIsEditable ?? true,
+    positionUrl:
+      posting.remoteUrl ??
+      `https://www.apec.fr/candidat/recherche-emploi.html/emploi/detail-offre/${posting.apecPositionNumero}`,
   };
 }
 
@@ -298,9 +353,15 @@ export async function transitionAdepPosting(input: {
 }): Promise<TransitionResult> {
   const deps = input.deps ?? {};
   const now = deps.now ?? (() => new Date());
-  const { transport, simulated } = resolveTransport(deps);
 
+  // La base D'ABORD, pour la même raison que `refreshAdepStatus`.
   const posting = await getCurrentJobPosting(input.campaignId, 'apec');
+  const seed = posting ? mockSeedFromPosting(posting) : null;
+  const { transport, simulated } = resolveTransport(
+    deps,
+    process.env,
+    seed ? [seed] : undefined,
+  );
   if (!posting) {
     return {
       outcome: { kind: 'unavailable', reason: "Aucune offre APEC pour cette campagne." },
@@ -362,9 +423,17 @@ export async function refreshAdepStatus(input: {
 }): Promise<{ posting: JobPosting | null; changed: boolean; simulated: boolean }> {
   const deps = input.deps ?? {};
   const now = deps.now ?? (() => new Date());
-  const { transport, simulated } = resolveTransport(deps);
 
+  // La base D'ABORD : c'est elle qui amorce le mock en simulation. Résoudre le
+  // transport avant de savoir ce qu'on cherche donnait une simulation
+  // amnésique, et un bouton sans effet.
   const posting = await getCurrentJobPosting(input.campaignId, 'apec');
+  const seed = posting ? mockSeedFromPosting(posting) : null;
+  const { transport, simulated } = resolveTransport(
+    deps,
+    process.env,
+    seed ? [seed] : undefined,
+  );
   if (!posting) return { posting: null, changed: false, simulated };
 
   const publisher = new AdepSepPublisher({

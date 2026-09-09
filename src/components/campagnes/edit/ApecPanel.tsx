@@ -181,6 +181,13 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
       )}
 
       {panel.error ? <div style={{ ...errorStyle, marginTop: 10 }}>{panel.error}</div> : null}
+      {/* Une action qui aboutit sans rien changer le DIT : sinon l'écran reste
+          identique et le bouton passe pour mort. */}
+      {panel.notice ? (
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--dash-text-secondary)' }}>
+          {panel.notice}
+        </div>
+      ) : null}
     </div>
   );
 }
