@@ -113,6 +113,25 @@ Scénarios à dérouler :
 
 ---
 
+## 3bis. Vos identifiants valent-ils sur CET environnement ?
+
+```
+npm run adep:probe -- --env .env.adep --check-auth
+```
+
+**Lecture seule, rien n'est créé.** La sonde interroge le statut d'une référence
+inventée : si l'Apec répond « offre inconnue », c'est qu'elle a traité la
+requête, donc **accepté l'authentification** ; si elle refuse la clé
+(`API_102`), les identifiants ne valent pas ici.
+
+C'est la façon de savoir si les identifiants de **test** sont acceptés en
+**production** — question à laquelle ni la documentation ni le calcul de la clé
+ne répondent. En cas de refus, il faut demander à l'Apec un jeu dédié
+(mot de passe, sel, itérations, parallélisme) **et recalculer la clé** : un sel
+différent produit une clé entièrement différente.
+
+---
+
 ## 4. Premier appel réel
 
 **Dans cet ordre, sans sauter d'étape.**

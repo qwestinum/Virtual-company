@@ -80,7 +80,13 @@ function fail(message: string): never {
  * Un outil qui parle à l'Apec ne fait jamais « autre chose » que ce qu'on lui
  * demande.
  */
-const KNOWN_FLAGS = ['--env', '--execute', '--confirm-ats', '--suspend'] as const;
+const KNOWN_FLAGS = [
+  '--env',
+  '--execute',
+  '--confirm-ats',
+  '--suspend',
+  '--check-auth',
+] as const;
 
 function checkArgs(): void {
   const takesValue = new Set<string>(['--env', '--confirm-ats', '--suspend']);
@@ -221,7 +227,11 @@ async function main(): Promise<void> {
   console.log(`  atsId            ${atsId}`);
   console.log(`  numeroDossier    ${mask(numeroDossier)}`);
   const suspendRef = val('--suspend');
-  const geste = suspendRef ? `SUSPENDRE ${suspendRef}` : 'CRÉER une offre de sonde';
+  const geste = has('--check-auth')
+    ? "VÉRIFIER L'AUTHENTIFICATION (lecture seule)"
+    : suspendRef
+      ? `SUSPENDRE ${suspendRef}`
+      : 'CRÉER une offre de sonde';
   console.log(`  Geste            ${geste}`);
   console.log(`  Mode             ${has('--execute') ? '⚠️  APPEL RÉEL' : 'dry-run'}`);
 
@@ -258,7 +268,50 @@ async function main(): Promise<void> {
     console.log('     lieu de 256 (le piège du commentaire Java de la spécification).');
   }
 
-  // ── 3. Retrait d'une offre de sonde ──
+  // ── 3. Vérification d'authentification, EN LECTURE SEULE ──
+  //
+  // Répond à « mes identifiants valent-ils sur CET environnement ? » sans rien
+  // créer. On interroge le statut d'une référence qui n'existe pas :
+  //
+  //   · l'Apec répond « offre inconnue » (API_391) ⇒ elle a compris la
+  //     requête, donc elle a ACCEPTÉ l'authentification ;
+  //   · elle refuse la clé (API_102) ⇒ les identifiants ne valent pas ici.
+  //
+  // ⚠️ Ce geste ne demande PAS `--execute`, et c'est délibéré : `--execute`
+  // signifie « ça mute quelque chose chez l'Apec ». Une lecture ne peut rien
+  // créer ni changer — lui imposer le même rite brouillerait le sens du
+  // drapeau. L'en-tête annonce l'appel, il n'est pas silencieux pour autant.
+  if (has('--check-auth')) {
+    const probeRef = `AUTH-CHECK-${Date.now()}`;
+    console.log('\n  ── Vérification d’authentification ───────────────────────────');
+    console.log(`  Référence testée ${probeRef} (inexistante, par construction)`);
+
+    const publisher = new AdepSepPublisher({
+      transport: createHttpAdepTransport({ endpoint }),
+      credentials: async () => ({ atsId, numeroDossier, atsPassword }),
+    });
+    const read = await publisher.getStatus({ clientReference: probeRef, remoteId: null });
+
+    if (read.kind === 'not_found') {
+      console.log('\n  ✅ IDENTIFIANTS ACCEPTÉS sur cet environnement.');
+      console.log('     L’Apec a traité la requête et répond « offre inconnue » —');
+      console.log('     ce qui est la bonne réponse pour une référence inventée.');
+      console.log('     Rien n’a été créé.\n');
+      return;
+    }
+    if (read.kind === 'found') {
+      // Improbable, mais on ne ment pas : la référence existait.
+      console.log('\n  ✅ IDENTIFIANTS ACCEPTÉS — et la référence testée existe déjà.');
+      console.log(`     Statut ${read.status.status}. Rien n’a été créé.\n`);
+      return;
+    }
+    console.log(`\n  ❌ L’Apec n’a pas traité la requête : ${read.reason}`);
+    console.log('     Si le message parle de clé refusée, les identifiants de cet');
+    console.log('     environnement ne sont pas les bons — il en faut d’autres.\n');
+    process.exit(1);
+  }
+
+  // ── 4. Retrait d'une offre de sonde ──
   // Chemin SÉPARÉ, et il s'arrête ici : une suspension n'a ni offre à
   // construire, ni règles métier à valider, ni XSD à passer. Continuer dans le
   // tronc commun afficherait le flux d'une CRÉATION sous un en-tête
@@ -330,7 +383,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // ── 3. L'offre ──
+  // ── 5. L'offre ──
   const reference = `SONDE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Date.now()).slice(-4)}`;
   const offer = probeOffer(reference, applicationEmail);
   const credentials: AdepCredentials = { atsId, numeroDossier, atsPassword };
