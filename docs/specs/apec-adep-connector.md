@@ -1305,10 +1305,34 @@ lui demande. Corollaire d'affichage : l'en-tête annonce désormais le GESTE
 séparé — afficher le flux d'une création sous un en-tête « SUSPENDRE » serait la
 même confusion, en pire.
 
-### 6quinquies.2 Reste ouvert
+### 6quinquies.2 `API_352` — une offre en attente de validation ne se retire pas
+
+Mesuré en tentant de retirer l'offre de sonde : `updatePositionStatus SUSPENDUE`
+sur une offre en **`AVALIDER`** rend **`API_352`** (« changement de statut non
+autorisé depuis l'état actuel »). La relecture, elle, la retrouve — l'offre
+existe bien, c'est la TRANSITION qui est refusée.
+
+C'est logique après coup (on ne retire pas de la diffusion ce qui n'y est pas
+encore), mais rien dans la documentation ne le disait, et **le panneau proposait
+le bouton** : `adepPhase` regroupe `AVALIDER` et `AMODIFIER` sous
+`awaiting_validation`, et la carte offrait « Dépublier » sur cette phase comme
+sur `published`.
+
+Correctif : `canSuspend` n'accepte plus que `published`, et
+`suspendUnavailableNotice` DIT pourquoi le bouton a disparu — la carte suivait
+déjà cette règle pour la republication (« un bouton retiré dit pourquoi »), elle
+ne la suivait pas pour celui-ci. Proposer un geste que la plateforme refusera
+systématiquement fait porter à l'utilisateur le coût de notre ignorance.
+
+⚠️ Mesuré sur `AVALIDER` seulement ; `AMODIFIER` est traité pareil par prudence
+(les deux états sont « pas en diffusion »), sans que ce soit vérifié.
+
+### 6quinquies.3 Reste ouvert
 
 - **le WSDL de PRODUCTION** n'a toujours pas été vu (`adep:probe` le vérifiera) ;
-- l'offre de sonde `SONDE-20260909-4399` (`179240002W`) est à retirer ;
+- l'offre de sonde `179240002W` reste en `AVALIDER` : elle n'est pas diffusée,
+  et l'Apec refuse de la retirer dans cet état (`API_352`). Sa fermeture est à
+  demander au support ADEP — à joindre au bloc de questions ;
 - le **mode indirect** attend sa convention.
 
 ---

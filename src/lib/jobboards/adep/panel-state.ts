@@ -132,6 +132,33 @@ export function republishNotice(
  * deux — et on ne s'en apercevrait qu'une fois l'offre en ligne, quand elle
  * n'est plus modifiable.
  */
+/**
+ * Peut-on proposer « Dépublier » ?
+ *
+ * ⚠️ SEULEMENT sur une offre réellement PUBLIÉE. Mesuré sur l'environnement de
+ * test le 09/09 : une offre en `AVALIDER` rend **`API_352`** (« changement de
+ * statut non autorisé depuis l'état actuel »). C'est logique — on ne retire pas
+ * de la diffusion ce qui n'y est pas encore — mais rien dans la documentation
+ * ne le disait, et le panneau proposait le bouton.
+ *
+ * Proposer un geste que la plateforme refusera systématiquement, c'est faire
+ * porter à l'utilisateur le coût de notre ignorance. La carte suit déjà la
+ * règle inverse pour la republication : un bouton retiré DIT pourquoi.
+ */
+export function canSuspend(phase: AdepPanelPhase): boolean {
+  return phase === 'published';
+}
+
+/** Pourquoi « Dépublier » n'est pas proposé. `null` = il l'est. */
+export function suspendUnavailableNotice(phase: AdepPanelPhase): string | null {
+  if (phase !== 'awaiting_validation') return null;
+  return (
+    "L’offre n’est pas encore diffusée : un consultant Apec doit la valider. " +
+    'Tant qu’elle est dans cet état, l’Apec refuse de la retirer — il faut ' +
+    'attendre sa publication, ou demander sa fermeture au support ADEP.'
+  );
+}
+
 export const ADEP_PREFILL_SNAPSHOT_NOTICE =
   "C'est une copie : modifier l'annonce générique plus tard ne changera rien à ce qui part chez l'Apec.";
 

@@ -16,6 +16,8 @@ import type { JobPosting } from '@/lib/db/repos/job-postings';
 import {
   ADEP_IMMUTABLE_NOTICE,
   ADEP_PREFILL_SNAPSHOT_NOTICE,
+  canSuspend,
+  suspendUnavailableNotice,
   ADEP_STATUS_LABELS,
   adepPhase,
   canRepublish,
@@ -151,12 +153,16 @@ export function ApecPublishedCard({
         {ADEP_PREFILL_SNAPSHOT_NOTICE}
       </p>
       {notice ? <p style={{ margin: '0 0 10px' }}>{notice}</p> : null}
+      {/* Un bouton retiré DIT pourquoi — sinon on le cherche. */}
+      {suspendUnavailableNotice(phase) ? (
+        <p style={{ margin: '0 0 10px' }}>{suspendUnavailableNotice(phase)}</p>
+      ) : null}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" style={ghostBtn} onClick={onRefresh} disabled={busy}>
           Relire le statut
         </button>
-        {phase === 'published' || phase === 'awaiting_validation' ? (
+        {canSuspend(phase) ? (
           <button type="button" style={ghostBtn} onClick={onSuspend} disabled={busy}>
             Dépublier
           </button>

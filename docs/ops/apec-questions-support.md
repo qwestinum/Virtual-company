@@ -133,6 +133,21 @@ ceux-là — dans notre interface ?
 
 ---
 
+## 5bis. Une offre de test à fermer
+
+Notre sonde technique a créé, sur l'environnement de test, l'offre
+**`179240002W`** intitulée « SONDE TECHNIQUE ADEP — ne pas traiter »
+(confidentielle, ODC). Elle est en statut `AVALIDER` et nous ne pouvons pas la
+retirer nous-mêmes : `updatePositionStatus SUSPENDUE` rend `API_352`
+(« changement de statut non autorisé depuis l'état actuel »).
+
+Pourriez-vous la fermer ? Et, si possible, nous confirmer la règle : une offre
+en attente de validation n'accepte-t-elle **aucun** changement de statut, y
+compris une fermeture par le diffuseur ? Nous avons retiré le bouton
+correspondant de notre interface en conséquence.
+
+---
+
 ## 6. Point d'organisation
 
 Nous avons développé et validé le connecteur hors ligne :

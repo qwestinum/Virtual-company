@@ -13,6 +13,8 @@ import {
   republishDaysLeft,
   republishNotice,
   type PostingLike,
+  canSuspend,
+  suspendUnavailableNotice,
 } from '../panel-state';
 
 const NOW = new Date('2026-09-08T10:00:00Z');
@@ -132,5 +134,27 @@ describe('avertissement permanent', () => {
     // `updatePosition` est désactivé côté Apec, et personne ne le devine.
     expect(ADEP_IMMUTABLE_NOTICE).toContain('apec.fr');
     expect(ADEP_IMMUTABLE_NOTICE).toContain('support');
+  });
+});
+
+describe('« Dépublier » n’est proposé que là où l’Apec l’accepte', () => {
+  // Mesuré en environnement de test le 09/09 : une offre AVALIDER rend
+  // API_352 (« changement de statut non autorisé depuis l'état actuel »).
+  // Le panneau proposait pourtant le bouton — il faisait porter à
+  // l'utilisateur le coût de notre ignorance.
+  it('accepte une offre publiée', () => {
+    expect(canSuspend('published')).toBe(true);
+    expect(suspendUnavailableNotice('published')).toBeNull();
+  });
+
+  it('refuse une offre en attente de validation, et DIT pourquoi', () => {
+    expect(canSuspend('awaiting_validation')).toBe(false);
+    expect(suspendUnavailableNotice('awaiting_validation')).toContain('consultant Apec');
+  });
+
+  it('ne propose rien sur les états où il n’y a rien à retirer', () => {
+    for (const phase of ['none', 'failed', 'uncertain', 'suspended', 'closed'] as const) {
+      expect(canSuspend(phase)).toBe(false);
+    }
   });
 });
