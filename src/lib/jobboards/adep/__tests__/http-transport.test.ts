@@ -144,6 +144,38 @@ describe('réponses HTTP', () => {
     }
   });
 
+  it('reprend le corps d’un 503 au lieu de le jeter', async () => {
+    // Mesuré le 09/09/2026 : `testadepsep.apec.fr` rend 62 octets, et ils
+    // disent tout — un frontal sans backend derrière. On affichait pourtant
+    // « sans message exploitable », en face d'un message exploitable.
+    const impl = async () =>
+      new Response('<html><body><b>Http/1.1 Service Unavailable</b></body> </html>', {
+        status: 503,
+      });
+    try {
+      await transportWith(impl as unknown as typeof fetch).post(REQUEST);
+      throw new Error('aurait dû lever');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AdepTransportError);
+      const message = (err as AdepTransportError).message;
+      expect(message).toContain('Service Unavailable');
+      // Et il DIT ce que l'opérateur a besoin de savoir : rien à corriger
+      // chez lui.
+      expect(message).toMatch(/indisponible/);
+      expect(message).not.toMatch(/sans message exploitable/);
+      // La classification, elle, ne bouge pas : une passerelle rend aussi 503
+      // sur un backend trop lent, qui a peut-être créé l'offre.
+      expect((err as AdepTransportError).certainlyNotSent).toBe(false);
+    }
+  });
+
+  it('garde « sans message exploitable » pour un corps réellement vide', async () => {
+    const impl = async () => new Response('', { status: 418 });
+    await expect(
+      transportWith(impl as unknown as typeof fetch).post(REQUEST),
+    ).rejects.toThrow(/418 sans message exploitable/);
+  });
+
   it('lève sur un corps vide', async () => {
     const impl = async () => new Response('   ', { status: 200 });
     await expect(

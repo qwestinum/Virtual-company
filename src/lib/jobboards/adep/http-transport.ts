@@ -45,6 +45,31 @@ const NOT_SENT_CAUSES = new Set([
   'ECONNREFUSED', // le port a refusé la connexion
 ]);
 
+/**
+ * Extrait LISIBLE d'un corps d'erreur non-SOAP. PUR.
+ *
+ * ⚠️ « Sans message exploitable » était notre JUGEMENT, et il était faux : le
+ * corps d'un 503 de l'Apec porte exactement ce qu'il faut
+ * (`Http/1.1 Service Unavailable` — la signature d'un frontal sans backend
+ * derrière), et on le jetait. L'opérateur lisait « sans message exploitable »
+ * en face d'un message parfaitement exploitable, et n'avait aucun moyen de
+ * distinguer une plateforme en panne d'un endpoint erroné ou d'une clé
+ * refusée. Mesuré le 09/09/2026 sur `testadepsep.apec.fr`, 62 octets de corps.
+ *
+ * Borné et dé-balisé : c'est une ligne d'écran, pas une page HTML.
+ */
+export function describeErrorBody(body: string, max = 200): string | null {
+  const text = body
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return null;
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/** Statuts qui disent « la plateforme est hors service », pas « ta requête est mauvaise ». */
+const PLATFORM_DOWN_STATUSES = new Set([502, 503, 504]);
+
 function causeCode(err: unknown): string | null {
   const cause = (err as { cause?: unknown })?.cause;
   const code = (cause as { code?: unknown })?.code ?? (err as { code?: unknown })?.code;
@@ -95,10 +120,26 @@ export function createHttpAdepTransport(options: HttpTransportOptions): AdepTran
       // comme une panne perdrait le code d'erreur qui explique le refus. On ne
       // lève donc que sur un corps vide ou un statut sans contenu utile.
       if (!response.ok && !body.includes('Envelope')) {
+        const excerpt = describeErrorBody(body);
+        const retryAfter = response.headers.get('retry-after');
         throw new AdepTransportError(
-          `L'Apec a répondu ${response.status} sans message exploitable.`,
-          // Le serveur a répondu : la requête est bien partie, et elle a
-          // peut-être été traitée.
+          PLATFORM_DOWN_STATUSES.has(response.status)
+            ? `La plateforme Apec est indisponible (${response.status}` +
+              `${excerpt ? ` — ${excerpt}` : ''}). ` +
+              `Ce n'est ni un refus ni un problème d'identifiants : réessayez ` +
+              `${retryAfter ? `dans ${retryAfter} s` : 'plus tard'}.`
+            : `L'Apec a répondu ${response.status}` +
+              `${excerpt ? ` — ${excerpt}` : ' sans message exploitable'}.`,
+          // ⚠️ `false`, MÊME sur un 503. La tentation est grande : un frontal
+          // qui répond 503 n'a rien fait passer au backend, donc « rien n'est
+          // parti ». Sauf qu'une passerelle rend AUSSI 503 quand le backend
+          // met trop longtemps — et il a alors peut-être créé l'offre. La
+          // classification reste conservatrice, comme le dit l'en-tête de ce
+          // fichier : le coût d'une vérification inutile est une requête,
+          // celui de l'erreur inverse est un doublon indélébile sur apec.fr.
+          //
+          // Le message ne doit donc RIEN affirmer sur le traitement : il dit
+          // que la plateforme est hors service, pas que la requête est perdue.
           false,
         );
       }
