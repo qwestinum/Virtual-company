@@ -39,6 +39,11 @@ yarn-error.log*
 .env*.local
 .env.local*
 .env
+# Fichiers de secrets des sondes (adep:hash / adep:probe) : ils portent le mot
+# de passe Apec, le sel Argon2 et le numéro de dossier. `.env*.local` ne les
+# couvrait PAS sous le nom `.env.adep`, et un secret fournisseur entré dans
+# l'historique git ne s'en retire pas.
+.env.adep*
 
 # vercel
 .vercel
