@@ -61,7 +61,11 @@ clé entièrement différente : il n'y a aucun rattrapage, il faut recalculer.
 
 ## 2. Réglages du cabinet — une fois
 
-`/settings`, bloc APEC :
+`/settings` → **Intégrations — Canaux de diffusion** → bloc « APEC — réglages du
+cabinet » (les autres jobboards gardent leur carte générique : APEC a le sien
+parce que ses identifiants sont des variables d'environnement, pas un token en
+base). Le résumé de la section DIT ce qui manque, replié — on ne découvre pas un
+code NAF absent en butant sur un bouton désarmé au fond d'une campagne.
 
 - **code NAF** du cabinet (format `0000X`) ;
 - **description de l'entreprise**, 100 à 3000 caractères ;
@@ -70,13 +74,15 @@ clé entièrement différente : il n'y a aucun rattrapage, il faut recalculer.
   Cabinets / ETT / PRISME (sinon `API_330`) ;
 - valeurs par défaut : zone de déplacement, statut du poste, affichage du salaire.
 
-Puis, **par site**, le **code commune INSEE**. ⚠️ Paris (75056), Lyon (69123) et
+Puis, **par site** (`/settings` → « Sites »), le **code commune INSEE**. ⚠️ Paris (75056), Lyon (69123) et
 Marseille (13055) sont refusés par l'Apec : il faut l'arrondissement (75101–75120,
 69381–69389, 13201–13216). Le validateur le dit, avec la plage.
 
-Puis, **par recruteur**, son **identifiant Apec** (`123456789W`). Un recruteur
-sans identifiant ne peut pas être référent d'une campagne publiée — et le
-panneau le dit **avant** de proposer le bouton.
+Puis, **par recruteur** (`/settings` → « Recruteurs » → ✏️), son **identifiant
+Apec** (`123456789W`). Il est **chiffré et jamais réaffiché** : le champ laissé
+vide ne change rien, une valeur le remplace. La liste marque « Apec ✓ » les
+recruteurs habilités. Un recruteur sans identifiant ne peut pas être référent
+d'une campagne publiée — et le panneau le dit **avant** de proposer le bouton.
 
 ---
 
@@ -85,10 +91,13 @@ panneau le dit **avant** de proposer le bouton.
 `ADEP_ENABLED` absent. Le panneau affiche « mode simulation » et rien ne part.
 Scénarios à dérouler :
 
-1. **Pré-remplissage** — sur une campagne dont l'annonce générique est publiée,
-   le titre et le descriptif sont déjà là, avec leur provenance (« repris de
-   l'annonce générique publiée du … »). Sans annonce générique, le panneau
-   propose « Pré-rédiger le texte » — un bouton, jamais un automatisme.
+1. **Pré-remplissage** — le panneau s'ouvre REPLIÉ : état, préalables, un
+   bouton « Préparer la publication ». Dans « L'annonce », le titre et le
+   descriptif viennent de l'annonce générique publiée quand il y en a une (leur
+   provenance est écrite), sinon des **missions principales** de la fiche de
+   poste ; la **description du profil** vient des **compétences clés**. Rien de
+   tout cela ne se ressaisit. Sans aucune de ces sources, le panneau propose
+   « Pré-rédiger le texte » — un bouton, jamais un automatisme.
    ⚠️ Un descriptif de plus de 3 000 caractères n'est **pas tronqué** : l'écart
    est affiché, c'est au recruteur de raccourcir.
 2. **Publication nominale** — le formulaire, « Vérifier », « Publier ». Un numéro

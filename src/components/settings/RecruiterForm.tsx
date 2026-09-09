@@ -16,6 +16,14 @@ export type RecruiterFormState = {
   displayName: string;
   email: string;
   calcomLink: string;
+  /**
+   * Identifiant Apec SAISI. Toujours vide à l'ouverture : la valeur est
+   * chiffrée en base et ne ressort jamais (cf. `hasAdepNumeroDossier`). Vide à
+   * l'enregistrement = on ne touche à rien.
+   */
+  adepNumeroDossier: string;
+  /** Un identifiant est DÉJÀ enregistré — affiché, jamais révélé. */
+  hasAdepNumeroDossier: boolean;
 };
 
 export const EMPTY_RECRUITER_FORM: RecruiterFormState = {
@@ -23,6 +31,8 @@ export const EMPTY_RECRUITER_FORM: RecruiterFormState = {
   displayName: '',
   email: '',
   calcomLink: '',
+  adepNumeroDossier: '',
+  hasAdepNumeroDossier: false,
 };
 
 type AvailableAccount = { id: string; email: string; createdAt: string };
@@ -93,6 +103,14 @@ export function RecruiterForm({
     setSaving(true);
     setError(null);
     const calcomLink = form.calcomLink.trim() || null;
+    // Champ laissé vide = on n'y touche pas. L'omettre est ce qui distingue
+    // « je ne change rien » de « je retire l'identifiant » (bouton dédié) :
+    // sans cette nuance, rouvrir la fiche pour corriger un nom effacerait
+    // l'habilitation Apec du recruteur.
+    const adep =
+      form.adepNumeroDossier.trim().length > 0
+        ? { adepNumeroDossier: form.adepNumeroDossier.trim() }
+        : {};
     try {
       const res = editing
         ? await fetch(`/api/recruiters/${encodeURIComponent(form.id)}`, {
@@ -101,6 +119,7 @@ export function RecruiterForm({
             body: JSON.stringify({
               displayName: form.displayName.trim(),
               calcomLink,
+              ...adep,
             }),
           })
         : await fetch('/api/recruiters', {
@@ -180,6 +199,27 @@ export function RecruiterForm({
         value={form.calcomLink}
         onChange={(e) => setForm({ ...form, calcomLink: e.currentTarget.value })}
       />
+      {editing ? (
+        <div className="flex flex-col gap-1">
+          <input
+            className={INPUT}
+            placeholder={
+              form.hasAdepNumeroDossier
+                ? 'Identifiant Apec enregistré — saisir pour le remplacer'
+                : 'Identifiant Apec (ex. 123456789W) — requis pour publier une offre'
+            }
+            value={form.adepNumeroDossier}
+            onChange={(e) =>
+              setForm({ ...form, adepNumeroDossier: e.currentTarget.value })
+            }
+          />
+          <span className="font-body text-[11px] text-stone-400">
+            {form.hasAdepNumeroDossier
+              ? 'Enregistré et chiffré : la valeur n’est jamais réaffichée. Laisser vide ne change rien.'
+              : 'Sans identifiant, ce recruteur ne peut pas être référent d’une campagne publiée sur l’APEC.'}
+          </span>
+        </div>
+      ) : null}
       {error ? <p className="font-body text-[12px] text-rose-600">{error}</p> : null}
       <div>
         <button

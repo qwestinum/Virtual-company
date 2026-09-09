@@ -15,6 +15,7 @@
  * l'utilisateur lit avant de décider quoi ouvrir.
  */
 import type { SectionStatus } from '@/components/settings/SettingsSection';
+import { missingAdepSettings, type AdepConfig } from '@/types/adep-settings';
 import type { BrandingConfig } from '@/types/branding';
 import type { InterviewConfig } from '@/types/interview-settings';
 import type { VivierConfig } from '@/types/vivier-settings';
@@ -31,6 +32,7 @@ export type SummarySource = {
   interviewConfig: InterviewConfig;
   vivierConfig: VivierConfig;
   brandingConfig: BrandingConfig;
+  adepConfig: AdepConfig;
   fluxConfigured: number;
   channelsConfigured: number;
 };
@@ -102,6 +104,30 @@ export function vivierSummary(s: SummarySource): SectionState {
   const auto = s.vivierConfig.contactMode === 'auto';
   return {
     summary: `Contact ${auto ? 'automatique' : 'après validation'} · cooldown ${s.vivierConfig.cooldownDays} j`,
+    status: 'ok',
+  };
+}
+
+/**
+ * Résumé de la section « Canaux de diffusion ».
+ *
+ * Il porte l'état APEC, parce que c'est le seul canal réellement branché : un
+ * « 0 configurée sur 4 » cacherait qu'il manque un code NAF, et on l'apprendrait
+ * en butant sur un bouton désarmé au fond d'une campagne.
+ */
+export function channelsSummary(s: SummarySource, total: number): SectionState {
+  const missing = missingAdepSettings(s.adepConfig);
+  if (missing.length > 0) {
+    return {
+      summary: `APEC : il manque ${missing.join(', ')}`,
+      status: 'warn',
+    };
+  }
+  return {
+    summary:
+      s.channelsConfigured === 0
+        ? 'APEC prêt — aucune autre intégration configurée'
+        : `APEC prêt · ${s.channelsConfigured} autre${s.channelsConfigured > 1 ? 's' : ''} sur ${total}`,
     status: 'ok',
   };
 }

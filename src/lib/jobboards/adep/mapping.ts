@@ -28,6 +28,7 @@
 
 import { asContractList } from '@/lib/fdp/contract-type';
 
+import { composeMissionsText, composeSkillsText } from './fdp-text';
 import type { AdepPrefill } from './prefill';
 import type { AdepOffer } from '@/types/adep';
 import type { AdepConfig } from '@/types/adep-settings';
@@ -359,6 +360,14 @@ export function buildAdepDraft(input: AdepDraftInput): AdepDraft {
     notes.datePositionTaken = { origin: 'certain', from: 'date cible de la fiche de poste' };
   }
 
+  // ── Ce que la fiche de poste possède déjà ──
+  // Les missions et les compétences sont VALIDÉES ; les faire retaper dans le
+  // formulaire APEC serait une resaisie pure, et deux textes écrits séparément
+  // pour un même poste finissent par se contredire. On les REPORTE (liste à
+  // tirets), on ne rédige pas.
+  const missionsText = composeMissionsText(fieldValue(input.fdp, 'main_missions'));
+  const skillsText = composeSkillsText(fieldValue(input.fdp, 'key_skills'));
+
   // ── Ce qui ne se règle pas dans ce formulaire ──
   if (!input.applicationEmail.trim()) {
     blockers.push(
@@ -396,10 +405,9 @@ export function buildAdepDraft(input: AdepDraftInput): AdepDraft {
     releaseDate: null,
 
     positionType: 'ODD',
-    positionDescription: prefill
-      ? prefill.positionDescription
-      : input.positionDescription,
-    profileDescription: input.profileDescription,
+    positionDescription:
+      prefill?.positionDescription || missionsText || input.positionDescription,
+    profileDescription: skillsText || input.profileDescription,
     organizationDescription: input.config.organizationDescription,
     organizationName: input.organizationName,
     displayLogo: input.config.displayLogo,
@@ -427,13 +435,18 @@ export function buildAdepDraft(input: AdepDraftInput): AdepDraft {
   // Le descriptif : repris d'un texte existant, ou à écrire. Dans les deux cas
   // la note le DIT — un champ pré-rempli sans provenance passerait pour une
   // saisie de l'utilisateur, et un champ vide sans explication pour un oubli.
-  notes.positionDescription = prefill
+  notes.positionDescription = prefill?.positionDescription
     ? { origin: prefillOrigin(prefill), from: `repris de l'${prefill.label}` }
-    : { origin: 'missing', from: 'à rédiger — aucune annonce générique publiée' };
-  // Le profil recherché n'a PAS d'équivalent dans l'annonce générique, qui n'a
-  // qu'un corps unique. Le découper au jugé pour remplir deux champs
-  // fabriquerait du texte que personne n'a écrit.
-  notes.profileDescription = { origin: 'missing', from: 'à rédiger' };
+    : missionsText
+      ? { origin: 'derived', from: 'missions principales de la fiche de poste' }
+      : { origin: 'missing', from: 'à rédiger — aucune annonce générique publiée' };
+  // Le profil ne vient JAMAIS de l'annonce générique, qui n'a qu'un corps
+  // unique : le découper au jugé pour remplir deux champs fabriquerait du texte
+  // que personne n'a écrit. Il vient des compétences clés, qui sont faites pour
+  // ça et déjà validées.
+  notes.profileDescription = skillsText
+    ? { origin: 'derived', from: 'compétences clés de la fiche de poste' }
+    : { origin: 'missing', from: 'à rédiger' };
 
   return { offer, notes, blockers };
 }

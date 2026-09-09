@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   brandingSummary,
+  channelsSummary,
   countWarnings,
   integrationsSummary,
   interviewSummary,
@@ -18,6 +19,7 @@ import {
   vivierSummary,
   type SummarySource,
 } from '@/lib/settings/section-summary';
+import { DEFAULT_ADEP_CONFIG } from '@/types/adep-settings';
 import { DEFAULT_BRANDING_CONFIG } from '@/types/branding';
 import { DEFAULT_INTERVIEW_CONFIG } from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG } from '@/types/vivier-settings';
@@ -32,6 +34,7 @@ function source(overrides: Partial<SummarySource> = {}): SummarySource {
     interviewConfig: DEFAULT_INTERVIEW_CONFIG,
     vivierConfig: DEFAULT_VIVIER_CONFIG,
     brandingConfig: DEFAULT_BRANDING_CONFIG,
+    adepConfig: DEFAULT_ADEP_CONFIG,
     fluxConfigured: 0,
     channelsConfigured: 0,
     ...overrides,
@@ -141,5 +144,35 @@ describe('countWarnings', () => {
       vivierSummary(source()),
     ];
     expect(countWarnings(states)).toBe(2);
+  });
+});
+
+describe('channelsSummary — les réglages APEC ne se découvrent pas au fond d’une campagne', () => {
+  const READY = {
+    ...DEFAULT_ADEP_CONFIG,
+    nafCode: '7810Z',
+    organizationDescription: 'x'.repeat(120),
+  };
+
+  it('signale ce qui manque, replié', () => {
+    // Un « 0 configurée sur 4 » cacherait qu'il manque un code NAF, et on
+    // l'apprendrait en butant sur un bouton désarmé.
+    const state = channelsSummary(source(), 2);
+    expect(state.status).toBe('warn');
+    expect(state.summary).toContain('code NAF');
+    expect(state.summary).toContain("description de l'entreprise");
+  });
+
+  it('ne signale plus rien une fois les deux réglages posés', () => {
+    const state = channelsSummary(source({ adepConfig: READY }), 2);
+    expect(state.status).toBe('ok');
+    expect(state.summary).toContain('APEC prêt');
+  });
+
+  it('une description trop courte compte comme absente', () => {
+    // L'Apec exige 100 caractères (API_407) : 40 caractères ne passent pas,
+    // et l'écran doit le dire ici, pas au moment de publier.
+    const short = { ...READY, organizationDescription: 'Cabinet de recrutement.' };
+    expect(channelsSummary(source({ adepConfig: short }), 2).status).toBe('warn');
   });
 });

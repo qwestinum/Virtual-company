@@ -286,3 +286,65 @@ describe('référence client', () => {
     expect(nextAttempt(['REF-EXTERNE-77', 'CAMP-2026-288-2'])).toBe(3);
   });
 });
+
+describe('textes de l’offre — priorité des sources, jamais de resaisie', () => {
+  const FDP_WITH_LISTS = fdpWith({
+    job_title: 'Consultant AMOA Trade Finance',
+    contract_type: ['CDI'],
+    main_missions: ['Cadrage des besoins métier', 'Rédaction des spécifications'],
+    key_skills: ['Trade Finance', 'AMOA'],
+  });
+
+  it('reprend les missions et les compétences DÉJÀ validées dans la fiche', () => {
+    // La description du profil est OBLIGATOIRE chez l'Apec (100 caractères
+    // minimum) et ORQA la présentait vide alors que les compétences clés sont
+    // saisies à deux écrans de là : c'est la resaisie qu'on supprime.
+    const draft = buildAdepDraft({
+      ...BASE_INPUT,
+      fdp: FDP_WITH_LISTS,
+      positionDescription: '',
+      profileDescription: '',
+    });
+    expect(draft.offer.positionDescription).toContain('Cadrage des besoins métier');
+    expect(draft.offer.profileDescription).toContain('Trade Finance');
+    expect(draft.notes.positionDescription?.from).toContain('missions principales');
+    expect(draft.notes.profileDescription?.from).toContain('compétences clés');
+  });
+
+  it('un texte RELU prime sur la composition automatique', () => {
+    // L'annonce générique a été écrite puis publiée par un humain ; la liste de
+    // missions est un report brut. Laisser la seconde écraser le premier ferait
+    // reculer la qualité du texte à chaque ouverture du panneau.
+    const draft = buildAdepDraft({
+      ...BASE_INPUT,
+      fdp: FDP_WITH_LISTS,
+      prefill: {
+        source: 'generic_published',
+        positionTitle: 'Consultant AMOA Trade Finance (H/F)',
+        positionDescription: 'Texte relu et publié sur le canal générique.',
+        at: '2026-08-12T09:30:00.000Z',
+        label: 'annonce générique publiée du 12/08/2026',
+        hasMarkup: false,
+      },
+    });
+    expect(draft.offer.positionDescription).toBe(
+      'Texte relu et publié sur le canal générique.',
+    );
+    expect(draft.notes.positionDescription?.origin).toBe('certain');
+    // Le profil, lui, n'a PAS d'équivalent dans l'annonce : il vient toujours
+    // des compétences clés.
+    expect(draft.offer.profileDescription).toContain('Compétences recherchées');
+  });
+
+  it('sans annonce ni listes, les champs restent vides et le DISENT', () => {
+    const draft = buildAdepDraft({
+      ...BASE_INPUT,
+      positionDescription: '',
+      profileDescription: '',
+    });
+    expect(draft.offer.positionDescription).toBe('');
+    expect(draft.offer.profileDescription).toBe('');
+    expect(draft.notes.positionDescription?.origin).toBe('missing');
+    expect(draft.notes.profileDescription?.origin).toBe('missing');
+  });
+});

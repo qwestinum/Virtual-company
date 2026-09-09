@@ -11,9 +11,22 @@ import { DEFAULT_SITE_ID, type Site } from '@/types/organisation';
  * seedé en base et apparaît comme les autres (orgs mono-site).
  */
 
-type FormState = { name: string; type: string; city: string; postalCode: string };
+type FormState = {
+  name: string;
+  type: string;
+  city: string;
+  postalCode: string;
+  /** Code commune INSEE — l'Apec veut un code, jamais un nom de ville. */
+  inseeCode: string;
+};
 
-const EMPTY_FORM: FormState = { name: '', type: '', city: '', postalCode: '' };
+const EMPTY_FORM: FormState = {
+  name: '',
+  type: '',
+  city: '',
+  postalCode: '',
+  inseeCode: '',
+};
 
 export function SitesManager() {
   const [items, setItems] = useState<Site[]>([]);
@@ -65,6 +78,7 @@ export function SitesManager() {
       type: item.type ?? '',
       city: item.city ?? '',
       postalCode: item.postalCode ?? '',
+      inseeCode: item.inseeCode ?? '',
     });
     setError(null);
     setFormOpen(true);
@@ -82,6 +96,7 @@ export function SitesManager() {
       type: form.type.trim() || null,
       city: form.city.trim() || null,
       postalCode: form.postalCode.trim() || null,
+      inseeCode: form.inseeCode.trim().toUpperCase() || null,
     };
     try {
       const res = await fetch(
@@ -209,7 +224,20 @@ export function SitesManager() {
             <Field label="Type / catégorie" value={form.type} onChange={(v) => setForm({ ...form, type: v })} placeholder="ex. Établissement médical" />
             <Field label="Ville" value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
             <Field label="Code postal" value={form.postalCode} onChange={(v) => setForm({ ...form, postalCode: v })} />
+            <Field
+              label="Code commune INSEE"
+              value={form.inseeCode}
+              onChange={(v) => setForm({ ...form, inseeCode: v })}
+              placeholder="ex. 37261"
+            />
           </div>
+          {/* Le code postal ne suffit pas : l'Apec veut le code COMMUNE, et
+              refuse les trois villes à arrondissements en global (API_356). */}
+          <p className="mt-1 font-body text-[11px] text-stone-400">
+            Publication APEC : code commune à 5 caractères (Corse comprise, ex.
+            2A004). Paris, Lyon et Marseille sont refusés en global — utilisez
+            l’arrondissement (75101–75120, 69381–69389, 13201–13216).
+          </p>
           {error ? (
             <p className="mt-2 font-body text-[12px] text-rose-600">{error}</p>
           ) : null}

@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * Le formulaire de publication APEC — les champs qu'ORQA ne possède pas.
+ * Le bloc « L'annonce » du formulaire APEC : ce que la campagne sait déjà.
  *
- * Rangés en deux blocs, et la séparation est le message : « L'annonce » reprend
- * ce que la campagne sait déjà ; « Ce que l'Apec demande en plus » est ce que le
- * recruteur doit trancher. Mélanger les deux ferait relire cent fois ce qui est
- * acquis et survoler ce qui ne l'est pas.
+ * La séparation d'avec « Ce que l'Apec demande en plus » (`ApecRequirementsGrid`)
+ * est le message : ici on relit, là-bas on tranche. Mélanger les deux ferait
+ * relire cent fois ce qui est acquis et survoler ce qui ne l'est pas — et c'est
+ * ce qui permet au panneau de n'ouvrir qu'une section à la fois.
  *
  * Chaque champ déduit porte sa provenance (cf. `ApecFieldRow`) : une valeur
  * traduite se présente comme une proposition, jamais comme un fait.
@@ -17,7 +17,6 @@ import { ADEP_LIMITS } from '@/lib/jobboards/adep/validate';
 import type { AdepOffer } from '@/types/adep';
 
 import { ApecFieldRow } from './ApecFieldRow';
-import { ApecRequirementsGrid } from './ApecRequirementsGrid';
 import { inputStyle, labelStyle } from './job-ad-panel-styles';
 
 type Notes = Partial<Record<keyof AdepOffer, AdepFieldNote>>;
@@ -29,14 +28,6 @@ export type ApecOfferFormProps = {
 };
 
 const areaStyle = { ...inputStyle, minHeight: 92, resize: 'vertical' as const };
-const sectionStyle = {
-  margin: '14px 0 4px',
-  fontSize: 12,
-  fontWeight: 700,
-  color: 'var(--dash-text-secondary)',
-  textTransform: 'uppercase' as const,
-  letterSpacing: 0.4,
-};
 
 /** « 38/80 » — le compteur porte sur le texte RÉELLEMENT envoyé. */
 function counter(value: string, max: number, min?: number): string {
@@ -51,8 +42,6 @@ export function ApecOfferForm({ offer, notes, onChange }: ApecOfferFormProps) {
 
   return (
     <div>
-      <div style={sectionStyle}>L’annonce</div>
-
       <ApecFieldRow
         label="Intitulé du poste"
         note={notes.positionTitle}
@@ -117,8 +106,6 @@ export function ApecOfferForm({ offer, notes, onChange }: ApecOfferFormProps) {
           onChange={(e) => onChange({ organizationDescription: e.target.value })}
         />
       </ApecFieldRow>
-
-      <ApecRequirementsGrid offer={offer} notes={notes} onChange={onChange} />
 
       <label style={labelStyle}>Candidatures reçues sur</label>
       <div style={{ ...inputStyle, background: 'var(--dash-warm)' }}>

@@ -20,6 +20,15 @@ const PatchSchema = z.object({
   calcomLink: z.string().url().max(2048).nullable().optional(),
   role: RecruiterRoleSchema.optional(),
   isActive: z.boolean().optional(),
+  /**
+   * Numéro de dossier Apec du recruteur (ex. `123456789W`).
+   *
+   * WRITE-ONLY, comme la clé Resend : la valeur est chiffrée en base et n'est
+   * jamais renvoyée — le GET n'expose qu'un booléen `hasAdepNumeroDossier`.
+   * `''` retire l'identifiant, ce qui redonne au recruteur son état « pas
+   * habilité à publier », plutôt que de laisser une valeur fantôme.
+   */
+  adepNumeroDossier: z.string().max(64).optional(),
 });
 
 export async function PATCH(

@@ -93,6 +93,12 @@ export function RecruitersManager() {
                 ) : (
                   <span className="italic">sans lien Cal.com (agenda global)</span>
                 )}
+                {/* Qui peut porter une offre APEC se lit ICI : le découvrir sur
+                    un bouton désarmé, au fond d'une campagne, coûte un
+                    aller-retour pour rien. */}
+                {r.hasAdepNumeroDossier ? (
+                  <span className="ml-1.5 text-stone-600">· Apec ✓</span>
+                ) : null}
               </p>
             </div>
             <button
@@ -104,9 +110,11 @@ export function RecruitersManager() {
                   displayName: r.displayName,
                   email: r.email,
                   calcomLink: r.calcomLink ?? '',
+                  adepNumeroDossier: '',
+                  hasAdepNumeroDossier: r.hasAdepNumeroDossier === true,
                 });
               }}
-              title="Modifier (nom, lien Cal.com)"
+              title="Modifier (nom, lien Cal.com, identifiant Apec)"
               className="rounded-md p-1.5 text-stone-500 hover:bg-stone-100"
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden />

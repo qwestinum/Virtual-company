@@ -35,8 +35,10 @@ import {
 } from '@/types/interview-settings';
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 import { DEFAULT_BRANDING_CONFIG, type BrandingConfig } from '@/types/branding';
+import { DEFAULT_ADEP_CONFIG, type AdepConfig } from '@/types/adep-settings';
 import {
   brandingSummary,
+  channelsSummary,
   countWarnings,
   integrationsSummary,
   interviewSummary,
@@ -54,6 +56,7 @@ import { EmailListField } from './EmailListField';
 import { EmailMultiSelectField } from './EmailMultiSelectField';
 import { IntegrationCard } from './IntegrationCard';
 import { AgendaSettings } from './AgendaSettings';
+import { ApecConfigManager } from './ApecConfigManager';
 import { BrandingManager } from './BrandingManager';
 import { InterviewConfigManager } from './InterviewConfigManager';
 import { MailboxesManager } from './MailboxesManager';
@@ -85,6 +88,8 @@ type Settings = {
   interviewConfig: InterviewConfig;
   /** Identité du cabinet (logo, couleur) — surfaces candidat. */
   brandingConfig: BrandingConfig;
+  /** Réglages APEC du cabinet (code NAF, description, convention). */
+  adepConfig: AdepConfig;
   /** Clé Resend : statut seulement (la valeur n'est jamais renvoyée). */
   resendApiKeyConfigured: boolean;
   updatedAt: string;
@@ -235,6 +240,7 @@ export function SettingsHub({
                 json.settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG,
               brandingConfig:
                 json.settings.brandingConfig ?? DEFAULT_BRANDING_CONFIG,
+              adepConfig: json.settings.adepConfig ?? DEFAULT_ADEP_CONFIG,
               resendApiKeyConfigured:
                 json.settings.resendApiKeyConfigured ?? false,
             },
@@ -355,6 +361,7 @@ export function SettingsHub({
     interviewConfig: settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG,
     vivierConfig: settings.vivierConfig ?? DEFAULT_VIVIER_CONFIG,
     brandingConfig: settings.brandingConfig ?? DEFAULT_BRANDING_CONFIG,
+    adepConfig: settings.adepConfig ?? DEFAULT_ADEP_CONFIG,
     fluxConfigured: countConfigured(settings.fluxConfig),
     channelsConfigured: countConfigured(settings.channelsConfig),
   };
@@ -366,10 +373,7 @@ export function SettingsHub({
     identite: brandingSummary(source),
     vivier: vivierSummary(source),
     flux: integrationsSummary(source.fluxConfigured, INTEGRATION_SOURCES.length),
-    canaux: integrationsSummary(
-      source.channelsConfigured,
-      PUBLICATION_CHANNEL_ORDER.length,
-    ),
+    canaux: channelsSummary(source, PUBLICATION_CHANNEL_ORDER.length - 2),
   };
 
   return (
@@ -666,8 +670,23 @@ export function SettingsHub({
         title="Intégrations — Canaux de diffusion"
         description="Credentials pour publier les annonces sur les jobboards. Sans configuration, la diffusion reste en mode trace (l'annonce est rédigée mais pas publiée)."
       >
+        {/* APEC a son propre bloc : ses identifiants sont des variables
+            d'environnement, pas un token en base. Laisser la carte générique
+            ferait croire qu'on configure le connecteur en collant une clé. */}
+        <div className="mb-4 rounded-lg border border-stone-200 bg-white p-3">
+          <p className="mb-2 font-body text-[13px] font-semibold text-stone-800">
+            APEC — réglages du cabinet
+          </p>
+          <ApecConfigManager
+            config={settings.adepConfig ?? DEFAULT_ADEP_CONFIG}
+            onSave={(next) =>
+              patchAndSave({ adepConfig: next }, 'Réglages APEC mis à jour.')
+            }
+          />
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {PUBLICATION_CHANNEL_ORDER.filter((c) => c !== 'generic').map(
+          {PUBLICATION_CHANNEL_ORDER.filter((c) => c !== 'generic' && c !== 'apec').map(
             (channel) => {
               const id = channel as PublicationChannel;
               const config = settings.channelsConfig[id] ?? {
