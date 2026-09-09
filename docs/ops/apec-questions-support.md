@@ -133,21 +133,25 @@ ceux-là — dans notre interface ?
 
 ---
 
-## 5ter. Les paramètres Argon2 sont-ils communs aux deux environnements ?
+## 5ter. Paramètres Argon2 de PRODUCTION — demande
 
 Vous nous avez transmis, pour la **production**, un `atsId` et un numéro de
-dossier — mais pas de mot de passe ni de paramètres Argon2 (sel, itérations,
-parallélisme), que nous n'avons que pour l'environnement de **test**.
+dossier, mais pas de mot de passe ni de paramètres Argon2 (sel, itérations,
+parallélisme) : nous n'en avons que pour l'environnement de **test**.
 
-Deux lectures possibles, et nous préférons demander plutôt que supposer :
+Nous avons vérifié, **en lecture seule** (interrogation du statut d'une
+référence inexistante, aucune offre créée) : la clé calculée avec les paramètres
+de test est **refusée en production** — `API_102_ATS_PASSWORD_INVALID_ERROR`.
+Sur l'environnement de test, la même méthode répond « offre inconnue », donc
+notre calcul est bon.
 
-- les paramètres Argon2 sont **communs** à l'intégrateur, seuls l'`atsId` et le
-  numéro de dossier changent d'un environnement à l'autre ;
-- un jeu **distinct** est prévu pour la production et nous ne l'avons pas encore.
+Pourriez-vous nous transmettre, pour le compte de production, le **mot de
+passe** et les **paramètres Argon2** (sel, nombre d'itérations, degré de
+parallélisme) ? Un sel différent produisant une clé entièrement différente, il
+ne s'agit pas d'un ajustement mais d'un recalcul complet de notre côté.
 
-Laquelle est la bonne ? Dans le second cas, merci de nous transmettre le mot de
-passe et les paramètres de production — un sel différent produit une clé
-entièrement différente, il ne s'agit pas d'un simple ajustement.
+Nous confirmons au passage que le WSDL de production déclare bien le même espace
+de noms que celui de test (`http://adep.apec.fr/hrxml/sep`).
 
 ---
 

@@ -1,9 +1,10 @@
 # Connecteur APEC ADEP V5
 
 > **Statut au 09/09/2026 : lots 0 à 4 LIVRÉS, et le PREMIER APPEL RÉEL a
-> abouti** en environnement de test (§6quinquies). Le WSDL de PRODUCTION n'a
-> toujours pas été vu ; le connecteur tourne en mode simulation tant que
-> `ADEP_ENABLED` n'est pas posé, et il le dit à l'écran. Mise en service :
+> abouti** en environnement de test (§6quinquies). La PRODUCTION a été sondée en
+> lecture seule le même jour : son WSDL concorde, mais elle exige des paramètres
+> Argon2 dédiés (§6quinquies.3). Le connecteur tourne en mode simulation tant
+> que `ADEP_ENABLED` n'est pas posé, et il le dit à l'écran. Mise en service :
 > `docs/ops/apec-mise-en-service.md`.
 >
 > Les sections 0 à 6 restent l'ÉTUDE telle qu'elle a été rendue avant tout code
@@ -973,7 +974,8 @@ Trois défauts attrapés par les tests, pas par relecture :
 ### 6bis.5 Reste du lot 0
 
 Une chose n'a pas pu être faite ici et attend la sonde du lot 3 : **récupérer le
-WSDL de production**. Le WSDL de test est en place et fait autorité pour tout ce
+WSDL de production** — ✅ **fait le 09/09, il concorde** (§6quinquies.3). Le
+WSDL de test est en place et fait autorité pour tout ce
 qui précède ; la garde de cohérence de `adep:probe` (§6bis, `namespaces.ts`) est
 écrite et testée, elle s'exécutera au premier appel réel.
 
@@ -1082,8 +1084,8 @@ aucun test ne pose `ADEP_ENABLED` sur le `process.env` réel.
 
 ### 6ter.6 Reste à faire, honnêtement
 
-- **Le WSDL de production n'a jamais été vu.** La garde de `adep:probe` le
-  vérifiera au premier appel.
+- ~~**Le WSDL de production n'a jamais été vu.**~~ ✅ **Vu le 09/09, il
+  concorde** (§6quinquies.3).
 - **Le bloc client réel (mode indirect) n'a pas de formulaire.** Il est construit,
   validé et testé de bout en bout ; l'écran ne le saisit pas encore, parce que le
   compte de test est en mode direct et que ce serait bâtir sur une hypothèse
@@ -1327,9 +1329,32 @@ systématiquement fait porter à l'utilisateur le coût de notre ignorance.
 ⚠️ Mesuré sur `AVALIDER` seulement ; `AMODIFIER` est traité pareil par prudence
 (les deux états sont « pas en diffusion »), sans que ce soit vérifié.
 
-### 6quinquies.3 Reste ouvert
+### 6quinquies.3 La PRODUCTION, sondée en lecture seule — 09/09/2026
 
-- **le WSDL de PRODUCTION** n'a toujours pas été vu (`adep:probe` le vérifiera) ;
+Deux réponses d'un seul appel `--check-auth` contre
+`https://adepsep.apec.fr/v5/positions`, sans rien créer :
+
+1. **Le WSDL de production a enfin été vu, et il CONCORDE.** Le
+   `targetNamespace` servi est `http://adep.apec.fr/hrxml/sep`, identique à
+   celui du test et à notre constante. La question ouverte n°1 est close pour
+   les DEUX environnements — la garde de `adep:probe` a fait exactement ce
+   pour quoi elle avait été écrite, et n'a rien eu à bloquer.
+2. **Les paramètres Argon2 ne sont PAS communs aux deux environnements.** La
+   clé calculée avec le mot de passe et le sel de test rend `API_102` sur la
+   production (« clé d'authentification refusée »). L'Apec ayant transmis un
+   `atsId` et un numéro de dossier de production **sans** paramètres Argon2, il
+   en faut un jeu dédié — et un recalcul complet, un sel différent produisant
+   une clé entièrement différente.
+
+⚠️ Ce diagnostic n'a coûté aucune offre parasite : c'est précisément ce que
+`--check-auth` existe pour faire. Un `--execute` de reconnaissance aurait laissé
+sur le compte RÉEL une offre « SONDE TECHNIQUE » impossible à retirer tant
+qu'elle est en `AVALIDER` (§6quinquies.2).
+
+### 6quinquies.4 Reste ouvert
+
+- **les paramètres Argon2 de PRODUCTION** (mot de passe, sel, itérations,
+  parallélisme) — demandés au support ;
 - l'offre de sonde `179240002W` reste en `AVALIDER` : elle n'est pas diffusée,
   et l'Apec refuse de la retirer dans cet état (`API_352`). Sa fermeture est à
   demander au support ADEP — à joindre au bloc de questions ;
@@ -1381,8 +1406,7 @@ Le bloc rédigé pour le support est l'objet du lot 4.
 
 1. ~~**Espace de noms exact des requêtes SEP.**~~ **RÉPONDU par le WSDL de
    test** : `http://adep.apec.fr/hrxml/sep` (§0.4). Reste à confirmer que le
-   WSDL de PRODUCTION porte la même valeur — `adep:probe` le vérifie tout seul
-   et refuse de continuer en cas d'écart.
+   WSDL de PRODUCTION porte la même valeur — ✅ **confirmé le 09/09**.
 2. ~~**Un vecteur de test Argon2**~~ **SANS OBJET — tranché par l'appel réel du
    09/09.** L'Apec a accepté la clé : 256 octets, base64 sans padding, sel
    base64 décodé. L'hypothèse était juste, et c'est l'`openPosition` qui l'a
