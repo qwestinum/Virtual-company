@@ -6,9 +6,11 @@
  */
 
 import type { AdepFieldNote, AdepDraftOffer } from './mapping';
+import type { AdepPrefill } from './prefill';
 import type { JobPosting } from '@/lib/db/repos/job-postings';
 import type { AdepConfig } from '@/types/adep-settings';
 import type { AdepOffer } from '@/types/adep';
+import type { AdepIssue } from './validate';
 import type { PublishOutcome, TransitionOutcome } from '../types';
 import type { AdepPositionStatusResult } from '@/types/adep';
 
@@ -20,6 +22,10 @@ export type AdepState = {
   notes: Partial<Record<keyof AdepOffer, AdepFieldNote>>;
   /** Préalables que le formulaire ne peut pas régler. */
   blockers: string[];
+  /** Texte repris d'une annonce déjà rédigée. `null` = rien à reprendre. */
+  prefill: AdepPrefill | null;
+  /** Écarts du texte repris, dits à l'ouverture. N'empêchent pas d'éditer. */
+  prefillIssues: AdepIssue[];
   config: AdepConfig;
   owner: { id: string; displayName: string; hasAdepNumeroDossier: boolean } | null;
   posting: JobPosting | null;
@@ -94,4 +100,18 @@ export async function transitionApec(
   const data = (await res.json().catch(() => null)) as TransitionResponse | null;
   if (!data) throw new Error(await readError(res));
   return data;
+}
+
+/**
+ * Demande une pré-rédaction du texte de l'offre. N'écrit rien : le résultat
+ * remplit le formulaire, le recruteur relit, et seul « Publier » envoie.
+ */
+export async function draftApecText(campaignId: string): Promise<AdepPrefill | null> {
+  const res = await fetch(
+    `/api/campaigns/${encodeURIComponent(campaignId)}/adep/draft-text`,
+    { method: 'POST' },
+  );
+  if (!res.ok) throw new Error(await readError(res));
+  const data = (await res.json()) as { prefill: AdepPrefill | null };
+  return data.prefill ?? null;
 }

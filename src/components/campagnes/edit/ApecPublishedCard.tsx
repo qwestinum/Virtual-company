@@ -15,6 +15,7 @@
 import type { JobPosting } from '@/lib/db/repos/job-postings';
 import {
   ADEP_IMMUTABLE_NOTICE,
+  ADEP_PREFILL_SNAPSHOT_NOTICE,
   ADEP_STATUS_LABELS,
   adepPhase,
   canRepublish,
@@ -130,6 +131,12 @@ export function ApecPublishedCard({
 
       <p style={{ margin: '10px 0 6px', color: 'var(--dash-text-secondary)' }}>
         {ADEP_IMMUTABLE_NOTICE}
+      </p>
+      {/* Le texte parti est figé ICI. Corriger l'annonce générique ne le
+          rattrapera pas — dit APRÈS la publication aussi, parce que c'est le
+          moment où l'on cherche comment corriger. */}
+      <p style={{ margin: '0 0 6px', color: 'var(--dash-text-secondary)' }}>
+        {ADEP_PREFILL_SNAPSHOT_NOTICE}
       </p>
       {notice ? <p style={{ margin: '0 0 10px' }}>{notice}</p> : null}
 

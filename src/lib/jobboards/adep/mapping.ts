@@ -27,6 +27,8 @@
  */
 
 import { asContractList } from '@/lib/fdp/contract-type';
+
+import type { AdepPrefill } from './prefill';
 import type { AdepOffer } from '@/types/adep';
 import type { AdepConfig } from '@/types/adep-settings';
 import type { FDPInProgress, FieldKey } from '@/types/field-collection';
@@ -252,6 +254,13 @@ export type AdepDraftInput = {
   positionDescription: string;
   /** Description du profil recherché. */
   profileDescription: string;
+  /**
+   * Texte déjà rédigé ailleurs, repris tel quel (annonce générique publiée, ou
+   * pré-rédaction demandée). Quand il est là, il PRIME sur l'intitulé brut de
+   * la fiche de poste : ce que le recruteur a relu vaut mieux qu'un champ
+   * recopié, et l'écran dit d'où le texte vient.
+   */
+  prefill?: AdepPrefill | null;
   /** Boîte de réception de la campagne. Vide ⇒ bloquant. */
   applicationEmail: string;
   /** Code INSEE du site de rattachement, quand il est renseigné. */
@@ -259,6 +268,14 @@ export type AdepDraftInput = {
   /** Référence client — `CAMP-YYYY-NNN`, avec suffixe de republication. */
   clientReference: string;
 };
+
+/**
+ * Un texte publié est un FAIT (un humain l'a relu et mis en ligne) ; une
+ * pré-rédaction reste une PROPOSITION. La nuance est ce que l'écran affiche.
+ */
+function prefillOrigin(prefill: AdepPrefill | null): AdepFieldOrigin {
+  return prefill?.source === 'job_writer' ? 'derived' : 'certain';
+}
 
 function fieldValue(fdp: FDPInProgress, key: FieldKey): unknown {
   return fdp.fields[key]?.value;
@@ -273,9 +290,19 @@ export function buildAdepDraft(input: AdepDraftInput): AdepDraft {
   const notes: AdepDraft['notes'] = {};
   const blockers: string[] = [];
 
-  const jobTitle = asText(fieldValue(input.fdp, 'job_title'));
+  const fdpTitle = asText(fieldValue(input.fdp, 'job_title'));
+  const prefill = input.prefill ?? null;
+  const prefillTitle = prefill?.positionTitle.trim() ?? '';
+  // Un titre relu et publié prime sur l'intitulé brut. Les deux textes
+  // coexistent souvent (« Comptable général » côté fiche, « Comptable général
+  // confirmé (H/F) » côté annonce) : publier deux libellés différents pour un
+  // même poste est ce qu'on cherche justement à éviter.
+  const jobTitle = prefillTitle || fdpTitle;
   notes.positionTitle = jobTitle
-    ? { origin: 'certain', from: 'intitulé de la fiche de poste' }
+    ? {
+        origin: prefillTitle ? prefillOrigin(prefill) : 'certain',
+        from: prefillTitle ? prefill!.label : 'intitulé de la fiche de poste',
+      }
     : { origin: 'missing' };
 
   // ── Contrat ──
@@ -369,7 +396,9 @@ export function buildAdepDraft(input: AdepDraftInput): AdepDraft {
     releaseDate: null,
 
     positionType: 'ODD',
-    positionDescription: input.positionDescription,
+    positionDescription: prefill
+      ? prefill.positionDescription
+      : input.positionDescription,
     profileDescription: input.profileDescription,
     organizationDescription: input.config.organizationDescription,
     organizationName: input.organizationName,
@@ -394,6 +423,17 @@ export function buildAdepDraft(input: AdepDraftInput): AdepDraft {
   notes.applicationEmail = input.applicationEmail
     ? { origin: 'certain', from: 'boîte mail de la campagne' }
     : { origin: 'missing' };
+
+  // Le descriptif : repris d'un texte existant, ou à écrire. Dans les deux cas
+  // la note le DIT — un champ pré-rempli sans provenance passerait pour une
+  // saisie de l'utilisateur, et un champ vide sans explication pour un oubli.
+  notes.positionDescription = prefill
+    ? { origin: prefillOrigin(prefill), from: `repris de l'${prefill.label}` }
+    : { origin: 'missing', from: 'à rédiger — aucune annonce générique publiée' };
+  // Le profil recherché n'a PAS d'équivalent dans l'annonce générique, qui n'a
+  // qu'un corps unique. Le découper au jugé pour remplir deux champs
+  // fabriquerait du texte que personne n'a écrit.
+  notes.profileDescription = { origin: 'missing', from: 'à rédiger' };
 
   return { offer, notes, blockers };
 }

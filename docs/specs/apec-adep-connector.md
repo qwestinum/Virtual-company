@@ -1089,11 +1089,91 @@ aucun test ne pose `ADEP_ENABLED` sur le `process.env` réel.
   compte de test est en mode direct et que ce serait bâtir sur une hypothèse
   (§2.4). Le mode `broker` se choisit dans les réglages du cabinet — c'est le
   déclencheur naturel du formulaire, à ajouter quand la convention sera signée.
-- **Le corps de l'annonce n'est pas pré-rempli depuis le canal générique.** Le
-  brouillon rend des textes vides et le recruteur écrit dans le formulaire :
-  générer à sa place au moment de publier serait rédiger sans qu'il l'ait
-  demandé. Le rapprochement avec `demo_job_posts` est un geste à décider, pas à
-  supposer.
+- ~~**Le corps de l'annonce n'est pas pré-rempli depuis le canal générique.**~~
+  **Fait le 09/09** — §6quater.
+
+---
+
+## 6quater. Pré-remplissage depuis l'annonce générique (09/09/2026)
+
+**Ce que le recruteur a validé ne se ressaisit pas.** Une campagne dont
+l'annonce générique est publiée porte déjà un titre et un corps RELUS par un
+humain ; ouvrir le panneau APEC devant deux zones vides lui demandait de
+réécrire ce qu'il venait d'écrire — et deux textes rédigés séparément pour un
+même poste finissent toujours par diverger.
+
+### 6quater.1 Deux sources, jamais au même titre
+
+`prefillFromJobPost` lit `demo_job_posts` à l'ouverture du panneau (fail-soft :
+une installation qui n'a jamais activé la démonstration n'a pas la table, et un
+panneau vide vaut mieux qu'un panneau en erreur). Une annonce **dépubliée** sert
+quand même de source — `unpublishJobPost` retire l'annonce de la vitrine sans
+effacer le texte, et ce qu'un humain a relu reste ce qu'il a relu — mais elle ne
+se fait pas passer pour une annonce en ligne (`generic_unpublished`, et l'écran
+l'écrit).
+
+Le **repli** est `POST …/adep/draft-text` : le même chemin que le canal
+générique (`executeJobWriter`, canal `generic`, mention RGPD déterministe),
+mais **déclenché par un bouton**. Générer à l'ouverture écrirait à la place du
+recruteur sans qu'il l'ait demandé, et le referait à chaque rechargement de
+l'écran — un appel au modèle par coup d'œil. La route **n'écrit rien** et ne
+dépend **pas** de `DEMO_JOBBOARD_ENABLED` : l'Apec est un canal réel, il n'a pas
+à s'éteindre avec une démonstration commerciale.
+
+La nuance entre les deux est portée jusque dans la provenance affichée : un
+texte publié est un **fait** (`certain`), une pré-rédaction reste une
+**proposition** (`derived`, « brouillon pré-rédigé, à relire »).
+
+Le **titre** repris prime sur l'intitulé brut de la fiche de poste : « Comptable
+général » côté fiche et « Comptable général confirmé » côté annonce coexistent
+souvent, et publier deux libellés pour un même poste est précisément ce qu'on
+cherche à éviter. Le **profil recherché**, lui, reste vide : l'annonce générique
+n'a qu'un corps unique, et le découper au jugé pour remplir deux champs
+fabriquerait du texte que personne n'a écrit.
+
+### 6quater.2 Ni troncature, ni reformatage — on DIT
+
+Le descriptif APEC est plafonné à 3 000 caractères et une annonce générique peut
+les dépasser. Couper au caractère 3 000 rendrait une offre amputée en plein mot,
+et — plus grave — **personne ne le saurait**. Le texte est donc recopié TEL QUEL
+et l'écart est dit (`prefillIssues`), à charge du recruteur de raccourcir. C'est
+« zéro troncature silencieuse » appliqué à un formulaire.
+
+Même refus pour le Markdown : le corps générique porte des `##` et des `**` que
+l'Apec affichera bruts. Les retirer serait réécrire un texte validé sur une
+supposition de mise en forme ; on le **signale**, l'humain tranche.
+
+⚠️ `prefillIssues` est **borné aux deux champs pré-remplis**. Faire tourner le
+rapport complet à l'ouverture afficherait aussi le code INSEE manquant et le
+statut du poste à trancher — des champs que personne n'a encore eu l'occasion de
+saisir. Un écran qui crie avant qu'on ait touché à quoi que ce soit finit par ne
+plus être lu.
+
+Corollaire attrapé pendant le lot : le feu vert « prête à partir » ne peut plus
+être donné par `issues.length === 0`, puisque des écarts s'affichent désormais
+AVANT toute vérification. Un drapeau `verified` distingue « le rapport complet a
+tourné » de « il n'y a rien à signaler sur le texte repris » — sans lui, un
+simple avertissement de mise en forme aurait annoncé une offre prête que
+personne n'avait validée.
+
+### 6quater.3 Le snapshot APEC est distinct, et figé
+
+Il n'y a **aucun lien vivant** entre l'annonce générique et l'offre Apec. Le
+texte est repris à l'ouverture ; ce qui part est figé à SA publication, comme le
+snapshot du canal générique l'est à la sienne. Modifier l'annonce générique
+ensuite ne change rien à une offre déjà publiée — et le panneau le DIT
+(`ADEP_PREFILL_SNAPSHOT_NOTICE`), avant comme après la publication. Sans cette
+phrase, on corrigerait une coquille dans l'annonce générique en croyant corriger
+les deux, et on découvrirait l'écart une fois l'offre en ligne, quand elle n'est
+plus modifiable.
+
+Le brouillon, lui, reste vivant : il reflète le texte du jour, c'est-à-dire ce
+qu'on republierait. Un test de la route tient les deux bouts — l'offre partie ne
+bouge pas, le brouillon suit.
+
+**Sondes** (deux, toutes deux mordantes) : une troncature silencieuse dans
+`prefillFromJobPost` fait tomber les deux tests de longueur ; un brouillon
+construit sans le pré-remplissage en fait tomber trois.
 
 ---
 

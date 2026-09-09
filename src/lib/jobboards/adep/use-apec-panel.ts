@@ -10,11 +10,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { completeDraft, type AdepDraftOffer } from './mapping';
 import {
+  draftApecText,
   loadAdepState,
   publishToApec,
   transitionApec,
   type AdepState,
 } from './panel-client';
+import { prefillIssues, type AdepPrefill } from './prefill';
 import { validateAdepOffer, type AdepIssue } from './validate';
 
 /** Jour courant, fuseau France — les règles de date de l'Apec sont civiles. */
@@ -34,10 +36,26 @@ export type ApecPanelState = {
   issues: AdepIssue[] | null;
   busy: boolean;
   error: string | null;
+  /** D'où vient le texte affiché, quand il vient d'ailleurs. */
+  prefill: AdepPrefill | null;
+  /** Une pré-rédaction est en cours (le modèle écrit). */
+  drafting: boolean;
+  /**
+   * Le rapport COMPLET a tourné sur l'offre telle qu'elle est.
+   *
+   * ⚠️ À ne pas confondre avec « `issues` est vide » : les écarts du texte
+   * pré-rempli s'affichent AVANT toute vérification, et une liste qui ne
+   * contient qu'un avertissement de mise en forme ne dit rien du code INSEE ni
+   * du statut du poste. Sans ce drapeau, l'écran annoncerait « prête à partir »
+   * sur une offre que personne n'a validée.
+   */
+  verified: boolean;
   patch: (p: Partial<AdepDraftOffer>) => void;
   verify: () => void;
   publish: () => Promise<void>;
   act: (action: 'suspend' | 'republish' | 'refresh') => Promise<void>;
+  /** Pré-rédige le texte. Geste explicite : jamais déclenché à l'ouverture. */
+  draftText: () => Promise<void>;
 };
 
 export function useApecPanel(campaignId: string): ApecPanelState {
@@ -47,6 +65,9 @@ export function useApecPanel(campaignId: string): ApecPanelState {
   const [issues, setIssues] = useState<AdepIssue[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prefill, setPrefill] = useState<AdepPrefill | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  const [verified, setVerified] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -56,6 +77,13 @@ export function useApecPanel(campaignId: string): ApecPanelState {
       if (!loaded) return setPhase('absent');
       setState(loaded);
       setOffer(loaded.draft);
+      setPrefill(loaded.prefill ?? null);
+      // Les écarts du texte REPRIS sont montrés d'emblée — un descriptif trop
+      // long se raccourcit pendant qu'on remplit le reste, pas au moment
+      // d'envoyer. Le rapport COMPLET, lui, reste derrière « Vérifier » : il
+      // listerait des champs que personne n'a encore eu l'occasion de saisir.
+      setIssues(loaded.prefillIssues?.length ? loaded.prefillIssues : null);
+      setVerified(false);
       setPhase('ready');
     })();
     return () => {
@@ -68,6 +96,7 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     // Un rapport devient périmé dès la première frappe : le garder afficherait
     // des erreurs déjà corrigées.
     setIssues(null);
+    setVerified(false);
   }, []);
 
   const complete = useMemo(
@@ -90,12 +119,16 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     return [...report.errors, ...report.warnings];
   }, [complete]);
 
-  const verify = useCallback(() => setIssues(runVerify()), [runVerify]);
+  const verify = useCallback(() => {
+    setIssues(runVerify());
+    setVerified(true);
+  }, [runVerify]);
 
   const publish = useCallback(async () => {
     if (!offer) return;
     const found = runVerify();
     setIssues(found);
+    setVerified(true);
     if (found.some((i) => i.level === 'error') || !complete) return;
 
     setBusy(true);
@@ -124,6 +157,38 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     }
   }, [campaignId, complete, offer, runVerify]);
 
+  /**
+   * Pré-rédaction à la demande. Le texte obtenu REMPLACE le descriptif et,
+   * seulement s'il est vide, l'intitulé : un titre déjà saisi est une décision,
+   * l'écraser ferait perdre une correction.
+   */
+  const draftText = useCallback(async () => {
+    if (!offer) return;
+    setDrafting(true);
+    setError(null);
+    try {
+      const drafted = await draftApecText(campaignId);
+      if (!drafted) return;
+      // Le texte est calculé ICI, pas dans l'updater de `setOffer` : un effet
+      // de bord glissé dans une fonction de mise à jour est rejoué en
+      // StrictMode, et les écarts s'afficheraient deux fois.
+      const next = {
+        ...offer,
+        positionDescription: drafted.positionDescription,
+        positionTitle: offer.positionTitle.trim() || drafted.positionTitle,
+      };
+      const found = prefillIssues(drafted, next);
+      setPrefill(drafted);
+      setOffer(next);
+      setIssues(found.length > 0 ? found : null);
+      setVerified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Pré-rédaction impossible.');
+    } finally {
+      setDrafting(false);
+    }
+  }, [campaignId, offer]);
+
   const act = useCallback(
     async (action: 'suspend' | 'republish' | 'refresh') => {
       setBusy(true);
@@ -140,5 +205,20 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     [campaignId],
   );
 
-  return { phase, state, offer, issues, busy, error, patch, verify, publish, act };
+  return {
+    phase,
+    state,
+    offer,
+    issues,
+    busy,
+    error,
+    prefill,
+    drafting,
+    verified,
+    patch,
+    verify,
+    publish,
+    act,
+    draftText,
+  };
 }

@@ -122,5 +122,18 @@ export function republishNotice(
  * L'avertissement permanent. Affiché AVANT et APRÈS publication, parce que
  * `updatePosition` est désactivé côté Apec et que personne ne le devine.
  */
+/**
+ * Le texte APEC est une COPIE, prise à l'ouverture du panneau.
+ *
+ * Il n'y a pas de lien vivant entre l'annonce générique et l'offre Apec, et
+ * c'est voulu : ce qui part chez l'Apec est figé à SA publication, comme le
+ * snapshot du canal générique l'est à la sienne. Sans cette phrase, on
+ * corrigerait une coquille dans l'annonce générique en croyant corriger les
+ * deux — et on ne s'en apercevrait qu'une fois l'offre en ligne, quand elle
+ * n'est plus modifiable.
+ */
+export const ADEP_PREFILL_SNAPSHOT_NOTICE =
+  "C'est une copie : modifier l'annonce générique plus tard ne changera rien à ce qui part chez l'Apec.";
+
 export const ADEP_IMMUTABLE_NOTICE =
   "Une fois publiée, l'annonce n'est plus modifiable depuis ORQA. Toute correction passe par apec.fr ou par le support Apec.";

@@ -20,6 +20,7 @@ import { adepPhase, ADEP_IMMUTABLE_NOTICE } from '@/lib/jobboards/adep/panel-sta
 import { useApecPanel } from '@/lib/jobboards/adep/use-apec-panel';
 
 import { ApecOfferForm } from './ApecOfferForm';
+import { ApecPrefillNotice } from './ApecPrefillNotice';
 import { ApecPublishedCard } from './ApecPublishedCard';
 import { errorStyle, ghostBtn, headerStyle, panelStyle, primaryBtn } from './job-ad-panel-styles';
 
@@ -67,6 +68,12 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
         />
       ) : (
         <>
+          <ApecPrefillNotice
+            prefill={panel.prefill}
+            drafting={panel.drafting}
+            onDraft={() => void panel.draftText()}
+          />
+
           <ApecOfferForm offer={offer} notes={state.notes} onChange={panel.patch} />
 
           {errors.length > 0 ? (
@@ -83,7 +90,10 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
               ))}
             </ul>
           ) : null}
-          {panel.issues && errors.length === 0 ? (
+          {/* Le feu vert n'est donné QUE par une vérification complète : des
+              écarts de pré-remplissage sans erreur ne prouvent rien du reste
+              de l'offre. */}
+          {panel.verified && errors.length === 0 ? (
             <div style={{ marginTop: 10, fontSize: 13, color: '#15803d' }}>
               Aucune erreur — l’offre est prête à partir.
             </div>

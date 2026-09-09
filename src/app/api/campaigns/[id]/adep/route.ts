@@ -15,11 +15,13 @@ import { getApiUser, unauthorizedResponse } from '@/lib/auth/require-api-user';
 import { resolveCampaignReceptionAddress } from '@/lib/campaign/reception-address';
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
+import { getJobPost } from '@/lib/db/repos/demo-job-posts';
 import { getCurrentJobPosting, listJobPostings } from '@/lib/db/repos/job-postings';
 import { getRecruiter } from '@/lib/db/repos/recruiters';
 import { getSite } from '@/lib/db/repos/sites';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { buildAdepDraft } from '@/lib/jobboards/adep/mapping';
+import { prefillFromJobPost, prefillIssues } from '@/lib/jobboards/adep/prefill';
 import { buildClientReference, isClientReferenceValid, nextAttempt } from '@/lib/jobboards/adep/reference';
 import { isAdepEnabled } from '@/lib/jobboards/adep/service';
 import { DEFAULT_ADEP_CONFIG, missingAdepSettings } from '@/types/adep-settings';
@@ -52,19 +54,29 @@ export async function GET(
     const attempt = nextAttempt(previous.map((p) => p.clientReference));
     const clientReference = buildClientReference(id, attempt);
 
+    // L'annonce du canal générique fait office de titre et de corps quand elle
+    // existe : ce que le recruteur a relu ne se ressaisit pas. On ne GÉNÈRE
+    // rien ici — rédiger à l'ouverture d'un panneau serait écrire à la place de
+    // quelqu'un, et le ferait à chaque rechargement de l'écran. La
+    // pré-rédaction est un geste explicite (sous-route `draft-text`).
+    //
+    // Fail-soft : la table du jobboard peut être absente d'une installation qui
+    // n'a jamais activé la démonstration. Un panneau APEC vide vaut mieux qu'un
+    // panneau en erreur.
+    const jobPost = await getJobPost(id).catch(() => null);
+    const prefill = prefillFromJobPost(jobPost);
+
     const draft = buildAdepDraft({
       campaignId: id,
       clientReference,
       fdp: campaign.fdp,
       config,
       organizationName: settings?.interviewConfig.organisationName ?? '',
-      // L'annonce du canal générique fait office de corps par défaut quand elle
-      // existe ; sinon le recruteur écrit dans le formulaire. On ne génère
-      // rien ici : ce serait rédiger à la place de quelqu'un.
       positionDescription: '',
       profileDescription: '',
       applicationEmail,
       siteInseeCode: site?.inseeCode ?? null,
+      prefill,
     });
 
     // Préalables que le formulaire ne peut pas régler — dits AVANT le bouton.
@@ -96,6 +108,11 @@ export async function GET(
       draft: draft.offer,
       notes: draft.notes,
       blockers,
+      prefill,
+      // Les écarts du texte REPRIS, dits à l'ouverture plutôt qu'au clic
+      // Publier : un descriptif de 4 200 caractères se raccourcit pendant qu'on
+      // remplit le reste, pas au moment d'envoyer.
+      prefillIssues: prefill ? prefillIssues(prefill, draft.offer) : [],
       config,
       owner: owner
         ? { id: owner.id, displayName: owner.displayName, hasAdepNumeroDossier: owner.hasAdepNumeroDossier }

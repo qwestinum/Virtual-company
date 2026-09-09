@@ -79,16 +79,25 @@ depuis l'annonce générique (§3).
 
 ---
 
-## 3. Pré-remplissage depuis l'annonce générique (09/09, en cours)
+## 3. Pré-remplissage depuis l'annonce générique (09/09, livré)
 
-Ce que le recruteur a validé ne se ressaisit pas : à l'ouverture du panneau, le
-titre et le corps de l'offre APEC viennent de l'annonce générique publiée, à
-défaut de la génération existante, en restant **éditables** (le format Apec n'est
-pas celui du canal générique).
+Détail : **§6quater de la spec**. Ce que le recruteur a validé ne se ressaisit
+pas — à l'ouverture du panneau, le titre et le corps de l'offre APEC viennent de
+l'annonce générique publiée, en restant **éditables** (le format Apec n'est pas
+celui du canal générique). À défaut, un bouton **pré-rédige** par le même chemin
+que le canal générique : générer à l'ouverture écrirait à la place du recruteur,
+et à chaque rechargement de l'écran.
 
-**Le snapshot APEC est distinct et figé à sa propre publication.** Une
-modification de l'annonce générique après coup ne touche PAS l'offre déjà
-publiée — et le panneau le dit, plutôt que de laisser croire à une synchro.
+Trois choses à ne pas défaire :
+
+- **rien n'est tronqué ni reformaté** — un descriptif de 3 500 caractères est
+  recopié entier et l'écart est DIT ; le Markdown est signalé, jamais retiré ;
+- **`prefillIssues` reste borné aux deux champs pré-remplis** — le rapport
+  complet à l'ouverture crierait sur des champs que personne n'a pu saisir ;
+- **le snapshot APEC est distinct et figé à SA publication.** Modifier l'annonce
+  générique ensuite ne touche pas l'offre partie, et le panneau le dit avant
+  comme après — sinon on corrige une coquille en croyant corriger les deux, et
+  on le découvre quand l'offre n'est plus modifiable.
 
 ---
 
