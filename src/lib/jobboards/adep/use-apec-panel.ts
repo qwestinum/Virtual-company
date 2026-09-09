@@ -30,7 +30,11 @@ function todayInParis(): string {
 }
 
 export type ApecPanelState = {
-  phase: 'loading' | 'absent' | 'ready';
+  /**
+   * `error` = le chargement a échoué. Le panneau RESTE à l'écran et dit
+   * pourquoi — il ne s'efface jamais en silence (cf. `loadAdepState`).
+   */
+  phase: 'loading' | 'error' | 'ready';
   state: AdepState | null;
   offer: AdepDraftOffer | null;
   issues: AdepIssue[] | null;
@@ -58,6 +62,8 @@ export type ApecPanelState = {
   act: (action: 'suspend' | 'republish' | 'refresh') => Promise<void>;
   /** Pré-rédige le texte. Geste explicite : jamais déclenché à l'ouverture. */
   draftText: () => Promise<void>;
+  /** Recharge tout l'état. Offert à l'écran quand le chargement a échoué. */
+  reload: () => Promise<void>;
 };
 
 export function useApecPanel(campaignId: string): ApecPanelState {
@@ -82,25 +88,8 @@ export function useApecPanel(campaignId: string): ApecPanelState {
    * juste au-dessus d'un formulaire qui n'en utilisera pas d'autre.
    */
   const reload = useCallback(async () => {
-    const loaded = await loadAdepState(campaignId).catch(() => null);
-    if (!loaded) {
-      setPhase('absent');
-      return;
-    }
-    setState(loaded);
-    setOffer(loaded.draft);
-    setPrefill(loaded.prefill ?? null);
-    setIssues(loaded.prefillIssues?.length ? loaded.prefillIssues : null);
-    setVerified(false);
-    setPhase('ready');
-  }, [campaignId]);
-
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      const loaded = await loadAdepState(campaignId).catch(() => null);
-      if (!alive) return;
-      if (!loaded) return setPhase('absent');
+    try {
+      const loaded = await loadAdepState(campaignId);
       setState(loaded);
       setOffer(loaded.draft);
       setPrefill(loaded.prefill ?? null);
@@ -110,7 +99,33 @@ export function useApecPanel(campaignId: string): ApecPanelState {
       // listerait des champs que personne n'a encore eu l'occasion de saisir.
       setIssues(loaded.prefillIssues?.length ? loaded.prefillIssues : null);
       setVerified(false);
+      setError(null);
       setPhase('ready');
+    } catch (err) {
+      // ⚠️ On ne retire PAS le panneau : il disparaîtrait, et activer le canal
+      // APEC n'aurait aucun effet visible. On reste à l'écran, et on dit quoi.
+      setError(err instanceof Error ? err.message : 'Panneau APEC indisponible.');
+      setPhase('error');
+    }
+  }, [campaignId]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const loaded = await loadAdepState(campaignId);
+        if (!alive) return;
+        setState(loaded);
+        setOffer(loaded.draft);
+        setPrefill(loaded.prefill ?? null);
+        setIssues(loaded.prefillIssues?.length ? loaded.prefillIssues : null);
+        setVerified(false);
+        setPhase('ready');
+      } catch (err) {
+        if (!alive) return;
+        setError(err instanceof Error ? err.message : 'Panneau APEC indisponible.');
+        setPhase('error');
+      }
     })();
     return () => {
       alive = false;
@@ -296,5 +311,6 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     publish,
     act,
     draftText,
+    reload,
   };
 }

@@ -39,11 +39,44 @@ async function readError(res: Response): Promise<string> {
   return data?.message ?? data?.error ?? `HTTP ${res.status}`;
 }
 
-export async function loadAdepState(campaignId: string): Promise<AdepState | null> {
+/** Le panneau n'a pas pu se charger, et il doit le DIRE plutôt que s'effacer. */
+export class AdepStateUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AdepStateUnavailableError';
+  }
+}
+
+/**
+ * ⚠️ AUCUN RETRAIT SILENCIEUX — 404 COMPRIS.
+ *
+ * Rendre `null` sur tout statut non-ok faisait disparaître le panneau sans un
+ * mot : activer le canal « APEC » ne produisait alors RIEN, et il n'y avait
+ * rien à lire pour comprendre. Deux jours de recette y sont passés.
+ *
+ * Le 404 mérite un mot d'explication à part. Le panneau générique, lui, se
+ * retire légitimement sur 404 : sa route est derrière `DEMO_JOBBOARD_ENABLED`,
+ * et « désactivée » est une réponse. La route APEC n'a AUCUN drapeau — son
+ * unique 404 est « campagne inconnue », ce qui, depuis l'écran d'édition de
+ * cette campagne, est une anomalie. Copier la règle du panneau générique
+ * revenait à faire passer une panne pour une absence.
+ *
+ * Cas réel du 09/09/2026 : le manifeste de routes du serveur de développement
+ * était périmé et ignorait `/api/campaigns/[id]/adep`. Next rendait 404, le
+ * panneau s'évaporait, et le seul symptôme observable était « le canal APEC ne
+ * déclenche rien ».
+ */
+export async function loadAdepState(campaignId: string): Promise<AdepState> {
   const res = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/adep`, {
     cache: 'no-store',
   });
-  if (!res.ok) return null;
+  if (res.status === 404) {
+    throw new AdepStateUnavailableError(
+      'la route APEC a répondu « introuvable ». Si la campagne existe bien, ' +
+        'le serveur ne connaît pas encore cette route : il faut le relancer.',
+    );
+  }
+  if (!res.ok) throw new AdepStateUnavailableError(await readError(res));
   return (await res.json()) as AdepState;
 }
 

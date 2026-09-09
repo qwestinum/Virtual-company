@@ -59,6 +59,30 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
   const [open, setOpen] = useState<OpenSection>(null);
   const { state, offer } = panel;
 
+  // Le panneau ne se retire QUE sur `absent` (aucune surface APEC pour cette
+  // campagne). Un chargement en échec reste à l'écran et dit pourquoi : sinon
+  // activer le canal « APEC » ne produit rien du tout, et il n'y a rien à lire
+  // pour comprendre — c'est le bug muet du 09/09.
+  if (panel.phase === 'error') {
+    return (
+      <div style={panelStyle}>
+        <div style={headerStyle}>
+          <strong style={{ color: 'var(--dash-text)' }}>APEC</strong>
+        </div>
+        <div style={errorStyle}>
+          Le panneau APEC n’a pas pu se charger — {panel.error ?? 'raison inconnue'}
+        </div>
+        <button
+          type="button"
+          style={{ ...ghostBtn, marginTop: 10 }}
+          onClick={() => void panel.reload()}
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
   if (panel.phase !== 'ready' || !state || !offer) return null;
 
   const published = state.posting && adepPhase(state.posting) !== 'failed';

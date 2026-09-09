@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { transitionApec } from '../panel-client';
+import { loadAdepState, transitionApec } from '../panel-client';
 
 function respond(status: number, body: unknown): void {
   vi.stubGlobal(
@@ -50,5 +50,34 @@ describe('transitionApec', () => {
     const result = await transitionApec('CAMP-2026-288', 'suspend');
     expect(result.outcome?.kind).toBe('changed');
     expect(result.simulated).toBe(true);
+  });
+});
+
+describe('loadAdepState', () => {
+  // 09/09/2026 : activer le canal « APEC » ne déclenchait RIEN. Le manifeste de
+  // routes du serveur de développement était périmé et ignorait
+  // `/api/campaigns/[id]/adep` ; Next rendait 404 ; le client rendait `null` ;
+  // le panneau se retirait sans un mot. Aucune trace, aucun message, rien à
+  // corriger — le symptôme entier tenait dans « il ne se passe rien ».
+  it('LÈVE sur un 404 au lieu de faire disparaître le panneau', async () => {
+    respond(404, { error: 'not_found' });
+
+    await expect(loadAdepState('CAMP-2026-288')).rejects.toThrow(/introuvable/);
+  });
+
+  it('LÈVE sur une panne serveur, en reprenant ce que la route en dit', async () => {
+    respond(503, { error: 'supabase_not_configured' });
+
+    await expect(loadAdepState('CAMP-2026-288')).rejects.toThrow(
+      /supabase_not_configured/,
+    );
+  });
+
+  it('rend l’état quand tout va bien', async () => {
+    respond(200, { clientReference: 'CAMP-2026-288', blockers: [] });
+
+    await expect(loadAdepState('CAMP-2026-288')).resolves.toMatchObject({
+      clientReference: 'CAMP-2026-288',
+    });
   });
 });
