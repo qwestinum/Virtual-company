@@ -635,6 +635,20 @@ const ACTIVITY_RENDERERS: Record<string, FeedRenderer> = {
     };
   },
 
+  // Une tentative restée dans le doute que l'Apec a fini par démentir. Le fait
+  // qui compte pour le lecteur n'est pas l'échec — il est déjà passé — mais que
+  // la voie soit rouverte.
+  apec_offer_attempt_closed: (row, base) => ({
+    ...base,
+    message: `Tentative de publication APEC close — l’Apec confirme qu’aucune offre n’a été créée${
+      typeof row.payload?.clientReference === 'string'
+        ? ` (${row.payload.clientReference})`
+        : ''
+    }`,
+    iconKey: 'announce',
+    colorKey: 'orange',
+  }),
+
   apec_offer_suspended: (row, base) => ({
     ...base,
     message: `Offre APEC dépubliée${

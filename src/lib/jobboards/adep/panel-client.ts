@@ -12,7 +12,7 @@ import type { AdepConfig } from '@/types/adep-settings';
 import type { AdepOffer } from '@/types/adep';
 import type { AdepIssue } from './validate';
 import type { PublishOutcome, TransitionOutcome } from '../types';
-import type { AdepPositionStatusResult } from '@/types/adep';
+import type { AdepPositionStatusResult, AdepReadOutcome } from '@/types/adep';
 
 export type AdepState = {
   /** Aucune publication réelle : le transport est le mock de recette. */
@@ -82,7 +82,10 @@ export type TransitionResponse = {
   outcome?: TransitionOutcome<AdepPositionStatusResult>;
   posting: JobPosting | null;
   simulated: boolean;
+  /** `refresh` seulement — et à ne lire que sous `read.kind === 'found'`. */
   changed?: boolean;
+  /** `refresh` seulement : ce que la lecture a donné. */
+  read?: AdepReadOutcome;
 };
 
 export async function transitionApec(

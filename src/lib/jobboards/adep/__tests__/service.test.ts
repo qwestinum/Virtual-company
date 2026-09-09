@@ -246,6 +246,143 @@ describe('le mock ne se souvient de rien d’une requête à l’autre', () => {
   });
 });
 
+describe('relire le statut', () => {
+  // Défaut de recette du 09/09/2026. Quelqu'un corrige l'identifiant Apec du
+  // recruteur référent dans les paramètres, revient sur la campagne, clique
+  // « Relire le statut » — et lit « Statut relu, il n'a pas changé ». La
+  // lecture n'avait pas eu lieu : `refreshAdepStatus` rendait `changed: false`
+  // aussi bien pour « l'Apec dit la même chose qu'avant » que pour « l'Apec
+  // n'a pas répondu ». Le seul bouton censé dire si la correction avait pris
+  // était le seul incapable de dire qu'il avait échoué.
+  const LIVE = posting({
+    apecPositionNumero: '177596708W',
+    attemptState: 'acknowledged',
+    remoteStatus: 'PUBLIEE',
+    remoteStatusAt: '2026-09-08T09:00:00.000Z',
+    publishedAt: '2026-09-08T09:00:00.000Z',
+  });
+
+  it('une lecture qui n’aboutit pas ne se fait PAS passer pour « rien n’a changé »', async () => {
+    current.mockResolvedValue(LIVE);
+    const transport = new MockAdepTransport({
+      failures: { getPositionStatus: [{ kind: 'timeout', message: 'Délai dépassé.' }] },
+    });
+
+    const result = await refreshAdepStatus({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      deps: { transport, credentials: async () => SAMPLE_CREDENTIALS },
+    });
+
+    // `changed` vaut bien `false` — et c'est EXACTEMENT pourquoi il ne peut
+    // pas porter seul le message : il est identique dans les deux cas.
+    expect(result.changed).toBe(false);
+    expect(result.read.kind).toBe('unavailable');
+    if (result.read.kind === 'unavailable') {
+      expect(result.read.reason).toBeTruthy();
+    }
+    // Et le cache connu n'est pas écrasé par une non-réponse.
+    expect(patch).not.toHaveBeenCalled();
+    expect(result.posting?.remoteStatus).toBe('PUBLIEE');
+  });
+
+  it('une identité refusée remonte SA raison, pas un silence rassurant', async () => {
+    current.mockResolvedValue(LIVE);
+
+    const result = await refreshAdepStatus({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      deps: {
+        transport: new MockAdepTransport(),
+        credentials: async () => {
+          throw new AdepCredentialsError(
+            'numero_dossier_missing',
+            "Le recruteur référent de la campagne n'a pas d'identifiant Apec.",
+          );
+        },
+      },
+    });
+
+    expect(result.read.kind).toBe('unavailable');
+    if (result.read.kind === 'unavailable') {
+      expect(result.read.reason).toContain('identifiant Apec');
+    }
+  });
+
+  it('la référence inconnue CLÔT une tentative restée dans le doute', async () => {
+    // CAMP-2026-267, 09/09/2026 : `openPosition` refusé (`API_103`), la
+    // vérification refusée à son tour (`API_108`) ⇒ ligne `sent`, phase
+    // `uncertain`, et le panneau n'offrait plus QUE « Relire » et
+    // « Dépublier ». La campagne était bloquée sans aucun geste pour en sortir.
+    const DOUBTFUL = posting({ attemptState: 'sent', apecPositionNumero: null });
+    current.mockResolvedValue(DOUBTFUL);
+
+    const result = await refreshAdepStatus({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      // Mock vierge : l'Apec RÉPOND, et ne connaît pas la référence.
+      deps: {
+        transport: new MockAdepTransport(),
+        credentials: async () => SAMPLE_CREDENTIALS,
+      },
+    });
+
+    expect(result.read).toEqual({ kind: 'not_found', resolved: true });
+    expect(patch).toHaveBeenCalledWith(
+      DOUBTFUL.id,
+      expect.objectContaining({ attemptState: 'failed' }),
+    );
+    // C'est CELA qui rouvre l'écran : `adepPhase` d'un `failed` rend `failed`,
+    // et le panneau repasse au formulaire de publication.
+    expect(result.posting?.attemptState).toBe('failed');
+  });
+
+  it('mais JAMAIS une tentative acquittée : l’offre existe, on n’y touche pas', async () => {
+    // Garde anti-doublon. Un `not_found` sur une offre qui porte un numéro Apec
+    // est SUSPECT (index en retard, dossier d'appel erroné) — la rouvrir à la
+    // publication créerait une seconde offre que l'Apec ne sait pas fusionner.
+    current.mockResolvedValue(LIVE);
+
+    const result = await refreshAdepStatus({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      deps: {
+        transport: new MockAdepTransport(),
+        credentials: async () => SAMPLE_CREDENTIALS,
+      },
+    });
+
+    expect(result.read).toEqual({ kind: 'not_found', resolved: false });
+    expect(patch).not.toHaveBeenCalled();
+    expect(result.posting?.attemptState).toBe('acknowledged');
+  });
+
+  it('une lecture ABOUTIE sans changement, elle, le dit', async () => {
+    current.mockResolvedValue(LIVE);
+
+    const result = await refreshAdepStatus({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      deps: { credentials: async () => SAMPLE_CREDENTIALS },
+    });
+
+    expect(result.read.kind).toBe('found');
+    expect(result.changed).toBe(false);
+  });
+
+  it('sans offre, on ne prétend pas avoir relu', async () => {
+    current.mockResolvedValue(null);
+
+    const result = await refreshAdepStatus({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      deps: { credentials: async () => SAMPLE_CREDENTIALS },
+    });
+
+    expect(result.read.kind).toBe('no_posting');
+  });
+});
+
 describe('identifiant de transaction', () => {
   // Incident du 09/09/2026, en production de recette. L'Apec a refusé
   // l'`openPosition` (`API_103`, recruteur inconnu) ; le publisher est allé

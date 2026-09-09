@@ -73,6 +73,28 @@ export function useApecPanel(campaignId: string): ApecPanelState {
   /** Message NEUTRE (ni erreur ni succès bruyant) — « rien n'a changé ». */
   const [notice, setNotice] = useState<string | null>(null);
 
+  /**
+   * (Re)charge l'état complet depuis le serveur.
+   *
+   * Extrait de l'effet d'ouverture parce qu'une clôture de tentative change la
+   * RÉFÉRENCE : la suivante porte un rang (`CAMP-2026-267-2`). Se contenter de
+   * rafraîchir la ligne d'offre laisserait l'ancienne référence en en-tête,
+   * juste au-dessus d'un formulaire qui n'en utilisera pas d'autre.
+   */
+  const reload = useCallback(async () => {
+    const loaded = await loadAdepState(campaignId).catch(() => null);
+    if (!loaded) {
+      setPhase('absent');
+      return;
+    }
+    setState(loaded);
+    setOffer(loaded.draft);
+    setPrefill(loaded.prefill ?? null);
+    setIssues(loaded.prefillIssues?.length ? loaded.prefillIssues : null);
+    setVerified(false);
+    setPhase('ready');
+  }, [campaignId]);
+
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -205,17 +227,49 @@ export function useApecPanel(campaignId: string): ApecPanelState {
         // (fenêtre de republication fermée), ou n'est pas joignable. Sans ce
         // message, l'écran restait identique et le bouton passait pour mort.
         const outcome = result.outcome;
-        if (outcome && outcome.kind === 'refused') {
+        if (action === 'refresh') {
+          // ⚠️ « Relu, inchangé » ne se dit QUE si la lecture a eu lieu.
+          // Auparavant, ce message tombait aussi sur une lecture refusée ou
+          // injoignable : quelqu'un venu corriger l'identifiant Apec du
+          // référent relisait, recevait la même phrase apaisante, et ne
+          // pouvait pas savoir si sa correction avait pris. Un bouton de
+          // diagnostic qui ne sait pas dire « ça n'a pas marché » n'est plus
+          // un bouton de diagnostic.
+          const read = result.read;
+          if (read?.kind === 'unavailable') {
+            setError(`Statut non relu — ${read.reason}`);
+          } else if (read?.kind === 'not_found') {
+            // Le doute levé n'est pas une mauvaise nouvelle : c'est ce qui
+            // rouvre la publication. On le dit comme tel, et l'écran repasse
+            // au formulaire — la tentative étant close côté serveur.
+            if (read.resolved) {
+              setNotice(
+                'L’Apec confirme qu’aucune offre n’a été créée sous cette ' +
+                  'référence. La tentative est close : vous pouvez préparer ' +
+                  'une nouvelle publication.',
+              );
+              await reload();
+            } else {
+              setError(
+                'L’Apec ne connaît pas cette référence, alors que l’offre a été ' +
+                  'acquittée de son côté. Le statut affiché reste celui de la ' +
+                  'dernière lecture : vérifiez sur apec.fr avant toute republication.',
+              );
+            }
+          } else if (read?.kind === 'no_posting') {
+            setError('Aucune offre APEC pour cette campagne.');
+          } else if (result.changed === false) {
+            // « Relire » qui ne change rien est un SUCCÈS, pas une panne : on
+            // le dit sans crier, plutôt que de laisser l'écran muet.
+            setNotice('Statut relu — il n’a pas changé.');
+          }
+        } else if (outcome && outcome.kind === 'refused') {
           setError(
             outcome.issues[0]?.message ??
               'L’Apec a refusé cette opération.',
           );
         } else if (outcome && outcome.kind === 'unavailable') {
           setError(outcome.reason);
-        } else if (action === 'refresh' && result.changed === false) {
-          // « Relire » qui ne change rien est un SUCCÈS, pas une panne : on le
-          // dit sans crier, plutôt que de laisser l'écran muet.
-          setNotice('Statut relu — il n’a pas changé.');
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Action impossible.');
@@ -223,7 +277,7 @@ export function useApecPanel(campaignId: string): ApecPanelState {
         setBusy(false);
       }
     },
-    [campaignId],
+    [campaignId, reload],
   );
 
   return {

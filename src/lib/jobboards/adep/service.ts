@@ -42,6 +42,7 @@ import {
   type AdepOffer,
   type AdepPositionStatus,
   type AdepPositionStatusResult,
+  type AdepReadOutcome,
 } from '@/types/adep';
 
 /** `ADEP_ENABLED` — fail-closed strict, comme `DEMO_JOBBOARD_ENABLED`. */
@@ -431,11 +432,23 @@ export async function transitionAdepPosting(input: {
  * inutile ne coûterait qu'un `updated_at`, mais le principe vaut aussi pour le
  * journal, que l'appelant alimente sur le même critère.
  */
+export type RefreshResult = {
+  posting: JobPosting | null;
+  /**
+   * Le statut a-t-il BOUGÉ ? Ne se lit que sous `read.kind === 'found'` : sur
+   * une lecture qui n'a pas abouti, `false` ne veut rien dire.
+   */
+  changed: boolean;
+  simulated: boolean;
+  /** Ce que la lecture a donné. C'est LUI qui dit si elle a eu lieu. */
+  read: AdepReadOutcome;
+};
+
 export async function refreshAdepStatus(input: {
   campaignId: string;
   ownerUserId: string | null;
   deps?: AdepServiceDeps;
-}): Promise<{ posting: JobPosting | null; changed: boolean; simulated: boolean }> {
+}): Promise<RefreshResult> {
   const deps = input.deps ?? {};
   const now = deps.now ?? (() => new Date());
 
@@ -449,7 +462,9 @@ export async function refreshAdepStatus(input: {
     process.env,
     seed ? [seed] : undefined,
   );
-  if (!posting) return { posting: null, changed: false, simulated };
+  if (!posting) {
+    return { posting: null, changed: false, simulated, read: { kind: 'no_posting' } };
+  }
 
   const publisher = new AdepSepPublisher({
     transport,
@@ -461,10 +476,54 @@ export async function refreshAdepStatus(input: {
     clientReference: posting.clientReference,
     remoteId: posting.apecPositionNumero,
   });
+  if (status.kind === 'not_found') {
+    // ── LA PREUVE QUI LÈVE LE DOUTE ─────────────────────────────────────────
+    //
+    // L'Apec a RÉPONDU, et elle ne connaît pas cette référence : rien n'existe
+    // sous ce nom. C'est le même verdict que `publishToAdep` tire déjà de sa
+    // réconciliation immédiate (`unavailable` ⇒ `failed`), sauf qu'il arrive
+    // plus tard — donc avec MOINS de risque de propagation, pas plus.
+    //
+    // Sans ce passage, une publication refusée restait `sent` pour toujours :
+    // `adepPhase` rendait `uncertain`, le panneau n'offrait que « Relire » et
+    // « Dépublier », et la campagne était bloquée sans aucun geste pour en
+    // sortir. Mesuré le 09/09/2026 sur CAMP-2026-267, refusée en `API_103`.
+    //
+    // ⚠️ DEUX GARDES, et elles ne sont pas négociables :
+    //   · `attemptState === 'sent'` — on ne touche jamais à une tentative
+    //     acquittée ni à une tentative déjà close ;
+    //   · AUCUN numéro Apec — si l'offre a été acquittée, elle EXISTE, et un
+    //     `not_found` est alors suspect (index en retard, mauvais dossier
+    //     d'appel). La rouvrir à la publication créerait une SECONDE offre,
+    //     que l'Apec ne sait pas fusionner.
+    const closable = posting.attemptState === 'sent' && !posting.apecPositionNumero;
+    if (!closable) {
+      return { posting, changed: false, simulated, read: { kind: 'not_found', resolved: false } };
+    }
+    const closed = await patchJobPosting(posting.id, {
+      attemptState: 'failed',
+      lastErrorMessage:
+        "L'Apec confirme qu'aucune offre n'existe sous cette référence : la " +
+        'tentative est close, une nouvelle publication est possible.',
+    });
+    return {
+      posting: closed ?? posting,
+      changed: false,
+      simulated,
+      read: { kind: 'not_found', resolved: true },
+    };
+  }
+
   if (status.kind !== 'found') {
     // On ne remet PAS le cache à zéro : « je n'ai pas pu lire » n'est pas
     // « l'offre a disparu ». L'écran garde l'état connu, avec sa date.
-    return { posting, changed: false, simulated };
+    //
+    // ⚠️ Mais on le DIT. Rendre `changed: false` et rien d'autre laissait
+    // l'appelant annoncer « statut relu, il n'a pas changé » sur une lecture
+    // qui n'avait jamais eu lieu — le seul message dont l'opérateur avait
+    // besoin, précisément quand il en avait besoin, était le seul qu'il ne
+    // recevait pas.
+    return { posting, changed: false, simulated, read: status };
   }
 
   const changed = posting.remoteStatus !== status.status.status;
@@ -475,5 +534,5 @@ export async function refreshAdepStatus(input: {
     remoteUrl: status.status.positionUrl,
     apecPositionNumero: status.status.apecPositionNumero,
   });
-  return { posting: updated ?? posting, changed, simulated };
+  return { posting: updated ?? posting, changed, simulated, read: { kind: 'found' } };
 }

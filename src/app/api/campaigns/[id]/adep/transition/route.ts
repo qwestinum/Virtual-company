@@ -66,9 +66,25 @@ export async function POST(
           },
         }).catch(() => {});
       }
+      if (result.read.kind === 'not_found' && result.read.resolved) {
+        // Une TRANSITION elle aussi : elle ne peut se produire qu'une fois,
+        // la ligne passant à `failed`. Le fil peut donc la porter sans
+        // rejouer la leçon du 21/08.
+        await appendJournalEntry({
+          action: 'apec_offer_attempt_closed',
+          actor: user.email ?? 'utilisateur',
+          campaignId: id,
+          payload: { clientReference: result.posting?.clientReference ?? null },
+        }).catch(() => {});
+      }
+      // `read` voyage avec `changed`, et ce n'est pas redondant : une lecture
+      // qui n'a pas abouti rend `changed: false`, exactement comme une lecture
+      // qui a abouti sans rien trouver de neuf. Sans le verdict, l'écran ne
+      // peut que présenter une panne comme une bonne nouvelle.
       return NextResponse.json({
         posting: result.posting,
         changed: result.changed,
+        read: result.read,
         simulated: result.simulated,
       });
     }

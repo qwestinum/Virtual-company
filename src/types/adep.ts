@@ -177,3 +177,35 @@ export type AdepPositionStatusResult = {
   isEditable: boolean;
   positionUrl: string;
 };
+
+/**
+ * Ce qu'une relecture de statut a DONNÉ — pas ce qu'elle a changé.
+ *
+ * ⚠️ Les deux ne se confondent pas, et les confondre a coûté une séance de
+ * recette (09/09/2026) : `refreshAdepStatus` rendait `changed: false` aussi
+ * bien quand l'Apec avait répondu « même statut qu'avant » que quand elle
+ * n'avait pas répondu du tout (identité refusée, service injoignable,
+ * référence inconnue). L'écran disait « Statut relu — il n'a pas changé »
+ * dans les deux cas. Un opérateur venu corriger son numéro de dossier
+ * relisait, obtenait la même phrase rassurante, et n'avait AUCUN moyen de
+ * savoir si sa correction avait pris : le bouton ne pouvait pas signaler
+ * l'échec qu'il était précisément censé lever.
+ *
+ * D'où ce verdict séparé : `changed` ne se lit QUE sous `found`.
+ */
+export type AdepReadOutcome =
+  | { kind: 'found' }
+  /**
+   * L'Apec a répondu, et ne connaît pas cette référence. Pas une panne — une
+   * PREUVE : rien n'a été créé sous cette référence.
+   *
+   * `resolved` dit si cette preuve a servi à clore une tentative restée dans
+   * le doute (`attemptState: 'sent'`). C'est ce qui libère l'écran : sans
+   * cela, une publication refusée laissait la campagne bloquée sur un
+   * « allez vérifier chez l'Apec » que plus rien ne pouvait lever.
+   */
+  | { kind: 'not_found'; resolved: boolean }
+  /** La lecture n'a pas abouti. `reason` est destiné à l'écran. */
+  | { kind: 'unavailable'; reason: string }
+  /** Rien à relire : aucune offre APEC pour cette campagne. */
+  | { kind: 'no_posting' };
