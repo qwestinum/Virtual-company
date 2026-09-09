@@ -138,9 +138,16 @@ crée un doublon indélébile.
 en base), d'où une option dédiée :
 
 ```
-npm run adep:probe -- --env .env.adep --suspend SONDE-AAAAMMJJ-NNNN            # dry-run
-npm run adep:probe -- --env .env.adep --suspend SONDE-AAAAMMJJ-NNNN --execute  # réel
+npm run adep:probe -- --env .env.adep --suspend 179240002W            # dry-run
+npm run adep:probe -- --env .env.adep --suspend 179240002W --execute  # réel
 ```
+
+La clé peut être le **numéro Apec** (`179240002W`) ou la **référence client**
+(`SONDE-AAAAMMJJ-NNNN`) — l'écran dit laquelle il envoie. ⚠️ La référence est
+régénérée à CHAQUE exécution de la sonde : reprendre celle d'un dry-run
+antérieur rend `API_391` (« référence inconnue »), qui se lit à tort comme
+« l'offre n'existe pas ». Le compte rendu d'une création affiche les deux, et la
+commande de retrait toute faite.
 
 ⚠️ Un drapeau inconnu **arrête** la sonde au lieu d'être ignoré : sans cette
 garde, une option mal orthographiée retombait sur le comportement par défaut —

@@ -1282,6 +1282,18 @@ confirmation d'`atsId`). La RÉFÉRENCE CLIENT suffit — exiger le numéro Apec
 obligerait à le retrouver dans un journal pour retirer une offre qu'on vient de
 créer.
 
+**Deux clés désignent la même offre, et l'opérateur n'a pas toujours celle qu'on
+croit.** Première version : `--suspend` n'acceptait que la référence CLIENT.
+Or elle est régénérée à chaque exécution de la sonde (`Date.now().slice(-4)`) et
+le compte rendu d'une création ne l'affichait **pas** — seul le numéro Apec y
+figurait. Retirer l'offre supposait donc de retrouver la bonne référence dans un
+historique de terminal, et reprendre celle d'un dry-run antérieur rend
+`API_391` (« référence inconnue »), ce qui se lit à tort comme « l'offre n'a
+jamais existé ». Les deux clés sont désormais acceptées — la forme
+`\d{9}[A-Za-z]` part en `apecPositionNumero`, le reste en `clientPositionId` —
+et l'écran DIT laquelle. Le compte rendu d'une création affiche la référence ET
+la commande de retrait toute faite.
+
 ⚠️ **Défaut trouvé en s'en servant** : un drapeau inconnu était **ignoré en
 silence**. `--suspend REF` sur la version qui ne le connaissait pas retombait
 sur le comportement par défaut, c'est-à-dire une CRÉATION. En dry-run cela n'a

@@ -265,11 +265,22 @@ async function main(): Promise<void> {
   // « SUSPENDRE » — exactement le genre de confusion qui fait publier une
   // seconde offre.
   if (suspendRef) {
+    // Deux clés désignent la même offre, et l'opérateur n'a pas toujours celle
+    // qu'on croit : le compte rendu d'une création affiche le NUMÉRO APEC, et
+    // la référence client est régénérée à chaque exécution de la sonde. Exiger
+    // la référence obligeait donc à la retrouver dans un historique de
+    // terminal — c'est ce qui a fait répondre `API_391` sur une référence de
+    // dry-run. On accepte les deux, et on DIT laquelle part.
+    const isApecNumero = /^\d{9}[A-Za-z]$/.test(suspendRef);
+    console.log(
+      `  Clé              ${isApecNumero ? 'numéro Apec' : 'référence client'}`,
+    );
     const trackingId = `orqa-probe-${Date.now()}`;
     const suspendEnvelope = buildUpdatePositionStatusEnvelope({
       creds: { atsId, numeroDossier, atsPassword },
       trackingId,
-      clientPositionId: suspendRef,
+      clientPositionId: isApecNumero ? null : suspendRef,
+      apecPositionNumero: isApecNumero ? suspendRef : null,
       newStatus: 'SUSPENDUE',
     });
 
@@ -291,7 +302,11 @@ async function main(): Promise<void> {
     // `remoteId` non fourni : la RÉFÉRENCE CLIENT suffit et c'est elle que
     // l'opérateur a sous les yeux. Exiger le numéro Apec obligerait à le
     // retrouver dans un journal pour retirer une offre qu'on vient de créer.
-    const outcome = await publisher.suspend({ clientReference: suspendRef, remoteId: null });
+    const outcome = await publisher.suspend(
+      isApecNumero
+        ? { clientReference: '', remoteId: suspendRef }
+        : { clientReference: suspendRef, remoteId: null },
+    );
     console.log(`  updatePositionStatus  ${outcome.kind}`);
     if (outcome.kind === 'refused') {
       for (const i of outcome.issues) console.log(`    ✗ [${i.code ?? '—'}] ${i.message}`);
@@ -299,7 +314,11 @@ async function main(): Promise<void> {
     if (outcome.kind === 'unavailable') console.log(`  Raison           ${outcome.reason}`);
 
     console.log('\n  ── Relecture du statut ───────────────────────────────────────');
-    const after = await publisher.getStatus({ clientReference: suspendRef });
+    const after = await publisher.getStatus(
+      isApecNumero
+        ? { clientReference: '', remoteId: suspendRef }
+        : { clientReference: suspendRef, remoteId: null },
+    );
     if (after.kind === 'found') {
       console.log(`  Statut           ${after.status.status}`);
     } else {
@@ -364,8 +383,15 @@ async function main(): Promise<void> {
 
   const outcome = await publisher.publish(offer);
   console.log(`  openPosition     ${outcome.kind}`);
+  // ⚠️ La RÉFÉRENCE autant que le numéro : elle est régénérée à chaque
+  // exécution, elle n'apparaît nulle part ailleurs dans ce compte rendu, et
+  // c'est l'une des deux clés qui permettent de retirer l'offre ensuite.
+  console.log(`  Référence        ${reference}`);
   if (outcome.kind === 'published' || outcome.kind === 'already_published') {
     console.log(`  Numéro Apec      ${outcome.remoteId}`);
+    console.log('');
+    console.log(`  Pour la retirer  npm run adep:probe -- --env <fichier> \\`);
+    console.log(`                     --suspend ${outcome.remoteId} --execute`);
   }
   if (outcome.kind === 'rejected') {
     for (const i of outcome.issues) console.log(`    ✗ [${i.code ?? '—'}] ${i.message}`);
