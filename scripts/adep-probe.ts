@@ -306,8 +306,15 @@ async function main(): Promise<void> {
       return;
     }
     console.log(`\n  ❌ L’Apec n’a pas traité la requête : ${read.reason}`);
-    console.log('     Si le message parle de clé refusée, les identifiants de cet');
-    console.log('     environnement ne sont pas les bons — il en faut d’autres.\n');
+    // Le catalogue distingue deux refus qui n'appellent pas la même action, et
+    // le message français le dit — autant guider la lecture.
+    console.log('');
+    console.log('     · « clé d’authentification refusée » (102) → le mot de passe ou');
+    console.log('       le sel de CET environnement diffèrent : demandez-les à l’Apec');
+    console.log('       et RECALCULEZ la clé (npm run adep:hash).');
+    console.log('     · « recruteur non connu » (103) → l’authentification est PASSÉE ;');
+    console.log('       c’est le numéro de dossier qui n’est pas reconnu ici.');
+    console.log('');
     process.exit(1);
   }
 

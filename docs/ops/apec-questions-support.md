@@ -133,6 +133,24 @@ ceux-là — dans notre interface ?
 
 ---
 
+## 5ter. Les paramètres Argon2 sont-ils communs aux deux environnements ?
+
+Vous nous avez transmis, pour la **production**, un `atsId` et un numéro de
+dossier — mais pas de mot de passe ni de paramètres Argon2 (sel, itérations,
+parallélisme), que nous n'avons que pour l'environnement de **test**.
+
+Deux lectures possibles, et nous préférons demander plutôt que supposer :
+
+- les paramètres Argon2 sont **communs** à l'intégrateur, seuls l'`atsId` et le
+  numéro de dossier changent d'un environnement à l'autre ;
+- un jeu **distinct** est prévu pour la production et nous ne l'avons pas encore.
+
+Laquelle est la bonne ? Dans le second cas, merci de nous transmettre le mot de
+passe et les paramètres de production — un sel différent produit une clé
+entièrement différente, il ne s'agit pas d'un simple ajustement.
+
+---
+
 ## 5bis. Une offre de test à fermer
 
 Notre sonde technique a créé, sur l'environnement de test, l'offre
