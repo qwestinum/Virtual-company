@@ -85,15 +85,21 @@ panneau le dit **avant** de proposer le bouton.
 `ADEP_ENABLED` absent. Le panneau affiche « mode simulation » et rien ne part.
 Scénarios à dérouler :
 
-1. **Publication nominale** — le formulaire, « Vérifier », « Publier ». Un numéro
+1. **Pré-remplissage** — sur une campagne dont l'annonce générique est publiée,
+   le titre et le descriptif sont déjà là, avec leur provenance (« repris de
+   l'annonce générique publiée du … »). Sans annonce générique, le panneau
+   propose « Pré-rédiger le texte » — un bouton, jamais un automatisme.
+   ⚠️ Un descriptif de plus de 3 000 caractères n'est **pas tronqué** : l'écart
+   est affiché, c'est au recruteur de raccourcir.
+2. **Publication nominale** — le formulaire, « Vérifier », « Publier ». Un numéro
    apparaît, le statut est daté.
-2. **Rejet** — mettez un descriptif à 50 caractères : le validateur bloque
+3. **Rejet** — mettez un descriptif à 50 caractères : le validateur bloque
    AVANT l'envoi, avec le compte de caractères.
-3. **Contrat impossible** — passez la fiche de poste en « freelance » : le
+4. **Contrat impossible** — passez la fiche de poste en « freelance » : le
    panneau annonce le blocage en haut, le bouton reste désarmé.
-4. **Dépublier / Republier** — l'aller-retour, puis vérifiez la phrase de
+5. **Dépublier / Republier** — l'aller-retour, puis vérifiez la phrase de
    fenêtre (« Republication possible jusqu'au … »).
-5. **Clôture** — le dialog propose la dépublication, cochée par défaut.
+6. **Clôture** — le dialog propose la dépublication, cochée par défaut.
 
 ---
 
@@ -134,6 +140,7 @@ L'une sans l'autre fait échouer franchement — c'est voulu.
 | `API_330` | convention Apec ne permet pas le mode indirect |
 | `API_361` | fenêtre de republication fermée (30 j après la **publication**) |
 | Statut figé | le statut est un CACHE : « Relire le statut » interroge l'Apec |
+| Le texte publié ne suit pas l'annonce générique | **c'est voulu** : le texte est repris à l'ouverture du panneau et figé à la publication APEC. Corriger l'annonce générique après coup ne touche pas l'offre partie (l'Apec ne la rend plus modifiable) |
 
 Le flux envoyé est conservé **caviardé** dans `job_postings.request_xml` (ni mot
 de passe, ni numéro de dossier), et l'acquittement brut dans `ack_raw`. Les deux
