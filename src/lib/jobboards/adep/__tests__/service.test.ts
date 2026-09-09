@@ -27,7 +27,7 @@ import {
 } from '@/lib/db/repos/job-postings';
 import { getAdepNumeroDossier } from '@/lib/db/repos/recruiters';
 
-import { MockAdepTransport } from '../mock-transport';
+import { MOCK_ACKS, MockAdepTransport } from '../mock-transport';
 import {
   AdepCredentialsError,
   isAdepEnabled,
@@ -243,6 +243,49 @@ describe('le mock ne se souvient de rien d’une requête à l’autre', () => {
       LIVE.id,
       expect.objectContaining({ remoteStatus: 'SUSPENDUE' }),
     );
+  });
+});
+
+describe('identifiant de transaction', () => {
+  // Incident du 09/09/2026, en production de recette. L'Apec a refusé
+  // l'`openPosition` (`API_103`, recruteur inconnu) ; le publisher est allé
+  // lire pour savoir si une offre avait tout de même été créée ; cette lecture
+  // repartait avec l'identifiant de transaction de l'envoi qui venait
+  // d'échouer, et l'Apec l'a refusée (`API_108`). Résultat : `uncertain`, et
+  // un opérateur envoyé vérifier à la main. Le défaut n'était pas dans le
+  // publisher mais dans le service, qui figeait la fabrique d'identifiants.
+  it('la vérification qui suit un envoi douteux ne rejoue pas l’identifiant de l’envoi', async () => {
+    const transport = new MockAdepTransport({
+      failures: { openPosition: [{ kind: 'respond', xml: MOCK_ACKS.soapFault() }] },
+    });
+
+    const result = await publishToAdep({
+      campaignId: 'CAMP-2026-288',
+      ownerUserId: 'u-1',
+      offer: OFFER,
+      // Aucun `trackingId` injecté : c'est la fabrique RÉELLE qu'on exerce,
+      // celle que la route utilise. L'injecter ici masquerait exactement le
+      // défaut qu'on veut tenir.
+      deps: {
+        transport,
+        credentials: async () => SAMPLE_CREDENTIALS,
+        now: () => new Date('2026-09-08T10:00:00Z'),
+      },
+    });
+
+    expect(transport.calls.map((c) => c.operation)).toEqual([
+      'openPosition',
+      'getPositionStatus',
+    ]);
+    const [sent, checked] = transport.calls.map((c) => c.trackingId);
+    expect(sent).toBeTruthy();
+    expect(checked).toBeTruthy();
+    expect(checked).not.toBe(sent);
+
+    // Et la conséquence qui compte : la lecture ayant PU aboutir, on sait que
+    // rien n'existe sous cette référence. L'envoi est rejouable tel quel, au
+    // lieu de laisser la campagne dans le doute.
+    expect(result.outcome.kind).toBe('unavailable');
   });
 });
 

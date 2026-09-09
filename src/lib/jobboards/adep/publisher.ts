@@ -82,13 +82,22 @@ export type AdepPublisherDeps = {
 };
 
 /**
- * Identifiant de transaction : `orqa-<référence>-<epoch ms>`.
+ * Identifiant de transaction : `orqa-<référence>-<epoch ms>-<aléa>`.
  *
  * Les deux-points sont INTERDITS par l'Apec (spec §VI.1), ce qui exclut un
  * horodatage ISO — d'où l'epoch. Le tiret, lui, est autorisé.
+ *
+ * ⚠️ L'HORLOGE SEULE NE SUFFIT PAS. L'Apec exige l'unicité de ce champ et
+ * refuse tout rejeu (`API_108`, « identifiant de transaction déjà utilisé »).
+ * Or deux appels d'une même publication — l'`openPosition`, puis la lecture de
+ * réconciliation qui le suit quand on ne sait pas s'il a abouti — peuvent
+ * tomber sur la même milliseconde. Le suffixe n'est pas là pour le hasard mais
+ * pour cette garantie : une collision ferait refuser la lecture au moment
+ * précis où elle est le plus nécessaire.
  */
 export function defaultTrackingId(clientReference: string): string {
-  return `orqa-${clientReference}-${Date.now()}`;
+  const salt = Math.random().toString(36).slice(2, 8);
+  return `orqa-${clientReference}-${Date.now()}-${salt}`;
 }
 
 function toIssues(ack: AdepAcknowledgement): RemoteIssue[] {

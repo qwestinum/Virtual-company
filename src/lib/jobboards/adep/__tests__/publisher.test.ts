@@ -10,7 +10,7 @@
  * `openPosition`. Un connecteur qui en fait deux crée deux offres sur apec.fr,
  * et l'Apec n'a aucun moyen de les fusionner.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MockAdepTransport } from '../mock-transport';
 import { AdepSepPublisher, defaultTrackingId } from '../publisher';
@@ -362,5 +362,31 @@ describe('identifiant de transaction', () => {
     // Les deux-points sont interdits : un horodatage ISO serait refusé.
     expect(defaultTrackingId('CAMP-2026-288')).not.toContain(':');
     expect(defaultTrackingId('CAMP-2026-288').length).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('defaultTrackingId', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('rend un identifiant différent à chaque appel, même horloge figée', () => {
+    // L'unicité est une exigence de l'Apec (API_108), pas une commodité : deux
+    // appels d'une même publication peuvent tomber dans la même milliseconde.
+    vi.spyOn(Date, 'now').mockReturnValue(1_757_000_000_000);
+
+    const first = defaultTrackingId(REFERENCE);
+    const second = defaultTrackingId(REFERENCE);
+
+    expect(second).not.toBe(first);
+  });
+
+  it('reste dans ce que l’Apec accepte', () => {
+    const id = defaultTrackingId(REFERENCE);
+
+    // 100 caractères (API_105), et aucun des caractères interdits — les
+    // deux-points au premier chef.
+    expect(id.length).toBeLessThanOrEqual(100);
+    expect(id).toMatch(/^[A-Za-z0-9-]+$/);
   });
 });

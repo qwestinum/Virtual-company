@@ -259,7 +259,22 @@ export async function publishToAdep(input: {
   const publisher = new AdepSepPublisher({
     transport,
     credentials,
-    trackingId: () => trackingId,
+    // ⚠️ NE PAS figer l'identifiant de transaction ici.
+    //
+    // `publish()` prend le sien dans `offer.trackingId` : ce réglage ne servait
+    // donc QU'aux appels que le publisher enchaîne derrière — au premier chef
+    // la lecture « cette offre existe-t-elle ? » qui suit un envoi douteux. Or
+    // l'Apec exige un identifiant unique par transaction et refuse un rejeu
+    // (`API_108`). En le figeant, cette lecture repartait avec l'identifiant de
+    // l'`openPosition` qui venait d'échouer, se faisait refuser à son tour, et
+    // TOUTE publication en échec finissait en `uncertain` : le filet de
+    // sécurité ne pouvait jamais se refermer, et l'écran renvoyait l'opérateur
+    // vérifier à la main sur apec.fr. Mesuré le 09/09/2026 derrière un
+    // `API_103` — « la vérification a échoué à son tour ».
+    //
+    // Rien ne se perd à le laisser libre : l'idempotence de l'offre ne repose
+    // pas sur ce champ mais sur `clientPositionId` (`API_390`).
+    ...(deps.trackingId ? { trackingId: deps.trackingId } : {}),
   });
   const outcome = await publisher.publish(offer);
   const at = now().toISOString();

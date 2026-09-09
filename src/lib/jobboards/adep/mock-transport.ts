@@ -148,8 +148,18 @@ function transitionAck(): string {
  */
 export class MockAdepTransport implements AdepTransport {
   readonly positions = new Map<string, MockPosition>();
-  /** Journal des appels, dans l'ordre. */
-  readonly calls: Array<{ operation: string; clientReference: string | null }> = [];
+  /**
+   * Journal des appels, dans l'ordre.
+   *
+   * `trackingId` y figure parce que son unicité est une RÈGLE de l'Apec
+   * (`API_108`) qu'aucune assertion sur les états ne couvre : sans lui, un
+   * identifiant rejoué d'un appel à l'autre passait inaperçu.
+   */
+  readonly calls: Array<{
+    operation: string;
+    clientReference: string | null;
+    trackingId: string | null;
+  }> = [];
 
   private readonly failures: Map<string, MockFailure[]>;
   private readonly numeros: string[];
@@ -183,7 +193,11 @@ export class MockAdepTransport implements AdepTransport {
 
   async post(request: AdepTransportRequest): Promise<string> {
     const clientReference = readClientReference(request.envelope);
-    this.calls.push({ operation: request.operation, clientReference });
+    this.calls.push({
+      operation: request.operation,
+      clientReference,
+      trackingId: readElement(request.envelope, 'UniquePayloadTrackingId'),
+    });
 
     const failure = this.takeFailure(request.operation);
     if (failure) {
