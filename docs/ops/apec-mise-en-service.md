@@ -2,10 +2,11 @@
 
 Procédure d'exploitation. Spécification technique : `docs/specs/apec-adep-connector.md`.
 
-> **État au 08/09/2026** : lots 0 à 4 livrés. **Aucun appel réel n'a encore été
-> fait**, et le WSDL de production n'a jamais été vu. Le connecteur tourne en
-> **mode simulation** tant que `ADEP_ENABLED` n'est pas posé — et il le dit à
-> l'écran.
+> **État au 09/09/2026** : lots 0 à 4 livrés, et le **premier appel réel a
+> abouti** en environnement de test (offre `179240002W`, statut `AVALIDER`) —
+> la clé Argon2 est donc validée par l'Apec elle-même. Le WSDL de **production**
+> n'a jamais été vu. Le connecteur tourne en **mode simulation** tant que
+> `ADEP_ENABLED` n'est pas posé — et il le dit à l'écran.
 
 ---
 
@@ -132,6 +133,18 @@ test** intitulée « SONDE TECHNIQUE ADEP — ne pas traiter », confidentielle
 ⚠️ Si la sonde rend `uncertain`, **ne la relancez pas** : vérifiez d'abord sur
 apec.fr sous la référence affichée. C'est exactement la situation où un rejeu
 crée un doublon indélébile.
+
+**Retirer l'offre de sonde** — elle est invisible d'ORQA (la sonde n'écrit rien
+en base), d'où une option dédiée :
+
+```
+npm run adep:probe -- --env .env.adep --suspend SONDE-AAAAMMJJ-NNNN            # dry-run
+npm run adep:probe -- --env .env.adep --suspend SONDE-AAAAMMJJ-NNNN --execute  # réel
+```
+
+⚠️ Un drapeau inconnu **arrête** la sonde au lieu d'être ignoré : sans cette
+garde, une option mal orthographiée retombait sur le comportement par défaut —
+une CRÉATION.
 
 Une fois la sonde concluante : posez `ADEP_ENABLED=1` **et** `ADEP_WSDL_URL`.
 L'une sans l'autre fait échouer franchement — c'est voulu.

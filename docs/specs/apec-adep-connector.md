@@ -1,9 +1,9 @@
 # Connecteur APEC ADEP V5
 
-> **Statut au 09/09/2026 : lots 0 à 4 LIVRÉS** (§6bis et §6ter en donnent l'état
-> exact). **Aucun appel réel n'a encore été fait** et le WSDL de production n'a
-> jamais été vu : le connecteur tourne en mode simulation tant que `ADEP_ENABLED`
-> n'est pas posé, et il le dit à l'écran. Mise en service :
+> **Statut au 09/09/2026 : lots 0 à 4 LIVRÉS, et le PREMIER APPEL RÉEL a
+> abouti** en environnement de test (§6quinquies). Le WSDL de PRODUCTION n'a
+> toujours pas été vu ; le connecteur tourne en mode simulation tant que
+> `ADEP_ENABLED` n'est pas posé, et il le dit à l'écran. Mise en service :
 > `docs/ops/apec-mise-en-service.md`.
 >
 > Les sections 0 à 6 restent l'ÉTUDE telle qu'elle a été rendue avant tout code
@@ -1246,6 +1246,61 @@ Sondes : retirer l'amorçage fait tomber les deux tests de service ; ignorer
 
 ---
 
+## 6quinquies. Premier appel réel — 09/09/2026, environnement de test
+
+```
+  openPosition     published
+  Numéro Apec      179240002W
+  Statut           AVALIDER
+  Modifiable       non
+  URL              —
+```
+
+**Ce que cet appel prouve**, et qu'aucun test ne pouvait établir :
+
+- **la clé Argon2 est celle que l'Apec attend.** C'était la plus grosse inconnue
+  du chantier — il n'existe aucun vecteur de test, et le croisement
+  Node/`argon2-cffi` ne prouvait que notre conformité à ce que la spec DÉCRIT.
+  L'hypothèse (256 OCTETS, base64 sans padding, sel décodé) est confirmée ;
+- l'`atsId`, le numéro de dossier et l'espace de noms en `http://` ;
+- **l'ORDRE des éléments du flux**, que les `xs:sequence` imposent et que la
+  prose ne disait pas — validé par le destinataire lui-même ;
+- le parseur d'acquittement (numéro lu correctement) et le chaînage
+  `openPosition` → `getPositionStatus` ajouté le 09/09.
+
+**`AVALIDER` est nominal** : l'offre attend un consultant Apec. `isEditable` à
+faux et une URL vide en découlent — il n'y a pas encore de page publique. Le
+libellé existait déjà (`ADEP_STATUS_LABELS`), l'écran dit « En attente de
+validation par un consultant Apec ».
+
+### 6quinquies.1 Ce que la sonde ne savait pas faire — et le piège qu'elle tendait
+
+La sonde créait sans pouvoir retirer, et comme elle n'écrit rien en base, l'offre
+créée est invisible pour l'interface : impossible de la dépublier depuis ORQA.
+D'où `--suspend <référence>` (dry-run par défaut, `--execute` pour agir, même
+confirmation d'`atsId`). La RÉFÉRENCE CLIENT suffit — exiger le numéro Apec
+obligerait à le retrouver dans un journal pour retirer une offre qu'on vient de
+créer.
+
+⚠️ **Défaut trouvé en s'en servant** : un drapeau inconnu était **ignoré en
+silence**. `--suspend REF` sur la version qui ne le connaissait pas retombait
+sur le comportement par défaut, c'est-à-dire une CRÉATION. En dry-run cela n'a
+rien cassé ; avec `--execute`, l'opérateur aurait publié une SECONDE offre en
+croyant en retirer une. D'où `checkArgs()` : liste blanche, un inconnu arrête
+tout. Un outil qui parle à l'Apec ne fait jamais « autre chose » que ce qu'on
+lui demande. Corollaire d'affichage : l'en-tête annonce désormais le GESTE
+(« SUSPENDRE … » / « CRÉER une offre de sonde »), et le chemin de suspension est
+séparé — afficher le flux d'une création sous un en-tête « SUSPENDRE » serait la
+même confusion, en pire.
+
+### 6quinquies.2 Reste ouvert
+
+- **le WSDL de PRODUCTION** n'a toujours pas été vu (`adep:probe` le vérifiera) ;
+- l'offre de sonde `SONDE-20260909-4399` (`179240002W`) est à retirer ;
+- le **mode indirect** attend sa convention.
+
+---
+
 ## 7. Phase 2 — lots révisés
 
 L'ordre du brief tient. Trois ajustements issus de l'étude.
@@ -1292,10 +1347,10 @@ Le bloc rédigé pour le support est l'objet du lot 4.
    test** : `http://adep.apec.fr/hrxml/sep` (§0.4). Reste à confirmer que le
    WSDL de PRODUCTION porte la même valeur — `adep:probe` le vérifie tout seul
    et refuse de continuer en cas d'écart.
-2. **Un vecteur de test Argon2** : un triplet (mot de passe, sel, paramètres) et
-   la clé attendue. Il n'en existe aucun dans la documentation.
-   *Hypothèse : 256 octets, base64 sans padding, sel base64 décodé — croisée
-   entre deux implémentations indépendantes (§6bis.1).*
+2. ~~**Un vecteur de test Argon2**~~ **SANS OBJET — tranché par l'appel réel du
+   09/09.** L'Apec a accepté la clé : 256 octets, base64 sans padding, sel
+   base64 décodé. L'hypothèse était juste, et c'est l'`openPosition` qui l'a
+   prouvée, pas un vecteur de test (il n'en existe toujours aucun).
 3. **`GLOBAL_EXPERIENCE_LEVEL`** : la spec dit « 1 caractère » alors que
    `NIVEAU_EXPERIENCE_DOMAIN` va jusqu'à 12. Les valeurs 10 à 12 sont-elles
    utilisables ?

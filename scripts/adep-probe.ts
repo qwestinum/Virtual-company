@@ -38,6 +38,7 @@ import { stdin, stdout } from 'node:process';
 import {
   buildOpenPositionBody,
   buildOpenPositionEnvelope,
+  buildUpdatePositionStatusEnvelope,
   redactCredentials,
 } from '../src/lib/jobboards/adep/build-open-position';
 import {
@@ -67,6 +68,54 @@ const val = (f: string) =>
 function fail(message: string): never {
   console.error(`\n  ❌ ${message}\n`);
   process.exit(1);
+}
+
+/**
+ * Les seuls drapeaux acceptés — et un inconnu ARRÊTE tout.
+ *
+ * ⚠️ Une option ignorée en silence est un piège : `--suspend REF` sur une
+ * version qui ne la connaissait pas retombait sur le comportement par défaut,
+ * c'est-à-dire une CRÉATION. En dry-run cela n'a rien cassé ; avec `--execute`,
+ * l'opérateur aurait publié une seconde offre en croyant en retirer une.
+ * Un outil qui parle à l'Apec ne fait jamais « autre chose » que ce qu'on lui
+ * demande.
+ */
+const KNOWN_FLAGS = ['--env', '--execute', '--confirm-ats', '--suspend'] as const;
+
+function checkArgs(): void {
+  const takesValue = new Set<string>(['--env', '--confirm-ats', '--suspend']);
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]!;
+    if (!arg.startsWith('--')) continue;
+    const name = arg.includes('=') ? arg.slice(0, arg.indexOf('=')) : arg;
+    if (!(KNOWN_FLAGS as readonly string[]).includes(name)) {
+      fail(
+        `Option inconnue : ${name}\n     Connues : ${KNOWN_FLAGS.join(', ')}\n` +
+          "     Rien n'a été fait — une option ignorée en silence ferait partir " +
+          'une opération que vous n’avez pas demandée.',
+      );
+    }
+    // Saute la valeur d'un drapeau de la forme `--flag valeur`.
+    if (takesValue.has(name) && !arg.includes('=')) i += 1;
+  }
+}
+
+/**
+ * Confirmation manuelle avant tout appel qui MUTE quelque chose chez l'Apec.
+ *
+ * Recopier l'atsId n'est pas une formalité : c'est le seul moment où
+ * l'opérateur relit à quel environnement il parle. `--confirm-ats` permet de
+ * l'automatiser en connaissance de cause.
+ */
+async function confirmAtsId(atsId: string, what: string, endpoint: string): Promise<void> {
+  if (val('--confirm-ats') === atsId) return;
+  const rl = createInterface({ input: stdin, output: stdout });
+  const answer = await rl.question(
+    `\n  ⚠️  Ceci va ${what} chez l'Apec (${endpoint}).\n` +
+      `      Recopiez l'atsId pour confirmer (${atsId}) : `,
+  );
+  rl.close();
+  if (answer.trim() !== atsId) fail('Confirmation incorrecte — rien n’a été envoyé.');
 }
 
 /** Masque un identifiant sans le cacher : on doit pouvoir le reconnaître. */
@@ -129,6 +178,8 @@ function probeOffer(reference: string, applicationEmail: string): AdepOffer {
 }
 
 async function main(): Promise<void> {
+  checkArgs();
+
   // `--env` OBLIGATOIRE, aucun repli : un fichier au nom rassurant peut
   // parfaitement pointer l'environnement de PRODUCTION de l'Apec.
   const envPath = val('--env');
@@ -169,6 +220,9 @@ async function main(): Promise<void> {
   console.log(`  Endpoint         ${endpoint}`);
   console.log(`  atsId            ${atsId}`);
   console.log(`  numeroDossier    ${mask(numeroDossier)}`);
+  const suspendRef = val('--suspend');
+  const geste = suspendRef ? `SUSPENDRE ${suspendRef}` : 'CRÉER une offre de sonde';
+  console.log(`  Geste            ${geste}`);
   console.log(`  Mode             ${has('--execute') ? '⚠️  APPEL RÉEL' : 'dry-run'}`);
 
   // ── 1. Le WSDL servi dit-il ce qu'on croit ? ──
@@ -202,6 +256,59 @@ async function main(): Promise<void> {
   if (atsPassword.length !== ARGON2_EXPECTED_KEY_LENGTH) {
     console.log('  ⚠️  Longueur inattendue — 43 caractères signifieraient 32 octets au');
     console.log('     lieu de 256 (le piège du commentaire Java de la spécification).');
+  }
+
+  // ── 3. Retrait d'une offre de sonde ──
+  // Chemin SÉPARÉ, et il s'arrête ici : une suspension n'a ni offre à
+  // construire, ni règles métier à valider, ni XSD à passer. Continuer dans le
+  // tronc commun afficherait le flux d'une CRÉATION sous un en-tête
+  // « SUSPENDRE » — exactement le genre de confusion qui fait publier une
+  // seconde offre.
+  if (suspendRef) {
+    const trackingId = `orqa-probe-${Date.now()}`;
+    const suspendEnvelope = buildUpdatePositionStatusEnvelope({
+      creds: { atsId, numeroDossier, atsPassword },
+      trackingId,
+      clientPositionId: suspendRef,
+      newStatus: 'SUSPENDUE',
+    });
+
+    console.log('\n  ── Le flux qui partirait (secrets caviardés) ─────────────────\n');
+    console.log(prettyPrintXml(redactCredentials(suspendEnvelope)));
+
+    if (!has('--execute')) {
+      console.log('\n  Dry-run terminé. Rien n’a été envoyé.');
+      console.log('  Pour suspendre réellement l’offre : ajoutez --execute\n');
+      return;
+    }
+    await confirmAtsId(atsId, `SUSPENDRE l'offre « ${suspendRef} »`, endpoint);
+
+    console.log('\n  ── Suspension réelle ─────────────────────────────────────────');
+    const publisher = new AdepSepPublisher({
+      transport: createHttpAdepTransport({ endpoint }),
+      credentials: async () => ({ atsId, numeroDossier, atsPassword }),
+    });
+    // `remoteId` non fourni : la RÉFÉRENCE CLIENT suffit et c'est elle que
+    // l'opérateur a sous les yeux. Exiger le numéro Apec obligerait à le
+    // retrouver dans un journal pour retirer une offre qu'on vient de créer.
+    const outcome = await publisher.suspend({ clientReference: suspendRef, remoteId: null });
+    console.log(`  updatePositionStatus  ${outcome.kind}`);
+    if (outcome.kind === 'refused') {
+      for (const i of outcome.issues) console.log(`    ✗ [${i.code ?? '—'}] ${i.message}`);
+    }
+    if (outcome.kind === 'unavailable') console.log(`  Raison           ${outcome.reason}`);
+
+    console.log('\n  ── Relecture du statut ───────────────────────────────────────');
+    const after = await publisher.getStatus({ clientReference: suspendRef });
+    if (after.kind === 'found') {
+      console.log(`  Statut           ${after.status.status}`);
+    } else {
+      console.log(
+        `  ${after.kind === 'not_found' ? 'Offre introuvable' : `Lecture impossible : ${after.reason}`}`,
+      );
+    }
+    console.log('');
+    return;
   }
 
   // ── 3. L'offre ──
@@ -247,17 +354,7 @@ async function main(): Promise<void> {
   }
 
   // ── 4. Confirmation humaine ──
-  const confirm = val('--confirm-ats');
-  if (confirm !== atsId) {
-    const rl = createInterface({ input: stdin, output: stdout });
-    const answer = await rl.question(
-      `\n  ⚠️  Ceci va CRÉER une offre chez l'Apec (${endpoint}).\n` +
-        `      Référence : ${reference}\n` +
-        `      Recopiez l'atsId pour confirmer (${atsId}) : `,
-    );
-    rl.close();
-    if (answer.trim() !== atsId) fail('Confirmation incorrecte — rien n’a été envoyé.');
-  }
+  await confirmAtsId(atsId, `CRÉER l'offre « ${reference} »`, endpoint);
 
   console.log('\n  ── Appel réel ────────────────────────────────────────────────');
   const publisher = new AdepSepPublisher({
