@@ -4,6 +4,12 @@ import {
   deriveCampaignName,
   nextOpenSection,
 } from '@/components/campagnes/edit/CampaignCreateSheet';
+import { hasChannelContent } from '@/components/campagnes/edit/ChannelContentPanel';
+import { buildSchedulingPatch } from '@/lib/campaign/apply-draft-scheduling';
+import {
+  resolveDraftOwner,
+  type RecruiterOption,
+} from '@/lib/campaign/use-recruiter-options';
 import { buildEmptyFDP, type FDPInProgress } from '@/types/field-collection';
 
 /** FDP avec un job_title donné (vide = champ effacé). */
@@ -33,16 +39,33 @@ describe('nextOpenSection — flux « Enregistrer → section suivante »', () =
   });
 
   it('renvoie null après la dernière section (on replie tout)', () => {
-    expect(nextOpenSection(['threshold'], 'threshold')).toBeNull();
-    // enregistrer l'avant-dernière ouvre la dernière (threshold pas encore fait).
+    expect(nextOpenSection(['scheduling'], 'scheduling')).toBeNull();
+    // enregistrer l'avant-dernière ouvre la dernière.
+    expect(nextOpenSection(['owner'], 'owner')).toBe('scheduling');
+  });
+
+  it('enchaîne les sections ajoutées après les seuils (référent, réservation)', () => {
+    // Le régime de réservation s'appuie sur les disponibilités du référent :
+    // il vient donc APRÈS lui, jamais l'inverse.
     expect(
-      nextOpenSection(['fdp', 'scoring', 'channels', 'flux'], 'flux'),
-    ).toBe('threshold');
+      nextOpenSection(['fdp', 'scoring', 'channels', 'flux', 'threshold'], 'threshold'),
+    ).toBe('owner');
   });
 
   it('null quand toutes les sections suivantes sont déjà enregistrées', () => {
     expect(
-      nextOpenSection(['scoring', 'channels', 'flux', 'threshold', 'fdp'], 'fdp'),
+      nextOpenSection(
+        [
+          'scoring',
+          'channels',
+          'flux',
+          'threshold',
+          'owner',
+          'scheduling',
+          'fdp',
+        ],
+        'fdp',
+      ),
     ).toBeNull();
   });
 });
@@ -67,5 +90,90 @@ describe('deriveCampaignName — le nom suit le job_title édité', () => {
     expect(deriveCampaignName(fdpWithTitle('  Data Engineer  '), 'X')).toBe(
       'Data Engineer',
     );
+  });
+});
+
+
+describe('resolveDraftOwner — le défaut est le créateur, et il est dérivé', () => {
+  const me = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const option = (id: string): RecruiterOption => ({
+    id,
+    displayName: id.slice(0, 4),
+    hasCalcomLink: true,
+    hasAvailability: true,
+  });
+
+  it('propose le créateur quand il est un recruteur actif', () => {
+    expect(resolveDraftOwner(undefined, [option(me), option(other)], me)).toBe(me);
+  });
+
+  it("ne propose PAS un créateur absent du référentiel (inactif, non enregistré)", () => {
+    // Un référent inactif porterait un agenda dont aucun candidat ne peut rien
+    // faire — mieux vaut « aucun référent », qui est vrai et visible.
+    expect(resolveDraftOwner(undefined, [option(other)], me)).toBeNull();
+  });
+
+  it('ne devine rien tant que la liste n’est pas arrivée', () => {
+    expect(resolveDraftOwner(undefined, null, me)).toBeNull();
+  });
+
+  it('un choix explicite prime — « aucun référent » compris', () => {
+    expect(resolveDraftOwner(null, [option(me)], me)).toBeNull();
+    expect(resolveDraftOwner(other, [option(me), option(other)], me)).toBe(other);
+  });
+});
+
+describe('buildSchedulingPatch — le flag ne voyage que par le PATCH ciblé', () => {
+  it('rien à appliquer en régime Cal.com (le défaut en base)', () => {
+    expect(buildSchedulingPatch({ native: false, location: null })).toBeNull();
+  });
+
+  it('DÉFAIT le natif quand une tentative précédente l’avait déjà écrit', () => {
+    // « Compléter la campagne » ramène au formulaire : décocher puis re-créer
+    // doit défaire, sinon l'écran annonce Cal.com et la base reste en natif.
+    expect(
+      buildSchedulingPatch({ native: false, location: null }, true),
+    ).toEqual({ schedulingNative: false });
+  });
+
+  it('un lieu ne part JAMAIS sans le régime natif (le serveur répond 409)', () => {
+    expect(
+      buildSchedulingPatch({
+        native: false,
+        location: { type: 'phone', payload: { instructions: 'On vous appelle.' } },
+      }),
+    ).toBeNull();
+  });
+
+  it('bascule seule quand le lieu est hérité du référent', () => {
+    expect(buildSchedulingPatch({ native: true, location: null })).toEqual({
+      schedulingNative: true,
+    });
+  });
+
+  it('bascule et lieu dans le MÊME patch (l’ordre côté serveur le permet)', () => {
+    const location = {
+      type: 'in_person' as const,
+      payload: { address: '12 rue de la Paix, 75002 Paris' },
+    };
+    expect(buildSchedulingPatch({ native: true, location })).toEqual({
+      schedulingNative: true,
+      meetingLocationOverride: location,
+    });
+  });
+});
+
+describe('hasChannelContent — seuls les canaux qui PUBLIENT un texte', () => {
+  it('annonce générique et APEC portent un contenu', () => {
+    expect(hasChannelContent('generic')).toBe(true);
+    expect(hasChannelContent('apec')).toBe(true);
+  });
+
+  it('les autres canaux ne sont qu’une intention de diffusion', () => {
+    expect(hasChannelContent('linkedin')).toBe(false);
+    expect(hasChannelContent('indeed')).toBe(false);
+    expect(hasChannelContent('france_travail')).toBe(false);
+    expect(hasChannelContent('welcome_to_the_jungle')).toBe(false);
   });
 });

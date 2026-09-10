@@ -950,3 +950,29 @@ un humain sur un poste voisin est peut-être du bruit plutôt qu'une garantie.
 ⚠️ Vérifier l'effet sur le chat Manager (`postManagerScoring` y est aussi
 appelé), même si ce chemin est en voie d'extinction avec le Manager en lecture
 seule.
+
+---
+
+## Création de campagne — ce qui reste hors du formulaire
+
+**Statut** : le formulaire de création couvre désormais 7 sections sur 9
+(référent et régime de réservation ajoutés le 10/09/2026), et l'écran
+post-création porte les panneaux de contenu de canal (annonce générique,
+APEC). Deux blocs de l'édition n'y sont toujours pas.
+
+**Ce qui manque, et pourquoi ce n'est pas un oubli**
+- **« Vivier — présélection »** : le panneau ne s'affiche en édition que si le
+  flux `vivier` est actif, et il liste une short-list issue d'un calcul qui a
+  besoin de la fiche de scoring VALIDÉE et de la campagne enregistrée. Rien à
+  montrer dans un brouillon ; à envisager sur l'écran post-création, à côté des
+  panneaux de canal, si la démo en a besoin.
+- **« Cycle de vie »** (suspendre / arrêter / reprendre) : sans objet sur une
+  campagne qui vient de naître — l'écran post-création n'offre que l'activation,
+  qui est la seule transition qui a du sens là.
+
+**Dette au passage** : `CampaignCreateSheet.tsx` reste très au-dessus de la
+limite des 200 lignes (~1 690). L'étape post-création en a été SORTIE
+(`CampaignCreatedStep.tsx` + `created-step-parts.tsx`, 199 et 148 lignes) ;
+`EditingStage` et les bannières (`MatchBanner`, `DocumentBanner`, `NoMatchHint`,
+`JobTitleStep`) sont les prochains candidats évidents — chacun est autonome et
+ne partage que des props avec le reste du fichier.

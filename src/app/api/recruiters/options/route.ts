@@ -5,6 +5,13 @@
  * hasCalcomLink, hasAvailability} — ni email, ni rôle (réservés à la gestion
  * admin).
  *
+ * Rend aussi `currentUserId` : le référent PAR DÉFAUT d'une campagne est celui
+ * qui la crée (cf. PUT /api/campaigns), et un sélecteur qui ne le sait pas
+ * afficherait « aucun référent » là où le serveur en pose un — un écran qui
+ * mentirait sur l'état à venir. `null` si la session n'est pas lisible : le
+ * sélecteur retombe alors sur « aucun (agenda global) », jamais sur un nom
+ * inventé.
+ *
  * `hasAvailability` évite de faire choisir à l'aveugle : sur une campagne en
  * réservation native, désigner un référent sans créneaux rend les liens déjà
  * envoyés inopérants (page « momentanément indisponible ») et bloque les
@@ -13,6 +20,7 @@
  */
 import { NextResponse } from 'next/server';
 
+import { getApiUser } from '@/lib/auth/require-api-user';
 import { listActiveRecruiters } from '@/lib/db/repos/recruiters';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { listBookableResources } from '@/lib/scheduling';
@@ -33,7 +41,11 @@ export async function GET(): Promise<NextResponse> {
         return null;
       }
     })();
+    // Fail-soft : une session illisible ne doit pas priver le sélecteur de sa
+    // liste — le défaut se perd, pas l'écran.
+    const me = await getApiUser().catch(() => null);
     return NextResponse.json({
+      currentUserId: me?.id ?? null,
       options: recruiters.map((r) => ({
         id: r.id,
         displayName: r.displayName,
@@ -45,7 +57,7 @@ export async function GET(): Promise<NextResponse> {
     });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
-      return NextResponse.json({ options: [] });
+      return NextResponse.json({ currentUserId: null, options: [] });
     }
     return NextResponse.json(
       { error: 'db_error', message: (err as Error).message },

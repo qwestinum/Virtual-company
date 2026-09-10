@@ -15,14 +15,27 @@
  *     contente de pré-remplir la FDP. Une bannière explique au DRH ce
  *     qui s'est passé et qu'il peut modifier librement.
  *
- * Étape 2 — édition complète des 4 blocs (FDP, Scoring, Canaux, Flux,
- * Seuil) puis « Créer la campagne ».
+ * Étape 2 — édition complète du brouillon en sections pliables : FDP, Scoring,
+ * Canaux, Flux, Seuils, Recruteur référent, Réservation d'entretien — puis
+ * « Créer la campagne ». Tout ce qui peut être décidé avant l'enregistrement
+ * l'est ICI : rien ne demande plus de rouvrir la campagne en édition.
+ *
+ * Deux réglages ne peuvent PAS être écrits par le snapshot de création et sont
+ * donc appliqués juste après, la campagne enregistrée :
+ *   - le régime de réservation (flag + lieu) — seul le PATCH ciblé l'écrit,
+ *     par construction du type `CampaignSnapshot` (cf. applyDraftScheduling) ;
+ *   - le CONTENU publié d'un canal (annonce générique, APEC), qui a besoin
+ *     d'une campagne existante — il se prépare dans `CampaignCreatedStep`.
  */
 
 import { useEffect, useRef, useState } from 'react';
 
-import { canActivate } from '@/lib/campaign/lifecycle';
-import { formatMissingPhases } from '@/lib/campaign/phase-labels';
+import { applyDraftScheduling } from '@/lib/campaign/apply-draft-scheduling';
+import {
+  resolveDraftOwner,
+  useRecruiterOptions,
+  type RecruiterOption,
+} from '@/lib/campaign/use-recruiter-options';
 import { postFdpProposal, postManagerScoring } from '@/lib/chat/api-client';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import { associateMailbox } from '@/lib/campaign/mailbox-association';
@@ -31,6 +44,7 @@ import {
   cancelScheduledCampaignPush,
   persistCampaign,
 } from '@/lib/db/sync/campaigns-sync';
+import { isMeetingLocationComplete, type MeetingLocation } from '@/lib/scheduling';
 import type { JobDescription } from '@/lib/storage/job-descriptions';
 import {
   useCampaignsStore,
@@ -51,14 +65,17 @@ import {
 import type { PublicationChannel } from '@/types/publication-channel';
 import {
   buildCriterion,
-  countUntreatedSuggestions,
   type ScoringCriterion,
   type ScoringSheet,
 } from '@/types/scoring';
 
+import { CampaignCreatedStep } from './CampaignCreatedStep';
+import { hasChannelContent } from './ChannelContentPanel';
 import { CollapsibleSection } from './CollapsibleSection';
 import { ChannelsDraftEditor } from './draft/ChannelsDraftEditor';
 import { FluxDraftEditor } from './draft/FluxDraftEditor';
+import { OwnerDraftEditor } from './draft/OwnerDraftEditor';
+import { SchedulingDraftEditor } from './draft/SchedulingDraftEditor';
 import { ScoringDraftEditor } from './draft/ScoringDraftEditor';
 import { ThresholdDraftEditor } from './draft/ThresholdDraftEditor';
 import { FDPInlineEditor } from './FDPInlineEditor';
@@ -79,6 +96,10 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   const addCampaign = useCampaignsStore((s) => s.addCampaign);
   const removeCampaign = useCampaignsStore((s) => s.removeCampaign);
   const activateCampaign = useCampaignsStore((s) => s.activateCampaign);
+  /** Reflet LOCAL du flag après le PATCH — jamais une décision client. */
+  const reflectSchedulingNative = useCampaignsStore(
+    (s) => s.setSchedulingNative,
+  );
   const existingIds = useCampaignsStore((s) => s.order);
   const getCampaignById = useCampaignsStore((s) => s.getById);
 
@@ -107,6 +128,28 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   // (cohérent avec le reste — pas de « manuel » implicite).
   const [sources, setSources] = useState<CVSource[]>([]);
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
+  // Recruteur référent — porte l'agenda des entretiens. `undefined` = le DRH n'a
+  // pas tranché : le défaut (le créateur) est alors DÉRIVÉ, jamais posé dans
+  // l'état — sinon l'arrivée de la liste écraserait un choix déjà fait.
+  // `null` est un choix explicite : aucun référent, agenda global.
+  const [ownerChoice, setOwnerChoice] = useState<string | null | undefined>(
+    undefined,
+  );
+  const { options: recruiterOptions, currentUserId } = useRecruiterOptions();
+  const ownerUserId = resolveDraftOwner(
+    ownerChoice,
+    recruiterOptions,
+    currentUserId,
+  );
+  // Réservation d'entretien : INTENTION seulement. Le flag ne voyage jamais dans
+  // le snapshot (invariant du module) — il est appliqué par un PATCH ciblé juste
+  // après la création (cf. applyDraftScheduling).
+  const [schedulingNative, setSchedulingNative] = useState(false);
+  const [meetingLocation, setMeetingLocation] = useState<MeetingLocation | null>(
+    null,
+  );
+  /** Régime de réservation demandé mais refusé par le serveur (on le DIT). */
+  const [schedulingNotice, setSchedulingNotice] = useState<string | null>(null);
   // HITL 3 zones (lot 2) — défaut NOUVELLE campagne : 10/90 (bande grise large,
   // seuls les extrêmes automatisés). Distinct du backfill 0/100 de l'existant.
   const [thresholdLow, setThresholdLow] = useState(10);
@@ -130,6 +173,12 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
   // remettre l'état interne (section ouverte, sections enregistrées) à neuf.
   const [editKey, setEditKey] = useState(0);
   const createdOnceRef = useRef(false);
+  /**
+   * Régime déjà ÉCRIT en base par une tentative précédente (« Compléter la
+   * campagne » ramène sur le formulaire, puis on re-crée). Sans cette mémoire,
+   * repasser en Cal.com après avoir basculé en natif ne défaisait rien.
+   */
+  const appliedNativeRef = useRef(false);
   // Proposition par l'IA (parité avec le chat Manager) — opt-in par bouton.
   const [proposingFdp, setProposingFdp] = useState(false);
   const [proposingScoring, setProposingScoring] = useState(false);
@@ -412,6 +461,19 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       );
       return;
     }
+    // Un lieu au détail vide n'est pas un lieu : le serveur le refuse, et un
+    // « Par téléphone » sans consigne se relirait comme « aucun lieu ». On le
+    // dit AVANT d'enregistrer, pas dans l'écran de succès.
+    if (
+      schedulingNative &&
+      meetingLocation &&
+      !isMeetingLocationComplete(meetingLocation)
+    ) {
+      setSubmitError(
+        'Le lieu d’entretien est incomplet (bloc « Réservation d’entretien ») : complétez-le ou revenez à « Hériter du référent ».',
+      );
+      return;
+    }
     setSubmitError(null);
     // Source de vérité unique : le nom SUIT le champ job_title de la FDP (qui a
     // pu être édité en étape 2), pas l'intitulé figé de l'étape 1. Repli sur
@@ -443,6 +505,10 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       thresholdLow,
       thresholdHigh,
       status: isComplete ? 'in_progress' : 'draft',
+      // Référent choisi à l'écran (le défaut proposé est le créateur). Liste de
+      // recruteurs injoignable ⇒ `null` : la campagne se crée sans référent et
+      // sur l'agenda global, ce que la section DIT avant de valider.
+      ownerUserId,
       // Archive de traçabilité du pré-remplissage (null si création de zéro).
       prefillExtraction,
     });
@@ -489,6 +555,21 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
     } else {
       setMailboxFailures(0);
     }
+    // Régime de réservation : PATCH ciblé (seul chemin d'écriture du flag et du
+    // lieu). La campagne est déjà enregistrée — un refus ne l'annule pas, mais
+    // il se dit, sinon le DRH croirait sa campagne en réservation native.
+    const scheduling = await applyDraftScheduling(
+      campaign.id,
+      { native: schedulingNative, location: meetingLocation },
+      appliedNativeRef.current,
+    );
+    setSchedulingNotice(
+      scheduling.kind === 'failed' ? scheduling.message : null,
+    );
+    if (scheduling.kind === 'applied') {
+      appliedNativeRef.current = scheduling.native;
+      reflectSchedulingNative(campaign.id, scheduling.native);
+    }
     setActivateError(null);
     setCreated(campaign);
   };
@@ -505,7 +586,11 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
         campaignId: created.id,
         campaignName: created.name,
       });
-      onClose();
+      // On NE ferme pas quand un canal reste à rédiger/publier : c'est
+      // précisément l'ordre à respecter (activer, puis publier), et refermer
+      // ici renverrait rouvrir la campagne en édition — le geste qu'on
+      // supprime. Sans canal porteur de contenu, rien à attendre : on ferme.
+      if (!channels.some(hasChannelContent)) onClose();
     } else {
       setActivateError(
         'Activation impossible pour le moment — complétez les éléments requis puis réessayez.',
@@ -543,6 +628,11 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
     setMailboxIds([]);
     setThresholds(10, 90);
     setMatchHint(null);
+    // Le référent revient au défaut (le créateur) et le régime de réservation
+    // au régime historique : « repartir à zéro » ne garde que l'intitulé.
+    setOwnerChoice(undefined);
+    setSchedulingNative(false);
+    setMeetingLocation(null);
     // Repart vierge : on abandonne aussi le pré-remplissage par document.
     setDocumentHint(null);
     setPrefillExtraction(null);
@@ -589,9 +679,10 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
       >
         <Header campaignId={campaignId} onClose={onClose} />
         {created ? (
-          <CreatedStep
+          <CampaignCreatedStep
             campaign={created}
             mailboxFailures={mailboxFailures}
+            schedulingNotice={schedulingNotice}
             activateError={activateError}
             onActivate={onActivate}
             onEdit={() => {
@@ -632,6 +723,13 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
             setSources={setSources}
             mailboxIds={mailboxIds}
             setMailboxIds={setMailboxIds}
+            ownerUserId={ownerUserId}
+            setOwnerUserId={setOwnerChoice}
+            recruiterOptions={recruiterOptions}
+            schedulingNative={schedulingNative}
+            setSchedulingNative={setSchedulingNative}
+            meetingLocation={meetingLocation}
+            setMeetingLocation={setMeetingLocation}
             thresholdLow={thresholdLow}
             thresholdHigh={thresholdHigh}
             setThresholds={setThresholds}
@@ -899,232 +997,6 @@ function JobTitleStep({
   );
 }
 
-/**
- * Étape post-création : la campagne est enregistrée (brouillon). On propose de
- * l'activer si le verrou `canActivate` le permet, sinon on explique ce qui
- * manque et on offre de revenir compléter la campagne.
- */
-function CreatedStep({
-  campaign,
-  mailboxFailures,
-  activateError,
-  onActivate,
-  onEdit,
-  onClose,
-}: {
-  campaign: ActiveCampaign;
-  mailboxFailures: number;
-  activateError: string | null;
-  onActivate: () => void;
-  onEdit: () => void;
-  onClose: () => void;
-}) {
-  const phaseGate = canActivate(campaign.lifecycle);
-  const untreated = countUntreatedSuggestions(campaign.scoringSheet);
-  // Lancement autorisé seulement si les phases obligatoires sont faites ET
-  // qu'aucune pondération suggérée ne reste à traiter (même verrou que le store).
-  const gate = { ok: phaseGate.ok && untreated === 0, missing: phaseGate.missing };
-  return (
-    <div
-      style={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 16,
-        padding: '24px 22px',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span aria-hidden style={{ fontSize: 22, lineHeight: 1 }}>
-          ✅
-        </span>
-        <div>
-          <h3
-            className="font-display"
-            style={{
-              margin: 0,
-              fontSize: 16,
-              fontWeight: 800,
-              color: 'var(--dash-text)',
-            }}
-          >
-            Campagne enregistrée
-          </h3>
-          <p
-            className="font-body"
-            style={{
-              margin: '2px 0 0',
-              fontSize: 12,
-              color: 'var(--dash-text-secondary)',
-            }}
-          >
-            {campaign.id} — « {campaign.name} » est en brouillon.
-          </p>
-        </div>
-      </div>
-
-      {mailboxFailures > 0 ? (
-        <div
-          role="alert"
-          className="font-body"
-          style={{
-            padding: '12px 14px',
-            borderRadius: 10,
-            background: 'var(--dash-red-light)',
-            border: '1px solid var(--dash-red)',
-            fontSize: 12,
-            lineHeight: 1.5,
-            color: 'var(--dash-text-secondary)',
-          }}
-        >
-          ⚠️{' '}
-          <strong style={{ color: 'var(--dash-red)' }}>
-            {mailboxFailures === 1
-              ? 'Une boîte mail n’a pas pu être rattachée'
-              : `${mailboxFailures} boîtes mail n’ont pas pu être rattachées`}
-          </strong>
-          . La campagne est bien enregistrée, mais le flux email ne recevra
-          aucun CV tant que le rattachement n’est pas refait — depuis le bloc{' '}
-          <strong style={{ color: 'var(--dash-text)' }}>Flux de réception</strong>{' '}
-          de l’édition.
-        </div>
-      ) : null}
-
-      {gate.ok ? (
-        <p
-          className="font-body"
-          style={{
-            margin: 0,
-            fontSize: 13,
-            lineHeight: 1.5,
-            color: 'var(--dash-text-secondary)',
-          }}
-        >
-          Tout est prêt. Activez-la pour démarrer la diffusion et la veille du CV
-          Analyzer — ou gardez-la en brouillon pour plus tard.
-        </p>
-      ) : (
-        <div
-          className="font-body"
-          style={{
-            padding: '12px 14px',
-            borderRadius: 10,
-            background: 'var(--dash-yellow-light)',
-            border: '1px solid var(--dash-yellow)',
-            fontSize: 12,
-            lineHeight: 1.5,
-            color: 'var(--dash-text-secondary)',
-          }}
-        >
-          Pour activer cette campagne, il reste à traiter :{' '}
-          <strong style={{ color: 'var(--dash-text)' }}>
-            {[
-              phaseGate.missing.length > 0
-                ? formatMissingPhases(phaseGate.missing)
-                : null,
-              untreated > 0
-                ? `${untreated} pondération${untreated > 1 ? 's' : ''} suggérée${untreated > 1 ? 's' : ''} par l’IA`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' et ')}
-          </strong>
-          . Vous pouvez la garder en brouillon et la compléter plus tard.
-        </div>
-      )}
-
-      {activateError ? (
-        <div
-          role="alert"
-          className="font-body"
-          style={{
-            padding: '8px 12px',
-            borderRadius: 8,
-            background: 'var(--dash-red-light)',
-            color: 'var(--dash-red)',
-            fontSize: 12,
-            fontWeight: 600,
-            border: '1px solid var(--dash-red)',
-          }}
-        >
-          {activateError}
-        </div>
-      ) : null}
-
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          gap: 10,
-          marginTop: 'auto',
-          paddingTop: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="font-body"
-          style={{
-            padding: '9px 16px',
-            borderRadius: 8,
-            border: '1px solid var(--dash-border)',
-            background: 'var(--dash-surface)',
-            color: 'var(--dash-text-secondary)',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Garder en brouillon
-        </button>
-        {gate.ok ? (
-          <button
-            type="button"
-            onClick={onActivate}
-            className="font-display"
-            style={{
-              padding: '9px 18px',
-              borderRadius: 8,
-              border: 'none',
-              background:
-                'linear-gradient(135deg, var(--dash-green), var(--dash-green))',
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: '0 2px 10px rgba(21,163,100,0.3)',
-            }}
-          >
-            Activer la campagne
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onEdit}
-            className="font-display"
-            style={{
-              padding: '9px 18px',
-              borderRadius: 8,
-              border: 'none',
-              background:
-                'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: '0 2px 10px rgba(47,110,235,0.3)',
-            }}
-          >
-            Compléter la campagne
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function EditingStage({
   jobTitle,
   matchHint,
@@ -1145,6 +1017,13 @@ function EditingStage({
   setSources,
   mailboxIds,
   setMailboxIds,
+  ownerUserId,
+  setOwnerUserId,
+  recruiterOptions,
+  schedulingNative,
+  setSchedulingNative,
+  meetingLocation,
+  setMeetingLocation,
   thresholdLow,
   thresholdHigh,
   setThresholds,
@@ -1173,6 +1052,13 @@ function EditingStage({
   setSources: (next: CVSource[]) => void;
   mailboxIds: string[];
   setMailboxIds: (next: string[]) => void;
+  ownerUserId: string | null;
+  setOwnerUserId: (next: string | null) => void;
+  recruiterOptions: RecruiterOption[] | null;
+  schedulingNative: boolean;
+  setSchedulingNative: (next: boolean) => void;
+  meetingLocation: MeetingLocation | null;
+  setMeetingLocation: (next: MeetingLocation | null) => void;
   thresholdLow: number;
   thresholdHigh: number;
   setThresholds: (low: number, high: number) => void;
@@ -1204,6 +1090,8 @@ function EditingStage({
 
   const filledCount = Object.keys(collectKnown(fdp)).length;
   const plural = (n: number, s = 's') => (n > 1 ? s : '');
+  const selectedOwner =
+    recruiterOptions?.find((o) => o.id === ownerUserId) ?? null;
 
   return (
     <>
@@ -1322,6 +1210,49 @@ function EditingStage({
             low={thresholdLow}
             high={thresholdHigh}
             onChange={setThresholds}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Recruteur référent"
+          icon="🧑‍💼"
+          subtitle={
+            selectedOwner
+              ? selectedOwner.displayName
+              : 'Aucun — agenda global'
+          }
+          open={openSection === 'owner'}
+          onToggle={() => toggle('owner')}
+          saved={isSaved('owner')}
+          onSave={() => saveSection('owner')}
+        >
+          <OwnerDraftEditor
+            value={ownerUserId}
+            onChange={setOwnerUserId}
+            options={recruiterOptions}
+            native={schedulingNative}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Réservation d’entretien"
+          icon="🗓️"
+          subtitle={
+            schedulingNative
+              ? 'Native ORQA (disponibilités du référent)'
+              : 'Cal.com (lien d’agenda)'
+          }
+          open={openSection === 'scheduling'}
+          onToggle={() => toggle('scheduling')}
+          saved={isSaved('scheduling')}
+          onSave={() => saveSection('scheduling')}
+        >
+          <SchedulingDraftEditor
+            native={schedulingNative}
+            onNativeChange={setSchedulingNative}
+            location={meetingLocation}
+            onLocationChange={setMeetingLocation}
+            owner={selectedOwner}
           />
         </CollapsibleSection>
       </div>
@@ -1454,7 +1385,14 @@ export function deriveCampaignName(
 }
 
 /** Clés des sections pliables de l'étape d'édition à la création. */
-type EditSectionKey = 'fdp' | 'scoring' | 'channels' | 'flux' | 'threshold';
+type EditSectionKey =
+  | 'fdp'
+  | 'scoring'
+  | 'channels'
+  | 'flux'
+  | 'threshold'
+  | 'owner'
+  | 'scheduling';
 
 /** Ordre de parcours des sections (sert au « Enregistrer → section suivante »). */
 const SECTION_ORDER: EditSectionKey[] = [
@@ -1463,6 +1401,10 @@ const SECTION_ORDER: EditSectionKey[] = [
   'channels',
   'flux',
   'threshold',
+  // Référent puis réservation, dans cet ordre : le régime natif s'appuie sur
+  // les disponibilités du référent. Même ordre qu'en édition (parité d'écran).
+  'owner',
+  'scheduling',
 ];
 
 /**

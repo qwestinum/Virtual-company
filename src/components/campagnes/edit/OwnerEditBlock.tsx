@@ -15,19 +15,15 @@
  * seul chemin qui re-pointe la cible de réservation dans la foulée.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
+import {
+  recruiterOptionLabel,
+  useRecruiterOptions,
+} from '@/lib/campaign/use-recruiter-options';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 
 import { OwnerChangeDialog, type TargetImpact } from './OwnerChangeDialog';
-
-type RecruiterOption = {
-  id: string;
-  displayName: string;
-  hasCalcomLink: boolean;
-  /** `null` = indéterminé (module de réservation injoignable). */
-  hasAvailability: boolean | null;
-};
 
 export function OwnerEditBlock({ campaignId }: { campaignId: string }) {
   const ownerUserId = useCampaignsStore(
@@ -37,28 +33,11 @@ export function OwnerEditBlock({ campaignId }: { campaignId: string }) {
     (s) => s.byId[campaignId]?.schedulingNative ?? false,
   );
   const setOwner = useCampaignsStore((s) => s.setOwner);
-  const [options, setOptions] = useState<RecruiterOption[] | null>(null);
+  const { options } = useRecruiterOptions();
   const [pending, setPending] = useState<{ id: string | null; impact: TargetImpact } | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/recruiters/options', { cache: 'no-store' });
-        if (!res.ok) return;
-        const json = (await res.json()) as { options?: RecruiterOption[] };
-        if (!cancelled) setOptions(json.options ?? []);
-      } catch {
-        if (!cancelled) setOptions([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const selected = options?.find((o) => o.id === ownerUserId) ?? null;
   const missingLink = !native && selected !== null && !selected.hasCalcomLink;
@@ -130,14 +109,7 @@ export function OwnerEditBlock({ campaignId }: { campaignId: string }) {
         <option value="">— Aucun (agenda global)</option>
         {(options ?? []).map((o) => (
           <option key={o.id} value={o.id}>
-            {o.displayName}
-            {native
-              ? o.hasAvailability === false
-                ? ' (sans disponibilités)'
-                : ''
-              : o.hasCalcomLink
-                ? ''
-                : ' (sans lien Cal.com)'}
+            {recruiterOptionLabel(o, native)}
           </option>
         ))}
       </select>

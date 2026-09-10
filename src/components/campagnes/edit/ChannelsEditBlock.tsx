@@ -13,12 +13,9 @@
  * réception sont deux concepts distincts ; confondre les deux permettait
  * d'« activer » une campagne sans aucun flux de réception configuré.
  *
- * DEUX canaux déploient un panneau, et pour la même raison : ils portent un
- * CONTENU réellement publié quelque part, là où les autres ne sont qu'une
- * intention de diffusion. « Annonce générique » alimente le jobboard de
- * démonstration ; « APEC » envoie l'offre sur apec.fr. Les deux panneaux se
- * retirent d'eux-mêmes quand leur surface n'existe pas (la route rend 404) —
- * il n'y a donc aucun flag à consulter ici.
+ * Les canaux porteurs d'un CONTENU publié (annonce générique, APEC) déploient
+ * un panneau sous leur toggle — recensés dans `ChannelContentPanel`, partagé
+ * avec l'écran qui suit la création d'une campagne.
  */
 
 import { useState } from 'react';
@@ -32,8 +29,7 @@ import {
   type PublicationChannel,
 } from '@/types/publication-channel';
 
-import { ApecPanel } from './ApecPanel';
-import { GenericJobAdPanel } from './GenericJobAdPanel';
+import { ChannelContentPanel } from './ChannelContentPanel';
 import { SaveBanner } from './SaveBanner';
 
 const FLASH_MS = 3000;
@@ -100,10 +96,9 @@ export function ChannelsEditBlock({ campaign }: ChannelsEditBlockProps) {
               enabled={enabled}
               onToggle={() => setChannelEnabled(channel, !enabled)}
             />
-            {channel === 'generic' && enabled && (
-              <GenericJobAdPanel campaignId={campaign.id} />
-            )}
-            {channel === 'apec' && enabled && <ApecPanel campaignId={campaign.id} />}
+            {enabled ? (
+              <ChannelContentPanel channel={channel} campaignId={campaign.id} />
+            ) : null}
           </div>
         );
       })}
