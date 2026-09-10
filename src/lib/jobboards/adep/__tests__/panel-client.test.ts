@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { loadAdepState, transitionApec } from '../panel-client';
+import { loadAdepState, publishToApec, transitionApec } from '../panel-client';
 
 function respond(status: number, body: unknown): void {
   vi.stubGlobal(
@@ -78,6 +78,57 @@ describe('loadAdepState', () => {
 
     await expect(loadAdepState('CAMP-2026-288')).resolves.toMatchObject({
       clientReference: 'CAMP-2026-288',
+    });
+  });
+});
+
+describe('publishToApec', () => {
+  const OFFER = {} as Parameters<typeof publishToApec>[1];
+
+  // 10/09/2026, première publication réelle : l'écran n'a affiché que
+  // « HTTP 500 ». La route avait pourtant nommé son motif — mais le client
+  // lisait le corps DEUX fois (`res.json()` puis `readError(res)`), et
+  // `Response.json()` consomme le flux. La seconde lecture levait « Body is
+  // unusable », l'erreur était avalée, et il ne restait que le code HTTP.
+  it('reprend le motif d’un 500 au lieu de rendre « HTTP 500 »', async () => {
+    respond(500, { error: 'publish_failed' });
+
+    await expect(publishToApec('CAMP-2026-267', OFFER)).rejects.toThrow(
+      'publish_failed',
+    );
+  });
+
+  it('préfère la phrase qui dit quoi faire au code d’erreur', async () => {
+    respond(409, {
+      error: 'numero_dossier_missing',
+      message: "Le recruteur référent de la campagne n'a pas d'identifiant Apec.",
+    });
+
+    await expect(publishToApec('CAMP-2026-267', OFFER)).rejects.toThrow(
+      /identifiant Apec/,
+    );
+  });
+
+  it('énumère le rapport de validation, pas seulement « offer_invalid »', async () => {
+    respond(422, {
+      error: 'offer_invalid',
+      errors: [{ message: 'Le lieu de poste est absent.' }, { message: 'Salaire manquant.' }],
+    });
+
+    await expect(publishToApec('CAMP-2026-267', OFFER)).rejects.toThrow(
+      /lieu de poste est absent.*Salaire manquant/,
+    );
+  });
+
+  it('rend l’outcome d’un refus de l’Apec, qui arrive en 422 et n’est pas une panne', async () => {
+    respond(422, {
+      outcome: { kind: 'rejected', issues: [{ code: '323', message: 'Aucun lieu de poste valide.' }] },
+      posting: null,
+      simulated: false,
+    });
+
+    await expect(publishToApec('CAMP-2026-267', OFFER)).resolves.toMatchObject({
+      outcome: { kind: 'rejected' },
     });
   });
 });

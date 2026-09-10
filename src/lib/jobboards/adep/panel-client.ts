@@ -106,9 +106,52 @@ export async function publishToApec(
       body: JSON.stringify(offer),
     },
   );
-  const data = (await res.json().catch(() => null)) as PublishResponse | null;
-  if (!data?.outcome) throw new Error(await readError(res));
+  // ⚠️ UNE SEULE LECTURE DU CORPS.
+  //
+  // `Response.json()` CONSOMME le flux. Le relire — ce que faisait
+  // `readError(res)` juste en dessous — lève « Body is unusable », l'exception
+  // est avalée par le `.catch(() => null)` interne, et il ne reste que
+  // `HTTP <statut>`. Toute publication en échec remontait donc « HTTP 500 » à
+  // l'écran, quel que soit le motif que la route avait pris soin de nommer :
+  // `publish_failed`, `offer_invalid` et son rapport de validation,
+  // `numero_dossier_missing` et sa phrase qui dit quoi faire. Le seul moment
+  // où l'on a besoin du message est celui où on le détruisait.
+  //
+  // Constaté le 10/09/2026, sur la première tentative de publication réelle.
+  const data = (await res.json().catch(() => null)) as
+    | (PublishResponse & {
+        error?: string;
+        message?: string;
+        errors?: Array<{ message?: string }>;
+      })
+    | null;
+  // ⚠️ La condition porte sur `outcome`, PAS sur `res.ok` : un refus de l'Apec
+  // arrive en 422 AVEC un outcome, et l'écran sait le rendre champ par champ.
+  if (!data?.outcome) throw new Error(describePublishFailure(data, res.status));
   return data;
+}
+
+/**
+ * Le motif que la route a nommé, plutôt que son code HTTP. PUR.
+ *
+ * `offer_invalid` mérite un traitement à part : la route renvoie le rapport de
+ * validation complet. Se contenter du nom de l'erreur laisserait chercher dans
+ * un formulaire de vingt champs ce que le serveur vient d'énumérer.
+ */
+export function describePublishFailure(
+  body: {
+    error?: string;
+    message?: string;
+    errors?: Array<{ message?: string }>;
+  } | null,
+  status: number,
+): string {
+  if (!body) return `HTTP ${status}`;
+  const details = (body.errors ?? [])
+    .map((e) => e?.message)
+    .filter((m): m is string => Boolean(m));
+  if (details.length > 0) return details.join(' · ');
+  return body.message ?? body.error ?? `HTTP ${status}`;
 }
 
 export type TransitionResponse = {
