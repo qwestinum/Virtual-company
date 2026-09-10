@@ -897,3 +897,56 @@ garderait que l'agencement. Les extractions déjà faites (`InterviewTabs`,
 `ReferentFilterBar`, `use-validations-queue`, `SubTabButton`,
 `EmptyQueueNotice`) ont pris le plus facile ; ce qui reste demande de déplacer
 de la logique, pas du balisage.
+
+---
+
+## Le garde-fou « pondération suggérée » ne couvre qu'UNE des trois provenances
+
+**Statut** : incohérence fonctionnelle confirmée, repérée en recette le
+10/09/2026 par le donneur d'ordre. Aucun correctif appliqué.
+**Code concerné** : `src/components/campagnes/edit/CampaignCreateSheet.tsx`
+(lignes 250, 312, 397), `src/lib/agents/server/scoring-execute.ts` (~130),
+`src/types/campaign-prefill.ts` (`prefillToSuggestedCriteria`).
+
+Le drapeau `ScoringCriterion.suggere` est le garde-fou qui impose une décision
+humaine explicite sur une pondération proposée par un modèle : badge
+« ✨ Suggéré par l'IA », boutons Confirmer / Rejeter, et refus de lancement tant
+qu'il en reste (`countUntreatedSuggestions` → `activateCampaign`).
+
+CLAUDE.md le présente comme un « garde-fou commun ». **Il ne l'est pas.** À la
+création d'une campagne, une grille de scoring peut entrer par trois portes, et
+une seule pose le drapeau :
+
+| Porte | `suggere` | Confirmation exigée |
+|---|---|---|
+| Document déposé (appel d'offres) — `prefillToSuggestedCriteria` | `true` | **oui** |
+| Bouton « Proposer la grille » — `postManagerScoring` → `scoring-execute` | *absent* | non |
+| Campagne comparable — copie de `sourceCamp.scoringSheet.criteria` | copié tel quel | non en pratique |
+| `DEFAULT_SCORING_TEMPLATE` | *absent* | non — et c'est LÉGITIME : gabarit humain, pas une proposition de modèle |
+
+Le cas qui fait mal est le deuxième. Le bouton « Proposer la grille » est
+**dans la même section, juste au-dessus de l'éditeur** : un clic, le même LLM
+propose la grille entière, elle remplace tout — et rien ne demande de la
+relire. Le geste voisin (déposer un document) exige, lui, un clic par
+pondération. Même modèle, même nature de proposition, deux régimes opposés
+selon le chemin d'entrée.
+
+Le troisième cas est plus discret mais réel : les critères d'une campagne
+comparable ont été calibrés pour UN AUTRE poste et sont repris sans un mot. Ils
+arrivent `suggere: false` dès lors que la campagne source a été lancée (le
+verrou d'activation garantit qu'elle n'avait plus de suggestion en attente),
+donc silencieusement « acquis ».
+
+**Ce que ça vaut** : le drapeau existe pour qu'aucune pondération d'origine LLM
+ne parte au scoring sans qu'un humain l'ait regardée. Deux portes sur trois le
+contournent, et ce sont les plus commodes — donc les plus empruntées.
+
+**Piste** : poser `suggere: true` à la source dans `scoring-execute.ts`
+(`buildCriterion({ …, suggere: true })`), là où l'origine LLM est certaine,
+plutôt que dans chaque appelant — un producteur ajouté demain hériterait alors
+du bon comportement. Pour la campagne comparable, la question est différente et
+mérite d'être tranchée avant de coder : re-suggérer une grille déjà validée par
+un humain sur un poste voisin est peut-être du bruit plutôt qu'une garantie.
+⚠️ Vérifier l'effet sur le chat Manager (`postManagerScoring` y est aussi
+appelé), même si ce chemin est en voie d'extinction avec le Manager en lecture
+seule.
