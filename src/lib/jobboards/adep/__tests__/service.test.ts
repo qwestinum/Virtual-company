@@ -30,6 +30,7 @@ import { getAdepNumeroDossier } from '@/lib/db/repos/recruiters';
 import { MOCK_ACKS, MockAdepTransport } from '../mock-transport';
 import {
   AdepCredentialsError,
+  adepEnvironmentLabel,
   isAdepEnabled,
   publishToAdep,
   resolveAdepCredentials,
@@ -650,5 +651,21 @@ describe('le drapeau', () => {
     // Retomber sur le mock rendrait un faux succès sur une offre réelle : le
     // recruteur croirait son poste diffusé.
     expect(() => resolveTransport({}, { ADEP_ENABLED: '1' })).toThrow(/ADEP_WSDL_URL/);
+  });
+});
+
+describe('adepEnvironmentLabel', () => {
+  it('nomme la simulation, et sinon l’hôte réel', () => {
+    expect(adepEnvironmentLabel({})).toBe('simulation');
+    expect(
+      adepEnvironmentLabel({
+        ADEP_ENABLED: '1',
+        ADEP_WSDL_URL: 'https://adepsep.apec.fr/v5/positions?wsdl',
+      }),
+    ).toBe('adepsep.apec.fr');
+  });
+
+  it('avoue son ignorance plutôt que de supposer la production', () => {
+    expect(adepEnvironmentLabel({ ADEP_ENABLED: '1' })).toBe('inconnu');
   });
 });

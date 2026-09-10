@@ -21,7 +21,11 @@ import { getApiUser, unauthorizedResponse } from '@/lib/auth/require-api-user';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
-import { AdepCredentialsError, publishToAdep } from '@/lib/jobboards/adep/service';
+import {
+  AdepCredentialsError,
+  adepEnvironmentLabel,
+  publishToAdep,
+} from '@/lib/jobboards/adep/service';
 import { validateAdepOffer } from '@/lib/jobboards/adep/validate';
 import { AdepOfferSchema } from '@/types/adep';
 
@@ -99,6 +103,7 @@ export async function POST(
       payload: {
         outcome: outcome.kind,
         simulated: result.simulated,
+        apecEnvironment: adepEnvironmentLabel(),
         clientReference: result.posting?.clientReference ?? null,
         apecPositionNumero: result.posting?.apecPositionNumero ?? null,
         ...(outcome.kind === 'rejected'
@@ -129,7 +134,28 @@ export async function POST(
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json({ error: 'supabase_not_configured' }, { status: 503 });
     }
+    // ⚠️ TRACER, pas seulement `console.error`.
+    //
+    // Le 10/09/2026, une publication a rendu 500 en ne laissant STRICTEMENT
+    // aucune trace : l'exception survient avant `reserveJobPosting`, donc pas
+    // de ligne `job_postings`, et le journal n'était écrit qu'après un retour
+    // réussi de `publishToAdep`. Le seul témoignage vivait dans la console d'un
+    // serveur de développement — inaccessible en production, et perdu dès que
+    // la fenêtre est fermée. Retrouver la cause a demandé de raisonner par
+    // élimination sur ce qui N'AVAIT PAS été écrit.
+    //
+    // Best-effort : une trace qui échoue ne doit pas changer la réponse.
     console.error('[api/campaigns/adep/publish] failed', err);
+    await appendJournalEntry({
+      action: 'apec_offer_publish_failed',
+      actor: user.email ?? 'utilisateur',
+      campaignId: id,
+      payload: {
+        outcome: 'exception',
+        apecEnvironment: adepEnvironmentLabel(),
+        reason: err instanceof Error ? `${err.name}: ${err.message}` : 'Erreur inconnue.',
+      },
+    }).catch(() => {});
     return NextResponse.json({ error: 'publish_failed' }, { status: 500 });
   }
 }

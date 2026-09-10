@@ -19,6 +19,7 @@ import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
   AdepCredentialsError,
+  adepEnvironmentLabel,
   refreshAdepStatus,
   transitionAdepPosting,
 } from '@/lib/jobboards/adep/service';
@@ -63,6 +64,7 @@ export async function POST(
           payload: {
             status: result.posting.remoteStatus,
             apecPositionNumero: result.posting.apecPositionNumero,
+            apecEnvironment: adepEnvironmentLabel(),
           },
         }).catch(() => {});
       }
@@ -74,7 +76,10 @@ export async function POST(
           action: 'apec_offer_attempt_closed',
           actor: user.email ?? 'utilisateur',
           campaignId: id,
-          payload: { clientReference: result.posting?.clientReference ?? null },
+          payload: {
+            clientReference: result.posting?.clientReference ?? null,
+            apecEnvironment: adepEnvironmentLabel(),
+          },
         }).catch(() => {});
       }
       // `read` voyage avec `changed`, et ce n'est pas redondant : une lecture
@@ -104,6 +109,7 @@ export async function POST(
           apecPositionNumero: result.posting?.apecPositionNumero ?? null,
           alreadyInState: result.outcome.kind === 'already_in_state',
           simulated: result.simulated,
+          apecEnvironment: adepEnvironmentLabel(),
         },
       }).catch(() => {});
     }

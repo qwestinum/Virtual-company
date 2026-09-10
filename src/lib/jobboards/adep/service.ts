@@ -21,7 +21,7 @@
  */
 
 import { redactCredentials } from './build-open-position';
-import { createHttpAdepTransport, endpointFromWsdlUrl } from './http-transport';
+import { adepEndpointHost, createHttpAdepTransport, endpointFromWsdlUrl } from './http-transport';
 import { MockAdepTransport, type MockPosition } from './mock-transport';
 import { AdepSepPublisher, defaultTrackingId } from './publisher';
 import type { AdepTransport } from './transport';
@@ -48,6 +48,20 @@ import {
 /** `ADEP_ENABLED` — fail-closed strict, comme `DEMO_JOBBOARD_ENABLED`. */
 export function isAdepEnabled(env: Partial<Record<string, string>> = process.env): boolean {
   return env.ADEP_ENABLED === '1';
+}
+
+/**
+ * Où part cet appel — la mention à porter au journal.
+ *
+ * `simulation`, ou l'hôte réel. Sans elle, une ligne de journal ne dit pas si
+ * l'offre existe sur apec.fr ou sur l'environnement de recette, et c'est
+ * pourtant la première question qu'on se pose devant un incident.
+ */
+export function adepEnvironmentLabel(
+  env: Partial<Record<string, string>> = process.env,
+): string {
+  if (!isAdepEnabled(env)) return 'simulation';
+  return adepEndpointHost(env.ADEP_WSDL_URL) ?? 'inconnu';
 }
 
 export class AdepCredentialsError extends Error {

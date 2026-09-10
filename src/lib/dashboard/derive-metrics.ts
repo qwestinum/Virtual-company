@@ -627,9 +627,16 @@ const ACTIVITY_RENDERERS: Record<string, FeedRenderer> = {
         : typeof row.payload?.reason === 'string'
           ? row.payload.reason
           : null;
+    // ⚠️ « Refusée » et « en panne » ne se confondent pas. Un refus vient de
+    // l'Apec et se corrige dans l'offre ; une exception vient de chez nous et
+    // se corrige dans l'installation. Les afficher pareil enverrait relire une
+    // annonce parfaitement valide.
+    const crashed = row.payload?.outcome === 'exception';
     return {
       ...base,
-      message: `Publication APEC refusée${first ? ` — ${first}` : ''}`,
+      message: crashed
+        ? `Publication APEC en échec technique${first ? ` — ${first}` : ''}`
+        : `Publication APEC refusée${first ? ` — ${first}` : ''}`,
       iconKey: 'announce',
       colorKey: 'red',
     };

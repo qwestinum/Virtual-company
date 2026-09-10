@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  adepEndpointHost,
   createHttpAdepTransport,
   endpointFromWsdlUrl,
 } from '../http-transport';
@@ -181,5 +182,26 @@ describe('réponses HTTP', () => {
     await expect(
       transportWith(impl as unknown as typeof fetch).post(REQUEST),
     ).rejects.toThrow(/vide/);
+  });
+});
+
+describe('adepEndpointHost', () => {
+  // `simulated: false` vaut autant pour la recette que pour la production :
+  // le 09 et le 10/09/2026, deux offres acquittées sur DEUX environnements ont
+  // laissé au journal des lignes identiques. Retrouver laquelle vivait où a
+  // demandé de remonter aux dates de modification d'un fichier `.env`.
+  it('rend l’hôte, qui suffit à savoir où l’offre est partie', () => {
+    expect(adepEndpointHost('https://adepsep.apec.fr/v5/positions?wsdl')).toBe(
+      'adepsep.apec.fr',
+    );
+    expect(adepEndpointHost('https://testadepsep.apec.fr/v5/positions?wsdl')).toBe(
+      'testadepsep.apec.fr',
+    );
+  });
+
+  it('rend null plutôt que d’inventer, sur une URL absente ou illisible', () => {
+    expect(adepEndpointHost(undefined)).toBeNull();
+    expect(adepEndpointHost('   ')).toBeNull();
+    expect(adepEndpointHost('pas-une-url')).toBeNull();
   });
 });

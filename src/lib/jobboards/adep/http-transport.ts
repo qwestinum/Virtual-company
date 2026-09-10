@@ -159,6 +159,29 @@ export function createHttpAdepTransport(options: HttpTransportOptions): AdepTran
  * dans un navigateur pour vérifier). Lui demander de retirer le suffixe à la
  * main serait une source d'erreur gratuite.
  */
+/**
+ * L'hôte auquel on s'adresse. PUR, et destiné au JOURNAL.
+ *
+ * ⚠️ `simulated: false` ne suffit pas à savoir où une offre est partie : il vaut
+ * autant pour la recette que pour la production. Deux offres acquittées le même
+ * jour, `179240011W` en recette et `179400306W` en production, portaient au
+ * journal des lignes rigoureusement identiques — et retrouver laquelle vivait
+ * où a demandé de remonter aux dates de modification d'un fichier `.env`.
+ *
+ * On journalise donc l'hôte tel quel, sans l'interpréter : deviner « recette »
+ * d'un préfixe `test` marcherait sur les deux hôtes connus aujourd'hui et
+ * mentirait au troisième.
+ */
+export function adepEndpointHost(wsdlUrl: string | undefined | null): string | null {
+  const raw = wsdlUrl?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).host;
+  } catch {
+    return null;
+  }
+}
+
 export function endpointFromWsdlUrl(wsdlUrl: string): string {
   return wsdlUrl.trim().replace(/\?wsdl$/i, '');
 }
