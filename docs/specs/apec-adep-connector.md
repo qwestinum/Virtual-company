@@ -1129,9 +1129,10 @@ texte publié est un **fait** (`certain`), une pré-rédaction reste une
 Le **titre** repris prime sur l'intitulé brut de la fiche de poste : « Comptable
 général » côté fiche et « Comptable général confirmé » côté annonce coexistent
 souvent, et publier deux libellés pour un même poste est précisément ce qu'on
-cherche à éviter. Le **profil recherché**, lui, reste vide : l'annonce générique
-n'a qu'un corps unique, et le découper au jugé pour remplir deux champs
-fabriquerait du texte que personne n'a écrit.
+cherche à éviter. Le **profil recherché**, lui, ne vient JAMAIS de l'annonce
+générique : elle n'a qu'un corps unique, et le découper au jugé pour remplir
+deux champs fabriquerait du texte que personne n'a écrit. Il est rédigé par son
+propre chemin — cf. §6septies.
 
 ### 6quater.2 Ni troncature, ni reformatage — on DIT
 
@@ -1451,6 +1452,74 @@ repli prévu. À retenir avant d'envisager de durcir le rapprochement au seul
 sujet — ce serait perdre toutes les candidatures venues de l'Apec.
 
 ---
+
+## 6septies. Le « profil recherché » est RÉDIGÉ (10/09/2026)
+
+**Le constat.** Le champ était rempli par la LISTE des compétences clés de la
+fiche : « Compétences recherchées : - Sage 100 - Anglais courant ». C'est exact,
+c'est traçable, et **ça ne dresse aucun profil**. Un candidat qui lit une offre
+attend une ou deux phrases qui lui disent s'il est concerné ; une énumération de
+mots-clés ne le lui dit pas, et une offre publiée ainsi sur apec.fr se remarque.
+
+**Ce qui change.** Le profil est désormais **rédigé par le modèle**, à partir du
+**descriptif du poste tel qu'il est à l'écran** (annonce relue, pré-rédaction ou
+saisie du recruteur) et des éléments de la fiche (intitulé, contrat, séniorité,
+compétences clés). Cible **~150 caractères**. Le report des compétences devient
+le **REPLI** : ce qui reste affiché quand la rédaction n'aboutit pas — un champ
+vide serait pire, et l'écran dit laquelle des deux provenances il montre
+(« ← déduit de la fiche de poste (rédigé par le modèle), à confirmer » vs
+« ← déduit de compétences clés de la fiche de poste »).
+
+**Rédigé à l'OUVERTURE — et c'est une exception assumée.** Le reste du panneau
+tient une règle stricte : rédiger est un geste, jamais un automatisme (§6quater,
+route `draft-text` derrière un bouton). Le donneur d'ordre a tranché autrement
+pour ce champ : *« rédiger dès l'ouverture, comme pour le descriptif de poste,
+le recruteur ajuste s'il veut avant de confirmer »*. La raison tient : le
+descriptif arrive déjà rempli (repris de l'annonce), et un profil vide à côté de
+lui n'est pas un choix — c'est un trou. Le coût est **borné côté client**, pas
+laissé à la bonne volonté du serveur :
+
+- **UN appel par ouverture de panneau** (`profileRequestedRef` — sans ce
+  drapeau, React rejouant les effets en développement, le modèle serait
+  sollicité deux fois) ;
+- **aucun appel quand l'offre est déjà partie** (`shouldDraftProfile` : phases
+  `none` et `failed` seulement) — le contenu est figé à la publication, le
+  formulaire n'est même pas à l'écran, et payer pour un champ invisible n'a
+  aucun sens ;
+- **température 0 et graine fixe** : deux ouvertures du même panneau donnent le
+  même profil. Un texte qui change sous les yeux du recruteur ferait douter du
+  reste de l'écran.
+
+**Une saisie humaine ne se fait jamais écraser.** Le recruteur peut écrire dans
+le champ pendant que le modèle rédige : `profileTouchedRef` fait alors abandonner
+la rédaction automatique à son retour. Sa frappe est une décision. Le bouton
+« Rédiger à nouveau », lui, applique toujours — c'est lui qui l'a demandé.
+
+**La longueur est tenue par le SCHÉMA, pas par une coupe.** `ApecProfileSchema`
+borne la sortie à 120-260 caractères : hors bornes, `chatCompleteJson` re-demande
+au modèle avec l'erreur en clair. Rien n'est jamais tronqué (règle « zéro
+troncature silencieuse » appliquée à un texte généré), et le plancher de 120
+tient l'exigence APEC des 100 caractères (API_408) **même après normalisation**,
+qui ne peut que raccourcir. La normalisation (`normalizeApecProfile`, pure) retire
+puces et marques Markdown et réduit les blancs : contrairement à un descriptif
+repris d'une annonce relue — que le module ne reformate JAMAIS —, ce texte vient
+d'être fabriqué, il n'y a aucune saisie humaine à respecter.
+
+**Le modèle n'invente pas.** Ni diplôme, ni nombre d'années, ni outil, ni
+certification absents des éléments fournis : il reformule, il ne complète pas le
+poste. C'est la règle de l'analyse de CV prise par l'autre bout — une exigence
+inventée ici écarterait de vrais candidats. Et pas de formule creuse : « équipe
+dynamique » ne dit rien d'un profil.
+
+**Où c'est.** Cadrage et normalisation PURS dans
+`src/lib/agents/apec-profile-prompts.ts` (le constant de cible est importé par
+le formulaire, d'où la séparation d'avec l'exécution) ; exécution dans
+`src/lib/agents/server/apec-profile-write.ts` ; route
+`POST /api/campaigns/[id]/adep/profile-text` — elle **n'écrit rien** (ni
+`job_postings`, ni le snapshot de campagne) et ne dépend pas de
+`DEMO_JOBBOARD_ENABLED`, comme sa jumelle `draft-text`. Un échec est **local au
+champ** (message sous le textarea) : un profil non rédigé n'est pas une panne du
+panneau.
 
 ## 7. Phase 2 — lots révisés
 

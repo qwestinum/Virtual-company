@@ -153,7 +153,16 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
                 drafting={panel.drafting}
                 onDraft={() => void panel.draftText()}
               />
-              <ApecOfferForm offer={offer} notes={state.notes} onChange={panel.patch} />
+              <ApecOfferForm
+                offer={offer}
+                // `panel.notes` et non `state.notes` : le profil est rédigé
+                // côté client, sa provenance n'est connue que du panneau.
+                notes={panel.notes}
+                onChange={panel.patch}
+                profileDrafting={panel.profileDrafting}
+                profileError={panel.profileError}
+                onDraftProfile={() => void panel.draftProfile()}
+              />
             </CollapsibleSection>
 
             <CollapsibleSection
@@ -169,7 +178,7 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
             >
               <ApecRequirementsGrid
                 offer={offer}
-                notes={state.notes}
+                notes={panel.notes}
                 onChange={panel.patch}
               />
             </CollapsibleSection>

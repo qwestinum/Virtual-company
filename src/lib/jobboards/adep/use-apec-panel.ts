@@ -6,16 +6,20 @@
  * Sorti du composant pour tenir la règle des 200 lignes, et parce que ce sont
  * des décisions plutôt que du rendu : le panneau devient une vue de cet état.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { completeDraft, type AdepDraftOffer } from './mapping';
+import type { AdepOffer } from '@/types/adep';
+
+import { completeDraft, type AdepDraftOffer, type AdepFieldNote } from './mapping';
 import {
+  draftApecProfile,
   draftApecText,
   loadAdepState,
   publishToApec,
   transitionApec,
   type AdepState,
 } from './panel-client';
+import { adepPhase } from './panel-state';
 import { prefillIssues, type AdepPrefill } from './prefill';
 import { validateAdepOffer, type AdepIssue } from './validate';
 
@@ -40,10 +44,28 @@ export type ApecPanelState = {
   issues: AdepIssue[] | null;
   busy: boolean;
   error: string | null;
+  /**
+   * Provenances des champs, celle du profil COMPRISE.
+   *
+   * ⚠️ À utiliser plutôt que `state.notes` : le profil est rédigé côté client
+   * après le chargement, et la note du serveur (« compétences clés ») ne dirait
+   * plus d'où vient le texte affiché.
+   */
+  notes: Partial<Record<keyof AdepOffer, AdepFieldNote>>;
   /** D'où vient le texte affiché, quand il vient d'ailleurs. */
   prefill: AdepPrefill | null;
   /** Une pré-rédaction est en cours (le modèle écrit). */
   drafting: boolean;
+  /** Le profil est en cours de rédaction (à l'ouverture, ou à la demande). */
+  profileDrafting: boolean;
+  /**
+   * La rédaction du profil n'a pas abouti. LOCAL au champ : le panneau reste
+   * utilisable et garde le report des compétences clés — un profil non rédigé
+   * n'est pas une panne du panneau.
+   */
+  profileError: string | null;
+  /** Redemande un profil au modèle, depuis le descriptif AFFICHÉ. */
+  draftProfile: () => Promise<void>;
   /** Retour neutre d'une action qui a abouti sans rien changer. */
   notice: string | null;
   /**
@@ -75,9 +97,73 @@ export function useApecPanel(campaignId: string): ApecPanelState {
   const [error, setError] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<AdepPrefill | null>(null);
   const [drafting, setDrafting] = useState(false);
+  const [profileDrafting, setProfileDrafting] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  /** Note LOCALE du profil, posée quand le modèle l'a écrit. */
+  const [profileNote, setProfileNote] = useState<AdepFieldNote | null>(null);
+  /**
+   * Le recruteur a touché au champ profil : sa saisie est une DÉCISION, une
+   * rédaction encore en vol ne doit jamais l'écraser.
+   */
+  const profileTouchedRef = useRef(false);
+  /** Une rédaction a déjà été demandée pour ce panneau (garde StrictMode). */
+  const profileRequestedRef = useRef(false);
   const [verified, setVerified] = useState(false);
   /** Message NEUTRE (ni erreur ni succès bruyant) — « rien n'a changé ». */
   const [notice, setNotice] = useState<string | null>(null);
+
+  /**
+   * Demande un profil au modèle et l'applique au formulaire.
+   *
+   * `respectTouched` : l'appel AUTOMATIQUE (ouverture du panneau) abandonne si
+   * le recruteur a écrit dans le champ pendant que le modèle rédigeait — sa
+   * saisie est une décision. L'appel MANUEL, lui, applique toujours : c'est
+   * lui qui l'a demandé.
+   */
+  const runProfileDraft = useCallback(
+    async (description: string, respectTouched: boolean) => {
+      setProfileDrafting(true);
+      setProfileError(null);
+      try {
+        const profile = await draftApecProfile(campaignId, description);
+        if (respectTouched && profileTouchedRef.current) return;
+        setOffer((current) =>
+          current ? { ...current, profileDescription: profile } : current,
+        );
+        // Le libellé doit tenir dans la phrase de `ApecFieldRow`
+        // (« ← déduit de …, à confirmer ») : un texte qui porte déjà sa propre
+        // ponctuation y produirait une phrase bancale.
+        setProfileNote({
+          origin: 'derived',
+          from: 'la fiche de poste (rédigé par le modèle)',
+        });
+        // Le champ n'est plus « touché » par personne : ce texte-ci vient
+        // d'arriver, une rédaction manuelle ultérieure doit pouvoir l'écraser.
+        profileTouchedRef.current = false;
+      } catch (err) {
+        setProfileError(
+          err instanceof Error ? err.message : 'Rédaction du profil impossible.',
+        );
+      } finally {
+        setProfileDrafting(false);
+      }
+    },
+    [campaignId],
+  );
+
+  /**
+   * Le profil se rédige-t-il pour cet état ? Non quand l'offre est déjà partie
+   * chez l'Apec : le formulaire n'est même pas à l'écran (le contenu est figé à
+   * la publication), et appeler le modèle pour un champ invisible serait payer
+   * pour rien.
+   */
+  const shouldDraftProfile = (loaded: AdepState): boolean =>
+    adepPhase(loaded.posting) === 'none' || adepPhase(loaded.posting) === 'failed';
+
+  const draftProfile = useCallback(async () => {
+    if (!offer) return;
+    await runProfileDraft(offer.positionDescription, false);
+  }, [offer, runProfileDraft]);
 
   /**
    * (Re)charge l'état complet depuis le serveur.
@@ -101,13 +187,22 @@ export function useApecPanel(campaignId: string): ApecPanelState {
       setVerified(false);
       setError(null);
       setPhase('ready');
+      // Un rechargement remplace le formulaire par le brouillon du serveur :
+      // le profil rédigé disparaît avec le reste. On efface donc sa note (elle
+      // parlerait d'un texte qui n'est plus là) et on le redemande.
+      setProfileNote(null);
+      setProfileError(null);
+      profileTouchedRef.current = false;
+      if (shouldDraftProfile(loaded)) {
+        void runProfileDraft(loaded.draft.positionDescription, true);
+      }
     } catch (err) {
       // ⚠️ On ne retire PAS le panneau : il disparaîtrait, et activer le canal
       // APEC n'aurait aucun effet visible. On reste à l'écran, et on dit quoi.
       setError(err instanceof Error ? err.message : 'Panneau APEC indisponible.');
       setPhase('error');
     }
-  }, [campaignId]);
+  }, [campaignId, runProfileDraft]);
 
   useEffect(() => {
     let alive = true;
@@ -121,6 +216,14 @@ export function useApecPanel(campaignId: string): ApecPanelState {
         setIssues(loaded.prefillIssues?.length ? loaded.prefillIssues : null);
         setVerified(false);
         setPhase('ready');
+        // Le profil est rédigé DÈS L'OUVERTURE (décision du donneur d'ordre) :
+        // le recruteur trouve le champ rempli et l'ajuste avant de publier.
+        // Le drapeau garantit UN appel par panneau — en développement, React
+        // rejoue les effets, et sans lui le modèle serait sollicité deux fois.
+        if (!profileRequestedRef.current && shouldDraftProfile(loaded)) {
+          profileRequestedRef.current = true;
+          void runProfileDraft(loaded.draft.positionDescription, true);
+        }
       } catch (err) {
         if (!alive) return;
         setError(err instanceof Error ? err.message : 'Panneau APEC indisponible.');
@@ -130,9 +233,12 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     return () => {
       alive = false;
     };
-  }, [campaignId]);
+  }, [campaignId, runProfileDraft]);
 
   const patch = useCallback((p: Partial<AdepDraftOffer>) => {
+    // Une frappe dans le profil est une décision : elle coupe court à une
+    // rédaction encore en vol (cf. `runProfileDraft`).
+    if (p.profileDescription !== undefined) profileTouchedRef.current = true;
     setOffer((current) => (current ? { ...current, ...p } : current));
     // Un rapport devient périmé dès la première frappe : le garder afficherait
     // des erreurs déjà corrigées.
@@ -295,6 +401,16 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     [campaignId, reload],
   );
 
+  // La note du profil, quand le modèle l'a écrit, PRIME sur celle du serveur :
+  // c'est la provenance du texte réellement affiché.
+  const notes = useMemo(
+    () => ({
+      ...(state?.notes ?? {}),
+      ...(profileNote ? { profileDescription: profileNote } : {}),
+    }),
+    [state?.notes, profileNote],
+  );
+
   return {
     phase,
     state,
@@ -302,8 +418,12 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     issues,
     busy,
     error,
+    notes,
     prefill,
     drafting,
+    profileDrafting,
+    profileError,
+    draftProfile,
     notice,
     verified,
     patch,

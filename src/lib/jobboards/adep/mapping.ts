@@ -442,8 +442,14 @@ export function buildAdepDraft(input: AdepDraftInput): AdepDraft {
       : { origin: 'missing', from: 'à rédiger — aucune annonce générique publiée' };
   // Le profil ne vient JAMAIS de l'annonce générique, qui n'a qu'un corps
   // unique : le découper au jugé pour remplir deux champs fabriquerait du texte
-  // que personne n'a écrit. Il vient des compétences clés, qui sont faites pour
-  // ça et déjà validées.
+  // que personne n'a écrit.
+  //
+  // ⚠️ Ce que ce module propose ici est un REPLI. Le profil affiché est
+  // normalement RÉDIGÉ par le modèle à l'ouverture du panneau (route
+  // `adep/profile-text`), parce qu'une liste de compétences ne dresse pas un
+  // profil. Le report des compétences clés reste ce qui s'affiche quand la
+  // rédaction n'aboutit pas — un champ vide serait pire, et l'écran dit
+  // laquelle des deux provenances il montre.
   notes.profileDescription = skillsText
     ? { origin: 'derived', from: 'compétences clés de la fiche de poste' }
     : { origin: 'missing', from: 'à rédiger' };

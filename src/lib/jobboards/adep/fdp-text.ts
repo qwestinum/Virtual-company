@@ -17,6 +17,11 @@
  * la définition même de la redondance — et deux textes saisis séparément pour
  * un même poste finissent par se contredire.
  *
+ * ⚠️ `composeSkillsText` n'est plus ce que le recruteur voit d'ordinaire : le
+ * profil est RÉDIGÉ par le modèle à l'ouverture du panneau (une liste de
+ * compétences ne dresse pas un profil). Ce report est le REPLI — celui qui
+ * reste à l'écran quand la rédaction n'aboutit pas.
+ *
  * ⚠️ Le texte proposé est souvent PLUS COURT que le minimum de l'Apec : trois
  * missions font rarement 200 caractères. C'est assumé — le compteur du
  * formulaire dit ce qui manque, et partir d'une base vaut mieux qu'une page
