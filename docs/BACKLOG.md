@@ -957,15 +957,11 @@ seule.
 
 **Statut** : le formulaire de création couvre désormais 7 sections sur 9
 (référent et régime de réservation ajoutés le 10/09/2026), et l'écran
-post-création porte les panneaux de contenu de canal (annonce générique,
-APEC). Deux blocs de l'édition n'y sont toujours pas.
+post-création porte les surfaces qui n'ouvrent qu'une fois la campagne active
+— annonces publiables (générique, APEC) et présélection vivier. Un bloc de
+l'édition n'y est toujours pas.
 
 **Ce qui manque, et pourquoi ce n'est pas un oubli**
-- **« Vivier — présélection »** : le panneau ne s'affiche en édition que si le
-  flux `vivier` est actif, et il liste une short-list issue d'un calcul qui a
-  besoin de la fiche de scoring VALIDÉE et de la campagne enregistrée. Rien à
-  montrer dans un brouillon ; à envisager sur l'écran post-création, à côté des
-  panneaux de canal, si la démo en a besoin.
 - **« Cycle de vie »** (suspendre / arrêter / reprendre) : sans objet sur une
   campagne qui vient de naître — l'écran post-création n'offre que l'activation,
   qui est la seule transition qui a du sens là.

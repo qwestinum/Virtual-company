@@ -3,11 +3,12 @@
 /**
  * Étape qui SUIT la création d'une campagne, dans la même feuille.
  *
- * Elle existe parce qu'un réglage ne peut pas vivre dans le brouillon : le
- * contenu réellement publié d'un canal (annonce générique, APEC) a besoin
- * d'une campagne ENREGISTRÉE pour être rédigé, relu et figé. On ne renvoie
- * donc plus le DRH rouvrir la campagne en édition — la diffusion se prépare
- * ici, dans la continuité du geste de création.
+ * Elle existe parce que deux surfaces ne peuvent pas vivre dans le brouillon :
+ * l'annonce réellement publiée d'un canal (générique, APEC) et la présélection
+ * vivier ont besoin d'une campagne ENREGISTRÉE, et elles ne s'ouvrent qu'une
+ * fois la campagne ACTIVE — elles font arriver des candidatures, qui ne sont
+ * analysées que sur une campagne active. On ne renvoie donc plus le DRH rouvrir
+ * la campagne en édition : il active ici, puis diffuse ici.
  *
  * L'état affiché est LU DANS LE STORE, pas dans le snapshot reçu à la
  * création : l'activation se fait sur cet écran, et un snapshot figé
@@ -18,7 +19,7 @@ import { canActivate } from '@/lib/campaign/lifecycle';
 import { useCampaignsStore, type ActiveCampaign } from '@/stores/campaigns-store';
 import { countUntreatedSuggestions } from '@/types/scoring';
 
-import { ChannelContentPanel, hasChannelContent } from './ChannelContentPanel';
+import { PostActivationPanels } from './PostActivationPanels';
 import {
   ActivationGateNotice,
   GhostButton,
@@ -56,7 +57,6 @@ export function CampaignCreatedStep({
   // Même verrou que le store : phases obligatoires faites ET aucune pondération
   // suggérée par l'IA laissée sans décision humaine.
   const gateOk = phaseGate.ok && untreated === 0;
-  const contentChannels = campaign.publishedChannels.filter(hasChannelContent);
 
   return (
     <>
@@ -142,24 +142,7 @@ export function CampaignCreatedStep({
           </Notice>
         ) : null}
 
-        {contentChannels.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {!active ? (
-              <Notice tone="yellow">
-                Vous pouvez rédiger l’annonce dès maintenant. En revanche,{' '}
-                <strong>publiez après l’activation</strong> : une candidature
-                reçue sur une campagne en brouillon n’est pas analysée.
-              </Notice>
-            ) : null}
-            {contentChannels.map((channel) => (
-              <ChannelContentPanel
-                key={channel}
-                channel={channel}
-                campaignId={campaign.id}
-              />
-            ))}
-          </div>
-        ) : null}
+        <PostActivationPanels campaign={campaign} active={active} />
       </div>
 
       <footer

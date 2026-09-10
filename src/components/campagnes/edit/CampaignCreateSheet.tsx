@@ -31,6 +31,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { applyDraftScheduling } from '@/lib/campaign/apply-draft-scheduling';
+import { listPostActivationSurfaces } from '@/lib/campaign/post-activation-surfaces';
 import {
   resolveDraftOwner,
   useRecruiterOptions,
@@ -70,7 +71,6 @@ import {
 } from '@/types/scoring';
 
 import { CampaignCreatedStep } from './CampaignCreatedStep';
-import { hasChannelContent } from './ChannelContentPanel';
 import { CollapsibleSection } from './CollapsibleSection';
 import { ChannelsDraftEditor } from './draft/ChannelsDraftEditor';
 import { FluxDraftEditor } from './draft/FluxDraftEditor';
@@ -586,11 +586,12 @@ export function CampaignCreateSheet({ onClose }: CampaignCreateSheetProps) {
         campaignId: created.id,
         campaignName: created.name,
       });
-      // On NE ferme pas quand un canal reste à rédiger/publier : c'est
-      // précisément l'ordre à respecter (activer, puis publier), et refermer
-      // ici renverrait rouvrir la campagne en édition — le geste qu'on
-      // supprime. Sans canal porteur de contenu, rien à attendre : on ferme.
-      if (!channels.some(hasChannelContent)) onClose();
+      // On NE ferme pas quand une surface s'ouvre à l'activation (annonce à
+      // publier, présélection vivier) : c'est précisément l'ordre à respecter
+      // — activer, PUIS diffuser — et refermer ici renverrait rouvrir la
+      // campagne en édition, le geste qu'on supprime. Rien à faire après
+      // l'activation : on ferme, comme avant.
+      if (!listPostActivationSurfaces(channels, sources).any) onClose();
     } else {
       setActivateError(
         'Activation impossible pour le moment — complétez les éléments requis puis réessayez.',

@@ -4,8 +4,11 @@ import {
   deriveCampaignName,
   nextOpenSection,
 } from '@/components/campagnes/edit/CampaignCreateSheet';
-import { hasChannelContent } from '@/components/campagnes/edit/ChannelContentPanel';
 import { buildSchedulingPatch } from '@/lib/campaign/apply-draft-scheduling';
+import {
+  hasChannelContent,
+  listPostActivationSurfaces,
+} from '@/lib/campaign/post-activation-surfaces';
 import {
   resolveDraftOwner,
   type RecruiterOption,
@@ -175,5 +178,32 @@ describe('hasChannelContent — seuls les canaux qui PUBLIENT un texte', () => {
     expect(hasChannelContent('indeed')).toBe(false);
     expect(hasChannelContent('france_travail')).toBe(false);
     expect(hasChannelContent('welcome_to_the_jungle')).toBe(false);
+  });
+});
+
+
+describe('listPostActivationSurfaces — ce qui n’ouvre qu’après l’activation', () => {
+  it('rien à attendre quand aucun canal ne publie et que le vivier est absent', () => {
+    expect(listPostActivationSurfaces(['linkedin', 'indeed'], ['email']).any).toBe(
+      false,
+    );
+  });
+
+  it('les annonces publiables sortent dans l’ordre canonique, pas celui du clic', () => {
+    // Deux campagnes aux mêmes canaux doivent montrer le même écran.
+    expect(
+      listPostActivationSurfaces(['apec', 'linkedin', 'generic'], []).contentChannels,
+    ).toEqual(['generic', 'apec']);
+  });
+
+  it('le flux vivier ouvre la présélection — à lui seul', () => {
+    const surfaces = listPostActivationSurfaces(['linkedin'], ['vivier']);
+    expect(surfaces).toEqual({ contentChannels: [], vivier: true, any: true });
+  });
+
+  it('un canal sans contenu n’ouvre rien, même actif', () => {
+    expect(
+      listPostActivationSurfaces(['france_travail'], ['manual']),
+    ).toEqual({ contentChannels: [], vivier: false, any: false });
   });
 });

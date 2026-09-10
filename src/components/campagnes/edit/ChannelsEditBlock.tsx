@@ -14,8 +14,9 @@
  * d'« activer » une campagne sans aucun flux de réception configuré.
  *
  * Les canaux porteurs d'un CONTENU publié (annonce générique, APEC) déploient
- * un panneau sous leur toggle — recensés dans `ChannelContentPanel`, partagé
- * avec l'écran qui suit la création d'une campagne.
+ * un panneau sous leur toggle. Ici on les montre sans condition de statut : sur
+ * une campagne DÉJÀ créée, le DRH est chez lui. C'est à la création que ces
+ * surfaces attendent l'activation (cf. `post-activation-surfaces`).
  */
 
 import { useState } from 'react';
