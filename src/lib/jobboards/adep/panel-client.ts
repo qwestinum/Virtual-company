@@ -191,17 +191,23 @@ export async function transitionApec(
   return data;
 }
 
+export type ApecOfferTextDraft = {
+  positionDescription: string;
+  profileDescription: string;
+};
+
 /**
- * Demande la rédaction du « profil recherché » à partir du descriptif AFFICHÉ.
- * N'écrit rien : le texte remplit le champ, le recruteur ajuste, « Publier »
- * envoie. Appelée à l'ouverture du panneau (et à la demande) — cf. la route.
+ * Demande la rédaction des DEUX textes de l'offre à partir du descriptif
+ * AFFICHÉ (le matériau). N'écrit rien : les textes remplissent les champs, le
+ * recruteur ajuste, « Publier » envoie. Appelée à l'ouverture du panneau et à
+ * la demande — cf. la route.
  */
-export async function draftApecProfile(
+export async function draftApecOfferText(
   campaignId: string,
   positionDescription: string,
-): Promise<string> {
+): Promise<ApecOfferTextDraft> {
   const res = await fetch(
-    `/api/campaigns/${encodeURIComponent(campaignId)}/adep/profile-text`,
+    `/api/campaigns/${encodeURIComponent(campaignId)}/adep/offer-text`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -209,22 +215,10 @@ export async function draftApecProfile(
     },
   );
   if (!res.ok) throw new Error(await readError(res));
-  const data = (await res.json()) as { profileDescription?: string };
+  const data = (await res.json()) as Partial<ApecOfferTextDraft>;
+  const description = data.positionDescription?.trim() ?? '';
   const profile = data.profileDescription?.trim() ?? '';
-  if (!profile) throw new Error('Le profil rendu est vide.');
-  return profile;
+  if (!description || !profile) throw new Error('Les textes rendus sont vides.');
+  return { positionDescription: description, profileDescription: profile };
 }
 
-/**
- * Demande une pré-rédaction du texte de l'offre. N'écrit rien : le résultat
- * remplit le formulaire, le recruteur relit, et seul « Publier » envoie.
- */
-export async function draftApecText(campaignId: string): Promise<AdepPrefill | null> {
-  const res = await fetch(
-    `/api/campaigns/${encodeURIComponent(campaignId)}/adep/draft-text`,
-    { method: 'POST' },
-  );
-  if (!res.ok) throw new Error(await readError(res));
-  const data = (await res.json()) as { prefill: AdepPrefill | null };
-  return data.prefill ?? null;
-}

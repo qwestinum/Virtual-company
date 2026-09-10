@@ -13,18 +13,17 @@
  *     qu'on croie à une synchronisation qui n'existe pas, et qu'on découvre
  *     l'écart une fois l'offre en ligne, quand elle n'est plus modifiable.
  *
- * Quand il n'y a rien à reprendre, on le dit aussi, et on propose de
- * pré-rédiger — un geste, jamais un automatisme (cf. la route `draft-text`).
+ * Quand il n'y a rien à reprendre, on le dit aussi — et on dit ce qui a été
+ * fait à la place : les deux textes ont été RÉDIGÉS pour l'Apec à partir de la
+ * fiche de poste (cf. la route `offer-text`). Le geste de re-rédaction vit sous
+ * chaque champ, au plus près du texte qu'il remplace, et non ici : un bouton
+ * en tête de bloc ne dit pas lequel des deux il va réécrire.
  */
 import { ADEP_PREFILL_SNAPSHOT_NOTICE } from '@/lib/jobboards/adep/panel-state';
 import type { AdepPrefill } from '@/lib/jobboards/adep/prefill';
 
-import { ghostBtn } from './job-ad-panel-styles';
-
 export type ApecPrefillNoticeProps = {
   prefill: AdepPrefill | null;
-  drafting: boolean;
-  onDraft: () => void;
 };
 
 const boxStyle = {
@@ -37,48 +36,28 @@ const boxStyle = {
   color: 'var(--dash-text-secondary)',
 } as const;
 
-export function ApecPrefillNotice({ prefill, drafting, onDraft }: ApecPrefillNoticeProps) {
+export function ApecPrefillNotice({ prefill }: ApecPrefillNoticeProps) {
   if (!prefill) {
     return (
       <div style={boxStyle}>
         <div>
           Aucune annonce générique publiée pour cette campagne : l’intitulé vient
-          de la fiche de poste, le descriptif est à écrire.
+          de la fiche de poste, et les deux textes ci-dessous ont été rédigés
+          pour l’Apec à partir d’elle — à relire avant publication.
         </div>
-        <button
-          type="button"
-          style={{ ...ghostBtn, marginTop: 8 }}
-          onClick={onDraft}
-          disabled={drafting}
-        >
-          {drafting ? 'Rédaction en cours…' : 'Pré-rédiger le texte'}
-        </button>
       </div>
     );
   }
 
-  // Une pré-rédaction n'a été relue par personne : on peut la refaire sans rien
-  // perdre. Un texte publié, si — le bouton disparaît plutôt que d'offrir
-  // d'écraser ce qu'un humain a validé.
-  const rewritable = prefill.source === 'job_writer';
-
   return (
     <div style={boxStyle}>
       <div>
-        Titre et descriptif repris de l’{prefill.label}. Ils restent modifiables
-        ici — le format de l’Apec n’est pas celui du canal générique.
+        Titre et descriptif repris de l’{prefill.label} ; le profil recherché a
+        été rédigé pour l’Apec. Tout reste modifiable ici — le format de l’Apec
+        n’est pas celui du canal générique, et « Rédiger à nouveau », sous
+        chaque champ, réécrit le texte concerné.
       </div>
       <div style={{ marginTop: 4 }}>{ADEP_PREFILL_SNAPSHOT_NOTICE}</div>
-      {rewritable ? (
-        <button
-          type="button"
-          style={{ ...ghostBtn, marginTop: 8 }}
-          onClick={onDraft}
-          disabled={drafting}
-        >
-          {drafting ? 'Rédaction en cours…' : 'Pré-rédiger à nouveau'}
-        </button>
-      ) : null}
     </div>
   );
 }

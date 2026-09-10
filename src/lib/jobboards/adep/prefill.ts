@@ -40,11 +40,15 @@ import { ADEP_LIMITS, type AdepIssue } from './validate';
  *   · `generic_published`   — l'annonce générique en ligne. Relue ET publiée
  *                             par un humain : c'est la source la plus sûre ;
  *   · `generic_unpublished` — la même, dépubliée depuis. Le texte reste celui
- *                             qu'un humain a relu, et c'est ce qui compte ici ;
- *   · `job_writer`          — pré-rédigé à la demande, jamais relu par
- *                             personne. Se présente comme un brouillon.
+ *                             qu'un humain a relu, et c'est ce qui compte ici.
+ *
+ * ⚠️ Il n'y a plus de troisième source. La pré-rédaction par le Job Writer a
+ * été retirée du chemin APEC : les textes de l'offre sont désormais rédigés au
+ * format du canal (`offer-text`, ~150 mots, bornes de l'Apec), et deux
+ * rédacteurs pour un même champ finissaient par écrire deux annonces
+ * différentes.
  */
-export type AdepPrefillSource = 'generic_published' | 'generic_unpublished' | 'job_writer';
+export type AdepPrefillSource = 'generic_published' | 'generic_unpublished';
 
 export type AdepPrefill = {
   source: AdepPrefillSource;
@@ -99,8 +103,6 @@ export function describePrefillSource(
       return `annonce générique publiée${on}`;
     case 'generic_unpublished':
       return `annonce générique${on} (dépubliée)`;
-    case 'job_writer':
-      return 'brouillon pré-rédigé, à relire';
   }
 }
 
@@ -128,24 +130,6 @@ export function prefillFromJobPost(post: DemoJobPost | null): AdepPrefill | null
     positionDescription: body,
     at,
     label: describePrefillSource(source, at),
-    hasMarkup: hasMarkdownMarkup(body),
-  };
-}
-
-/** Le pré-remplissage tiré d'une pré-rédaction — jamais relue, et ça se dit. */
-export function prefillFromGeneration(input: {
-  title: string;
-  body: string;
-}): AdepPrefill | null {
-  const title = input.title.trim();
-  const body = input.body.trim();
-  if (!title && !body) return null;
-  return {
-    source: 'job_writer',
-    positionTitle: title,
-    positionDescription: body,
-    at: null,
-    label: describePrefillSource('job_writer', null),
     hasMarkup: hasMarkdownMarkup(body),
   };
 }

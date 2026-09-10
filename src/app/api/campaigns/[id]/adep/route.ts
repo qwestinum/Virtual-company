@@ -58,7 +58,7 @@ export async function GET(
     // existe : ce que le recruteur a relu ne se ressaisit pas. On ne GÉNÈRE
     // rien ici — rédiger à l'ouverture d'un panneau serait écrire à la place de
     // quelqu'un, et le ferait à chaque rechargement de l'écran. La
-    // pré-rédaction est un geste explicite (sous-route `draft-text`).
+    // rédaction des textes vit dans la sous-route `offer-text`.
     //
     // Fail-soft : la table du jobboard peut être absente d'une installation qui
     // n'a jamais activé la démonstration. Un panneau APEC vide vaut mieux qu'un

@@ -148,20 +148,16 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
               open={open === 'annonce'}
               onToggle={() => toggle('annonce')}
             >
-              <ApecPrefillNotice
-                prefill={panel.prefill}
-                drafting={panel.drafting}
-                onDraft={() => void panel.draftText()}
-              />
+              <ApecPrefillNotice prefill={panel.prefill} />
               <ApecOfferForm
                 offer={offer}
                 // `panel.notes` et non `state.notes` : le profil est rédigé
                 // côté client, sa provenance n'est connue que du panneau.
                 notes={panel.notes}
                 onChange={panel.patch}
-                profileDrafting={panel.profileDrafting}
-                profileError={panel.profileError}
-                onDraftProfile={() => void panel.draftProfile()}
+                textDrafting={panel.textDrafting}
+                textError={panel.textError}
+                onDraftText={(target) => void panel.draftOfferText(target)}
               />
             </CollapsibleSection>
 

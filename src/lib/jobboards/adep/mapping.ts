@@ -271,11 +271,14 @@ export type AdepDraftInput = {
 };
 
 /**
- * Un texte publié est un FAIT (un humain l'a relu et mis en ligne) ; une
- * pré-rédaction reste une PROPOSITION. La nuance est ce que l'écran affiche.
+ * Un texte repris de l'annonce générique est un FAIT : un humain l'a relu et
+ * mis en ligne. C'est désormais la SEULE nature de pré-remplissage — la
+ * pré-rédaction par le Job Writer, qui n'était qu'une proposition, a quitté le
+ * chemin APEC (les textes de l'offre sont rédigés au format du canal, et leur
+ * provenance est posée côté panneau).
  */
-function prefillOrigin(prefill: AdepPrefill | null): AdepFieldOrigin {
-  return prefill?.source === 'job_writer' ? 'derived' : 'certain';
+function prefillOrigin(_prefill: AdepPrefill | null): AdepFieldOrigin {
+  return 'certain';
 }
 
 function fieldValue(fdp: FDPInProgress, key: FieldKey): unknown {

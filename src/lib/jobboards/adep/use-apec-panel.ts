@@ -12,16 +12,25 @@ import type { AdepOffer } from '@/types/adep';
 
 import { completeDraft, type AdepDraftOffer, type AdepFieldNote } from './mapping';
 import {
-  draftApecProfile,
-  draftApecText,
+  draftApecOfferText,
   loadAdepState,
   publishToApec,
   transitionApec,
   type AdepState,
 } from './panel-client';
 import { adepPhase } from './panel-state';
-import { prefillIssues, type AdepPrefill } from './prefill';
+import type { AdepPrefill } from './prefill';
 import { validateAdepOffer, type AdepIssue } from './validate';
+
+/**
+ * Provenance d'un texte écrit par le modèle. Le libellé doit tenir dans la
+ * phrase de `ApecFieldRow` (« ← déduit de …, à confirmer ») : un texte qui
+ * porte sa propre ponctuation y produirait une phrase bancale.
+ */
+const WRITTEN_NOTE: AdepFieldNote = {
+  origin: 'derived',
+  from: 'la fiche de poste (rédigé par le modèle)',
+};
 
 /** Jour courant, fuseau France — les règles de date de l'Apec sont civiles. */
 function todayInParis(): string {
@@ -54,18 +63,22 @@ export type ApecPanelState = {
   notes: Partial<Record<keyof AdepOffer, AdepFieldNote>>;
   /** D'où vient le texte affiché, quand il vient d'ailleurs. */
   prefill: AdepPrefill | null;
-  /** Une pré-rédaction est en cours (le modèle écrit). */
-  drafting: boolean;
-  /** Le profil est en cours de rédaction (à l'ouverture, ou à la demande). */
-  profileDrafting: boolean;
   /**
-   * La rédaction du profil n'a pas abouti. LOCAL au champ : le panneau reste
-   * utilisable et garde le report des compétences clés — un profil non rédigé
-   * n'est pas une panne du panneau.
+   * Quel(s) texte(s) le modèle est en train de rédiger — `null` sinon.
+   * `both` = la rédaction automatique de l'ouverture.
    */
-  profileError: string | null;
-  /** Redemande un profil au modèle, depuis le descriptif AFFICHÉ. */
-  draftProfile: () => Promise<void>;
+  textDrafting: 'description' | 'profile' | 'both' | null;
+  /**
+   * La rédaction n'a pas abouti. LOCAL aux champs : le panneau reste utilisable
+   * et garde le report des listes de la fiche — des textes non rédigés ne sont
+   * pas une panne du panneau.
+   */
+  textError: string | null;
+  /**
+   * Redemande un texte au modèle, depuis le descriptif AFFICHÉ. `target`
+   * désigne le champ à remplacer : l'autre garde ce qu'il a.
+   */
+  draftOfferText: (target: 'description' | 'profile') => Promise<void>;
   /** Retour neutre d'une action qui a abouti sans rien changer. */
   notice: string | null;
   /**
@@ -82,8 +95,6 @@ export type ApecPanelState = {
   verify: () => void;
   publish: () => Promise<void>;
   act: (action: 'suspend' | 'republish' | 'refresh') => Promise<void>;
-  /** Pré-rédige le texte. Geste explicite : jamais déclenché à l'ouverture. */
-  draftText: () => Promise<void>;
   /** Recharge tout l'état. Offert à l'écran quand le chargement a échoué. */
   reload: () => Promise<void>;
 };
@@ -96,74 +107,123 @@ export function useApecPanel(campaignId: string): ApecPanelState {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<AdepPrefill | null>(null);
-  const [drafting, setDrafting] = useState(false);
-  const [profileDrafting, setProfileDrafting] = useState(false);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  /** Note LOCALE du profil, posée quand le modèle l'a écrit. */
-  const [profileNote, setProfileNote] = useState<AdepFieldNote | null>(null);
+  const [textDrafting, setTextDrafting] =
+    useState<ApecPanelState['textDrafting']>(null);
+  const [textError, setTextError] = useState<string | null>(null);
+  /** Notes LOCALES des deux textes, posées quand le modèle les a écrits. */
+  const [writtenNotes, setWrittenNotes] = useState<{
+    positionDescription?: AdepFieldNote;
+    profileDescription?: AdepFieldNote;
+  }>({});
   /**
-   * Le recruteur a touché au champ profil : sa saisie est une DÉCISION, une
+   * Le recruteur a touché à un champ : sa saisie est une DÉCISION, une
    * rédaction encore en vol ne doit jamais l'écraser.
    */
-  const profileTouchedRef = useRef(false);
+  const touchedRef = useRef({ description: false, profile: false });
   /** Une rédaction a déjà été demandée pour ce panneau (garde StrictMode). */
-  const profileRequestedRef = useRef(false);
+  const textRequestedRef = useRef(false);
   const [verified, setVerified] = useState(false);
   /** Message NEUTRE (ni erreur ni succès bruyant) — « rien n'a changé ». */
   const [notice, setNotice] = useState<string | null>(null);
 
   /**
-   * Demande un profil au modèle et l'applique au formulaire.
+   * Demande les deux textes au modèle et applique CEUX QU'ON VEUT.
    *
-   * `respectTouched` : l'appel AUTOMATIQUE (ouverture du panneau) abandonne si
-   * le recruteur a écrit dans le champ pendant que le modèle rédigeait — sa
-   * saisie est une décision. L'appel MANUEL, lui, applique toujours : c'est
-   * lui qui l'a demandé.
+   * `apply` dit quels champs remplacer : à l'ouverture, le profil toujours et
+   * le descriptif seulement s'il n'était qu'un report de la fiche — réécrire un
+   * texte relu par un humain demande un geste. Depuis un bouton, un seul champ,
+   * celui qu'on a désigné.
+   *
+   * `respectTouched` : l'appel AUTOMATIQUE abandonne un champ où le recruteur a
+   * écrit pendant que le modèle rédigeait — sa saisie est une décision. L'appel
+   * MANUEL applique toujours : c'est lui qui l'a demandé.
    */
-  const runProfileDraft = useCallback(
-    async (description: string, respectTouched: boolean) => {
-      setProfileDrafting(true);
-      setProfileError(null);
+  const runTextDraft = useCallback(
+    async (
+      source: string,
+      apply: { description: boolean; profile: boolean },
+      respectTouched: boolean,
+    ) => {
+      setTextDrafting(
+        apply.description && apply.profile
+          ? 'both'
+          : apply.description
+            ? 'description'
+            : 'profile',
+      );
+      setTextError(null);
       try {
-        const profile = await draftApecProfile(campaignId, description);
-        if (respectTouched && profileTouchedRef.current) return;
+        const drafted = await draftApecOfferText(campaignId, source);
+        const takeDescription =
+          apply.description && !(respectTouched && touchedRef.current.description);
+        const takeProfile =
+          apply.profile && !(respectTouched && touchedRef.current.profile);
+        if (!takeDescription && !takeProfile) return;
         setOffer((current) =>
-          current ? { ...current, profileDescription: profile } : current,
+          current
+            ? {
+                ...current,
+                ...(takeDescription
+                  ? { positionDescription: drafted.positionDescription }
+                  : {}),
+                ...(takeProfile
+                  ? { profileDescription: drafted.profileDescription }
+                  : {}),
+              }
+            : current,
         );
-        // Le libellé doit tenir dans la phrase de `ApecFieldRow`
-        // (« ← déduit de …, à confirmer ») : un texte qui porte déjà sa propre
-        // ponctuation y produirait une phrase bancale.
-        setProfileNote({
-          origin: 'derived',
-          from: 'la fiche de poste (rédigé par le modèle)',
-        });
-        // Le champ n'est plus « touché » par personne : ce texte-ci vient
-        // d'arriver, une rédaction manuelle ultérieure doit pouvoir l'écraser.
-        profileTouchedRef.current = false;
+        setWrittenNotes((current) => ({
+          ...current,
+          ...(takeDescription ? { positionDescription: WRITTEN_NOTE } : {}),
+          ...(takeProfile ? { profileDescription: WRITTEN_NOTE } : {}),
+        }));
+        // Les champs remplacés ne sont plus « touchés » par personne : ces
+        // textes-ci viennent d'arriver, une rédaction ultérieure peut les
+        // écraser.
+        if (takeDescription) touchedRef.current.description = false;
+        if (takeProfile) touchedRef.current.profile = false;
+        // Le texte a changé : un rapport de vérification devient périmé.
+        setIssues(null);
+        setVerified(false);
       } catch (err) {
-        setProfileError(
-          err instanceof Error ? err.message : 'Rédaction du profil impossible.',
+        setTextError(
+          err instanceof Error ? err.message : 'Rédaction des textes impossible.',
         );
       } finally {
-        setProfileDrafting(false);
+        setTextDrafting(null);
       }
     },
     [campaignId],
   );
 
   /**
-   * Le profil se rédige-t-il pour cet état ? Non quand l'offre est déjà partie
-   * chez l'Apec : le formulaire n'est même pas à l'écran (le contenu est figé à
-   * la publication), et appeler le modèle pour un champ invisible serait payer
-   * pour rien.
+   * Les textes se rédigent-ils pour cet état ? Non quand l'offre est déjà
+   * partie chez l'Apec : le formulaire n'est même pas à l'écran (le contenu est
+   * figé à la publication), et appeler le modèle pour des champs invisibles
+   * serait payer pour rien.
    */
-  const shouldDraftProfile = (loaded: AdepState): boolean =>
+  const shouldDraftText = (loaded: AdepState): boolean =>
     adepPhase(loaded.posting) === 'none' || adepPhase(loaded.posting) === 'failed';
 
-  const draftProfile = useCallback(async () => {
-    if (!offer) return;
-    await runProfileDraft(offer.positionDescription, false);
-  }, [offer, runProfileDraft]);
+  /**
+   * Le descriptif chargé n'est-il qu'un REPORT de la fiche ? Alors le modèle
+   * peut le réécrire d'office. S'il vient d'une annonce (relue) ou d'un
+   * brouillon demandé, on n'y touche pas sans geste explicite.
+   */
+  const descriptionIsReport = (loaded: AdepState): boolean =>
+    loaded.prefill === null;
+
+  const draftOfferText = useCallback(
+    async (target: 'description' | 'profile') => {
+      if (!offer) return;
+      await runTextDraft(
+        offer.positionDescription,
+        { description: target === 'description', profile: target === 'profile' },
+        false,
+      );
+    },
+    [offer, runTextDraft],
+  );
 
   /**
    * (Re)charge l'état complet depuis le serveur.
@@ -188,13 +248,17 @@ export function useApecPanel(campaignId: string): ApecPanelState {
       setError(null);
       setPhase('ready');
       // Un rechargement remplace le formulaire par le brouillon du serveur :
-      // le profil rédigé disparaît avec le reste. On efface donc sa note (elle
-      // parlerait d'un texte qui n'est plus là) et on le redemande.
-      setProfileNote(null);
-      setProfileError(null);
-      profileTouchedRef.current = false;
-      if (shouldDraftProfile(loaded)) {
-        void runProfileDraft(loaded.draft.positionDescription, true);
+      // les textes rédigés disparaissent avec le reste. On efface donc leurs
+      // notes (elles parleraient de textes qui ne sont plus là) et on redemande.
+      setWrittenNotes({});
+      setTextError(null);
+      touchedRef.current = { description: false, profile: false };
+      if (shouldDraftText(loaded)) {
+        void runTextDraft(
+          loaded.draft.positionDescription,
+          { description: descriptionIsReport(loaded), profile: true },
+          true,
+        );
       }
     } catch (err) {
       // ⚠️ On ne retire PAS le panneau : il disparaîtrait, et activer le canal
@@ -202,7 +266,7 @@ export function useApecPanel(campaignId: string): ApecPanelState {
       setError(err instanceof Error ? err.message : 'Panneau APEC indisponible.');
       setPhase('error');
     }
-  }, [campaignId, runProfileDraft]);
+  }, [campaignId, runTextDraft]);
 
   useEffect(() => {
     let alive = true;
@@ -216,13 +280,20 @@ export function useApecPanel(campaignId: string): ApecPanelState {
         setIssues(loaded.prefillIssues?.length ? loaded.prefillIssues : null);
         setVerified(false);
         setPhase('ready');
-        // Le profil est rédigé DÈS L'OUVERTURE (décision du donneur d'ordre) :
-        // le recruteur trouve le champ rempli et l'ajuste avant de publier.
-        // Le drapeau garantit UN appel par panneau — en développement, React
-        // rejoue les effets, et sans lui le modèle serait sollicité deux fois.
-        if (!profileRequestedRef.current && shouldDraftProfile(loaded)) {
-          profileRequestedRef.current = true;
-          void runProfileDraft(loaded.draft.positionDescription, true);
+        // Les textes sont rédigés DÈS L'OUVERTURE (décision du donneur
+        // d'ordre) : le recruteur les trouve écrits et les ajuste avant de
+        // publier. Le drapeau garantit UN appel par panneau — en
+        // développement React rejoue les effets, et sans lui le modèle serait
+        // sollicité deux fois. Le descriptif n'est réécrit que s'il n'était
+        // qu'un report de la fiche : une annonce relue ne se réécrit pas
+        // toute seule.
+        if (!textRequestedRef.current && shouldDraftText(loaded)) {
+          textRequestedRef.current = true;
+          void runTextDraft(
+            loaded.draft.positionDescription,
+            { description: descriptionIsReport(loaded), profile: true },
+            true,
+          );
         }
       } catch (err) {
         if (!alive) return;
@@ -233,12 +304,13 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     return () => {
       alive = false;
     };
-  }, [campaignId, runProfileDraft]);
+  }, [campaignId, runTextDraft]);
 
   const patch = useCallback((p: Partial<AdepDraftOffer>) => {
-    // Une frappe dans le profil est une décision : elle coupe court à une
-    // rédaction encore en vol (cf. `runProfileDraft`).
-    if (p.profileDescription !== undefined) profileTouchedRef.current = true;
+    // Une frappe dans un texte est une décision : elle coupe court à une
+    // rédaction encore en vol (cf. `runTextDraft`).
+    if (p.positionDescription !== undefined) touchedRef.current.description = true;
+    if (p.profileDescription !== undefined) touchedRef.current.profile = true;
     setOffer((current) => (current ? { ...current, ...p } : current));
     // Un rapport devient périmé dès la première frappe : le garder afficherait
     // des erreurs déjà corrigées.
@@ -303,38 +375,6 @@ export function useApecPanel(campaignId: string): ApecPanelState {
       setBusy(false);
     }
   }, [campaignId, complete, offer, runVerify]);
-
-  /**
-   * Pré-rédaction à la demande. Le texte obtenu REMPLACE le descriptif et,
-   * seulement s'il est vide, l'intitulé : un titre déjà saisi est une décision,
-   * l'écraser ferait perdre une correction.
-   */
-  const draftText = useCallback(async () => {
-    if (!offer) return;
-    setDrafting(true);
-    setError(null);
-    try {
-      const drafted = await draftApecText(campaignId);
-      if (!drafted) return;
-      // Le texte est calculé ICI, pas dans l'updater de `setOffer` : un effet
-      // de bord glissé dans une fonction de mise à jour est rejoué en
-      // StrictMode, et les écarts s'afficheraient deux fois.
-      const next = {
-        ...offer,
-        positionDescription: drafted.positionDescription,
-        positionTitle: offer.positionTitle.trim() || drafted.positionTitle,
-      };
-      const found = prefillIssues(drafted, next);
-      setPrefill(drafted);
-      setOffer(next);
-      setIssues(found.length > 0 ? found : null);
-      setVerified(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Pré-rédaction impossible.');
-    } finally {
-      setDrafting(false);
-    }
-  }, [campaignId, offer]);
 
   const act = useCallback(
     async (action: 'suspend' | 'republish' | 'refresh') => {
@@ -401,14 +441,11 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     [campaignId, reload],
   );
 
-  // La note du profil, quand le modèle l'a écrit, PRIME sur celle du serveur :
-  // c'est la provenance du texte réellement affiché.
+  // Les notes des textes RÉDIGÉS priment sur celles du serveur : c'est la
+  // provenance de ce qui est réellement affiché.
   const notes = useMemo(
-    () => ({
-      ...(state?.notes ?? {}),
-      ...(profileNote ? { profileDescription: profileNote } : {}),
-    }),
-    [state?.notes, profileNote],
+    () => ({ ...(state?.notes ?? {}), ...writtenNotes }),
+    [state?.notes, writtenNotes],
   );
 
   return {
@@ -420,17 +457,15 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     error,
     notes,
     prefill,
-    drafting,
-    profileDrafting,
-    profileError,
-    draftProfile,
+    textDrafting,
+    textError,
+    draftOfferText,
     notice,
     verified,
     patch,
     verify,
     publish,
     act,
-    draftText,
     reload,
   };
 }

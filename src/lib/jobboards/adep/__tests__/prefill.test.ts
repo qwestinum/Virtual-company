@@ -13,7 +13,6 @@ import type { DemoJobPost } from '@/types/job-post';
 import {
   describePrefillSource,
   hasMarkdownMarkup,
-  prefillFromGeneration,
   prefillFromJobPost,
   prefillIssues,
 } from '../prefill';
@@ -59,22 +58,6 @@ describe('prefillFromJobPost — reprendre ce qui a été relu', () => {
   it('rend null quand il n’y a rien à reprendre', () => {
     expect(prefillFromJobPost(null)).toBeNull();
     expect(prefillFromJobPost(jobPost({ title: '  ', body: '  ' }))).toBeNull();
-  });
-});
-
-describe('prefillFromGeneration — le repli, qui ne se fait pas passer pour relu', () => {
-  it('se présente comme un brouillon, jamais comme un texte validé', () => {
-    const prefill = prefillFromGeneration({
-      title: 'Comptable général (H/F)',
-      body: 'Missions variées au sein du service comptable.',
-    });
-    expect(prefill?.source).toBe('job_writer');
-    expect(prefill?.at).toBeNull();
-    expect(prefill?.label).toBe('brouillon pré-rédigé, à relire');
-  });
-
-  it('rend null sur une génération vide plutôt qu’un brouillon fantôme', () => {
-    expect(prefillFromGeneration({ title: '', body: '   ' })).toBeNull();
   });
 });
 

@@ -11,12 +11,13 @@
  * Chaque champ déduit porte sa provenance (cf. `ApecFieldRow`) : une valeur
  * traduite se présente comme une proposition, jamais comme un fait.
  *
- * Le « profil recherché » est le seul champ RÉDIGÉ par le modèle, dès
- * l'ouverture : il porte donc son propre état (rédaction en cours, échec) et
- * son propre geste (« Rédiger à nouveau »), au plus près du texte concerné —
- * une erreur globale en tête de panneau ne dirait pas quel champ elle vise.
+ * Le descriptif du poste et le profil recherché sont RÉDIGÉS par le modèle dès
+ * l'ouverture (~150 mots chacun, dans les bornes de l'Apec). Chacun porte donc
+ * son propre état (rédaction en cours) et son propre geste (« Rédiger à
+ * nouveau »), au plus près du texte concerné — une erreur en tête de panneau ne
+ * dirait pas quel champ elle vise.
  */
-import { APEC_PROFILE_TARGET_CHARS } from '@/lib/agents/apec-profile-prompts';
+import { APEC_TEXT_TARGET_WORDS } from '@/lib/agents/apec-offer-text-prompts';
 import type { AdepDraftOffer, AdepFieldNote } from '@/lib/jobboards/adep/mapping';
 import { withGenderMention } from '@/lib/jobboards/adep/build-open-position';
 import { ADEP_LIMITS } from '@/lib/jobboards/adep/validate';
@@ -31,11 +32,11 @@ export type ApecOfferFormProps = {
   offer: AdepDraftOffer;
   notes: Notes;
   onChange: (patch: Partial<AdepDraftOffer>) => void;
-  /** Le modèle rédige le profil en ce moment. */
-  profileDrafting: boolean;
-  /** La rédaction du profil n'a pas abouti — dit sous le champ. */
-  profileError: string | null;
-  onDraftProfile: () => void;
+  /** Quel texte le modèle rédige en ce moment (`both` = à l'ouverture). */
+  textDrafting: 'description' | 'profile' | 'both' | null;
+  /** La rédaction n'a pas abouti — dit sous les champs concernés. */
+  textError: string | null;
+  onDraftText: (target: 'description' | 'profile') => void;
 };
 
 const areaStyle = { ...inputStyle, minHeight: 92, resize: 'vertical' as const };
@@ -50,9 +51,9 @@ export function ApecOfferForm({
   offer,
   notes,
   onChange,
-  profileDrafting,
-  profileError,
-  onDraftProfile,
+  textDrafting,
+  textError,
+  onDraftText,
 }: ApecOfferFormProps) {
   // L'intitulé part avec « H/F » : le compteur doit dire la vérité sur ce qui
   // sera envoyé, pas sur ce qui est saisi.
@@ -91,6 +92,11 @@ export function ApecOfferForm({
           value={offer.positionDescription}
           onChange={(e) => onChange({ positionDescription: e.target.value })}
         />
+        <RewriteRow
+          busy={textDrafting === 'description' || textDrafting === 'both'}
+          error={textError}
+          onClick={() => onDraftText('description')}
+        />
       </ApecFieldRow>
 
       <ApecFieldRow
@@ -110,39 +116,11 @@ export function ApecOfferForm({
           value={offer.profileDescription}
           onChange={(e) => onChange({ profileDescription: e.target.value })}
         />
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginTop: 4,
-            flexWrap: 'wrap',
-          }}
-        >
-          <button
-            type="button"
-            onClick={onDraftProfile}
-            disabled={profileDrafting}
-            style={{
-              ...ghostBtn,
-              padding: '4px 9px',
-              fontSize: 11.5,
-              opacity: profileDrafting ? 0.6 : 1,
-            }}
-          >
-            {profileDrafting ? 'Rédaction en cours…' : 'Rédiger à nouveau'}
-          </button>
-          <span style={{ fontSize: 11, color: 'var(--dash-text-secondary)' }}>
-            à partir du descriptif ci-dessus, en ~{APEC_PROFILE_TARGET_CHARS}{' '}
-            caractères
-          </span>
-        </div>
-        {profileError ? (
-          <div style={{ fontSize: 11, marginTop: 4, color: 'var(--dash-yellow)' }}>
-            {profileError} — le champ garde les compétences clés de la fiche, à
-            reformuler à la main si besoin.
-          </div>
-        ) : null}
+        <RewriteRow
+          busy={textDrafting === 'profile' || textDrafting === 'both'}
+          error={textError}
+          onClick={() => onDraftText('profile')}
+        />
       </ApecFieldRow>
 
       <ApecFieldRow
@@ -166,5 +144,56 @@ export function ApecOfferForm({
         {offer.applicationEmail || '— aucune boîte associée —'}
       </div>
     </div>
+  );
+}
+
+/**
+ * Le geste de rédaction, sous le champ qu'il concerne. Le matériau est le
+ * descriptif AFFICHÉ : c'est dit, pour qu'on sache ce qu'on relance.
+ */
+function RewriteRow({
+  busy,
+  error,
+  onClick,
+}: {
+  busy: boolean;
+  error: string | null;
+  onClick: () => void;
+}) {
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginTop: 4,
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={busy}
+          style={{
+            ...ghostBtn,
+            padding: '4px 9px',
+            fontSize: 11.5,
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {busy ? 'Rédaction en cours…' : 'Rédiger à nouveau'}
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--dash-text-secondary)' }}>
+          à partir du descriptif affiché, en ~{APEC_TEXT_TARGET_WORDS} mots
+        </span>
+      </div>
+      {error ? (
+        <div style={{ fontSize: 11, marginTop: 4, color: 'var(--dash-yellow)' }}>
+          {error} — les champs gardent ce que la fiche de poste fournit, à
+          reformuler à la main si besoin.
+        </div>
+      ) : null}
+    </>
   );
 }

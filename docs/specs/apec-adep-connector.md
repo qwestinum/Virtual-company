@@ -1114,17 +1114,11 @@ effacer le texte, et ce qu'un humain a relu reste ce qu'il a relu — mais elle 
 se fait pas passer pour une annonce en ligne (`generic_unpublished`, et l'écran
 l'écrit).
 
-Le **repli** est `POST …/adep/draft-text` : le même chemin que le canal
-générique (`executeJobWriter`, canal `generic`, mention RGPD déterministe),
-mais **déclenché par un bouton**. Générer à l'ouverture écrirait à la place du
-recruteur sans qu'il l'ait demandé, et le referait à chaque rechargement de
-l'écran — un appel au modèle par coup d'œil. La route **n'écrit rien** et ne
-dépend **pas** de `DEMO_JOBBOARD_ENABLED` : l'Apec est un canal réel, il n'a pas
-à s'éteindre avec une démonstration commerciale.
-
-La nuance entre les deux est portée jusque dans la provenance affichée : un
-texte publié est un **fait** (`certain`), une pré-rédaction reste une
-**proposition** (`derived`, « brouillon pré-rédigé, à relire »).
+⚠️ Le **repli** était `POST …/adep/draft-text` (le Job Writer, derrière un
+bouton). Il a été **retiré** au profit d'un rédacteur au format du canal — cf.
+§6septies, qui dit pourquoi deux rédacteurs pour un même champ ne peuvent pas
+coexister. Il n'y a donc plus qu'une seule nature de pré-remplissage ici : un
+texte **relu par un humain**, donc un fait (`certain`).
 
 Le **titre** repris prime sur l'intitulé brut de la fiche de poste : « Comptable
 général » côté fiche et « Comptable général confirmé » côté annonce coexistent
@@ -1453,73 +1447,110 @@ sujet — ce serait perdre toutes les candidatures venues de l'Apec.
 
 ---
 
-## 6septies. Le « profil recherché » est RÉDIGÉ (10/09/2026)
+## 6septies. Les DEUX textes de l'offre sont RÉDIGÉS (10/09/2026)
 
-**Le constat.** Le champ était rempli par la LISTE des compétences clés de la
-fiche : « Compétences recherchées : - Sage 100 - Anglais courant ». C'est exact,
-c'est traçable, et **ça ne dresse aucun profil**. Un candidat qui lit une offre
-attend une ou deux phrases qui lui disent s'il est concerné ; une énumération de
-mots-clés ne le lui dit pas, et une offre publiée ainsi sur apec.fr se remarque.
+**Le constat.** Les deux champs de texte étaient remplis par un REPORT de
+listes de la fiche : « Missions principales : - … » pour le descriptif,
+« Compétences recherchées : - … » pour le profil. C'est exact, c'est traçable,
+et ça ne fait ni un descriptif ni un profil. Un candidat qui lit une offre
+attend de la prose qui lui dit ce qu'il fera et s'il est concerné ; une
+énumération de mots-clés ne le lui dit pas, et une offre publiée ainsi sur
+apec.fr se remarque.
 
-**Ce qui change.** Le profil est désormais **rédigé par le modèle**, à partir du
-**descriptif du poste tel qu'il est à l'écran** (annonce relue, pré-rédaction ou
-saisie du recruteur) et des éléments de la fiche (intitulé, contrat, séniorité,
-compétences clés). Cible **~150 caractères**. Le report des compétences devient
-le **REPLI** : ce qui reste affiché quand la rédaction n'aboutit pas — un champ
-vide serait pire, et l'écran dit laquelle des deux provenances il montre
-(« ← déduit de la fiche de poste (rédigé par le modèle), à confirmer » vs
-« ← déduit de compétences clés de la fiche de poste »).
+**Ce qui change.** Les deux textes sont **rédigés par le modèle**, à partir du
+**descriptif tel qu'il est à l'écran** (annonce reprise, saisie du recruteur, ou
+report des missions) et des éléments de la fiche — intitulé, contrat, séniorité,
+compétences clés. Cible **~150 mots par texte**. Le report des listes devient le
+**REPLI** : ce qui reste affiché quand la rédaction n'aboutit pas — un champ vide
+serait pire, et l'écran dit laquelle des deux provenances il montre.
 
-**Rédigé à l'OUVERTURE — et c'est une exception assumée.** Le reste du panneau
-tient une règle stricte : rédiger est un geste, jamais un automatisme (§6quater,
-route `draft-text` derrière un bouton). Le donneur d'ordre a tranché autrement
-pour ce champ : *« rédiger dès l'ouverture, comme pour le descriptif de poste,
-le recruteur ajuste s'il veut avant de confirmer »*. La raison tient : le
-descriptif arrive déjà rempli (repris de l'annonce), et un profil vide à côté de
-lui n'est pas un choix — c'est un trou. Le coût est **borné côté client**, pas
-laissé à la bonne volonté du serveur :
+**Un seul appel pour les deux.** Le profil se déduit du descriptif : les écrire
+séparément, c'est risquer un profil qui parle d'autre chose que le poste. Un
+appel, deux textes, cohérents entre eux.
 
-- **UN appel par ouverture de panneau** (`profileRequestedRef` — sans ce
-  drapeau, React rejouant les effets en développement, le modèle serait
-  sollicité deux fois) ;
-- **aucun appel quand l'offre est déjà partie** (`shouldDraftProfile` : phases
+### 6septies.1 La contrainte de taille est CELLE DE L'APEC
+
+Aucune borne maison. Le schéma de sortie porte les bornes du canal
+(`ADEP_LIMITS` : descriptif 200-3000 caractères, profil 100-3000) ; hors bornes,
+`chatCompleteJson` re-demande au modèle avec l'erreur en clair. **Rien n'est
+jamais tronqué** — « zéro troncature silencieuse » appliqué à un texte généré.
+La cible, elle, s'exprime en **mots** (~150), parce que c'est ainsi qu'on juge la
+longueur d'une annonce ; les caractères ne servent qu'aux bornes dures.
+
+Une seule soustraction est admise : la place de la **mention RGPD**, apposée
+APRÈS le modèle de façon déterministe. `apecTextBounds(limits, reserved)` réduit
+d'autant le plafond du descriptif, et le **cadrage annoncé au modèle et le schéma
+qui le valide portent les mêmes nombres** (mêmes bornes, calculées une fois) —
+sinon on lui reproche de déborder d'une limite qu'on ne lui a pas dite, et le
+compteur du formulaire passe au rouge sur un texte que personne n'a écrit trop
+long.
+
+### 6septies.2 Rédigés à l'OUVERTURE — exception assumée
+
+Le reste du panneau tient une règle stricte : rédiger est un geste, jamais un
+automatisme. Le donneur d'ordre a tranché autrement pour ces deux champs :
+*« rédiger dès l'ouverture, le recruteur ajuste s'il veut avant de confirmer »*.
+La raison tient : un report de listes n'est pas un choix, c'est un trou. Le coût
+est **borné côté client**, pas laissé à la bonne volonté du serveur :
+
+- **UN appel par ouverture de panneau** (`textRequestedRef` — sans ce drapeau,
+  React rejouant les effets en développement, le modèle serait sollicité deux
+  fois) ;
+- **aucun appel quand l'offre est déjà partie** (`shouldDraftText` : phases
   `none` et `failed` seulement) — le contenu est figé à la publication, le
-  formulaire n'est même pas à l'écran, et payer pour un champ invisible n'a
-  aucun sens ;
+  formulaire n'est même pas à l'écran ;
 - **température 0 et graine fixe** : deux ouvertures du même panneau donnent le
-  même profil. Un texte qui change sous les yeux du recruteur ferait douter du
+  même texte. Une offre qui change sous les yeux du recruteur ferait douter du
   reste de l'écran.
 
-**Une saisie humaine ne se fait jamais écraser.** Le recruteur peut écrire dans
-le champ pendant que le modèle rédige : `profileTouchedRef` fait alors abandonner
-la rédaction automatique à son retour. Sa frappe est une décision. Le bouton
-« Rédiger à nouveau », lui, applique toujours — c'est lui qui l'a demandé.
+**Un texte relu par un humain n'est jamais réécrit tout seul.** Le descriptif
+n'est remplacé d'office que s'il n'était qu'un report de la fiche
+(`descriptionIsReport` = aucun pré-remplissage). Repris d'une annonce générique,
+il reste tel quel : réécrire un texte validé demande le geste « Rédiger à
+nouveau », sous le champ. Le profil, lui, n'a pas de source humaine — il est
+toujours rédigé.
 
-**La longueur est tenue par le SCHÉMA, pas par une coupe.** `ApecProfileSchema`
-borne la sortie à 120-260 caractères : hors bornes, `chatCompleteJson` re-demande
-au modèle avec l'erreur en clair. Rien n'est jamais tronqué (règle « zéro
-troncature silencieuse » appliquée à un texte généré), et le plancher de 120
-tient l'exigence APEC des 100 caractères (API_408) **même après normalisation**,
-qui ne peut que raccourcir. La normalisation (`normalizeApecProfile`, pure) retire
-puces et marques Markdown et réduit les blancs : contrairement à un descriptif
-repris d'une annonce relue — que le module ne reformate JAMAIS —, ce texte vient
-d'être fabriqué, il n'y a aucune saisie humaine à respecter.
+**Une saisie en cours ne se fait pas écraser.** Le recruteur peut écrire pendant
+que le modèle rédige : `touchedRef` fait alors abandonner l'application
+automatique pour CE champ (l'autre est appliqué). Sa frappe est une décision. Le
+bouton, lui, applique toujours — c'est lui qui l'a demandé.
 
-**Le modèle n'invente pas.** Ni diplôme, ni nombre d'années, ni outil, ni
-certification absents des éléments fournis : il reformule, il ne complète pas le
-poste. C'est la règle de l'analyse de CV prise par l'autre bout — une exigence
-inventée ici écarterait de vrais candidats. Et pas de formule creuse : « équipe
-dynamique » ne dit rien d'un profil.
+### 6septies.3 Un seul rédacteur pour un champ
 
-**Où c'est.** Cadrage et normalisation PURS dans
-`src/lib/agents/apec-profile-prompts.ts` (le constant de cible est importé par
-le formulaire, d'où la séparation d'avec l'exécution) ; exécution dans
-`src/lib/agents/server/apec-profile-write.ts` ; route
-`POST /api/campaigns/[id]/adep/profile-text` — elle **n'écrit rien** (ni
+La pré-rédaction par le **Job Writer** (`adep/draft-text`, Markdown + titre +
+mention RGPD, derrière un bouton en tête de bloc) a été **retirée du chemin
+APEC**, avec la source de pré-remplissage `job_writer` qui l'accompagnait. Deux
+rédacteurs pour un même champ finissent par écrire deux annonces différentes —
+c'est ce que §6quater cherchait déjà à éviter en réutilisant le Job Writer, et
+la même raison commande aujourd'hui de n'en garder qu'un : celui qui écrit **au
+format du canal** (prose, bornes de l'Apec, ~150 mots) plutôt que du Markdown
+qu'il faut ensuite signaler. Le Job Writer garde évidemment son rôle sur
+l'annonce du canal générique.
+
+Conséquence tenue : la **mention RGPD** que ce chemin apposait est reprise ici,
+toujours de façon déterministe (`withRgpdMentionAppended`), avec le même contact
+(adresse de réception de la campagne, repli expéditeur). Elle est **retirée du
+matériau** avant l'appel (`stripVivierRgpdMention`, sur une signature de phrase
+indépendante du contact) : sans ce retrait, on la ferait reformuler par le modèle
+avant de la rajouter — deux mentions dans une même offre. Le cadrage lui interdit
+par ailleurs d'en écrire une.
+
+### 6septies.4 Le modèle n'invente pas
+
+Ni diplôme, ni nombre d'années, ni outil, ni mission absents des éléments
+fournis : il **met en forme** le matériau du poste, il ne le complète pas. C'est
+la règle de l'analyse de CV prise par l'autre bout — une exigence inventée ici
+écarterait de vrais candidats. Et pas de formule creuse : « équipe dynamique » ne
+dit rien d'un poste.
+
+**Où c'est.** Cadrage, bornes et normalisation PURS dans
+`src/lib/agents/apec-offer-text-prompts.ts` ; exécution dans
+`src/lib/agents/server/apec-offer-text-write.ts` ; route
+`POST /api/campaigns/[id]/adep/offer-text` — elle **n'écrit rien** (ni
 `job_postings`, ni le snapshot de campagne) et ne dépend pas de
-`DEMO_JOBBOARD_ENABLED`, comme sa jumelle `draft-text`. Un échec est **local au
-champ** (message sous le textarea) : un profil non rédigé n'est pas une panne du
-panneau.
+`DEMO_JOBBOARD_ENABLED` : l'Apec est un canal réel. Un échec est **local aux
+champs** (message sous le textarea) : des textes non rédigés ne sont pas une
+panne du panneau.
 
 ## 7. Phase 2 — lots révisés
 
