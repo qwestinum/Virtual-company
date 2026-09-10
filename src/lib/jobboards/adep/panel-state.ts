@@ -141,6 +141,14 @@ export function republishNotice(
  * de la diffusion ce qui n'y est pas encore — mais rien dans la documentation
  * ne le disait, et le panneau proposait le bouton.
  *
+ * ⚠️ NE PAS EN CONCLURE qu'une offre fraîche ne se retire jamais. Mesuré en
+ * PRODUCTION le 10/09 : `openPosition` y rend directement `PUBLIEE` (le
+ * contrôle juridique est passé pour un compte en règle) et le retrait
+ * fonctionne dans la foulée — l'annonce disparaît d'apec.fr. `AVALIDER` est un
+ * régime de RECETTE. La règle ci-dessous vaut des deux côtés, mais pour des
+ * raisons différentes : ici elle protège d'un refus, là-bas elle ne se
+ * déclenche jamais.
+ *
  * Proposer un geste que la plateforme refusera systématiquement, c'est faire
  * porter à l'utilisateur le coût de notre ignorance. La carte suit déjà la
  * règle inverse pour la republication : un bouton retiré DIT pourquoi.

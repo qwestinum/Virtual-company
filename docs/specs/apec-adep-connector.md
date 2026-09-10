@@ -1362,6 +1362,96 @@ qu'elle est en `AVALIDER` (§6quinquies.2).
 
 ---
 
+## 6sexies. Première publication en PRODUCTION — 10/09/2026
+
+```
+  Campagne         CAMP-2026-628 « ingénieur data »
+  openPosition     published            12h49
+  Numéro Apec      179400306W
+  Statut           PUBLIEE  ← immédiat, sans phase d'attente
+  Candidatures     2 reçues par IMAP    12h55, 12h57
+  suspend          changed              12h59  ← l'annonce disparaît d'apec.fr
+```
+
+Le cycle complet — publier, recevoir, dépublier — a tourné de bout en bout sur
+`adepsep.apec.fr`. Trois enseignements, dont deux **corrigent** ce que la recette
+nous avait fait croire.
+
+### 6sexies.1 Il n'y a PAS de phase « à valider » en production
+
+L'environnement de test place toute offre neuve en `AVALIDER` et y refuse le
+retrait (`API_352`, §6quinquies). Nous en avions déduit qu'une offre fraîche ne
+pouvait pas être dépubliée. **C'est faux en production** : le contrôle juridique
+étant passé pour un compte en règle, `openPosition` rend directement `PUBLIEE`,
+et `updatePositionStatus(SUSPENDUE)` fonctionne dans la foulée. Les deux branches
+du diagramme §1.4 sont donc bien réelles — mais chaque environnement en emprunte
+une seule, systématiquement.
+
+Le code n'a pas à changer : `canSuspend` n'offre le retrait que sur `PUBLIEE`, ce
+qui est juste des deux côtés. Ce qui doit changer, c'est ce qu'on RACONTE — la
+gêne du §6quinquies (« une offre fraîche ne se retire pas ») est un artefact de
+recette, et l'annoncer comme une limite du produit serait un contresens.
+
+### 6sexies.2 `ADEP_ATS_PASSWORD_HASH` est OBLIGATOIRE partout où l'app tourne
+
+La clé Argon2 est CONSTANTE pour un triplet (mot de passe, sel, paramètres) :
+elle se calcule une fois, hors ligne, et se pose en variable. `@node-rs/argon2`
+est délibérément une **devDependency** — le chemin de service ne hache rien.
+
+Poser `ADEP_ATS_PASSWORD` + `ADEP_ARGON2_*` **sans** `ADEP_ATS_PASSWORD_HASH`
+compile, démarre, et affiche un panneau APEC parfaitement normal. Puis échoue au
+seul clic qui compte : `resolveAtsPasswordFromEnv` tente alors de charger le
+module natif depuis le bundle, et la publication rend 500. Le panneau, lui, ne
+s'en aperçoit pas — **la route de lecture n'appelle jamais `credentials()`**, et
+c'est précisément ce décalage qui rend le défaut difficile à lire.
+
+Geste d'installation, une fois par environnement (local compris) :
+
+```
+npm run adep:hash -- --env <fichier>     # puis coller ADEP_ATS_PASSWORD_HASH
+```
+
+Sur Vercel la question ne se pose même pas : le module natif n'y sera pas.
+
+### 6sexies.3 Le journal doit dire À QUEL Apec il parle
+
+`simulated: false` vaut autant pour la recette que pour la production. Deux
+offres acquittées à un jour d'intervalle — `179240011W` en recette,
+`179400306W` en production — ont laissé au journal des lignes rigoureusement
+identiques, et retrouver laquelle vivait où a demandé de remonter aux dates de
+modification d'un fichier `.env`.
+
+`apecEnvironment` porte désormais `simulation` ou **l'hôte tel quel**
+(`adepEndpointHost`, pur/testé). On ne l'interprète pas : deviner « recette »
+d'un préfixe `test` marcherait sur les deux hôtes connus aujourd'hui et
+mentirait au troisième.
+
+### 6sexies.4 Un 500 ne laissait AUCUNE trace
+
+L'exception survient avant `reserveJobPosting` : ni ligne `job_postings`, ni
+entrée au journal — celle-ci n'était écrite qu'après un retour réussi de
+`publishToAdep`. Le seul témoignage vivait dans la console d'un serveur de
+développement, inaccessible en production et perdu à la fermeture de la fenêtre.
+Retrouver la cause a demandé de raisonner par élimination sur ce qui n'avait
+PAS été écrit.
+
+Le chemin d'exception journalise maintenant `apec_offer_publish_failed` avec
+`outcome: 'exception'` et le message. Le fil d'activité distingue les deux —
+« refusée » vient de l'Apec et se corrige dans l'offre, « échec technique » vient
+de chez nous et se corrige dans l'installation ; les confondre enverrait relire
+une annonce parfaitement valide.
+
+### 6sexies.5 Les candidatures arrivent bien, et par le CORPS
+
+Les deux candidatures sont parties d'adresses relais
+`…@candidature.apec.fr`, sujet « Candidature sur offre d'emploi N° 179400306W —
+QWESTINUM — ingénieur data F/H ». La référence `CAMP-XXXX` n'y figure pas : le
+rapprochement s'est fait sur le **corps** (`matchSource: "body"`), exactement le
+repli prévu. À retenir avant d'envisager de durcir le rapprochement au seul
+sujet — ce serait perdre toutes les candidatures venues de l'Apec.
+
+---
+
 ## 7. Phase 2 — lots révisés
 
 L'ordre du brief tient. Trois ajustements issus de l'étude.
