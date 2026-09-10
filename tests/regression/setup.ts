@@ -18,6 +18,9 @@
  *    - '@/lib/ai/provider'    → LLM à fixtures fixes (tests/regression/helpers/mocks)
  *    - '@/lib/ai/embeddings'  → vecteurs déterministes dérivés du texte
  *    - '@/lib/email/client'   → enregistreur d'envois (aucun vrai mail)
+ *    - APEC                   → `ADEP_ENABLED` coupé ⇒ transport de recette
+ *                               (cf. bloc dédié : le risque n'est pas un mail
+ *                               de trop, c'est une offre publique indélébile)
  *    Tout le reste (Supabase, repos, routes, scoring, pgvector) est RÉEL.
  */
 import { readFileSync } from 'node:fs';
@@ -51,6 +54,34 @@ if (!actualRef || actualRef !== allowedRef) {
       `ne correspond pas à REGRESSION_PROJECT_REF (${allowedRef}).`,
   );
 }
+
+// ─── FRONTIÈRE APEC : neutralisée, avant tout le reste ─────────────────────
+//
+// ⚠️ DANGER RÉEL, pas théorique. `.env.local` peut porter `ADEP_ENABLED=1` et
+// les identifiants de PRODUCTION — c'est l'état normal d'un poste qui vient de
+// recetter une publication réelle (10/09/2026). Un scénario qui touche
+// `/api/campaigns/[id]/adep/publish` créerait alors une VRAIE offre sur
+// apec.fr : publique, sous une référence brûlée à JAMAIS (`API_390`), et que
+// `updatePosition` ne sait pas corriger. Aucun `cleanAll` ne rattrape ça.
+//
+// On coupe donc le drapeau ici, une fois pour toute la suite. `resolveTransport`
+// retombe sur `MockAdepTransport`, qui rejoue des acquittements enregistrés et
+// laisse tourner TOUT le code réel en aval — constructeur de flux, parseur,
+// réconciliation, idempotence. Même philosophie que les mocks ci-dessous : on
+// ne remplace que ce qui vient du réseau.
+//
+// L'URL part avec : si quelqu'un réintroduit `ADEP_ENABLED=1` par mégarde, le
+// service ÉCHOUE bruyamment (« impossible de savoir à quel environnement
+// s'adresser ») au lieu de partir sur la production.
+process.env.ADEP_ENABLED = '';
+delete process.env.ADEP_WSDL_URL;
+
+// Identité d'appel de TEST. La suite est ainsi autonome : elle ne dépend
+// d'aucun identifiant réel, et aucun n'apparaît dans un flux de test. Le hash
+// précalculé évite en prime de charger le module natif Argon2.
+process.env.ADEP_ATS_ID = 'TRG';
+process.env.ADEP_ATS_PASSWORD_HASH = 'x'.repeat(342);
+process.env.ADEP_TEST_NUMERO_DOSSIER = 'TREG00001W';
 
 // ─── Mocks de frontière ────────────────────────────────────────────────────
 // Les factories vi.mock ne peuvent référencer que des imports dynamiques :
