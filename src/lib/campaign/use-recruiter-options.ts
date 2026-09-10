@@ -88,12 +88,23 @@ export function resolveDraftOwner(
   return options.some((o) => o.id === currentUserId) ? currentUserId : null;
 }
 
-/** Libellé d'une option, annoté du manque qui compte selon le régime. */
+/**
+ * Ce qu'on signale à côté du nom d'un recruteur.
+ *
+ * `availability` = ses disponibilités dans ORQA — le seul manque qui compte
+ * pour une campagne NEUVE : Cal.com est en extinction, et prévenir qu'un
+ * recruteur n'a pas de lien Cal.com serait pousser vers le régime qu'on quitte.
+ * `calcom` ne sert plus qu'aux campagnes qui tournent ENCORE sur Cal.com, où le
+ * lien manquant est un vrai problème présent.
+ */
+export type RecruiterAnnotation = 'availability' | 'calcom';
+
+/** Libellé d'une option, annoté du manque qui compte pour l'appelant. */
 export function recruiterOptionLabel(
   option: RecruiterOption,
-  native: boolean,
+  annotate: RecruiterAnnotation,
 ): string {
-  if (native) {
+  if (annotate === 'availability') {
     return option.hasAvailability === false
       ? `${option.displayName} (sans disponibilités)`
       : option.displayName;

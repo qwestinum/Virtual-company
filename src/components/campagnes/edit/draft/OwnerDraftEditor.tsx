@@ -6,8 +6,7 @@
  * Symétrique d'`OwnerEditBlock`, mais sans store ni PATCH : le parent détient
  * la valeur et l'envoie avec le reste au bouton « Créer la campagne ».
  *
- * Deux différences ASSUMÉES avec l'édition, toutes deux parce que la campagne
- * n'existe pas encore :
+ * Trois différences ASSUMÉES avec l'édition :
  *
  *  1. **Aucun dialog d'impact.** Changer de référent en édition bascule les
  *     liens de réservation déjà envoyés — ici il n'y en a aucun, donc rien à
@@ -16,6 +15,12 @@
  *     référent par défaut quand le champ est absent ; le formulaire, lui,
  *     envoie toujours le champ. Le sélecteur montre donc d'emblée le nom
  *     retenu — et « aucun référent » redevient un choix explicite.
+ *  3. **Un seul manque signalé : les DISPONIBILITÉS.** Sur une campagne neuve,
+ *     l'absence de lien Cal.com n'est pas une alerte — Cal.com est en
+ *     extinction, et le signaler pousserait vers le régime qu'on quitte. Ce qui
+ *     compte est qu'un candidat puisse réserver un créneau : sans agenda
+ *     rempli, il n'y en a aucun. L'édition, elle, garde l'alerte Cal.com pour
+ *     les campagnes qui tournent ENCORE dessus.
  */
 
 import {
@@ -28,15 +33,12 @@ export type OwnerDraftEditorProps = {
   onChange: (next: string | null) => void;
   /** `null` = liste pas encore chargée (le sélecteur est alors désactivé). */
   options: RecruiterOption[] | null;
-  /** Régime de réservation pressenti — change l'annotation qui compte. */
-  native: boolean;
 };
 
 export function OwnerDraftEditor({
   value,
   onChange,
   options,
-  native,
 }: OwnerDraftEditorProps) {
   const selected = options?.find((o) => o.id === value) ?? null;
   const loaded = options !== null;
@@ -46,9 +48,9 @@ export function OwnerDraftEditor({
         className="font-body"
         style={{ fontSize: 12.5, color: 'var(--dash-text-secondary)' }}
       >
-        Le référent porte l’agenda des entretiens de cette campagne : ses
-        disponibilités en réservation native, son lien Cal.com personnel
-        sinon. Sans référent, l’agenda global des paramètres s’applique.
+        Le référent porte l’agenda des entretiens de cette campagne : c’est sur
+        ses disponibilités que les candidats retenus réservent leur créneau.
+        Sans référent, l’agenda global des paramètres s’applique.
       </p>
       <select
         value={value ?? ''}
@@ -68,7 +70,7 @@ export function OwnerDraftEditor({
         <option value="">— Aucun (agenda global)</option>
         {(options ?? []).map((o) => (
           <option key={o.id} value={o.id}>
-            {recruiterOptionLabel(o, native)}
+            {recruiterOptionLabel(o, 'availability')}
           </option>
         ))}
       </select>
@@ -78,17 +80,11 @@ export function OwnerDraftEditor({
           référent et utilisera l’agenda global (Paramètres → Recruteurs).
         </p>
       ) : null}
-      {!native && selected && !selected.hasCalcomLink ? (
+      {selected?.hasAvailability === false ? (
         <p className="font-body" style={{ fontSize: 12, color: 'var(--dash-yellow)' }}>
-          Ce recruteur n’a pas encore de lien Cal.com — les invitations
-          utiliseront le lien global en attendant (Paramètres → Recruteurs).
-        </p>
-      ) : null}
-      {native && selected?.hasAvailability === false ? (
-        <p className="font-body" style={{ fontSize: 12, color: 'var(--dash-yellow)' }}>
-          Ce recruteur n’a aucune disponibilité déclarée : en réservation
-          native, les invitations de cette campagne seraient bloquées
-          (Paramètres → Agendas &amp; disponibilités).
+          Ce recruteur n’a aucune disponibilité déclarée : aucun créneau ne
+          pourra lui être réservé tant que son agenda est vide (Paramètres →
+          Agendas &amp; disponibilités).
         </p>
       ) : null}
     </div>

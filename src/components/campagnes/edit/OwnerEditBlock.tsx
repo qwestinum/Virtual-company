@@ -109,7 +109,9 @@ export function OwnerEditBlock({ campaignId }: { campaignId: string }) {
         <option value="">— Aucun (agenda global)</option>
         {(options ?? []).map((o) => (
           <option key={o.id} value={o.id}>
-            {recruiterOptionLabel(o, native)}
+            {/* Régime natif : ce sont ses disponibilités qui servent. Encore
+                sur Cal.com : c'est son lien qui manquerait. */}
+            {recruiterOptionLabel(o, native ? 'availability' : 'calcom')}
           </option>
         ))}
       </select>

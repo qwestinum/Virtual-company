@@ -33,6 +33,7 @@ import { useEffect, useRef, useState } from 'react';
 import { applyDraftScheduling } from '@/lib/campaign/apply-draft-scheduling';
 import { listPostActivationSurfaces } from '@/lib/campaign/post-activation-surfaces';
 import {
+  recruiterOptionLabel,
   resolveDraftOwner,
   useRecruiterOptions,
   type RecruiterOption,
@@ -1219,7 +1220,7 @@ function EditingStage({
           icon="🧑‍💼"
           subtitle={
             selectedOwner
-              ? selectedOwner.displayName
+              ? recruiterOptionLabel(selectedOwner, 'availability')
               : 'Aucun — agenda global'
           }
           open={openSection === 'owner'}
@@ -1231,7 +1232,6 @@ function EditingStage({
             value={ownerUserId}
             onChange={setOwnerUserId}
             options={recruiterOptions}
-            native={schedulingNative}
           />
         </CollapsibleSection>
 

@@ -10,6 +10,7 @@ import {
   listPostActivationSurfaces,
 } from '@/lib/campaign/post-activation-surfaces';
 import {
+  recruiterOptionLabel,
   resolveDraftOwner,
   type RecruiterOption,
 } from '@/lib/campaign/use-recruiter-options';
@@ -205,5 +206,40 @@ describe('listPostActivationSurfaces — ce qui n’ouvre qu’après l’activa
     expect(
       listPostActivationSurfaces(['france_travail'], ['manual']),
     ).toEqual({ contentChannels: [], vivier: false, any: false });
+  });
+});
+
+
+describe('recruiterOptionLabel — un seul manque signalé à la création', () => {
+  const base: RecruiterOption = {
+    id: 'r1',
+    displayName: 'Sami B.',
+    hasCalcomLink: false,
+    hasAvailability: true,
+  };
+
+  it('un lien Cal.com absent ne s’annonce PAS quand on juge les disponibilités', () => {
+    // Cal.com est en extinction : le signaler sur une campagne neuve
+    // pousserait vers le régime qu'on quitte.
+    expect(recruiterOptionLabel(base, 'availability')).toBe('Sami B.');
+  });
+
+  it('des disponibilités absentes s’annoncent — c’est ce qui empêche de réserver', () => {
+    expect(
+      recruiterOptionLabel({ ...base, hasAvailability: false }, 'availability'),
+    ).toBe('Sami B. (sans disponibilités)');
+  });
+
+  it('disponibilités indéterminées (module injoignable) ⇒ on n’alerte pas à tort', () => {
+    expect(
+      recruiterOptionLabel({ ...base, hasAvailability: null }, 'availability'),
+    ).toBe('Sami B.');
+  });
+
+  it('le manque Cal.com reste dit aux campagnes qui tournent ENCORE dessus', () => {
+    expect(recruiterOptionLabel(base, 'calcom')).toBe('Sami B. (sans lien Cal.com)');
+    expect(
+      recruiterOptionLabel({ ...base, hasCalcomLink: true }, 'calcom'),
+    ).toBe('Sami B.');
   });
 });
