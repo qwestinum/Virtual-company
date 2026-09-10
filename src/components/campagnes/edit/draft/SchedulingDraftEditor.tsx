@@ -12,6 +12,12 @@
  * La garde d'activation est reprise ici en AVANCE : sans référent bookable, le
  * PATCH répondrait `owner_not_bookable`. Découvrir ce refus après la création
  * serait le pire moment — on désactive la case et on dit le geste à faire.
+ *
+ * ⚠️ Aucun texte de cet écran ne NOMME le régime historique (Cal.com) : il est
+ * en extinction, et l'annoncer à qui crée une campagne aujourd'hui, c'est
+ * apprendre un nom qui va disparaître. On parle du « lien d'agenda configuré »,
+ * ce qui reste vrai quel que soit le fournisseur. Le code, lui, garde le nom
+ * exact — c'est la réalité technique, et elle n'est pas à l'écran.
  */
 
 import { MeetingLocationField } from '@/components/settings/availability/MeetingLocationField';
@@ -44,8 +50,8 @@ export function SchedulingDraftEditor({
         style={{ fontSize: 12.5, color: 'var(--dash-text-secondary)' }}
       >
         {native
-          ? 'Les candidats retenus recevront un lien de réservation ORQA, nominatif et à usage unique, sur les disponibilités du référent.'
-          : 'Les candidats retenus recevront le lien Cal.com configuré (référent ou paramètres généraux).'}
+          ? 'Les candidats retenus recevront un lien de réservation nominatif, à usage unique, sur les disponibilités du référent.'
+          : 'Les candidats retenus recevront le lien d’agenda configuré (celui du référent, ou celui des paramètres généraux).'}
       </p>
 
       <label

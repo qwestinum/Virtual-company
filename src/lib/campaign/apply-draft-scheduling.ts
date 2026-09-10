@@ -88,7 +88,7 @@ export async function applyDraftScheduling(
           data.message ??
           (body.schedulingNative
             ? 'La réservation native n’a pas pu être activée sur cette campagne.'
-            : 'Le retour au régime Cal.com n’a pas pu être enregistré.'),
+            : 'Le retour au lien d’agenda configuré n’a pas pu être enregistré.'),
       };
     }
     // On ne se fie pas au seul code HTTP : le serveur DIT si le lieu a été
@@ -112,7 +112,7 @@ export async function applyDraftScheduling(
     return {
       kind: 'failed',
       message:
-        'Erreur réseau — la campagne est enregistrée, mais elle reste en régime Cal.com.',
+        'Erreur réseau — la campagne est enregistrée, mais la réservation native n’a pas été appliquée.',
     };
   }
 }

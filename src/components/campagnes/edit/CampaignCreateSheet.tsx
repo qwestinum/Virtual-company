@@ -1241,7 +1241,7 @@ function EditingStage({
           subtitle={
             schedulingNative
               ? 'Native ORQA (disponibilités du référent)'
-              : 'Cal.com (lien d’agenda)'
+              : 'Lien d’agenda configuré'
           }
           open={openSection === 'scheduling'}
           onToggle={() => toggle('scheduling')}

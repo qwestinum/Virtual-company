@@ -109,8 +109,9 @@ export function CampaignCreatedStep({
         {schedulingNotice ? (
           <Notice tone="yellow">
             ⚠️ <strong>Réservation d’entretien</strong> — {schedulingNotice} La
-            campagne reste donc sur le régime Cal.com ; reprenez le réglage dans
-            le bloc <strong>Réservation d’entretien</strong> de l’édition.
+            campagne reste donc sur le lien d’agenda configuré ; reprenez le
+            réglage dans le bloc <strong>Réservation d’entretien</strong> de
+            l’édition.
           </Notice>
         ) : null}
 
