@@ -767,10 +767,17 @@ non manifesté (empreinte ⇒ lignes supprimées + opposition). Verdicts : `sour
 **CONSERVER** · `sourcing_profiles` **EFFACER** · `sourcing_exclusions` **CONSERVER** ·
 `sourcing_approaches` **PSEUDONYMISER**.
 
-### 12.3 Préalable Phase 2
-Registre typé `table → EFFACER | PSEUDONYMISER | CONSERVER` + test qui parse les `create table`
-de `scripts/migrate.sql` et échoue sur une table sans verdict ou un verdict orphelin. Signalera
-d'emblée `job_postings` (09/09), absente de `docs/ops/purge-rgpd-candidat.md`.
+### 12.3 Préalable Phase 2 — **livré (lot 0, 13/09/2026)**
+Registre `src/lib/gdpr/table-inventory.ts` (verdict + traitement `step` | `cascade` par table) et
+`table-inventory.test.ts`, qui confronte le registre aux tables réelles de `scripts/migrate.sql`,
+au §4.1 de `docs/ops/purge-rgpd-candidat.md` et au code d'effacement. Sondé : il a signalé
+`job_postings` (verdict CONSERVER ajouté), `gdpr_erasure_requests` et `sched_availability_*`
+absentes du tableau du document, et il échoue sur une cascade ou un traitement déclarés à tort.
+
+**Conséquence pour les tables sourcing** : chacune entre au registre **dans le même commit** que
+son `create table`. `sourcing_profiles` (EFFACER) devra être **nommée par `execute.ts`** (option
+`--linkedin-url`) et relue par le contrôle final — il n'y a pas de parent dont elle descendrait en
+cascade ; `sourcing_approaches` (PSEUDONYMISER) idem.
 
 ---
 

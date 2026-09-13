@@ -97,7 +97,18 @@ Deux exceptions de forme, toutes deux justifiées au §6.3 :
 | `imap_outreach_claims` | Rien de nominatif — boîte, identifiant de message, type d'envoi. | **CONSERVER** (§6.4) |
 | `calcom_webhook_events`, `interview_booking_events` | Identifiants techniques d'événements. | **CONSERVER** |
 | `sched_rate_limits` | Adresses IP, dans une clé opaque non rattachable à un candidat. | **CONSERVER** — purge automatique en moins d'une heure |
-| `campaigns`, `fdps_archived`, `scoring_sheets_archived`, `tasks_archived`, `sites`, `donneurs_ordre`, `recruiters`, `mailboxes`, `app_settings`, `demo_job_posts`, `campaign_mailboxes`, `sched_resources`, `sched_targets`, `sched_availability_*` | Aucune donnée de candidat. | **CONSERVER** |
+| `gdpr_erasure_requests` | La trace de la demande elle-même : empreinte **salée** de l'adresse, jamais l'adresse. | **CONSERVER** (§5.1) |
+| `job_postings` | Publications d'offres sur l'Apec : l'offre telle qu'envoyée, les accusés de réception, le statut distant. Aucune donnée de candidat. | **CONSERVER** |
+| `campaigns`, `fdps_archived`, `scoring_sheets_archived`, `tasks_archived`, `sites`, `donneurs_ordre`, `recruiters`, `mailboxes`, `app_settings`, `demo_job_posts`, `campaign_mailboxes`, `sched_resources`, `sched_targets`, `sched_availability_rules`, `sched_availability_exceptions` | Aucune donnée de candidat. | **CONSERVER** |
+
+> **Aucune table sans verdict — vérifié par un test.** Ce tableau a sa
+> contrepartie dans le code, `src/lib/gdpr/table-inventory.ts`. Le test
+> `table-inventory.test.ts` lit les tables réelles dans `scripts/migrate.sql`
+> et échoue si une table n'a pas de verdict, si le verdict du code diffère de
+> celui de ce tableau, ou si une table à effacer n'est ni traitée par l'outil
+> ni supprimée en cascade. Une table ajoutée au schéma sans décision RGPD ne
+> passe donc plus les tests (ce qui était arrivé à `job_postings`, créée le
+> 09/09/2026 et absente de ce tableau jusqu'au 13/09).
 
 > **Le recruteur n'est pas le candidat.** Les champs `actorEmail`, `by`,
 > `decided_by_user_email` désignent l'**agent du responsable de traitement** qui
@@ -537,6 +548,7 @@ lui, fait le lien avec la personne — et qui le lui transmet.
 | Parcours exhaustifs (pagination, stockage) | `src/lib/gdpr/scan.ts` |
 | Marqueur, reconnaissance, ordinaux | `src/lib/gdpr/marker.ts` (pur) |
 | Squelette d'analyse conservé | `src/lib/gdpr/application-skeleton.ts` (pur, **exhaustivité vérifiée à la compilation**) |
+| Verdict par table (registre) | `src/lib/gdpr/table-inventory.ts` (pur) + lecture du schéma `src/lib/gdpr/schema-tables.ts` — **exhaustivité vérifiée par `table-inventory.test.ts`** |
 | Pseudonymisation des charges utiles | `src/lib/gdpr/payload-pseudonymize.ts` (pur) |
 | Arrêts et leurs messages | `src/lib/gdpr/blockers.ts` (pur) |
 | Résolution de l'ensemble d'identifiants | `src/lib/gdpr/resolve.ts` |
@@ -568,3 +580,10 @@ lui, fait le lien avec la personne — et qui le lui transmet.
    c'est `pageAllByText` qui court-circuite. Test dédié dans `scan.test.ts`.
 6. **Après une écriture dans le stockage, on vérifie par le catalogue**, jamais
    par une relecture (§6.2).
+7. **Toute table créée dans `scripts/migrate.sql` reçoit un verdict dans
+   `table-inventory.ts` et une ligne au §4.1, dans le même commit.** Le test
+   d'exhaustivité le refuse sinon. Pour une table à effacer ou pseudonymiser,
+   déclarer COMMENT : nommée par `execute.ts` (et relue par le contrôle final),
+   ou supprimée en cascade — la clé étrangère est vérifiée dans le schéma. Ne
+   jamais « faire passer » le test en déclarant CONSERVER une table qui porte
+   des données de candidat.
