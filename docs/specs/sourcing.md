@@ -1090,6 +1090,29 @@ Choix et écarts à connaître :
 Reste au lot 3 : décliner, se connecter, contacter par email, badge « en recherche », mentions,
 email du titulaire, « peut-être dans votre vivier », préférence de format et de tri par recruteur.
 
+### Ajustements de l'écran de résultats (14/09/2026)
+
+1. **Une ligne par profil, repliée par défaut** (`SourcingProfileRow`) : intitulé actuel —
+   entreprise — localisation — ancienneté ; un emplacement pour les repères du lot 3. Dépliée :
+   nom, parcours daté, formation, extrait, résumé, compétences. Le recruteur choisit « une ligne à
+   la fois » ou plusieurs (`src/lib/sourcing/expansion.ts`). Plus de carte pleine hauteur.
+2. **Aucun coût côté recruteur** — ni écran de requête, ni résultat de recherche, ni réponses
+   d'API, ni journal : la rédaction de requête journalise son coût (`sourcing_query_generated`) et
+   le retire de la réponse ; la recherche l'enregistre dans `sourcing_searches` et ne le renvoie
+   pas ; le client ne transmet plus aucun montant. **Suivi dans `/admin/dashboard`** : carte
+   « Recherche de profils » (route admin `GET /api/admin/sourcing-costs`) — recherches, coût du
+   moteur, coût de rédaction, **par mois sur 12 mois**, pour le cabinet (un déploiement ORQA = un
+   cabinet ; nom tiré des réglages). Écart avec le suivi IA existant, qui n'est qu'un total estimé
+   par action sans période : celui-ci est **mesuré** (montant renvoyé par le moteur, jetons du
+   modèle) et **mensuel**.
+3. **« 50 de plus » en fin de liste** ; en tête, le compteur et le bandeau de couverture ; réserve
+   vide ⇒ « 100 profils examinés — modifiez la requête » à la place du bouton.
+
+Tests : rendu statique (`results-screen.test.tsx`) — ligne repliée par défaut et dépliable, aucun
+motif de coût dans le HTML de la liste, de l'écran de requête et de la liste des campagnes, bouton
+après le dernier résultat ; réponses des routes sans coût ; agrégation mensuelle (bascule de mois
+à minuit à Paris, coût non communiqué compté à part).
+
 ## 19. Backlog
 
 - Geste de ré-analyse manuel d'une candidature.

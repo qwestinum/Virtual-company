@@ -289,6 +289,27 @@ export async function countersForCampaign(campaignId: string): Promise<SourcingC
   };
 }
 
+/** Coûts du moteur par recherche depuis une date — donnée d'ADMINISTRATION. */
+export async function listSearchCostsSince(sinceIso: string): Promise<{ createdAt: string; exaCostUsd: number | null }[]> {
+  const db = requireServerSupabase();
+  const rows = await fetchAllKeyset<{ id: string; created_at: string; exa_cost_usd: number | string | null }>({
+    fetchPage: async (after, limit) => {
+      let q = db
+        .from('sourcing_searches')
+        .select('id, created_at, exa_cost_usd')
+        .gte('created_at', sinceIso)
+        .order('id')
+        .limit(limit);
+      if (after) q = q.gt('id', after);
+      const { data, error } = await q;
+      if (error) throw new Error(`listSearchCostsSince: ${error.message}`);
+      return (data ?? []) as { id: string; created_at: string; exa_cost_usd: number | string | null }[];
+    },
+    cursorOf: (r) => r.id,
+  });
+  return rows.map((r) => ({ createdAt: r.created_at, exaCostUsd: num(r.exa_cost_usd) }));
+}
+
 /** Campagnes actives — projection minimale, paginée (jamais `listCampaigns()`, plafonné à 1000). */
 export async function listActiveCampaignsForSourcing(): Promise<{ id: string; name: string }[]> {
   const db = requireServerSupabase();

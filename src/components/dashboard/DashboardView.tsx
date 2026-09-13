@@ -25,6 +25,7 @@ import { AgentsCard } from './AgentsCard';
 import { CandidatesCard } from './CandidatesCard';
 import { DashboardHeader } from './DashboardHeader';
 import { KPIGrid } from './KPIGrid';
+import { SourcingCostsCard } from './SourcingCostsCard';
 
 export function DashboardView() {
   const { data, isStale, refresh } = useDashboardData();
@@ -98,6 +99,7 @@ function BottomGrid({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <ActivityCard activity={activity} />
         <AgentsCard agents={agents} />
+        <SourcingCostsCard />
       </div>
     </div>
   );

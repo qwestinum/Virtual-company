@@ -55,7 +55,8 @@ export function SourcingConfigManager({ config, onSave }: SourcingConfigManagerP
 
       <p className="font-body text-[12px] text-stone-500">
         L’onglet « Sourcing » n’apparaît que si l’installation l’autorise aussi (configuration
-        du déploiement). Chaque recherche coûte environ 0,10 $.
+        du déploiement). Le nombre de recherches et leur coût d’exploitation se suivent dans le
+        tableau de bord d’administration.
       </p>
 
       <div>

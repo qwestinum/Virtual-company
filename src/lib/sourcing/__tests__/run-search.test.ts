@@ -61,7 +61,6 @@ const input = {
   queryGenerated: 'Consultant AMOA senior, finance de marché, basé à Paris',
   queryMethod: 'llm' as const,
   language: 'fr' as const,
-  llmCostUsd: 0.0004,
 };
 
 describe('runSourcingSearch', () => {
@@ -85,6 +84,14 @@ describe('runSourcingSearch', () => {
     for (const row of rows) expect(row.fingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(rows.map((r) => r.fingerprint))).not.toContain('linkedin');
     expect(JSON.stringify(rows)).not.toContain("repost d'un tiers");
+  });
+
+  it('le coût reste en base pour l’administration et ne sort ni dans le résultat ni au journal', async () => {
+    const r = await runSourcingSearch(input);
+    expect(JSON.stringify(r)).not.toMatch(/cost|coût/i);
+    const entry = vi.mocked(appendJournalEntry).mock.calls[0]![0];
+    expect(JSON.stringify(entry.payload)).not.toMatch(/cost|coût/i);
+    expect(vi.mocked(insertSourcingSearch).mock.calls[0]![0].exaCostUsd).toBe(0.097);
   });
 
   it('la requête envoyée ET la requête générée sont enregistrées avec la recherche', async () => {

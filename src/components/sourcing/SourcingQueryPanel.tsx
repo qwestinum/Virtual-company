@@ -9,8 +9,7 @@
 import { Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
-import { SEARCH_COST_ESTIMATE_LABEL, usd } from '@/lib/sourcing/display';
-import type { GeneratedQuery, SourcingLanguage } from '@/types/sourcing';
+import type { PublicGeneratedQuery, SourcingLanguage } from '@/types/sourcing';
 
 import { EncodedCriteria } from './EncodedCriteria';
 
@@ -19,12 +18,11 @@ type SearchSummary = {
   reserve: number;
   unusable: number;
   skipped: { alreadySeen: number; excluded: number; opposed: number; duplicates: number };
-  exaCostUsd: number | null;
 };
 
 export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: string; onSearched: () => void }) {
   const [language, setLanguage] = useState<SourcingLanguage>('fr');
-  const [generated, setGenerated] = useState<GeneratedQuery | null>(null);
+  const [generated, setGenerated] = useState<PublicGeneratedQuery | null>(null);
   const [text, setText] = useState('');
   const [generating, setGenerating] = useState(true);
   const [running, setRunning] = useState(false);
@@ -40,7 +38,7 @@ export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: str
           body: JSON.stringify({ language: lang }),
         });
         if (!res.ok) throw new Error(String(res.status));
-        const { generated: g } = (await res.json()) as { generated: GeneratedQuery };
+        const { generated: g } = (await res.json()) as { generated: PublicGeneratedQuery };
         setGenerated(g);
         setText(g.query);
       } catch {
@@ -69,7 +67,6 @@ export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: str
           queryGenerated: generated?.query ?? '',
           queryMethod: generated?.method ?? 'deterministic',
           language: generated?.language ?? language,
-          llmCostUsd: generated?.llmCostUsd ?? 0,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as { result?: SearchSummary; message?: string };
@@ -83,8 +80,7 @@ export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: str
         tone: 'info',
         message:
           `${r.toReview + r.reserve} nouveau${r.toReview + r.reserve > 1 ? 'x' : ''} profil${r.toReview + r.reserve > 1 ? 's' : ''}` +
-          (hidden > 0 ? ` · ${hidden} déjà vu${hidden > 1 ? 's' : ''} ou écarté${hidden > 1 ? 's' : ''}` : '') +
-          ` · coût ${usd(r.exaCostUsd)}`,
+          (hidden > 0 ? ` · ${hidden} déjà vu${hidden > 1 ? 's' : ''} ou écarté${hidden > 1 ? 's' : ''}` : ''),
       });
       onSearched();
     } catch {
@@ -141,9 +137,7 @@ export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: str
       </p>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="font-body text-[12px] text-stone-500">
-          100 profils par recherche · coût {SEARCH_COST_ESTIMATE_LABEL}
-        </p>
+        <p className="font-body text-[12px] text-stone-500">100 profils par recherche</p>
         <button
           type="button"
           disabled={generating || running || text.trim().length < 3}

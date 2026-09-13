@@ -2,8 +2,9 @@
  * POST /api/sourcing/campaigns/[id]/searches — lance UNE recherche (100 profils).
  *
  * La requête envoyée est celle que le recruteur a sous les yeux ; la requête
- * générée voyage avec elle pour mesurer l'écart (spec §17.3). Coût d'un appel :
- * ≈ 0,10 $ — le bouton se désarme au clic côté écran.
+ * générée voyage avec elle pour mesurer l'écart (spec §17.3). Le coût de
+ * l'appel est enregistré dans `sourcing_searches` pour l'administration et
+ * n'apparaît PAS dans la réponse. Le bouton se désarme au clic côté écran.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -21,7 +22,6 @@ const BodySchema = z.object({
   queryGenerated: z.string().trim().max(400),
   queryMethod: z.enum(['llm', 'deterministic']),
   language: z.enum(['fr', 'en']),
-  llmCostUsd: z.number().min(0).max(1).default(0),
 });
 
 const EXA_MESSAGES: Record<ExaError['kind'], { status: number; message: string }> = {

@@ -26,9 +26,9 @@ export type RunSearchInput = {
   queryGenerated: string;
   queryMethod: QueryMethod;
   language: SourcingLanguage;
-  llmCostUsd: number;
 };
 
+/** Rendu à l'écran du recruteur : aucun coût (il reste en base, pour l'administration). */
 export type RunSearchResult = {
   searchId: string;
   returned: number;
@@ -36,7 +36,6 @@ export type RunSearchResult = {
   toReview: number;
   reserve: number;
   skipped: { alreadySeen: number; excluded: number; opposed: number; duplicates: number };
-  exaCostUsd: number | null;
 };
 
 export async function runSourcingSearch(input: RunSearchInput): Promise<RunSearchResult> {
@@ -73,7 +72,9 @@ export async function runSourcingSearch(input: RunSearchInput): Promise<RunSearc
     newAfterDedup: selection.fresh.length,
     exaRequestId: outcome.requestId,
     exaCostUsd: outcome.costUsd,
-    llmCostUsd: input.llmCostUsd,
+    // La génération est tracée à part (`sourcing_query_generated`) : le client
+    // ne porte plus aucun montant, il ne peut donc pas en déclarer un.
+    llmCostUsd: null,
   });
 
   await insertSourcingProfiles(
@@ -99,11 +100,10 @@ export async function runSourcingSearch(input: RunSearchInput): Promise<RunSearc
       opposed: selection.skipped.opposed,
       duplicates: selection.skipped.duplicate_in_response,
     },
-    exaCostUsd: outcome.costUsd,
   };
 
-  // Aucune donnée personnelle : des compteurs, la méthode, le coût. La requête
-  // décrit un poste ; elle est déjà dans `sourcing_searches`.
+  // Aucune donnée personnelle, aucun montant : des compteurs et la méthode. Le
+  // coût vit dans `sourcing_searches` ; la requête aussi.
   await appendJournalEntry({
     action: 'sourcing_search_run',
     campaignId: input.campaignId,
@@ -117,8 +117,6 @@ export async function runSourcingSearch(input: RunSearchInput): Promise<RunSearc
       unusable,
       newAfterDedup: selection.fresh.length,
       skipped: result.skipped,
-      exaCostUsd: outcome.costUsd,
-      llmCostUsd: input.llmCostUsd,
       latencyMs: outcome.latencyMs,
       actorUserId: input.userId,
     },

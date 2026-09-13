@@ -19,16 +19,24 @@ export type QueryFicheInput = {
 
 export type NotEncodedCriterion = { label: string; reason: string };
 
-export type GeneratedQuery = {
+/** Ce que l'écran du recruteur reçoit : AUCUN coût (spec §18, ajustement du 14/09). */
+export type PublicGeneratedQuery = {
   query: string;
   encoded: string[];
   notEncoded: NotEncodedCriterion[];
   method: QueryMethod;
   language: SourcingLanguage;
-  /** Coût de la génération (0 en repli déterministe). */
-  llmCostUsd: number;
   /** Pourquoi le repli a été pris — dit à l'écran, jamais tu. */
   fallbackReason: string | null;
+};
+
+/**
+ * Côté serveur seulement. Le coût est une donnée d'exploitation, incluse dans
+ * l'abonnement : il part au suivi d'administration, jamais à l'écran du recruteur.
+ */
+export type GeneratedQuery = PublicGeneratedQuery & {
+  /** Coût de la génération (0 en repli déterministe). */
+  llmCostUsd: number;
 };
 
 /**

@@ -1,23 +1,32 @@
 'use client';
 
 /**
- * Liste des profils à examiner (spec §14.3). L'ordre est celui du moteur.
- * « 50 de plus » puise dans la réserve de la dernière recherche, sans appel.
+ * Liste des profils à examiner — conteneur (chargement, « 50 de plus »,
+ * lignes dépliées). Le rendu vit dans `SourcingResultsList`.
  */
 
 import { Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
+import { INITIAL_EXPANSION, setSingle, toggleRow, type ExpansionState } from '@/lib/sourcing/expansion';
 import type { ProfilesView } from '@/lib/sourcing/profiles-view';
 
-import { CoverageBanner } from './CoverageBanner';
-import { SourcingProfileCard } from './SourcingProfileCard';
+import { SourcingResultsList, type RowExtras } from './SourcingResultsList';
 
-export function SourcingResults({ campaignId, version }: { campaignId: string; version: number }) {
+export function SourcingResults({
+  campaignId,
+  version,
+  extras,
+}: {
+  campaignId: string;
+  version: number;
+  extras?: RowExtras;
+}) {
   const [view, setView] = useState<ProfilesView | null>(null);
   const [loading, setLoading] = useState(true);
   const [promoting, setPromoting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expansion, setExpansion] = useState<ExpansionState>(INITIAL_EXPANSION);
   const url = `/api/sourcing/campaigns/${encodeURIComponent(campaignId)}/profiles`;
 
   const load = useCallback(async () => {
@@ -65,48 +74,15 @@ export function SourcingResults({ campaignId, version }: { campaignId: string; v
     );
   }
 
-  const shownLatest = view.groups[0]?.profiles.length ?? 0;
-
   return (
-    <section className="flex flex-col gap-4">
-      {view.coverage.limited ? <CoverageBanner coverage={view.coverage} /> : null}
-
-      <div className="flex flex-wrap items-center justify-between gap-3 font-body text-[12.5px] text-stone-600">
-        <span>
-          {shownLatest} affiché{shownLatest > 1 ? 's' : ''} · {view.reserveCount} en réserve
-        </span>
-        {view.reserveCount > 0 ? (
-          <button
-            type="button"
-            disabled={promoting}
-            onClick={() => void more()}
-            className="rounded-md border border-stone-300 px-3 py-1 font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40"
-          >
-            {Math.min(50, view.reserveCount)} de plus
-          </button>
-        ) : null}
-      </div>
-
-      {view.groups.map((group, i) => (
-        <div key={group.search.id} className="flex flex-col gap-2">
-          {i > 0 || view.groups.length > 1 ? (
-            <p className="font-body text-[12px] text-stone-500">
-              {i === 0 ? 'Dernière recherche' : 'Recherche précédente'} : « {group.search.query} »
-            </p>
-          ) : null}
-          <ul className="flex flex-col gap-2">
-            {group.profiles.map((p) => (
-              <SourcingProfileCard key={p.id} profile={p} />
-            ))}
-          </ul>
-        </div>
-      ))}
-
-      {view.exhausted ? (
-        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 font-body text-[13px] text-stone-700">
-          {view.groups[0]?.search.returned ?? 100} profils examinés — modifiez la requête pour relancer.
-        </p>
-      ) : null}
-    </section>
+    <SourcingResultsList
+      view={view}
+      expansion={expansion}
+      onToggle={(id) => setExpansion((s) => toggleRow(s, id))}
+      onSingleChange={(single) => setExpansion((s) => setSingle(s, single))}
+      onMore={() => void more()}
+      promoting={promoting}
+      extras={extras}
+    />
   );
 }

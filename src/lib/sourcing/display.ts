@@ -48,10 +48,3 @@ export function indexedAgeLabel(iso: string | null, now: Date = new Date()): str
   if (days === 0) return 'profil indexé aujourd’hui';
   return `profil indexé il y a ${days} jour${days > 1 ? 's' : ''}`;
 }
-
-export const SEARCH_COST_ESTIMATE_LABEL = '≈ 0,10 $';
-
-export function usd(value: number | null): string {
-  if (value === null) return 'coût non communiqué';
-  return `${value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} $`;
-}
