@@ -23,6 +23,7 @@ import {
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 import { DEFAULT_BRANDING_CONFIG, type BrandingConfig } from '@/types/branding';
 import { DEFAULT_ADEP_CONFIG, type AdepConfig } from '@/types/adep-settings';
+import { DEFAULT_SOURCING_CONFIG, type SourcingConfig } from '@/types/sourcing-settings';
 
 const TABLE = 'app_settings';
 
@@ -54,6 +55,8 @@ export type AppSettings = {
   brandingConfig: BrandingConfig;
   /** Réglages APEC du cabinet (NAF, description, mode client, défauts). */
   adepConfig: AdepConfig;
+  /** Module Sourcing — second étage du flag (le premier est en env). */
+  sourcingConfig: SourcingConfig;
   /**
    * Clé API Resend : write-only. On n'expose JAMAIS la valeur en clair (ni au
    * client, ni dans cet objet de domaine) — seulement un booléen « configurée ».
@@ -85,6 +88,7 @@ type AppSettingsRow = {
   interview_config: InterviewConfig | null;
   branding_config: BrandingConfig | null;
   adep_config: AdepConfig | null;
+  sourcing_config: SourcingConfig | null;
   resend_api_key: string | null;
   updated_at: string;
 };
@@ -150,6 +154,8 @@ function rowToDomain(row: AppSettingsRow): AppSettings {
     },
     // Idem : une row antérieure à la migration APEC n'a pas la colonne.
     adepConfig: { ...DEFAULT_ADEP_CONFIG, ...(row.adep_config ?? {}) },
+    // Colonne absente (base en retard) ⇒ défauts ⇒ ÉTEINT : fail-closed.
+    sourcingConfig: { ...DEFAULT_SOURCING_CONFIG, ...(row.sourcing_config ?? {}) },
     // Jamais la valeur : seulement la présence (write-only côté UI).
     resendApiKeyConfigured: (row.resend_api_key ?? '').length > 0,
     updatedAt: row.updated_at,
@@ -219,6 +225,7 @@ export type AppSettingsPatch = {
   interviewConfig?: InterviewConfig;
   brandingConfig?: BrandingConfig;
   adepConfig?: AdepConfig;
+  sourcingConfig?: SourcingConfig;
   /** Write-only : `''` (ou null) efface la clé, une valeur non vide la pose. */
   resendApiKey?: string | null;
 };
@@ -247,6 +254,7 @@ export async function patchAppSettings(
   if (patch.brandingConfig !== undefined)
     row.branding_config = patch.brandingConfig;
   if (patch.adepConfig !== undefined) row.adep_config = patch.adepConfig;
+  if (patch.sourcingConfig !== undefined) row.sourcing_config = patch.sourcingConfig;
   // Write-only : `''` efface (null), valeur non vide pose la clé.
   if (patch.resendApiKey !== undefined)
     row.resend_api_key = patch.resendApiKey ? patch.resendApiKey : null;

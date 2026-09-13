@@ -36,6 +36,7 @@ import {
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 import { DEFAULT_BRANDING_CONFIG, type BrandingConfig } from '@/types/branding';
 import { DEFAULT_ADEP_CONFIG, type AdepConfig } from '@/types/adep-settings';
+import { DEFAULT_SOURCING_CONFIG, type SourcingConfig } from '@/types/sourcing-settings';
 import {
   brandingSummary,
   channelsSummary,
@@ -57,6 +58,7 @@ import { EmailMultiSelectField } from './EmailMultiSelectField';
 import { IntegrationCard } from './IntegrationCard';
 import { AgendaSettings } from './AgendaSettings';
 import { ApecConfigManager } from './ApecConfigManager';
+import { SourcingConfigManager } from './SourcingConfigManager';
 import { BrandingManager } from './BrandingManager';
 import { InterviewConfigManager } from './InterviewConfigManager';
 import { MailboxesManager } from './MailboxesManager';
@@ -90,6 +92,8 @@ type Settings = {
   brandingConfig: BrandingConfig;
   /** Réglages APEC du cabinet (code NAF, description, convention). */
   adepConfig: AdepConfig;
+  /** Recherche de profils — second étage du flag (admin). */
+  sourcingConfig: SourcingConfig;
   /** Clé Resend : statut seulement (la valeur n'est jamais renvoyée). */
   resendApiKeyConfigured: boolean;
   updatedAt: string;
@@ -201,7 +205,7 @@ const SECTION_IDS = (isAdmin: boolean): string[] => [
   'entretiens',
   'identite',
   'agendas',
-  ...(isAdmin ? ['recruteurs'] : []),
+  ...(isAdmin ? ['recruteurs', 'sourcing'] : []),
   'donneurs',
   'sites',
   'boites',
@@ -241,6 +245,7 @@ export function SettingsHub({
               brandingConfig:
                 json.settings.brandingConfig ?? DEFAULT_BRANDING_CONFIG,
               adepConfig: json.settings.adepConfig ?? DEFAULT_ADEP_CONFIG,
+              sourcingConfig: json.settings.sourcingConfig ?? DEFAULT_SOURCING_CONFIG,
               resendApiKeyConfigured:
                 json.settings.resendApiKeyConfigured ?? false,
             },
@@ -485,6 +490,22 @@ export function SettingsHub({
           description="Les utilisateurs de l'espace (multi-utilisateur) : nom, lien Cal.com personnel, rôle et désactivation. Les disponibilités se règlent dans « Agendas & disponibilités ». Section réservée aux administrateurs."
         >
           <RecruitersManager />
+        </SettingsSection>
+      ) : null}
+
+      {isAdmin ? (
+        <SettingsSection
+          {...sectionProps('sourcing')}
+          icon="🔎"
+          title="Recherche de profils"
+          description="Module Sourcing : rechercher des profils professionnels publics pour une campagne active. Section réservée aux administrateurs."
+        >
+          <SourcingConfigManager
+            config={settings.sourcingConfig ?? DEFAULT_SOURCING_CONFIG}
+            onSave={(next) =>
+              patchAndSave({ sourcingConfig: next }, 'Recherche de profils mise à jour.')
+            }
+          />
         </SettingsSection>
       ) : null}
 

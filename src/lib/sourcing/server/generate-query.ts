@@ -1,0 +1,82 @@
+/**
+ * Génération de la requête — (b) LLM, repli (a) déterministe.
+ * Spec : docs/specs/sourcing.md §3.3 (décision), §17.3 (indicateur de bascule).
+ *
+ * UN appel LLM par génération, jamais par profil. Le repli n'est pas un échec
+ * silencieux : `fallbackReason` est rendu à l'écran, et `method` est stocké
+ * avec la recherche — c'est ce qui permet de mesurer, en production, si (b)
+ * est réellement moins corrigé que (a).
+ */
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+
+import { estimateCost } from '@/lib/ai/pricing';
+import { chatCompleteJson } from '@/lib/ai/provider';
+import { deterministicQuery } from '@/lib/sourcing/query-deterministic';
+import {
+  buildSystemPrompt,
+  FEW_SHOTS,
+  ficheToPromptText,
+  GeneratedQuerySchema,
+  validateGeneratedQuery,
+} from '@/lib/sourcing/query-prompt';
+import type { GeneratedQuery, QueryFicheInput, SourcingLanguage } from '@/types/sourcing';
+
+/**
+ * Coût d'un appel. Si le fournisseur renvoie un nom de modèle DATÉ
+ * (`gpt-4o-2024-08-06`) absent de la table de tarifs, l'estimation vaut 0 : on
+ * retente sans le suffixe de date plutôt que d'enregistrer un coût nul.
+ */
+function callCost(raw: { model: string; costEstimate: number; usage: { promptTokens: number; completionTokens: number } }): number {
+  if (raw.costEstimate > 0) return raw.costEstimate;
+  return estimateCost(raw.model.replace(/-\d{4}-\d{2}-\d{2}$/, ''), raw.usage.promptTokens, raw.usage.completionTokens);
+}
+
+export async function generateSourcingQuery(
+  fiche: QueryFicheInput,
+  language: SourcingLanguage,
+): Promise<GeneratedQuery> {
+  const fallback = (reason: string): GeneratedQuery => {
+    const a = deterministicQuery(fiche);
+    return {
+      ...a,
+      method: 'deterministic',
+      // Le repli ne sait pas traduire : il le DIT plutôt que d'envoyer du
+      // français en croyant chercher en anglais.
+      language: 'fr',
+      llmCostUsd: 0,
+      fallbackReason:
+        language === 'en' ? `${reason} — requête de repli rédigée en français` : reason,
+    };
+  };
+
+  if (fiche.criteria.length === 0) return fallback('la fiche de scoring ne porte aucun critère');
+
+  const messages: ChatCompletionMessageParam[] = [{ role: 'system', content: buildSystemPrompt(language) }];
+  for (const shot of FEW_SHOTS) {
+    messages.push({ role: 'user', content: shot.fiche });
+    messages.push({ role: 'assistant', content: JSON.stringify(shot.out) });
+  }
+  messages.push({ role: 'user', content: ficheToPromptText(fiche) });
+
+  try {
+    // Modèle par défaut du fournisseur (`OPENAI_CHAT_MODEL`, gpt-4o en dev) :
+    // celui que l'étude a mesuré (§3.3). À vérifier sur chaque environnement.
+    const r = await chatCompleteJson(messages, GeneratedQuerySchema, {
+      temperature: 0,
+      maxTokens: 800,
+    });
+    const verdict = validateGeneratedQuery(r.data, fiche);
+    if (!verdict.ok) return fallback(`requête générée écartée : ${verdict.reason}`);
+    return {
+      query: r.data.query.trim(),
+      encoded: r.data.encoded,
+      notEncoded: r.data.notEncoded,
+      method: 'llm',
+      language,
+      llmCostUsd: callCost(r.raw),
+      fallbackReason: null,
+    };
+  } catch {
+    return fallback('génération indisponible');
+  }
+}

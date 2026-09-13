@@ -14,7 +14,7 @@ Sommaire : 1 Décisions · 2 Exa mesuré · 3 Requêtage · 4 Disponibilité · 
 6 Coordonnées du titulaire · 7 Données · 8 Approche · 9 Page d'atterrissage ·
 10 Manifestation · 11 Briefing et rapports · 12 Purge et RGPD · 13 Flag et proxy ·
 14 Maquettes · 15 Journal · 16 Tests · 17 Coût de l'étude, incertitudes, indicateurs ·
-18 Backlog
+18 Avancement · 19 Backlog
 
 ---
 
@@ -263,8 +263,11 @@ une correction manuelle à chaque recherche, et la fiche en phrases est le cas c
 60 critères critiques et très importants de la base de dev n'ont pas de mots-clés).
 
 **Décision : (b), repli (a)** en cas d'échec du LLM ou de sortie invalide (la validation vérifie
-la longueur 15-30 mots et que chaque critère est dans `encoded` ou `notEncoded`). Coût mesuré
-**0,006 $ et 1,8 à 2,3 s** par génération (gpt-4o, 1 850 tokens avec les exemples). Le champ
+que chaque critère est dans `encoded` ou `notEncoded`, l'absence d'opérateur, et une longueur
+**acceptée de 10 à 35 mots** — plus large que la consigne de 15 à 30 : constaté en dev au lot 2,
+un plancher à 15 rejetait la requête (b) du BA, 14 mots, au profit du repli (a)… de 13 mots).
+Coût mesuré **0,006 $ et 1,8 à 2,4 s** par génération (gpt-4o via `OPENAI_CHAT_MODEL` en dev —
+le modèle se vérifie par environnement ; 1 850 tokens avec les exemples). Le champ
 **`query_generated`** et la requête réellement envoyée au premier lancement sont stockées : si
 l'indicateur du §17.3 montre que (b) n'est pas moins corrigé que ne le serait (a), on bascule
 sur (a) sans regret — l'égalité mesurée le permet.
@@ -1053,7 +1056,41 @@ message d'approche, une analyse CV habituelle par manifestation.
 
 ---
 
-## 18. Backlog
+## 18. Avancement
+
+### Lot 2 — recherche et liste (13/09/2026, `feat/sourcing`, non mergé)
+
+Livré : onglet « Sourcing » (campagnes actives, référent, vus / approchés / manifestés, « Mes
+approches ce mois »), écran de requête ((b) + repli (a), champ éditable, retour à la requête
+générée, bascule FR/EN, critères encodés / non encodés, coût), appel unique à 100 résultats,
+coupe des sections au point unique, réserve locale et « 50 de plus », dédoublonnage par empreinte
+(vus, exclusions de campagne, oppositions), bandeau de couverture limitée, fin de réserve. Carte en
+**lecture seule**. Flag deux étages (`src/lib/sourcing/flag.ts`) : page rendue sans onglet et
+routes `/api/sourcing/**` en 404 avant toute authentification ; section admin « Recherche de
+profils » dans les réglages.
+
+Choix et écarts à connaître :
+- **Coupe des sections en LISTE BLANCHE** (`keepAllowedSections`, `src/lib/sourcing/ingest.ts`) :
+  About, Experience, Education, Skills, Languages, Licenses & Certifications ; toute autre section,
+  y compris une section future, est coupée.
+- **L'extrait du moteur** est choisi sur le texte COMPLET, Social compris : seuls ses fragments
+  retrouvés dans le texte autorisé sont gardés (296 extraits sur 306 à l'étude, aucun issu de Social).
+- **Champ inconnu du moteur** : retiré par le schéma (`z.object` sans `passthrough`), pas une
+  erreur — une erreur arrêterait le module au premier champ ajouté par le moteur ; le test vérifie
+  qu'un champ ajouté (photo, contact) n'entre pas.
+- **Coordonnées** : emails et numéros retirés du texte stocké en attendant la règle du titulaire
+  (lot 3), qui s'appliquera AVANT ce retrait.
+- **`sourcingConfig` exige le rôle admin** dans `PUT /api/settings` — la route n'avait aucun
+  contrôle de rôle ; la garde ne vise que ce champ.
+- Vérification de bout en bout en dev (CAMP-2026-293) : génération (b), 100 résultats, 50 affichés
+  + 50 en réserve, couverture Paris 46/50, parcours, formation et extrait présents sur 50/50, aucun
+  email ni trace de Social stockés, « 50 de plus » puis fin de réserve, même requête relancée ⇒
+  0 nouveau (100 « déjà vus »). Lignes de vérification supprimées ensuite.
+
+Reste au lot 3 : décliner, se connecter, contacter par email, badge « en recherche », mentions,
+email du titulaire, « peut-être dans votre vivier », préférence de format et de tri par recruteur.
+
+## 19. Backlog
 
 - Geste de ré-analyse manuel d'une candidature.
 - Encoder les **missions** de la fiche dans la requête (le domaine fin, §3.2) : à mesurer avec

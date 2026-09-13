@@ -23,7 +23,9 @@ import {
 import { DEFAULT_VIVIER_CONFIG, VivierConfigSchema } from '@/types/vivier-settings';
 import { BrandingConfigSchema, DEFAULT_BRANDING_CONFIG } from '@/types/branding';
 import { AdepConfigSchema, DEFAULT_ADEP_CONFIG } from '@/types/adep-settings';
+import { DEFAULT_SOURCING_CONFIG, SourcingConfigSchema } from '@/types/sourcing-settings';
 import { invalidateSchedulingConfig } from '@/lib/scheduling-host/configure';
+import { requireAdminApiUser } from '@/lib/auth/require-api-user';
 
 export const runtime = 'nodejs';
 
@@ -46,6 +48,8 @@ const PatchSchema = z.object({
   interviewConfig: InterviewConfigSchema.optional(),
   brandingConfig: BrandingConfigSchema.optional(),
   adepConfig: AdepConfigSchema.optional(),
+  // Second étage du flag Sourcing — ADMIN seulement (garde dans le PUT).
+  sourcingConfig: SourcingConfigSchema.optional(),
   // Write-only : `''` efface la clé, une valeur non vide la pose. Jamais
   // renvoyée par le GET (seul `resendApiKeyConfigured` l'est).
   resendApiKey: z.string().max(2048).optional(),
@@ -82,6 +86,7 @@ function emptyPayload() {
       interviewConfig: DEFAULT_INTERVIEW_CONFIG,
       brandingConfig: DEFAULT_BRANDING_CONFIG,
       adepConfig: DEFAULT_ADEP_CONFIG,
+      sourcingConfig: DEFAULT_SOURCING_CONFIG,
       resendApiKeyConfigured: false,
       updatedAt: new Date(0).toISOString(),
     },
@@ -118,6 +123,13 @@ export async function PUT(request: Request): Promise<NextResponse> {
       },
       { status: 400 },
     );
+  }
+  // Allumer la recherche de profils fait collecter des données personnelles
+  // de tiers : c'est une décision d'administrateur, pas un réglage courant.
+  // La garde ne vise QUE ce champ — le reste de la route garde son régime.
+  if (parsed.sourcingConfig !== undefined) {
+    const denied = await requireAdminApiUser();
+    if (denied) return denied;
   }
   try {
     const next = await patchAppSettings(parsed);

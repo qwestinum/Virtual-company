@@ -16,6 +16,7 @@ import {
 } from '@/components/notifications/useBusinessSignals';
 import { InterviewsWorkspace } from '@/components/interviews/InterviewsWorkspace';
 import { ReportingHub } from '@/components/reporting/ReportingHub';
+import { SourcingWorkspace } from '@/components/sourcing/SourcingWorkspace';
 import { ValidationsHub } from '@/components/validations/ValidationsHub';
 import { VivierValidationsWorklist } from '@/components/vivier/VivierValidationsWorklist';
 import type { CandidateStage } from '@/lib/reporting/candidate-stage';
@@ -27,6 +28,7 @@ type Tab =
   | 'campagnes'
   | 'candidatures'
   | 'entretiens'
+  | 'sourcing'
   | 'validations'
   | 'vivier'
   | 'reporting';
@@ -36,6 +38,9 @@ const TABS: { id: Tab; label: string; available: boolean }[] = [
   { id: 'campagnes', label: 'Campagnes', available: true },
   { id: 'candidatures', label: 'Candidatures', available: true },
   { id: 'entretiens', label: 'Entretiens', available: true },
+  // Retiré de la liste quand le module est éteint (flag deux étages, décidé
+  // côté serveur) : un onglet grisé confirmerait une surface qui n'existe pas.
+  { id: 'sourcing', label: 'Sourcing', available: true },
   { id: 'validations', label: 'Validation suspendue', available: true },
   { id: 'vivier', label: 'Validations vivier', available: true },
   { id: 'reporting', label: 'Reporting', available: true },
@@ -87,8 +92,9 @@ function usePendingVivierCount(): number {
   return count;
 }
 
-export function WorkspacePane() {
+export function WorkspacePane({ sourcingEnabled = false }: { sourcingEnabled?: boolean }) {
   const [tab, setTab] = useState<Tab>('rh');
+  const tabs = TABS.filter((t) => t.id !== 'sourcing' || sourcingEnabled);
   // Pré-filtres de l'onglet Candidatures — posés UNIQUEMENT par une navigation
   // croisée (notification métier, ou quadrant d'une carte campagne), remis à
   // null sur toute navigation manuelle (les parcours existants ne changent pas).
@@ -153,6 +159,7 @@ export function WorkspacePane() {
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden">
       <WorkspaceTabs
+        tabs={tabs}
         current={tab}
         onChange={changeTab}
         pendingCount={pendingCount}
@@ -186,6 +193,8 @@ export function WorkspacePane() {
             key={interviewsSection ?? 'default'}
             initialSection={interviewsSection}
           />
+        ) : tab === 'sourcing' && sourcingEnabled ? (
+          <SourcingWorkspace />
         ) : tab === 'validations' ? (
           <div className="h-full overflow-auto px-6 py-6">
             <div className="mx-auto w-full max-w-6xl">
@@ -226,6 +235,7 @@ export function WorkspacePane() {
 }
 
 function WorkspaceTabs({
+  tabs,
   current,
   onChange,
   pendingCount,
@@ -234,6 +244,7 @@ function WorkspaceTabs({
   interviewsAwaiting,
   interviewsToPoint,
 }: {
+  tabs: typeof TABS;
   current: Tab;
   onChange: (tab: Tab) => void;
   pendingCount: number;
@@ -251,7 +262,7 @@ function WorkspaceTabs({
       aria-label="Espaces de travail"
       className="relative z-20 flex items-end gap-1 px-6 pt-4 border-b border-stone-200/60 bg-white/50 backdrop-blur-sm"
     >
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = current === tab.id;
         return (
           <button
