@@ -126,6 +126,19 @@ export const TABLE_INVENTORY = {
     treatment: { kind: 'step' },
     holds: 'Message d’erreur pouvant citer un nom de fichier.',
   },
+  // Module Sourcing (docs/specs/sourcing.md §7, §12). Pas de parent effacé dont
+  // elles descendraient : l'outil doit les NOMMER (option --linkedin-url pour un
+  // profil non manifesté, identifiant d'analyse can_src_ pour un manifesté).
+  sourcing_profiles: {
+    verdict: 'EFFACER',
+    treatment: { kind: 'step' },
+    holds: 'Instantané d’un profil public (nom, parcours, email du titulaire) jusqu’au déclin, à la manifestation ou à la clôture.',
+  },
+  sourcing_approaches: {
+    verdict: 'PSEUDONYMISER',
+    treatment: { kind: 'step' },
+    holds: 'Message d’approche (prénom) et saisie en cours d’admission — recruteur, dates et jeton haché restent.',
+  },
 
   // ── Aucune donnée de candidat, ou identifiant technique ────────────────
   imap_outreach_claims: { verdict: 'CONSERVER', holds: 'Boîte, identifiant de message, type d’envoi (§6.4).' },
@@ -133,6 +146,8 @@ export const TABLE_INVENTORY = {
   interview_booking_events: { verdict: 'CONSERVER', holds: 'Identifiants techniques d’événements.' },
   sched_rate_limits: { verdict: 'CONSERVER', holds: 'Clé opaque de débit, purgée en moins d’une heure.' },
   gdpr_erasure_requests: { verdict: 'CONSERVER', holds: 'Trace de la demande : empreinte salée, jamais l’adresse (§5.1).' },
+  sourcing_searches: { verdict: 'CONSERVER', holds: 'Appels au moteur de profils : la requête décrit un poste, compteurs et coûts.' },
+  sourcing_exclusions: { verdict: 'CONSERVER', holds: 'Empreinte salée d’URL de profil et raison — garantit le déclin et l’opposition.' },
   campaigns: { verdict: 'CONSERVER', holds: 'Campagnes.' },
   fdps_archived: { verdict: 'CONSERVER', holds: 'Fiches de poste archivées.' },
   scoring_sheets_archived: { verdict: 'CONSERVER', holds: 'Fiches de scoring archivées.' },

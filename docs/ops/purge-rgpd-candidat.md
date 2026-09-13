@@ -99,6 +99,10 @@ Deux exceptions de forme, toutes deux justifiées au §6.3 :
 | `sched_rate_limits` | Adresses IP, dans une clé opaque non rattachable à un candidat. | **CONSERVER** — purge automatique en moins d'une heure |
 | `gdpr_erasure_requests` | La trace de la demande elle-même : empreinte **salée** de l'adresse, jamais l'adresse. | **CONSERVER** (§5.1) |
 | `job_postings` | Publications d'offres sur l'Apec : l'offre telle qu'envoyée, les accusés de réception, le statut distant. Aucune donnée de candidat. | **CONSERVER** |
+| `sourcing_profiles` | Module Sourcing : instantané d'un **profil professionnel public** trouvé par le moteur — nom, parcours, formation, résumé, adresse électronique du titulaire s'il l'affiche. Existe jusqu'au déclin, à la manifestation de la personne ou à la clôture de la campagne. | **EFFACER** — l'outil vise la ligne par l'adresse du profil (`--linkedin-url`) |
+| `sourcing_approaches` | Module Sourcing : le message d'approche (prénom de la personne) et, le temps de créer la candidature, ce qu'elle a saisi. Le recruteur, les dates et l'empreinte du jeton ne désignent pas la personne. | **PSEUDONYMISER** |
+| `sourcing_searches` | Module Sourcing : la requête envoyée au moteur (elle décrit un poste), compteurs et coûts. | **CONSERVER** |
+| `sourcing_exclusions` | Module Sourcing : **empreinte salée** de l'adresse d'un profil et la raison (décliné, contacté, manifesté, opposition) — rien de lisible. Elle garantit qu'un profil décliné ne revient pas et qu'une opposition est respectée. | **CONSERVER** |
 | `campaigns`, `fdps_archived`, `scoring_sheets_archived`, `tasks_archived`, `sites`, `donneurs_ordre`, `recruiters`, `mailboxes`, `app_settings`, `demo_job_posts`, `campaign_mailboxes`, `sched_resources`, `sched_targets`, `sched_availability_rules`, `sched_availability_exceptions` | Aucune donnée de candidat. | **CONSERVER** |
 
 > **Aucune table sans verdict — vérifié par un test.** Ce tableau a sa
@@ -363,6 +367,36 @@ Les angles morts sont connus et nommés :
 | Le CV porte une adresse différente de celle de l'expéditeur (candidature déposée par un cabinet, un proche, une seconde adresse) | La file de résilience et le message d'origine ne sont pas retrouvés | `--also-email` (répétable), alimenté par l'instruction |
 | Le CV ne portait **aucune** adresse exploitable | Le dossier est invisible à une recherche par adresse | `--analysis-id` ou `--uid <boîte>:<numéro>` |
 | Variantes d'adresse (points, alias `+`) | Sous-effacement | **L'outil ne devine pas** : supposer que deux adresses sont la même personne ferait effacer les données d'un tiers. Il faut les déclarer |
+| Profil professionnel public collecté par le **sourcing**, sans que la personne ait jamais candidaté | Aucune adresse électronique connue : invisible à `--email` (sauf si son profil affichait l'adresse) | `--linkedin-url <adresse du profil>` — voir ci-dessous |
+
+**Module Sourcing — la porte `--linkedin-url`.** Un profil trouvé par la
+recherche de profils n'a, tant que la personne ne s'est pas manifestée, **ni
+adresse ni candidature** : seulement l'adresse de son profil professionnel
+public. Il se désigne donc par elle.
+
+```bash
+npm run purge:candidate -- --env .env.localX \
+    --linkedin-url https://www.linkedin.com/in/jean-dupont-4a1b2c
+```
+
+- L'outil ne stocke jamais cette adresse : il en calcule l'**empreinte salée**
+  (`SOURCING_FINGERPRINT_PEPPER`, **obligatoire** dans le fichier `--env` — sans
+  le sel de l'environnement visé, l'empreinte ne correspondrait à rien et la
+  commande conclurait à tort « rien à effacer »). Toutes les écritures d'une
+  même adresse (`fr.linkedin.com/in/…/`, paramètres, casse) donnent la même
+  empreinte.
+- **L'empreinte est un identifiant fort** : dérivée d'une adresse qui désigne
+  une personne, elle fait entrer une ligne dans le périmètre — sur **toutes** les
+  campagnes où le profil a été trouvé. Le nom lu sur le profil ne sert qu'au
+  caviardage : un homonyme n'est jamais touché.
+- Elle enregistre une **opposition** : sans elle, le profil effacé serait
+  proposé de nouveau à la prochaine recherche, et ses données collectées une
+  seconde fois. L'opposition ne porte que l'empreinte. Elle n'est posée **que
+  pour les adresses de profil nommées par l'instruction** — jamais déduite d'un
+  candidat retrouvé par son email.
+- Un candidat **manifesté** (qui a candidaté après avoir été approché) est un
+  candidat ordinaire : `--email` le retrouve, et sa candidature mène à sa prise
+  de contact et à son profil encore présent sur une autre campagne.
 | Fichiers restés dans le stockage d'une campagne supprimée | Inatteignables par l'ensemble d'identifiants | `--deep-storage-scan` : parcours complet du stockage, lecture des fichiers texte. Lent, donc facultatif |
 | **Homonyme, ou adresse voisine** | Sur-effacement — le risque le plus grave | **Ni le nom ni le téléphone ne sont un critère à eux seuls.** Ils ne servent qu'à l'intérieur du périmètre déjà établi par l'adresse : les campagnes du candidat, ses propres noms de fichiers. Une personne dont le nom se ressemble, ou qui partage un numéro, mais dont l'adresse diffère n'est jamais touchée — et un test de non-débordement le vérifie à chaque livraison |
 
@@ -449,9 +483,12 @@ traitement, pas à un développeur :
 > L'effacement est suspendu : le responsable de traitement doit annuler
 > l'entretien, ou confirmer par écrit que l'effacement prime.
 
-Trois arrêts existent : entretien programmé à venir, réservation confirmée à
-venir, message de décision en cours d'expédition. Le troisième se lève seul en
-quelques minutes ; les deux premiers appellent une décision humaine.
+Quatre arrêts existent : entretien programmé à venir, réservation confirmée à
+venir, message de décision en cours d'expédition, et **candidature issue du
+sourcing en cours de création** (la personne vient de l'envoyer, son analyse n'a
+pas encore abouti — effacer maintenant détruirait la saisie que la reprise va
+rejouer). Les deux derniers se lèvent seuls en quelques minutes ; les deux
+premiers appellent une décision humaine.
 
 **Ce n'est pas la décision d'ORQA.** L'outil ne passe pas outre, même avec une
 option — il faut lever la cause, puis relancer.
@@ -558,6 +595,8 @@ lui, fait le lien avec la personne — et qui le lui transmet.
 | Table de suivi | `gdpr_erasure_requests` — `scripts/migrate.sql`, repo `src/lib/db/repos/gdpr-requests.ts` |
 | Tests unitaires | `src/lib/gdpr/__tests__/` |
 | Scénario de régression | `tests/regression/s18-purge-rgpd.test.ts` |
+| Empreinte de profil (sourcing) | `src/lib/sourcing/fingerprint.ts` (pur) — **la normalisation est un contrat** : la changer rend inopérantes les empreintes stockées |
+| Scénario de régression — sourcing | `tests/regression/s20-purge-sourcing.test.ts` |
 
 **Trois règles à ne pas défaire :**
 

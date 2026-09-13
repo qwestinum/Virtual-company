@@ -53,6 +53,9 @@ export type TechnicalScope = Pick<
   | 'artifactIds'
   | 'unmatchedIds'
   | 'storagePaths'
+  | 'sourcingFingerprints'
+  | 'sourcingProfileIds'
+  | 'sourcingApproachIds'
 >;
 
 /**
@@ -84,6 +87,13 @@ const KEEP: Record<keyof ErasureIdentity, boolean> = {
   // c'est le seul moyen de re-contrôler qu'un binaire a bien disparu, et le
   // fichier qu'il désigne n'existe plus. Il n'est PAS imprimé dans le rapport.
   storagePaths: true,
+  // Sourcing. L'empreinte est salée et déjà conservée en base par décision
+  // (`sourcing_exclusions`, qui garantit le déclin et l'opposition) : la
+  // garder ici n'ajoute rien de ré-identifiant. Les identifiants de ligne sont
+  // techniques.
+  sourcingFingerprints: true,
+  sourcingProfileIds: true,
+  sourcingApproachIds: true,
 };
 
 export function technicalScope(identity: ErasureIdentity): TechnicalScope {
@@ -108,6 +118,9 @@ export const EMPTY_TECHNICAL_SCOPE: TechnicalScope = {
   artifactIds: [],
   unmatchedIds: [],
   storagePaths: [],
+  sourcingFingerprints: [],
+  sourcingProfileIds: [],
+  sourcingApproachIds: [],
 };
 
 /**

@@ -34,12 +34,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { analysisIdForValidation } from '@/lib/hitl/analysis-key';
+import { buildFingerprint, strongIdentifiersOnly } from '@/lib/gdpr/payload-pseudonymize';
+import { carriesStrongIdentifier } from '@/lib/gdpr/perimeter';
 import { escapeLike, pageAllByText } from '@/lib/gdpr/scan';
 import type { ErasureIdentity } from '@/types/gdpr';
 import type { CVApplication } from '@/types/cv-analysis';
 
 /** `can_imap_<boîte>_<uid>` — la boîte peut contenir des `_`, on ancre sur la fin. */
 const IMAP_ANALYSIS_ID = /^can_imap_(.+)_(\d+)$/u;
+
+/** `can_src_<approche>` — candidature née d'une approche de sourcing. */
+const SOURCING_ANALYSIS_ID = /^can_src_([0-9a-f-]{36})$/u;
 
 export type ResolveInput = {
   /** Adresses fournies par l'instruction. Normalisées ici. */
@@ -48,6 +53,11 @@ export type ResolveInput = {
   analysisIds?: string[];
   /** `<boîte>:<uid>` — même usage. */
   imapRefs?: { mailboxId: string; uid: string }[];
+  /**
+   * Empreintes de profils publics (`--linkedin-url`), CALCULÉES PAR L'APPELANT :
+   * la résolution ne connaît pas le sel, et n'a pas à le connaître.
+   */
+  sourcingFingerprints?: string[];
 };
 
 type AnalysisRow = {
@@ -137,41 +147,27 @@ export async function resolveIdentity(
     artifactIds: [],
     unmatchedIds: [],
     storagePaths: [],
+    sourcingFingerprints: [...(input.sourcingFingerprints ?? [])],
+    sourcingProfileIds: [],
+    sourcingApproachIds: [],
   };
 
-  // ── 1. Les analyses : la racine de tout le reste ────────────────────────
-  // `candidate_email` GARDE LA CASSE DU CV (le code de lecture l'assume déjà,
-  // cf. `getLatestAnalysisByEmail`) ⇒ `ilike`, jamais `eq`.
-  const analyses: AnalysisRow[] = [];
-  for (const email of emails) {
-    analyses.push(
-      ...(await pageAllByText<AnalysisRow>(db, 'candidate_analyses', ANALYSIS_SELECT, 'id', [
-        { op: 'ilike', col: 'candidate_email', value: escapeLike(email) },
-      ])),
-    );
-  }
-  if (acc.analysisIds.length > 0) {
-    analyses.push(
-      ...(await pageAllByText<AnalysisRow>(db, 'candidate_analyses', ANALYSIS_SELECT, 'id', [
-        { op: 'in', col: 'id', values: acc.analysisIds },
-      ])),
-    );
-  }
+  // ── 0. Sourcing, premier passage ────────────────────────────────────────
+  // Une empreinte fournie (`--linkedin-url`) mène à ses approches, et une
+  // approche aboutie mène à SA candidature : la personne sourcée puis
+  // manifestée est retrouvée par l'adresse de son profil comme par son email.
+  await resolveSourcing(db, acc);
 
-  for (const a of dedupeById(analyses)) {
-    push(acc.analysisIds, a.id);
-    push(acc.uids, a.uid ?? a.id);
-    push(acc.names, a.candidate_name);
-    push(acc.campaignIds, a.campaign_id);
-    push(acc.fileNames, a.file_name);
-    push(acc.vivierIds, a.vivier_candidate_id);
-    push(acc.phones, a.application?.candidate.phone ?? null);
-    // Une analyse trouvée par un point d'entrée technique apporte son adresse.
-    const mailFromRow = a.candidate_email?.trim().toLowerCase() ?? null;
-    push(acc.emails, mailFromRow);
-    const m = IMAP_ANALYSIS_ID.exec(a.id);
-    if (m) pushRef(acc.imapRefs, { mailboxId: m[1]!, uid: m[2]! });
-  }
+  // ── 1. Les analyses : la racine de tout le reste ────────────────────────
+  await collectAnalyses(db, acc, emails);
+
+  // ── 1bis. Sourcing, second passage ──────────────────────────────────────
+  // Les analyses ont apporté des `can_src_…` et des adresses : on remonte à
+  // l'approche, à l'empreinte, puis aux profils de la même personne sur
+  // d'autres campagnes. Une candidature découverte au passage est collectée.
+  const knownAnalyses = acc.analysisIds.length;
+  await resolveSourcing(db, acc);
+  if (acc.analysisIds.length > knownAnalyses) await collectAnalyses(db, acc, []);
 
   // ── 2. Le vivier — clé de dédup = l'adresse, normalisée en base ──────────
   const vivier = await pageAllByText<VivierRow>(
@@ -375,6 +371,117 @@ export async function resolveIdentity(
   return normalize(acc);
 }
 
+/**
+ * Analyses par adresse (`ilike` : `candidate_email` GARDE LA CASSE DU CV, cf.
+ * `getLatestAnalysisByEmail`) et par identifiant. Rejouable : `push` dédoublonne.
+ */
+async function collectAnalyses(
+  db: SupabaseClient,
+  acc: ErasureIdentity,
+  emails: string[],
+): Promise<void> {
+  const analyses: AnalysisRow[] = [];
+  for (const email of emails) {
+    analyses.push(
+      ...(await pageAllByText<AnalysisRow>(db, 'candidate_analyses', ANALYSIS_SELECT, 'id', [
+        { op: 'ilike', col: 'candidate_email', value: escapeLike(email) },
+      ])),
+    );
+  }
+  if (acc.analysisIds.length > 0) {
+    analyses.push(
+      ...(await pageAllByText<AnalysisRow>(db, 'candidate_analyses', ANALYSIS_SELECT, 'id', [
+        { op: 'in', col: 'id', values: acc.analysisIds },
+      ])),
+    );
+  }
+
+  for (const a of dedupeById(analyses)) {
+    push(acc.analysisIds, a.id);
+    push(acc.uids, a.uid ?? a.id);
+    push(acc.names, a.candidate_name);
+    push(acc.campaignIds, a.campaign_id);
+    push(acc.fileNames, a.file_name);
+    push(acc.vivierIds, a.vivier_candidate_id);
+    push(acc.phones, a.application?.candidate.phone ?? null);
+    // Une analyse trouvée par un point d'entrée technique apporte son adresse.
+    const mailFromRow = a.candidate_email?.trim().toLowerCase() ?? null;
+    push(acc.emails, mailFromRow);
+    const m = IMAP_ANALYSIS_ID.exec(a.id);
+    if (m) pushRef(acc.imapRefs, { mailboxId: m[1]!, uid: m[2]! });
+  }
+}
+
+type SourcingProfileRow = {
+  id: string;
+  fingerprint: string;
+  exa_snapshot: Record<string, unknown> | null;
+};
+
+type SourcingApproachRow = { id: string; fingerprint: string; analysis_id: string | null };
+
+/**
+ * Module Sourcing (docs/specs/sourcing.md §12). Trois portes, aucune par le nom :
+ *   · l'EMPREINTE du profil — fournie, ou lue sur une approche ;
+ *   · l'identifiant d'analyse `can_src_<approche>` d'une candidature manifestée ;
+ *   · l'ADRESSE du sujet affichée dans l'instantané d'un profil (7 profils sur
+ *     306 à l'étude). L'instantané est en `jsonb` : aucun `LIKE` ne l'atteint,
+ *     on lit donc les profils VIVANTS et le détecteur partagé tranche ligne à
+ *     ligne — même compromis que `sched_events` au contrôle final. La table ne
+ *     contient que des profils de campagnes non clôturées : lecture bornée.
+ *
+ * Les campagnes des approches n'entrent PAS dans le périmètre : une approche
+ * sans candidature ne laisse rien dans le dossier de stockage de la campagne,
+ * et l'élargir déclencherait l'inspection de fichiers sans rapport.
+ */
+async function resolveSourcing(db: SupabaseClient, acc: ErasureIdentity): Promise<void> {
+  for (const id of acc.analysisIds) {
+    const m = SOURCING_ANALYSIS_ID.exec(id);
+    if (m) push(acc.sourcingApproachIds, m[1]!);
+  }
+
+  const keepProfile = (p: SourcingProfileRow): void => {
+    push(acc.sourcingProfileIds, p.id);
+    push(acc.sourcingFingerprints, p.fingerprint);
+    // Le nom sert au caviardage À L'INTÉRIEUR du périmètre, jamais au ciblage.
+    const name = p.exa_snapshot?.name;
+    if (typeof name === 'string') push(acc.names, name);
+  };
+
+  if (acc.emails.length > 0) {
+    const strong = strongIdentifiersOnly(
+      buildFingerprint({ emails: acc.emails, names: [], phones: [] }),
+    );
+    const live = await pageAllByText<SourcingProfileRow>(db, 'sourcing_profiles', PROFILE_SELECT, 'id');
+    for (const p of live) if (carriesStrongIdentifier(p.exa_snapshot, strong)) keepProfile(p);
+  }
+
+  const keepApproach = (a: SourcingApproachRow): void => {
+    push(acc.sourcingApproachIds, a.id);
+    push(acc.sourcingFingerprints, a.fingerprint);
+    push(acc.analysisIds, a.analysis_id);
+  };
+
+  for (const a of await pageAllByText<SourcingApproachRow>(db, 'sourcing_approaches', APPROACH_SELECT, 'id', [
+    { op: 'in', col: 'id', values: acc.sourcingApproachIds },
+  ])) {
+    keepApproach(a);
+  }
+  for (const p of await pageAllByText<SourcingProfileRow>(db, 'sourcing_profiles', PROFILE_SELECT, 'id', [
+    { op: 'in', col: 'fingerprint', values: acc.sourcingFingerprints },
+  ])) {
+    keepProfile(p);
+  }
+  for (const a of await pageAllByText<SourcingApproachRow>(db, 'sourcing_approaches', APPROACH_SELECT, 'id', [
+    { op: 'in', col: 'fingerprint', values: acc.sourcingFingerprints },
+  ])) {
+    keepApproach(a);
+  }
+}
+
+const PROFILE_SELECT = 'id, fingerprint, exa_snapshot';
+const APPROACH_SELECT = 'id, fingerprint, analysis_id';
+
 const ANALYSIS_SELECT =
   'id, uid, campaign_id, candidate_name, candidate_email, file_name, vivier_candidate_id, application';
 const BRIEF_SELECT = 'id, uid, candidate_email, candidate_name, campaign_id, task_id';
@@ -413,5 +520,6 @@ function normalize(acc: ErasureIdentity): ErasureIdentity {
     emails: uniq(acc.emails.map((e) => e.toLowerCase())),
     names: uniq(acc.names),
     phones: uniq(acc.phones),
+    sourcingFingerprints: uniq(acc.sourcingFingerprints),
   };
 }

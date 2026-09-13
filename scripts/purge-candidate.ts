@@ -10,6 +10,13 @@
  *       --execute --confirm-project <ref> --request-ref "courriel DRH du 27/08/2026" \
  *       --report rapport-effacement.md
  *
+ *   # Profil public collecté par le sourcing, jamais manifesté (pas d'adresse
+ *   # connue) : on le désigne par l'adresse de son profil. Enregistre aussi une
+ *   # OPPOSITION, pour qu'il ne soit plus proposé. Exige
+ *   # SOURCING_FINGERPRINT_PEPPER dans le fichier --env.
+ *   npm run purge:candidate -- --env .env.localX \
+ *       --linkedin-url https://www.linkedin.com/in/jean-dupont-4a1b2c
+ *
  * CE QUE CE SCRIPT NE FAIT JAMAIS :
  *   · il n'écrit rien sans `--execute` — le constat est le mode par défaut ;
  *   · il ne devine aucune adresse (variantes, alias) : supposer que deux
@@ -46,6 +53,12 @@ import { resolveIdentity } from '@/lib/gdpr/resolve';
 import { planStorage } from '@/lib/gdpr/storage-plan';
 import { verifyErasure } from '@/lib/gdpr/verify';
 import { perimeterSize } from '@/lib/gdpr/perimeter';
+import {
+  MissingSourcingPepperError,
+  normalizeProfileUrl,
+  profileFingerprint,
+  SOURCING_PEPPER_ENV,
+} from '@/lib/sourcing/fingerprint';
 import type { ErasureCounts, VerificationStatus, VerifyOutcome } from '@/types/gdpr';
 
 // ─── Arguments ─────────────────────────────────────────────────────────────
@@ -126,8 +139,36 @@ async function main(): Promise<void> {
     if (at < 0) fail(`--uid attend « <boîte>:<numéro> », reçu « ${v} ».`);
     return { mailboxId: v.slice(0, at), uid: v.slice(at + 1) };
   });
-  if (emails.length === 0 && analysisIds.length === 0 && imapRefs.length === 0) {
-    fail('Rien à chercher : donnez au moins --email, --analysis-id ou --uid.');
+  // Adresses de profils publics (module Sourcing). Normalisées ici : toutes les
+  // écritures d'une même adresse doivent donner la même empreinte, sinon la
+  // demande manquerait le profil qu'elle désigne.
+  const linkedinUrls = many('--linkedin-url').map((raw) => {
+    const normalized = normalizeProfileUrl(raw);
+    if (!normalized) fail(`--linkedin-url attend l'adresse d'un profil (…/in/…), reçu « ${raw} ».`);
+    return normalized;
+  });
+  let sourcingFingerprints: string[] = [];
+  if (linkedinUrls.length > 0) {
+    const pepper = env[SOURCING_PEPPER_ENV];
+    try {
+      sourcingFingerprints = linkedinUrls.map((u) => profileFingerprint(u, pepper));
+    } catch (err) {
+      // Sans le sel de CET environnement, l'empreinte calculée ne correspondrait
+      // à rien : la commande conclurait « rien à effacer » sur un profil intact.
+      if (err instanceof MissingSourcingPepperError) {
+        fail(`${err.message}\n     Ajoutez ${SOURCING_PEPPER_ENV} au fichier ${envPath}.`);
+      }
+      throw err;
+    }
+  }
+
+  if (
+    emails.length === 0 &&
+    analysisIds.length === 0 &&
+    imapRefs.length === 0 &&
+    sourcingFingerprints.length === 0
+  ) {
+    fail('Rien à chercher : donnez au moins --email, --analysis-id, --uid ou --linkedin-url.');
   }
 
   const execute = has('--execute');
@@ -145,6 +186,9 @@ async function main(): Promise<void> {
   console.log(`\n  Projet ciblé : ${ref}   (${envPath})`);
   console.log(`  Mode         : ${execute ? '⚠️  EXÉCUTION' : 'constat (aucune écriture)'}`);
   console.log(`  Adresses     : ${emails.join(', ') || '—'}`);
+  if (linkedinUrls.length > 0) {
+    console.log(`  Profils      : ${linkedinUrls.join(', ')}  (+ opposition au sourcing)`);
+  }
 
   if (execute) {
     if (!requestRef) {
@@ -172,7 +216,12 @@ async function main(): Promise<void> {
   const marker = erasureMarker(requestRef || 'référence non précisée');
 
   // ── 1. Résolution ───────────────────────────────────────────────────────
-  const identity = await resolveIdentity(db, { emails, analysisIds, imapRefs });
+  const identity = await resolveIdentity(db, {
+    emails,
+    analysisIds,
+    imapRefs,
+    sourcingFingerprints,
+  });
   const fingerprint = buildFingerprint({
     emails: identity.emails,
     names: identity.names,
@@ -188,6 +237,8 @@ async function main(): Promise<void> {
   console.log(`  rendez-vous ................... ${identity.bookingIds.length}`);
   console.log(`  références de documents ....... ${identity.artifactIds.length}`);
   console.log(`  entrées de file de réception .. ${identity.unmatchedIds.length}`);
+  console.log(`  profils sourcés ............... ${identity.sourcingProfileIds.length}`);
+  console.log(`  prises de contact (sourcing) .. ${identity.sourcingApproachIds.length}`);
   console.log(`  campagnes concernées .......... ${identity.campaignIds.join(', ') || '—'}`);
   if (identity.names.length > 0) {
     console.log(`  noms rencontrés (caviardage) .. ${identity.names.join(' · ')}`);
@@ -204,8 +255,9 @@ async function main(): Promise<void> {
   // constat qui ne trouve rien peut vouloir dire « rien à effacer » ou « déjà
   // effacé », et ce n'est pas la même conversation avec le client.
   const pepper = env.GDPR_SUBJECT_PEPPER ?? process.env.GDPR_SUBJECT_PEPPER;
-  if (pepper && emails[0]) {
-    const past = await previousExecutions(db, subjectHash(emails[0], pepper));
+  const subject = emails[0] ?? linkedinUrls[0];
+  if (pepper && subject) {
+    const past = await previousExecutions(db, subjectHash(subject, pepper));
     if (past.length > 0) {
       console.log('\n  ── Exécutions antérieures ───────────────────────────────');
       for (const p of past) {
@@ -253,6 +305,8 @@ async function main(): Promise<void> {
     marker,
     storage: plan.targets,
     purgeAnalyses,
+    // L'opposition ne vaut QUE pour les profils que l'instruction désigne.
+    sourcingOppositionFingerprints: sourcingFingerprints,
     dryRun: !execute,
     actor: operator,
   });
@@ -265,7 +319,7 @@ async function main(): Promise<void> {
     );
     await persistTrace(db, {
       requestRef,
-      emails,
+      subject,
       env,
       ref,
       status: 'partial',
@@ -333,7 +387,7 @@ async function main(): Promise<void> {
   // ── 6. Trace + rapport ──────────────────────────────────────────────────
   const traced = await persistTrace(db, {
     requestRef,
-    emails,
+    subject,
     env,
     ref,
     status: execute ? 'executed' : 'dry_run',
@@ -377,6 +431,9 @@ async function main(): Promise<void> {
   try {
     assertNoLeakedIdentity(report, [
       ...emails,
+      // L'adresse d'un profil porte très souvent le nom (`…/in/jean-dupont`).
+      ...linkedinUrls,
+      ...linkedinUrls.map((u) => u.slice(u.lastIndexOf('/') + 1)),
       ...identity.emails,
       ...identity.names,
       ...identity.phones,
@@ -429,7 +486,8 @@ async function persistTrace(
   db: SupabaseClient,
   args: {
     requestRef: string;
-    emails: string[];
+    /** Adresse électronique, ou adresse de profil normalisée à défaut. */
+    subject: string | undefined;
     env: Record<string, string>;
     ref: string;
     status: 'dry_run' | 'executed' | 'partial';
@@ -446,7 +504,7 @@ async function persistTrace(
   const pepper = args.env.GDPR_SUBJECT_PEPPER ?? process.env.GDPR_SUBJECT_PEPPER;
   let hash: string;
   try {
-    hash = subjectHash(args.emails[0] ?? args.requestRef, pepper);
+    hash = subjectHash(args.subject ?? args.requestRef, pepper);
   } catch (err) {
     if (err instanceof MissingPepperError) fail(err.message);
     throw err;
@@ -506,6 +564,9 @@ function printCounts(title: string, c: ErasureCounts): void {
     unmatchedRows: 'entrées de file de réception',
     retryRows: "compteurs de réessai assainis",
     journalEntries: 'entrées de journal pseudonymisées',
+    sourcingProfiles: 'profils sourcés supprimés',
+    sourcingApproaches: 'prises de contact pseudonymisées',
+    sourcingOppositions: 'oppositions au sourcing',
   };
   for (const [k, label] of Object.entries(labels) as [keyof ErasureCounts, string][]) {
     if (c[k] > 0) console.log(`  ${label.padEnd(34, '.')} ${c[k]}`);

@@ -24,7 +24,8 @@
 export type BlockerKind =
   | 'interview_scheduled'
   | 'booking_confirmed'
-  | 'validation_sending';
+  | 'validation_sending'
+  | 'sourcing_admission_pending';
 
 export type ErasureBlocker = {
   kind: BlockerKind;
@@ -39,6 +40,13 @@ export type BlockerFacts = {
   scheduledInterviews: { ref: string; startAt: string | null; campaignId: string | null }[];
   confirmedBookings: { ref: string; startAt: string; campaignId: string | null }[];
   sendingValidations: { ref: string; since: string | null }[];
+  /**
+   * Candidatures issues du sourcing EN COURS DE CRÉATION : la personne a
+   * soumis, l'analyse n'a pas encore abouti. Effacer maintenant détruirait la
+   * saisie que la reprise va rejouer — et laisserait une candidature à moitié
+   * créée, ou recréée après l'effacement.
+   */
+  pendingSourcingAdmissions: { ref: string; since: string | null }[];
 };
 
 /** Fuseau de référence des équipes — le même que celui du module de réservation. */
@@ -110,6 +118,18 @@ export function detectBlockers(facts: BlockerFacts): ErasureBlocker[] {
     });
   }
 
+  for (const a of facts.pendingSourcingAdmissions) {
+    out.push({
+      kind: 'sourcing_admission_pending',
+      ref: a.ref,
+      message:
+        `Une candidature envoyée par la personne ${frDateTime(a.since)} est en cours ` +
+        `d'enregistrement. L'effacement est suspendu le temps qu'elle soit créée — ` +
+        `en général quelques minutes. Relancez la commande ensuite ; aucune ` +
+        `intervention n'est nécessaire.`,
+    });
+  }
+
   return out;
 }
 
@@ -119,5 +139,5 @@ export function detectBlockers(facts: BlockerFacts): ErasureBlocker[] {
  * de trois minutes.
  */
 export function needsHumanDecision(blocker: ErasureBlocker): boolean {
-  return blocker.kind !== 'validation_sending';
+  return blocker.kind !== 'validation_sending' && blocker.kind !== 'sourcing_admission_pending';
 }

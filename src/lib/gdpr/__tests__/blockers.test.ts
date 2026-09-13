@@ -15,6 +15,7 @@ const NONE = {
   scheduledInterviews: [],
   confirmedBookings: [],
   sendingValidations: [],
+  pendingSourcingAdmissions: [],
 };
 
 describe('detectBlockers', () => {
@@ -72,16 +73,33 @@ describe('detectBlockers', () => {
     expect(b!.message).toContain('aucune intervention');
   });
 
+  it('une candidature sourcée en cours de création suspend, sans appeler le client', () => {
+    const [b] = detectBlockers({
+      ...NONE,
+      pendingSourcingAdmissions: [
+        { ref: 'sourcing_approaches#9', since: '2026-09-13T08:30:00.000Z' },
+      ],
+    });
+    expect(b!.kind).toBe('sourcing_admission_pending');
+    expect(needsHumanDecision(b!)).toBe(false);
+    expect(b!.message).toContain('13 septembre 2026');
+    expect(b!.message).toContain('aucune intervention');
+    expect(b!.message).not.toContain('sourcing_approaches');
+    expect(b!.message).not.toContain('admission');
+  });
+
   it('remonte TOUS les arrêts, pas seulement le premier', () => {
     const all = detectBlockers({
       scheduledInterviews: [{ ref: 'a', startAt: null, campaignId: null }],
       confirmedBookings: [{ ref: 'b', startAt: '2026-09-03T08:00:00.000Z', campaignId: null }],
       sendingValidations: [{ ref: 'c', since: null }],
+      pendingSourcingAdmissions: [{ ref: 'd', since: null }],
     });
     expect(all.map((b) => b.kind)).toEqual([
       'interview_scheduled',
       'booking_confirmed',
       'validation_sending',
+      'sourcing_admission_pending',
     ]);
   });
 });

@@ -533,75 +533,30 @@ fabriqué le faux « 10/150 » : des identifiants de publications dans `## Socia
 appel contre : **tous les profils de la campagne** (quel que soit leur état, réserve comprise),
 les exclusions de la campagne, les oppositions globales.
 
-### 7.2 Tables (brouillon — entreront dans `migrate.sql` en Phase 2, après le préalable RGPD)
+### 7.2 Tables — bloc `MODULE SOURCING` de `scripts/migrate.sql` (lot 1, source de vérité)
 
-```sql
-create table if not exists public.sourcing_searches (
-  id               uuid primary key default gen_random_uuid(),
-  campaign_id      text not null references public.campaigns(id) on delete cascade,
-  query            text not null,                       -- envoyée
-  query_generated  text not null,                       -- produite (b) ou (a)
-  query_method     text not null check (query_method in ('llm','deterministic')),
-  language         text not null check (language in ('fr','en')),
-  returned         int  not null,
-  new_after_dedup  int  not null,
-  exa_request_id   text,
-  exa_cost_usd     numeric(10,5),
-  llm_cost_usd     numeric(10,5),
-  created_by       uuid,
-  created_at       timestamptz not null default now()
-);
+Le brouillon qui figurait ici est remplacé par le bloc réel : deux copies divergeraient. Ce que
+le bloc ajoute au brouillon, et pourquoi :
 
-create table if not exists public.sourcing_profiles (
-  id                 uuid primary key default gen_random_uuid(),
-  search_id          uuid not null references public.sourcing_searches(id) on delete cascade,
-  campaign_id        text not null references public.campaigns(id) on delete cascade,
-  fingerprint        text not null,
-  exa_rank           int  not null,
-  state              text not null,
-  exa_snapshot       jsonb not null,                    -- projection §7.3 ; la ligne est SUPPRIMÉE à la purge
-  decided_at         timestamptz,
-  decided_by_user_id uuid,
-  created_at         timestamptz not null default now(),
-  unique (campaign_id, fingerprint)
-);
-alter table public.sourcing_profiles drop constraint if exists sourcing_profiles_state_chk;
-alter table public.sourcing_profiles add constraint sourcing_profiles_state_chk
-  check (state in ('reserve','to_review','contacted'));   -- declined / manifested / clôture ⇒ ligne supprimée
+| Ajout | Raison |
+|---|---|
+| Toutes les CHECK en **bloc canonique** (drop + add), aucune inline | règle « état final » : une CHECK inline ne se pose jamais sur une table préexistante |
+| `sourcing_searches.requested` ; CHECK `requested ≤ 100`, `returned ≤ requested`, `new_after_dedup ≤ returned` | compteurs emboîtés, plafond public du moteur |
+| `sourcing_profiles` : CHECK empreinte hexadécimale de 64 caractères, rang 1..100, instantané = objet, **contacté ⇔ date + auteur** ; `updated_at` + déclencheur | une empreinte en clair (URL) ou un contacté sans auteur sont refusés par la base |
+| `sourcing_exclusions` : `id`, colonne générée **`scope = coalesce(campaign_id, '*')`**, index unique `(fingerprint, scope)` ; CHECK **opposition ⇔ campaign_id NULL** | un index unique sur `(fingerprint, campaign_id)` laisserait passer deux oppositions (deux NULL sont distincts), et un index sur expression ne sert pas de cible à un upsert PostgREST |
+| `sourcing_approaches.message` | rappelé en tête de la page d'atterrissage (§9.2) ; porte le prénom ⇒ vidé à la purge |
+| `sourcing_approaches.submission` (jsonb), `admission_attempts`, `admission_last_error` | la reprise après panne d'analyse (§10, étape 9) rejoue la saisie ; elle n'existe **que** pendant `admission_pending` |
+| `sourcing_approaches.purged_at` + CHECK « purgée ⇒ ni message ni saisie » | la purge est vérifiable par la base |
+| CHECK de soumission : soumise ⇔ `submitted_at` ; saisie ⇔ `admission_pending` ; `submitted` ⇔ `analysis_id` = `can_src_` + id de l'approche | une candidature ne peut porter que SON identifiant d'analyse |
+| CHECK canal et format : `email` ⇔ format `email`, note de connexion ≤ 300 caractères, jeton = SHA-256 hexadécimal | un jeton stocké en clair est refusé |
+| CHECK `recruiters.sourcing_message_format`, `app_settings.sourcing_config` objet | |
 
-create table if not exists public.sourcing_exclusions (
-  fingerprint  text not null,
-  campaign_id  text references public.campaigns(id) on delete cascade,   -- NULL = opposition globale
-  reason       text not null check (reason in ('declined','contacted','manifested','opposed')),
-  created_at   timestamptz not null default now()
-);
-create unique index if not exists sourcing_exclusions_uq
-  on public.sourcing_exclusions (fingerprint, coalesce(campaign_id, ''));
-
-create table if not exists public.sourcing_approaches (
-  id              uuid primary key default gen_random_uuid(),
-  profile_id      uuid references public.sourcing_profiles(id) on delete set null,
-  campaign_id     text not null references public.campaigns(id) on delete cascade,
-  fingerprint     text not null,
-  recruiter_id    uuid not null,
-  channel         text not null check (channel in ('linkedin','email')),
-  message_format  text check (message_format in ('connection_note','inmail','email')),
-  token_hash      text not null unique,
-  status          text not null default 'active',
-  initiated_at    timestamptz not null default now(),
-  first_opened_at timestamptz,
-  submitted_at    timestamptz,
-  analysis_id     text,
-  created_at      timestamptz not null default now()
-);
-alter table public.sourcing_approaches drop constraint if exists sourcing_approaches_status_chk;
-alter table public.sourcing_approaches add constraint sourcing_approaches_status_chk
-  check (status in ('active','submitted','admission_pending','revoked'));
-
-alter table public.recruiters add column if not exists sourcing_message_format text;
-alter table public.recruiters add column if not exists sourcing_available_first boolean not null default true;
-alter table public.app_settings add column if not exists sourcing_config jsonb;
-```
+**Contrôle positif** : `scripts/checks/sourcing-schema.sql` (éditeur SQL Supabase, sans résidu),
+53 contrôles. Catalogue : tables, RLS, 20 CHECK, index, déclencheurs, actions de clé étrangère.
+Comportement : chaque contrainte refuse ce qu'elle doit refuser, le parcours nominal passe, les
+suppressions font ce qui est déclaré. Validé avant livraison sur une base PostgreSQL jetable
+(PGlite) : double application puis contrôle = 53/53, rejeu identique, zéro résidu ; bloc absent ⇒
+KO explicites ; contrainte vidée de son sens ⇒ 3 KO.
 
 Supprimer la ligne profil à la purge (plutôt que la vider) suit le verdict **EFFACER** : le
 dédoublonnage n'en a pas besoin, il vit dans `sourcing_exclusions`. Les compteurs de l'onglet
@@ -760,12 +715,34 @@ Jamais affichés : photo, mentions, disponibilité détectée, données hors par
 
 Journal `sourcing_profiles_purged { campaignId, count, byState }` si `count > 0`.
 
-### 12.2 Script `purge:candidate`
-Reconnaît `can_src_` (`src/lib/gdpr/resolve.ts:42` ne connaît que `can_imap_`) et `art_src_` ;
-`sourcing_approaches` d'un manifesté pseudonymisée ; option **`--linkedin-url`** pour un profil
-non manifesté (empreinte ⇒ lignes supprimées + opposition). Verdicts : `sourcing_searches`
-**CONSERVER** · `sourcing_profiles` **EFFACER** · `sourcing_exclusions` **CONSERVER** ·
-`sourcing_approaches` **PSEUDONYMISER**.
+### 12.2 Script `purge:candidate` — **livré avec le lot 1 (13/09/2026), sauf `art_src_`**
+Verdicts : `sourcing_searches` **CONSERVER** · `sourcing_profiles` **EFFACER** ·
+`sourcing_exclusions` **CONSERVER** · `sourcing_approaches` **PSEUDONYMISER**.
+
+- **Résolution** (`src/lib/gdpr/resolve.ts`, `resolveSourcing`, deux passages) : l'empreinte
+  (`--linkedin-url`, calculée par le script avec `SOURCING_FINGERPRINT_PEPPER`, fail-closed) mène
+  aux profils de **toutes** les campagnes et aux approches ; une analyse `can_src_<approche>`
+  mène à l'approche puis à l'empreinte ; l'adresse du sujet affichée dans un instantané retrouve
+  le profil (lecture des profils vivants, verdict par `carriesStrongIdentifier`). L'empreinte est
+  un identifiant **fort** du périmètre ; le nom lu sur le profil ne sert qu'au caviardage.
+- **Exécution** (`execute.ts`) : profils **supprimés**, puis approches **pseudonymisées**
+  (message et saisie vidés, `profile_id` NULL, `purged_at` posé, lien `active` → `revoked` ;
+  recruteur, dates, canal, statut `submitted` et `analysis_id` conservés), puis **opposition**
+  — posée **seulement** pour les adresses de profil nommées par l'instruction.
+- **Arrêt** : une approche `admission_pending` suspend l'effacement (se lève seul) ; l'étape
+  refuse en plus de vider une saisie en cours si l'arrêt était contourné.
+- **Contrôle final** (`verify.ts`) : balayage des deux tables, et ré-identification — un profil
+  qui **survit** est un échec en soi (une demande par adresse de profil n'a aucun nom à chercher,
+  l'absence littérale serait verte sur un profil intact) ; une approche qui garde message,
+  saisie, lien au profil ou n'est pas marquée purgée aussi.
+- **Rapport** : profils dans « effacé », prises de contact dans « pseudonymisé », et le
+  paragraphe « aucune liste d'opposition » **remplacé** quand une opposition a été posée (il
+  deviendrait faux).
+- Régression **S20** (`tests/regression/s20-purge-sourcing.test.ts`, 12 tests) : non manifesté par
+  empreinte sur deux campagnes avec homonyme intact, profil portant l'adresse, manifesté retrouvé
+  par email, admission en cours ; contrôle sondé sur un profil survivant ; rejeu « déjà effacé ».
+- **Reste à faire** avec l'admission (lot ultérieur) : les artefacts `art_src_cv_*` /
+  `art_src_cvfile_*` au balayage du stockage — ils n'existent pas encore.
 
 ### 12.3 Préalable Phase 2 — **livré (lot 0, 13/09/2026)**
 Registre `src/lib/gdpr/table-inventory.ts` (verdict + traitement `step` | `cascade` par table) et

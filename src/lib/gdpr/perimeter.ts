@@ -64,6 +64,9 @@ const PERIMETER_FIELDS = [
   'artifactIds',
   'unmatchedIds',
   'storagePaths',
+  'sourcingFingerprints',
+  'sourcingProfileIds',
+  'sourcingApproachIds',
 ] as const satisfies readonly (keyof ErasureIdentity)[];
 
 /**

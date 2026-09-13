@@ -197,6 +197,31 @@ const SWEEP: SweepTarget[] = [
     matches: () => false,
     deepScan: true,
   },
+  {
+    // Profils du sourcing : l'instantané est en `jsonb` (l'adresse du sujet peut
+    // y figurer), d'où la lecture intégrale des profils VIVANTS — bornée, la
+    // clôture d'une campagne les supprime. Appartenance par identifiant, par
+    // empreinte, ou par l'adresse (`carriesStrongIdentifier`).
+    table: 'sourcing_profiles',
+    cursor: 'id',
+    columns: 'id, fingerprint, exa_snapshot',
+    searchable: [],
+    matches: (row, id) =>
+      id.sourcingProfileIds.includes(String(row.id ?? '')) ||
+      id.sourcingFingerprints.includes(String(row.fingerprint ?? '')),
+    deepScan: true,
+  },
+  {
+    table: 'sourcing_approaches',
+    cursor: 'id',
+    columns: 'id, fingerprint, message, submission',
+    searchable: [],
+    ids: (i) => i.sourcingApproachIds,
+    pairs: (i) => i.sourcingFingerprints.map((fp) => [{ op: 'eq', col: 'fingerprint', value: fp }]),
+    matches: (row, id) =>
+      id.sourcingApproachIds.includes(String(row.id ?? '')) ||
+      id.sourcingFingerprints.includes(String(row.fingerprint ?? '')),
+  },
 ];
 
 export async function verifyErasure(
@@ -485,6 +510,58 @@ export async function probeReidentification(
     );
     for (const path of listed.paths) {
       note('(boîte, message) → stockage', path, path.slice(path.lastIndexOf('/') + 1));
+    }
+  }
+
+  // empreinte → profil sourcé. Verdict EFFACER : une ligne qui SURVIT est un
+  // échec en soi, qu'elle porte ou non un nom lisible — pour une demande
+  // désignée par la seule adresse du profil, le contrôle n'a aucun nom à
+  // chercher, et l'absence littérale serait verte sur un profil intact.
+  const profiles = new Map<string, Record<string, unknown>>();
+  for (const row of await byIn(db, 'sourcing_profiles', 'id, campaign_id', 'id', identity.sourcingProfileIds)) {
+    profiles.set(str(row.id), row);
+  }
+  for (const row of await pageAllByText<Record<string, unknown>>(db, 'sourcing_profiles', 'id, campaign_id', 'id', [
+    { op: 'in', col: 'fingerprint', values: identity.sourcingFingerprints },
+  ])) {
+    profiles.set(str(row.id), row);
+  }
+  for (const row of profiles.values()) {
+    // La preuve porte l'identifiant de ligne : `assertNoLeakedIdentity` refuse
+    // tout rapport qui contient une preuve, et un mot nu (« message ») y
+    // figurerait dans la prose — le rapport serait bloqué à tort.
+    note(
+      'empreinte → profil sourcé',
+      `sourcing_profiles#${str(row.id)}`,
+      `sourcing_profiles#${str(row.id)} toujours présent (campagne ${str(row.campaign_id)})`,
+    );
+  }
+
+  // empreinte → approche. Verdict PSEUDONYMISER : la ligne reste, mais sans
+  // message, sans saisie, sans lien vers un profil, et marquée purgée.
+  const approaches = new Map<string, Record<string, unknown>>();
+  const APPROACH_COLS = 'id, message, submission, profile_id, purged_at';
+  for (const row of await byIn(db, 'sourcing_approaches', APPROACH_COLS, 'id', identity.sourcingApproachIds)) {
+    approaches.set(str(row.id), row);
+  }
+  for (const row of await pageAllByText<Record<string, unknown>>(db, 'sourcing_approaches', APPROACH_COLS, 'id', [
+    { op: 'in', col: 'fingerprint', values: identity.sourcingFingerprints },
+  ])) {
+    approaches.set(str(row.id), row);
+  }
+  for (const row of approaches.values()) {
+    const kept = [
+      row.message !== null ? 'message' : null,
+      row.submission !== null ? 'saisie' : null,
+      row.profile_id !== null ? 'lien vers le profil' : null,
+      row.purged_at === null ? 'non marquée purgée' : null,
+    ].filter((v): v is string => v !== null);
+    if (kept.length > 0) {
+      note(
+        'empreinte → approche de sourcing',
+        `sourcing_approaches#${str(row.id)}`,
+        `sourcing_approaches#${str(row.id)} conserve : ${kept.join(', ')}`,
+      );
     }
   }
 

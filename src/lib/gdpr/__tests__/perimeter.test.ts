@@ -37,6 +37,9 @@ const EMPTY: ErasureIdentity = {
   artifactIds: [],
   unmatchedIds: [],
   storagePaths: [],
+  sourcingFingerprints: [],
+  sourcingProfileIds: [],
+  sourcingApproachIds: [],
 };
 
 const fp = buildFingerprint({
@@ -64,6 +67,16 @@ describe('perimeterIsEmpty', () => {
     expect(perimeterIsEmpty({ ...EMPTY, analysisIds: ['can_imap_mb_1_42'] })).toBe(false);
     expect(perimeterIsEmpty({ ...EMPTY, vivierIds: ['uuid'] })).toBe(false);
     expect(perimeterIsEmpty({ ...EMPTY, storagePaths: ['CAMP-2026-288/cv.pdf'] })).toBe(false);
+  });
+
+  it('une EMPREINTE de profil sourcé est un périmètre (demande par --linkedin-url)', () => {
+    // Un profil jamais manifesté n'a ni adresse ni analyse : sans cette règle,
+    // le contrôle final se croirait « sans objet » sur un profil intact.
+    const byProfile: ErasureIdentity = { ...EMPTY, sourcingFingerprints: ['a'.repeat(64)] };
+    expect(perimeterIsEmpty(byProfile)).toBe(false);
+    expect(perimeterSize(byProfile)).toBe(1);
+    expect(perimeterIsEmpty({ ...EMPTY, sourcingApproachIds: ['uuid'] })).toBe(false);
+    expect(perimeterIsEmpty({ ...EMPTY, sourcingProfileIds: ['uuid'] })).toBe(false);
   });
 
   it('un couple (boîte, message) est un périmètre, même sans autre identifiant', () => {

@@ -211,6 +211,17 @@ export function renderErasureReport(input: ReportInput): string {
     );
   }
 
+  if (c.sourcingApproaches > 0) {
+    L.push('');
+    L.push(
+      `**Prises de contact — ${c.sourcingApproaches} entrée(s).** Le message adressé ` +
+        'à la personne et les informations qu’elle avait saisies ont été détruits, et ' +
+        'le lien d’invitation qu’elle avait reçu a été désactivé. Restent la date de la ' +
+        'prise de contact, son canal et le recruteur qui l’a faite : ils montrent ' +
+        'qu’une sollicitation a eu lieu, sans plus désigner la personne sollicitée.',
+    );
+  }
+
   // ── 3. Conservé ──────────────────────────────────────────────────────────
   L.push('', '## 3. Ce qui est conservé, et sur quelle base', '');
   L.push(
@@ -226,11 +237,24 @@ export function renderErasureReport(input: ReportInput): string {
   );
   L.push(identifiersLine(input));
   L.push('');
-  L.push(
-    '**Aucune liste d’opposition n’a été créée.** Si la personne dépose une nouvelle ' +
-      'candidature à l’avenir, elle sera traitée normalement : ce qui est bloqué, ' +
-      'c’est la réapparition d’un ancien message, jamais la personne.',
-  );
+  const oppositions = c.sourcingOppositions + input.alreadyErased.sourcingOppositions;
+  if (oppositions > 0) {
+    // Ce paragraphe AFFIRME qu'aucune liste d'opposition n'existe dans le cas
+    // ordinaire : il ne peut pas rester vrai quand l'instruction en a créé une.
+    L.push(
+      `**Opposition à la recherche de profils — ${oppositions} profil(s).** Une ` +
+        'empreinte technique de l’adresse du profil professionnel public est ' +
+        'conservée, et seulement elle : elle empêche que ce profil soit de nouveau ' +
+        'proposé aux recruteurs, et ne permet pas de retrouver l’adresse. Si la ' +
+        'personne dépose elle-même une candidature, elle sera traitée normalement.',
+    );
+  } else {
+    L.push(
+      '**Aucune liste d’opposition n’a été créée.** Si la personne dépose une nouvelle ' +
+        'candidature à l’avenir, elle sera traitée normalement : ce qui est bloqué, ' +
+        'c’est la réapparition d’un ancien message, jamais la personne.',
+    );
+  }
 
   // ── 4. Sauvegardes ───────────────────────────────────────────────────────
   L.push('', '## 4. Sauvegardes', '');
@@ -303,6 +327,7 @@ function erasedLines(
   add('Dossiers de vivier (CV, index de recherche, propositions)', c.vivierDossiers);
   add('Liens de réservation', c.bookingLinks);
   add('Rendez-vous et leurs événements', c.bookings);
+  add('Profils professionnels publics collectés pour une recherche de candidats', c.sourcingProfiles);
   return lines;
 }
 

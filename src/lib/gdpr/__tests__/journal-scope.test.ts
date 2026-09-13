@@ -29,6 +29,9 @@ const identity: ErasureIdentity = {
   artifactIds: ['art_imap_cvfile_mb_1_1624'],
   unmatchedIds: [],
   storagePaths: [],
+  sourcingFingerprints: [],
+  sourcingProfileIds: [],
+  sourcingApproachIds: [],
 };
 
 const fp = buildFingerprint({

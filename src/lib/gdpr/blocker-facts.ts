@@ -74,7 +74,17 @@ export async function collectBlockerFacts(
     .filter((v) => v.status === 'sending')
     .map((v) => ({ ref: `pending_validations#${v.id}`, since: v.sending_at }));
 
-  return { scheduledInterviews, confirmedBookings, sendingValidations };
+  const approaches = await byIds<{ id: string; status: string; submitted_at: string | null }>(
+    db,
+    'sourcing_approaches',
+    'id, status, submitted_at',
+    identity.sourcingApproachIds,
+  );
+  const pendingSourcingAdmissions = approaches
+    .filter((a) => a.status === 'admission_pending')
+    .map((a) => ({ ref: `sourcing_approaches#${a.id}`, since: a.submitted_at }));
+
+  return { scheduledInterviews, confirmedBookings, sendingValidations, pendingSourcingAdmissions };
 }
 
 async function byIds<Row extends Record<string, unknown>>(

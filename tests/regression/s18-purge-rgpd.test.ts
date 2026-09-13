@@ -368,6 +368,7 @@ async function runErasureWith(id: ErasureIdentity, dryRun: boolean) {
       marker: MARKER,
       storage: plan.targets,
       purgeAnalyses: false,
+      sourcingOppositionFingerprints: [],
       dryRun,
       actor: 's18',
     }),

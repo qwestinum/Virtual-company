@@ -48,6 +48,14 @@ export type ExecuteInput = {
   storage: StorageTarget[];
   /** Supprimer les lignes d'analyse au lieu de les vider (§6.1). */
   purgeAnalyses: boolean;
+  /**
+   * Empreintes pour lesquelles enregistrer une OPPOSITION au sourcing — celles
+   * des adresses de profil désignées par l'instruction (`--linkedin-url`), et
+   * seulement elles. Une empreinte découverte en chemin (l'approche d'un
+   * candidat retrouvé par son email) n'en reçoit pas d'office : s'opposer est
+   * une demande de la personne, pas une conséquence qu'on déduit.
+   */
+  sourcingOppositionFingerprints: string[];
   /** Aucune écriture : on compte ce qu'on ferait. */
   dryRun: boolean;
   actor: string;
@@ -71,6 +79,10 @@ const STEPS: Step[] = [
   { name: 'liens de réservation', run: stepBookingLinks },
   { name: 'briefings d’entretien', run: stepInterviewBriefs },
   { name: 'file de validation', run: stepValidations },
+  // Profils AVANT approches : la clé étrangère `profile_id` passe à NULL d'elle-même.
+  { name: 'profils sourcés', run: stepSourcingProfiles },
+  { name: 'approches de sourcing', run: stepSourcingApproaches },
+  { name: 'opposition au sourcing', run: stepSourcingOpposition },
   { name: 'dossiers de vivier', run: stepVivier },
   { name: 'fichiers du stockage', run: stepStorage },
   { name: 'métadonnées d’artefacts', run: stepArtifactMeta },
@@ -135,6 +147,115 @@ async function stepValidations(ctx: Ctx): Promise<void> {
     'id',
     ctx.identity.validationIds,
   );
+}
+
+/**
+ * Profils publics collectés par le sourcing : verdict EFFACER, la ligne part.
+ * L'empreinte qui empêche de les remontrer vit dans `sourcing_exclusions`, qui
+ * ne porte rien de lisible — elle n'a pas besoin de la ligne.
+ */
+async function stepSourcingProfiles(ctx: Ctx): Promise<void> {
+  ctx.counts.sourcingProfiles = await deleteByIds(
+    ctx,
+    'sourcing_profiles',
+    'id',
+    ctx.identity.sourcingProfileIds,
+  );
+}
+
+/**
+ * Approches : verdict PSEUDONYMISER. Le message (qui porte le prénom) et la
+ * saisie partent ; le recruteur, les dates, le canal et l'empreinte du jeton
+ * restent — ils documentent QU'une approche a eu lieu, pas qui en était l'objet.
+ *
+ * Un lien encore actif est révoqué : l'invitation qu'il portait vient d'être
+ * effacée. Une personne qui voudrait candidater de nouveau le peut — ce qui est
+ * bloqué, c'est la réutilisation d'une invitation effacée, jamais la personne.
+ *
+ * `admission_pending` n'arrive jamais ici : c'est un ARRÊT (blockers.ts). S'il
+ * passait quand même, on s'arrête plutôt que de détruire la saisie qu'une
+ * reprise s'apprête à rejouer.
+ */
+async function stepSourcingApproaches(ctx: Ctx): Promise<void> {
+  if (ctx.identity.sourcingApproachIds.length === 0) return;
+  const rows = await pageAllByText<{
+    id: string;
+    status: string;
+    message: string | null;
+    submission: unknown;
+    profile_id: string | null;
+    purged_at: string | null;
+  }>(ctx.db, 'sourcing_approaches', 'id, status, message, submission, profile_id, purged_at', 'id', [
+    { op: 'in', col: 'id', values: ctx.identity.sourcingApproachIds },
+  ]);
+
+  for (const row of rows) {
+    if (row.status === 'admission_pending') {
+      throw new Error(
+        `sourcing_approaches#${row.id} : candidature en cours de création — ` +
+          'relancez une fois qu’elle a abouti.',
+      );
+    }
+    const done =
+      row.purged_at !== null &&
+      row.message === null &&
+      row.submission === null &&
+      row.profile_id === null &&
+      row.status !== 'active';
+    if (done) {
+      ctx.already.sourcingApproaches += 1;
+      continue;
+    }
+    if (!ctx.dryRun) {
+      const { error } = await ctx.db
+        .from('sourcing_approaches')
+        .update({
+          message: null,
+          submission: null,
+          profile_id: null,
+          purged_at: row.purged_at ?? new Date().toISOString(),
+          status: row.status === 'active' ? 'revoked' : row.status,
+        })
+        .eq('id', row.id);
+      if (error) throw new Error(`sourcing_approaches : ${error.message}`);
+    }
+    ctx.counts.sourcingApproaches += 1;
+  }
+}
+
+/**
+ * Opposition : une empreinte, une portée globale, rien d'autre. Sans elle, le
+ * profil effacé REVIENDRAIT à la prochaine recherche qui le trouve — et ses
+ * données seraient collectées de nouveau, ce que la demande a précisément
+ * voulu arrêter. Idempotent : une opposition existante est reconnue.
+ */
+async function stepSourcingOpposition(ctx: Ctx): Promise<void> {
+  const fps = [...new Set(ctx.sourcingOppositionFingerprints)];
+  if (fps.length === 0) return;
+  const existing = await pageAllByText<{ id: string; fingerprint: string }>(
+    ctx.db,
+    'sourcing_exclusions',
+    'id, fingerprint',
+    'id',
+    [
+      { op: 'in', col: 'fingerprint', values: fps },
+      { op: 'eq', col: 'reason', value: 'opposed' },
+    ],
+  );
+  const already = new Set(existing.map((r) => r.fingerprint));
+  const missing = fps.filter((fp) => !already.has(fp));
+  ctx.already.sourcingOppositions += already.size;
+  if (missing.length === 0) return;
+  if (!ctx.dryRun) {
+    const { error } = await ctx.db
+      .from('sourcing_exclusions')
+      .upsert(
+        missing.map((fingerprint) => ({ fingerprint, campaign_id: null, reason: 'opposed' })),
+        { onConflict: 'fingerprint,scope', ignoreDuplicates: true },
+      );
+    if (error) throw new Error(`sourcing_exclusions : ${error.message}`);
+  }
+  ctx.counts.sourcingOppositions += missing.length;
 }
 
 /**

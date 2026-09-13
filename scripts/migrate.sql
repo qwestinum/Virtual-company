@@ -2073,3 +2073,307 @@ alter table public.app_settings
 -- il faut le code de l'arrondissement. Le validateur le dit, avec la plage.
 alter table public.sites
   add column if not exists insee_code text;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- MODULE SOURCING — lot 1, modèle (13/09/2026)
+-- Spec : docs/specs/sourcing.md §7 — contrôle : scripts/checks/sourcing-schema.sql
+-- ══════════════════════════════════════════════════════════════════════
+-- Un recruteur interroge un index public de profils (Exa), arbitre la liste,
+-- et approche lui-même les profils retenus. Rien ne part d'ORQA avant que la
+-- personne se manifeste ; c'est sa soumission qui crée la candidature.
+--
+-- Quatre tables, et une règle de rétention qui les façonne :
+--   - `sourcing_searches`   un appel au moteur. Décrit un POSTE : aucune
+--                           donnée personnelle.
+--   - `sourcing_profiles`   un profil trouvé. PORTE DES DONNÉES PERSONNELLES
+--                           (instantané Exa). La ligne est SUPPRIMÉE — jamais
+--                           vidée — quand le profil est décliné, quand la
+--                           personne se manifeste, et à la clôture de la
+--                           campagne. D'où trois états seulement : un profil
+--                           décliné ou manifesté n'existe plus ici.
+--   - `sourcing_exclusions` ce qui empêche de revoir un profil : une EMPREINTE
+--                           et une raison, rien d'autre. Survit à la purge.
+--   - `sourcing_approaches` un geste du recruteur (« Se connecter »,
+--                           « Contacter par email ») et le jeton nominatif du
+--                           lien envoyé. Survit à la purge du profil pour que
+--                           le lien réponde toujours quelque chose d'honnête.
+--
+-- EMPREINTE = HMAC-SHA256(URL du profil normalisée, SOURCING_FINGERPRINT_PEPPER),
+-- en hexadécimal. Salée comme `gdpr_erasure_requests.subject_hash` : une
+-- empreinte non salée d'une URL publique se retrouve en la recalculant.
+--
+-- ⚠️ INVENTAIRE RGPD : ces tables ont leur verdict dans
+-- `src/lib/gdpr/table-inventory.ts`, et `table-inventory.test.ts` exige que
+-- `sourcing_profiles` et `sourcing_approaches` soient traitées par l'outil
+-- d'effacement (aucun parent dont elles descendraient en cascade).
+--
+-- Toutes les CHECK sont en BLOC CANONIQUE (drop + add), aucune inline : une
+-- contrainte inline ne se pose qu'à la création, jamais sur une base où la
+-- table existe déjà — et ce bloc doit pouvoir évoluer sans s'empiler.
+
+-- ── Recherches ────────────────────────────────────────────────────────
+create table if not exists public.sourcing_searches (
+  id               uuid        primary key default gen_random_uuid(),
+  campaign_id      text        not null references public.campaigns(id) on delete cascade,
+  -- recruiters.id (= auth.users.id), sans FK : snapshot, comme owner_user_id.
+  created_by       uuid,
+  -- La requête ENVOYÉE, et celle qu'ORQA avait produite : leur écart est
+  -- l'indicateur de production qui décide du générateur (spec §17.3).
+  query            text        not null,
+  query_generated  text        not null,
+  query_method     text        not null,   -- 'llm' | 'deterministic' (repli)
+  language         text        not null,
+  requested        int         not null,
+  returned         int         not null,
+  new_after_dedup  int         not null,
+  exa_request_id   text,
+  exa_cost_usd     numeric(10,5),
+  llm_cost_usd     numeric(10,5),
+  created_at       timestamptz not null default now()
+);
+alter table public.sourcing_searches enable row level security;
+
+alter table public.sourcing_searches drop constraint if exists sourcing_searches_query_method_chk;
+alter table public.sourcing_searches add constraint sourcing_searches_query_method_chk
+  check (query_method in ('llm', 'deterministic'));
+
+alter table public.sourcing_searches drop constraint if exists sourcing_searches_language_chk;
+alter table public.sourcing_searches add constraint sourcing_searches_language_chk
+  check (language in ('fr', 'en'));
+
+-- 100 = plafond public du moteur. Les trois compteurs s'emboîtent.
+alter table public.sourcing_searches drop constraint if exists sourcing_searches_counts_chk;
+alter table public.sourcing_searches add constraint sourcing_searches_counts_chk
+  check (
+    requested between 1 and 100
+    and returned between 0 and requested
+    and new_after_dedup between 0 and returned
+  );
+
+create index if not exists sourcing_searches_campaign_idx
+  on public.sourcing_searches (campaign_id, created_at desc);
+
+-- ── Profils ───────────────────────────────────────────────────────────
+create table if not exists public.sourcing_profiles (
+  id                 uuid        primary key default gen_random_uuid(),
+  campaign_id        text        not null references public.campaigns(id) on delete cascade,
+  search_id          uuid        not null references public.sourcing_searches(id) on delete cascade,
+  fingerprint        text        not null,
+  -- Rang dans la réponse du moteur (1 = le plus pertinent). L'ordre affiché
+  -- EST cet ordre ; ORQA ne réordonne jamais (seul le tri stable « en
+  -- recherche d'abord » regroupe, sans toucher l'ordre interne).
+  exa_rank           int         not null,
+  state              text        not null default 'reserve',
+  -- Projection déjà filtrée à l'ingestion (spec §7.3) : ni photo, ni section
+  -- Social, ni recommandations, email seulement s'il est celui du titulaire.
+  exa_snapshot       jsonb       not null,
+  decided_at         timestamptz,
+  decided_by_user_id uuid,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+alter table public.sourcing_profiles enable row level security;
+
+-- reserve → to_review (paquet affiché) → contacted. Décliné et manifesté ne
+-- sont PAS des états : la ligne est supprimée et l'exclusion en garde la trace.
+alter table public.sourcing_profiles drop constraint if exists sourcing_profiles_state_chk;
+alter table public.sourcing_profiles add constraint sourcing_profiles_state_chk
+  check (state in ('reserve', 'to_review', 'contacted'));
+
+-- Un profil n'est « décidé » que contacté, et toujours par quelqu'un.
+alter table public.sourcing_profiles drop constraint if exists sourcing_profiles_decision_chk;
+alter table public.sourcing_profiles add constraint sourcing_profiles_decision_chk
+  check (
+    (state = 'contacted') = (decided_at is not null and decided_by_user_id is not null)
+  );
+
+alter table public.sourcing_profiles drop constraint if exists sourcing_profiles_rank_chk;
+alter table public.sourcing_profiles add constraint sourcing_profiles_rank_chk
+  check (exa_rank between 1 and 100);
+
+alter table public.sourcing_profiles drop constraint if exists sourcing_profiles_fingerprint_chk;
+alter table public.sourcing_profiles add constraint sourcing_profiles_fingerprint_chk
+  check (fingerprint ~ '^[0-9a-f]{64}$');
+
+alter table public.sourcing_profiles drop constraint if exists sourcing_profiles_snapshot_chk;
+alter table public.sourcing_profiles add constraint sourcing_profiles_snapshot_chk
+  check (jsonb_typeof(exa_snapshot) = 'object');
+
+-- Dédoublonnage : un profil n'apparaît qu'une fois par campagne, quelle que
+-- soit la recherche qui l'a ramené.
+create unique index if not exists sourcing_profiles_campaign_fp_idx
+  on public.sourcing_profiles (campaign_id, fingerprint);
+-- Affichage d'une recherche dans l'ordre du moteur.
+create index if not exists sourcing_profiles_search_rank_idx
+  on public.sourcing_profiles (search_id, exa_rank);
+-- Opposition : toutes les lignes d'une empreinte, toutes campagnes.
+create index if not exists sourcing_profiles_fingerprint_idx
+  on public.sourcing_profiles (fingerprint);
+
+drop trigger if exists sourcing_profiles_touch_updated_at on public.sourcing_profiles;
+create trigger sourcing_profiles_touch_updated_at
+  before update on public.sourcing_profiles
+  for each row execute function public.touch_updated_at();
+
+-- ── Exclusions ────────────────────────────────────────────────────────
+-- AUCUNE donnée personnelle : une empreinte, une portée, une raison.
+-- `campaign_id` NULL = OPPOSITION, valable pour toutes les campagnes.
+--
+-- `scope` (colonne générée) existe pour l'unicité : un index unique sur
+-- (fingerprint, campaign_id) laisserait passer deux oppositions (deux NULL
+-- sont distincts), et un index sur expression ne peut pas servir de cible à
+-- un upsert PostgREST. `'*'` ne peut pas entrer en collision avec un
+-- identifiant de campagne (`CAMP-…`).
+create table if not exists public.sourcing_exclusions (
+  id           uuid        primary key default gen_random_uuid(),
+  fingerprint  text        not null,
+  campaign_id  text        references public.campaigns(id) on delete cascade,
+  scope        text        generated always as (coalesce(campaign_id, '*')) stored,
+  reason       text        not null,
+  created_at   timestamptz not null default now()
+);
+alter table public.sourcing_exclusions enable row level security;
+
+alter table public.sourcing_exclusions drop constraint if exists sourcing_exclusions_reason_chk;
+alter table public.sourcing_exclusions add constraint sourcing_exclusions_reason_chk
+  check (reason in ('declined', 'contacted', 'manifested', 'opposed'));
+
+-- Une opposition est globale, et seule une opposition l'est.
+alter table public.sourcing_exclusions drop constraint if exists sourcing_exclusions_scope_chk;
+alter table public.sourcing_exclusions add constraint sourcing_exclusions_scope_chk
+  check ((reason = 'opposed') = (campaign_id is null));
+
+alter table public.sourcing_exclusions drop constraint if exists sourcing_exclusions_fingerprint_chk;
+alter table public.sourcing_exclusions add constraint sourcing_exclusions_fingerprint_chk
+  check (fingerprint ~ '^[0-9a-f]{64}$');
+
+-- Une ligne par (empreinte, portée) : « contacté » devient « manifesté » par
+-- mise à jour, jamais par empilement.
+create unique index if not exists sourcing_exclusions_fp_scope_idx
+  on public.sourcing_exclusions (fingerprint, scope);
+
+-- ── Approches ─────────────────────────────────────────────────────────
+create table if not exists public.sourcing_approaches (
+  id                   uuid        primary key default gen_random_uuid(),
+  campaign_id          text        not null references public.campaigns(id) on delete cascade,
+  -- SET NULL, pas CASCADE : le profil disparaît (décliné, manifesté, clôture),
+  -- l'approche reste — le lien doit toujours répondre quelque chose d'honnête.
+  profile_id           uuid        references public.sourcing_profiles(id) on delete set null,
+  fingerprint          text        not null,
+  recruiter_id         uuid        not null,  -- recruiters.id, sans FK (snapshot)
+  channel              text        not null,  -- 'linkedin' | 'email'
+  message_format       text        not null,  -- 'connection_note' | 'inmail' | 'email'
+  -- Le message tel que copié : rappelé en tête de la page d'atterrissage.
+  -- Porte le prénom de la personne ⇒ vidé à la purge.
+  message              text,
+  -- SHA-256 du jeton, en hexadécimal. Le jeton clair n'est jamais stocké :
+  -- il ouvre des données pré-remplies et n'a pas à être relu.
+  token_hash           text        not null,
+  status               text        not null default 'active',
+  initiated_at         timestamptz not null default now(),
+  first_opened_at      timestamptz,
+  submitted_at         timestamptz,
+  -- Ce que la personne a saisi (coordonnées, corrections, référence du CV
+  -- joint), conservé SEULEMENT le temps de créer la candidature : c'est ce
+  -- qu'une reprise après panne d'analyse rejoue.
+  submission           jsonb,
+  analysis_id          text,
+  admission_attempts   int         not null default 0,
+  admission_last_error text,
+  purged_at            timestamptz,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+alter table public.sourcing_approaches enable row level security;
+
+-- « Appeler » est hors périmètre (0 téléphone sur 306 profils) : pas de canal.
+alter table public.sourcing_approaches drop constraint if exists sourcing_approaches_channel_chk;
+alter table public.sourcing_approaches add constraint sourcing_approaches_channel_chk
+  check (
+    channel in ('linkedin', 'email')
+    and message_format in ('connection_note', 'inmail', 'email')
+    and (channel = 'email') = (message_format = 'email')
+  );
+
+-- La note de connexion LinkedIn est plafonnée à 300 caractères, lien compris.
+alter table public.sourcing_approaches drop constraint if exists sourcing_approaches_note_length_chk;
+alter table public.sourcing_approaches add constraint sourcing_approaches_note_length_chk
+  check (message_format <> 'connection_note' or message is null or char_length(message) <= 300);
+
+alter table public.sourcing_approaches drop constraint if exists sourcing_approaches_token_hash_chk;
+alter table public.sourcing_approaches add constraint sourcing_approaches_token_hash_chk
+  check (token_hash ~ '^[0-9a-f]{64}$');
+
+alter table public.sourcing_approaches drop constraint if exists sourcing_approaches_fingerprint_chk;
+alter table public.sourcing_approaches add constraint sourcing_approaches_fingerprint_chk
+  check (fingerprint ~ '^[0-9a-f]{64}$');
+
+-- active → revoked (« Recopier » avant toute ouverture)
+-- active → admission_pending (soumission réservée) → submitted (candidature créée)
+alter table public.sourcing_approaches drop constraint if exists sourcing_approaches_status_chk;
+alter table public.sourcing_approaches add constraint sourcing_approaches_status_chk
+  check (status in ('active', 'revoked', 'admission_pending', 'submitted'));
+
+-- Cohérence de la soumission, tenue par la base et pas seulement par le code :
+--   - soumise ⇔ date de soumission ;
+--   - la saisie n'existe QUE pendant l'admission (ni avant, ni après) ;
+--   - une candidature créée porte SON identifiant d'analyse, et aucun autre.
+alter table public.sourcing_approaches drop constraint if exists sourcing_approaches_submission_chk;
+alter table public.sourcing_approaches add constraint sourcing_approaches_submission_chk
+  check (
+    (status in ('admission_pending', 'submitted')) = (submitted_at is not null)
+    and (status = 'admission_pending') = (submission is not null)
+    and (status = 'submitted') = (analysis_id is not null)
+    and (analysis_id is null or analysis_id = 'can_src_' || id::text)
+    and admission_attempts >= 0
+  );
+
+-- Une approche purgée ne porte plus rien de la personne.
+alter table public.sourcing_approaches drop constraint if exists sourcing_approaches_purged_chk;
+alter table public.sourcing_approaches add constraint sourcing_approaches_purged_chk
+  check (purged_at is null or (message is null and submission is null));
+
+create unique index if not exists sourcing_approaches_token_hash_idx
+  on public.sourcing_approaches (token_hash);
+create index if not exists sourcing_approaches_campaign_idx
+  on public.sourcing_approaches (campaign_id);
+-- « Mes approches ce mois ».
+create index if not exists sourcing_approaches_recruiter_idx
+  on public.sourcing_approaches (recruiter_id, initiated_at desc);
+create index if not exists sourcing_approaches_fingerprint_idx
+  on public.sourcing_approaches (fingerprint);
+create index if not exists sourcing_approaches_profile_idx
+  on public.sourcing_approaches (profile_id)
+  where profile_id is not null;
+-- Le rail de reprise ne lit que les admissions en attente.
+create index if not exists sourcing_approaches_pending_idx
+  on public.sourcing_approaches (submitted_at)
+  where status = 'admission_pending';
+
+drop trigger if exists sourcing_approaches_touch_updated_at on public.sourcing_approaches;
+create trigger sourcing_approaches_touch_updated_at
+  before update on public.sourcing_approaches
+  for each row execute function public.touch_updated_at();
+
+-- ── Préférences du recruteur ──────────────────────────────────────────
+-- Format de message LinkedIn préféré (NULL = note de connexion) et tri
+-- « en recherche d'abord » (coché par défaut, mémorisé par recruteur).
+alter table public.recruiters
+  add column if not exists sourcing_message_format text;
+alter table public.recruiters
+  add column if not exists sourcing_available_first boolean not null default true;
+
+alter table public.recruiters drop constraint if exists recruiters_sourcing_message_format_chk;
+alter table public.recruiters add constraint recruiters_sourcing_message_format_chk
+  check (sourcing_message_format is null or sourcing_message_format in ('connection_note', 'inmail'));
+
+-- ── Réglage du cabinet ────────────────────────────────────────────────
+-- { enabled, defaultLanguage, batchSize }. Second étage du flag : le premier
+-- (SOURCING_ENABLED + EXA_API_KEY + SOURCING_FINGERPRINT_PEPPER) est en
+-- variables d'environnement. Les deux sont requis.
+alter table public.app_settings
+  add column if not exists sourcing_config jsonb;
+
+alter table public.app_settings drop constraint if exists app_settings_sourcing_config_chk;
+alter table public.app_settings add constraint app_settings_sourcing_config_chk
+  check (sourcing_config is null or jsonb_typeof(sourcing_config) = 'object');

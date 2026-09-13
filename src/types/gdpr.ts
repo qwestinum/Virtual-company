@@ -34,6 +34,16 @@ export type ErasureIdentity = {
   unmatchedIds: string[];
   /** Chemins de stockage connus par la base (les orphelins s'ajoutent après). */
   storagePaths: string[];
+
+  /**
+   * Module Sourcing. L'EMPREINTE d'un profil (HMAC salé de son adresse) est un
+   * identifiant FORT : elle dérive d'une adresse qui désigne une seule
+   * personne, contrairement à un nom. Elle fait donc entrer une ligne dans le
+   * périmètre au même titre qu'un identifiant technique.
+   */
+  sourcingFingerprints: string[];
+  sourcingProfileIds: string[];
+  sourcingApproachIds: string[];
 };
 
 /** Compteurs par catégorie — le seul contenu de `gdpr_erasure_requests.scope`. */
@@ -50,6 +60,12 @@ export type ErasureCounts = {
   unmatchedRows: number;
   retryRows: number;
   journalEntries: number;
+  /** Profils publics collectés par le sourcing — lignes supprimées. */
+  sourcingProfiles: number;
+  /** Approches de sourcing — message et saisie vidés, lignes conservées. */
+  sourcingApproaches: number;
+  /** Oppositions au sourcing enregistrées (empreinte seule). */
+  sourcingOppositions: number;
 };
 
 export const EMPTY_ERASURE_COUNTS: ErasureCounts = {
@@ -65,6 +81,9 @@ export const EMPTY_ERASURE_COUNTS: ErasureCounts = {
   unmatchedRows: 0,
   retryRows: 0,
   journalEntries: 0,
+  sourcingProfiles: 0,
+  sourcingApproaches: 0,
+  sourcingOppositions: 0,
 };
 
 /** Ce que la purge a trouvé, avant d'agir. */
