@@ -29,7 +29,13 @@ import {
   markBriefScheduled,
   type BookingDelivery,
 } from '@/lib/db/repos/interview-briefs';
+import { getArtifactMeta } from '@/lib/db/repos/artifacts';
 import { getVivierCandidateByEmail } from '@/lib/db/repos/vivier';
+import {
+  approachIdOfAnalysis,
+  sourcingCvFileArtifactId,
+  sourcingStructuredCvArtifactId,
+} from '@/lib/sourcing/admission';
 import {
   getSynthesisAudienceForCampaign,
   type SynthesisAudience,
@@ -108,19 +114,44 @@ type LoadedCv = {
   signedUrl: string | null;
 };
 
-/** Charge le CV du candidat (vivier, par email) : binaire + lien signé. */
-async function loadCv(email: string): Promise<LoadedCv | null> {
+/**
+ * Charge le CV du candidat : binaire + lien signé. Le vivier d'abord (par
+ * email) ; à défaut, pour une candidature issue du sourcing, l'artefact que
+ * l'admission a posé (CV joint, sinon CV structuré) — l'alimentation du vivier
+ * est asynchrone et peut ne pas avoir abouti à l'heure du rendez-vous.
+ */
+async function loadCv(email: string, uid: string | null): Promise<LoadedCv | null> {
   try {
     const candidate = await getVivierCandidateByEmail(normalizeEmail(email));
-    if (!candidate?.cvPath) return null;
-    const buf = await downloadArtifact(candidate.cvPath);
+    if (candidate?.cvPath) {
+      const loaded = await loadCvAt(candidate.cvPath, candidate.cvFileName ?? 'CV.pdf');
+      if (loaded) return loaded;
+    }
+  } catch {
+    // on tente l'artefact
+  }
+  const approachId = approachIdOfAnalysis(uid);
+  if (!approachId) return null;
+  try {
+    for (const id of [sourcingCvFileArtifactId(approachId), sourcingStructuredCvArtifactId(approachId)]) {
+      const meta = await getArtifactMeta(id);
+      if (meta?.storagePath) {
+        const loaded = await loadCvAt(meta.storagePath, meta.name);
+        if (loaded) return loaded;
+      }
+    }
+  } catch {
+    // Dégradation douce : on livre le briefing sans CV (mention dans le corps).
+  }
+  return null;
+}
+
+async function loadCvAt(path: string, filename: string): Promise<LoadedCv | null> {
+  try {
+    const buf = await downloadArtifact(path);
     if (!buf) return null;
-    const filename = candidate.cvFileName ?? 'CV.pdf';
     const base64 = buf.toString('base64');
-    const signedUrl = await createSignedArtifactUrl(
-      candidate.cvPath,
-      CV_LINK_TTL_SECONDS,
-    );
+    const signedUrl = await createSignedArtifactUrl(path, CV_LINK_TTL_SECONDS);
     return {
       attachment: { filename, content: base64 },
       base64,
@@ -129,7 +160,6 @@ async function loadCv(email: string): Promise<LoadedCv | null> {
       signedUrl,
     };
   } catch {
-    // Dégradation douce : on livre le briefing sans CV (mention dans le corps).
     return null;
   }
 }
@@ -154,8 +184,10 @@ async function sendBrief(args: {
   ownerLabel: string;
   questions: InterviewQuestion[];
   input: DeliverBriefInput;
+  /** Clé de la candidature quand elle est connue (repli CV sur l'artefact). */
+  uid: string | null;
 }): Promise<{ ok: boolean; messageId: string | null; error?: string }> {
-  const cv = await loadCv(args.input.attendeeEmail);
+  const cv = await loadCv(args.input.attendeeEmail, args.uid);
 
   // Substance commune au mail ET à l'agenda (synthèse, verdict, trame). Le mail
   // et le .ics partagent ainsi exactement le même briefing — l'événement agenda
@@ -260,6 +292,7 @@ export async function deliverBriefForBooking(
       ownerLabel,
       questions: pending.questions,
       input,
+      uid: pending.uid,
     });
     if (!send.ok) {
       return {
@@ -336,6 +369,7 @@ export async function deliverBriefForBooking(
     ownerLabel,
     questions,
     input,
+    uid: analysis.uid ?? null,
   });
   if (!send.ok) {
     return {

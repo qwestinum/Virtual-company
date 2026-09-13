@@ -48,6 +48,10 @@ const API_SELF_AUTHENTICATED = [
   // — sans cette entrée, le régime deny-by-default rendrait 401 et le
   // formulaire public serait inutilisable.
   '/api/jobs/apply',
+  // Sourcing : la personne approchée n'a pas de compte, son jeton est dans
+  // l'URL. `/api/sourcing/approaches/…` (recruteur, avec session) ne matche
+  // PAS : la correspondance exige `/` après le préfixe.
+  '/api/sourcing/approach',
 ];
 
 /**
@@ -56,7 +60,7 @@ const API_SELF_AUTHENTICATED = [
  * sur le chemin critique d'une page ouverte depuis un email, pour un résultat
  * toujours nul.
  */
-const PUBLIC_BOOKING_PREFIXES = ['/r/', '/b/', '/api/sched/'];
+const PUBLIC_BOOKING_PREFIXES = ['/r/', '/b/', '/api/sched/', '/s/', '/api/sourcing/approach/'];
 
 /**
  * Pages du jobboard de démonstration. Elles n'ont besoin d'AUCUNE exemption

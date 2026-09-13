@@ -332,6 +332,12 @@ export async function resolveIdentity(
     push(acc.artifactIds, `art_imap_cvabandon_${ref.mailboxId}_${ref.uid}`);
   }
   for (const uid of acc.uids) push(acc.artifactIds, `art_cv_${uid}`);
+  // Sourcing : CV joint sur la page d'atterrissage, ou CV structuré de ce que
+  // la personne a confirmé (docs/specs/sourcing.md §10).
+  for (const approachId of acc.sourcingApproachIds) {
+    push(acc.artifactIds, `art_src_cvfile_${approachId}`);
+    push(acc.artifactIds, `art_src_cv_${approachId}`);
+  }
 
   const metas = await pageAllByText<ArtifactMetaRow>(
     db,
@@ -354,8 +360,10 @@ export async function resolveIdentity(
         ? m.metadata.candidateEmail.toLowerCase()
         : null;
     const from = typeof m.metadata?.from === 'string' ? m.metadata.from.toLowerCase() : null;
+    const approachId = typeof m.metadata?.approachId === 'string' ? m.metadata.approachId : null;
     const scoped =
       acc.artifactIds.includes(m.id) ||
+      (approachId !== null && acc.sourcingApproachIds.includes(approachId)) ||
       (uid !== null && acc.uids.includes(uid)) ||
       (mail !== null && acc.emails.includes(mail)) ||
       (from !== null && acc.emails.some((e) => from.includes(e))) ||

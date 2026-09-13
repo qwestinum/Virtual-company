@@ -12,10 +12,17 @@ export const SourcingConfigSchema = z.object({
   enabled: z.boolean().default(false),
   /** Langue proposée par défaut — mesuré : le français trouve la spécialité (§2.5). */
   defaultLanguage: z.enum(['fr', 'en']).default('fr'),
+  /**
+   * Contact « données personnelles » du responsable de traitement, affiché sur
+   * la page d'atterrissage (information art. 14). Vide ⇒ adresse de réception
+   * de la campagne, comme la mention RGPD des invitations vivier.
+   */
+  privacyContact: z.string().trim().max(200).nullable().default(null),
 });
 export type SourcingConfig = z.infer<typeof SourcingConfigSchema>;
 
 export const DEFAULT_SOURCING_CONFIG: SourcingConfig = {
   enabled: false,
   defaultLanguage: 'fr',
+  privacyContact: null,
 };

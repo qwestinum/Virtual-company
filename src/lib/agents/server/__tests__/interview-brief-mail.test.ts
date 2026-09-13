@@ -176,3 +176,37 @@ describe('buildUnmatchedBookingMail', () => {
     expect(html).toContain('ghost@mail.com');
   });
 });
+
+describe('briefing — critères et candidature issue du sourcing', () => {
+  const input = (candidate: MailCandidate) => ({
+    candidate,
+    jobTitle: 'Business Analyst',
+    ownerLabel: 'CAMP-2026-293',
+    questions: [],
+    booking: { startAt: null, endAt: null, location: null },
+    cvAttached: true,
+  });
+  const criteria: MailCandidate['criteria'] = [
+    { label: 'Parcours digitaux', decision: 'satisfait', quote: 'refonte du parcours <mobile>' },
+    { label: 'Secteur financier', decision: 'non_verifiable', quote: '' },
+  ];
+
+  it('tableau critère → verdict → citation, pour toute candidature', () => {
+    const { html } = buildInterviewBriefMail(input({ ...baseCandidate, criteria }));
+    expect(html).toContain('<h3>Critères</h3>');
+    expect(html).toContain('<td>Parcours digitaux</td><td>Satisfait</td><td>« refonte du parcours &lt;mobile&gt; »</td>');
+    expect(html).toContain('<td>Secteur financier</td><td>Non vérifiable</td><td>—</td>');
+    expect(buildInterviewBriefText(input({ ...baseCandidate, criteria }))).toContain('• Parcours digitaux — Satisfait — « refonte du parcours <mobile> »');
+  });
+
+  it('sourcing : « Profil approché par… » à la place du repêchage, verdict conservé', () => {
+    const c = { ...baseCandidate, score: 41, sourcingApproach: { recruiterName: 'Jane R.', approachedAt: '2026-09-10T09:00:00Z' } };
+    const { html } = buildInterviewBriefMail(input(c));
+    expect(html).toContain('Profil approché par Jane R. le 10 septembre 2026');
+    expect(html).not.toContain('repêché');
+    expect(html).toContain('Verdict CV Analyzer');
+    const text = buildInterviewBriefText(input(c));
+    expect(text).toContain('Profil approché par Jane R. le 10 septembre 2026');
+    expect(text).not.toContain('repêché');
+  });
+});

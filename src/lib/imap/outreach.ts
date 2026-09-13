@@ -94,8 +94,39 @@ export type OutreachInput = {
   cvArtifactId: string | null;
 };
 
-export async function dispatchImapCandidateOutreach(
+/**
+ * Les trois identifiants qu'un envoi dérive de son origine. L'IMAP les tire de
+ * (boîte, message) ; une autre origine (sourcing : `can_src_<approche>`) passe
+ * les siens. Le gate, la composition, les verrous deux-phases et le briefing
+ * sont les MÊMES — aucune seconde règle d'envoi.
+ */
+export type OutreachKeys = {
+  /** Clé d'idempotence du lien de réservation natif et de la candidature. */
+  analysisId: string;
+  /** Verrou d'envoi deux-phases (`imap_outreach_claims`). */
+  claim: { mailboxId: string; uid: string };
+  /** Préfixe de l'id déterministe de la validation suspendue. */
+  validationPrefix: string;
+  /** Auteur écrit au journal. */
+  actor: string;
+};
+
+export function imapOutreachKeys(input: Pick<OutreachInput, 'mailboxId' | 'uid'>): OutreachKeys {
+  return {
+    analysisId: imapAnalysisId(input.mailboxId, input.uid),
+    claim: { mailboxId: input.mailboxId, uid: input.uid },
+    validationPrefix: `val_imap_${input.mailboxId}_${input.uid}`,
+    actor: 'imap_poller',
+  };
+}
+
+export async function dispatchImapCandidateOutreach(input: OutreachInput): Promise<void> {
+  return dispatchCandidateOutreach(input, imapOutreachKeys(input));
+}
+
+export async function dispatchCandidateOutreach(
   input: OutreachInput,
+  keys: OutreachKeys,
 ): Promise<void> {
   const { candidate } = input;
   // La ZONE pilote le gate. Repli sur `aboveThreshold` pour les projections
@@ -125,7 +156,7 @@ export async function dispatchImapCandidateOutreach(
   if (mode === 'invite' && !canInvite) {
     await appendJournalEntry({
       action: 'imap_outreach_skipped',
-      actor: 'imap_poller',
+      actor: keys.actor,
       campaignId: isTaskOwner ? null : input.campaignId,
       payload: {
         // Une seule cause côté métier : rien pour réserver. Le détail (lien
@@ -145,15 +176,15 @@ export async function dispatchImapCandidateOutreach(
   // La ZONE pilote : auto → envoi, gris → file. Gris + file non persistée →
   // 'deferred' → on N'ENVOIE RIEN et on demande le réessai (anti-perte).
   const outcome = await gateCandidateOutreach(zone, {
-    send: () => composeAndSendCandidateMail({ mode, input, ownerKey }),
+    send: () => composeAndSendCandidateMail({ mode, input, ownerKey, keys }),
     enqueue: () =>
-      enqueueImapPendingValidation({ mode, decision, input, ownerKey }),
+      enqueueImapPendingValidation({ mode, decision, input, ownerKey, keys }),
   });
 
   if (outcome.kind === 'deferred') {
     await appendJournalEntry({
       action: 'imap_outreach_deferred',
-      actor: 'imap_poller',
+      actor: keys.actor,
       campaignId: isTaskOwner ? null : input.campaignId,
       payload: {
         reason: outcome.reason,
@@ -174,7 +205,7 @@ export async function dispatchImapCandidateOutreach(
     // qui remplace l'ancien « duplicate » menteur sur claim orphelin.
     await appendJournalEntry({
       action: 'imap_outreach_deferred',
-      actor: 'imap_poller',
+      actor: keys.actor,
       campaignId: isTaskOwner ? null : input.campaignId,
       payload: {
         reason: 'outreach_claim_in_flight',
@@ -201,7 +232,7 @@ export async function dispatchImapCandidateOutreach(
       campaignId: input.campaignId,
       jobTitle: input.jobTitle,
       candidate: input.candidate,
-      actor: 'imap_poller',
+      actor: keys.actor,
       uid: input.uid,
     });
   }
@@ -223,6 +254,7 @@ async function enqueueImapPendingValidation(args: {
   decision: HitlDecision;
   input: OutreachInput;
   ownerKey: { campaignId: string } | { taskId: string };
+  keys: OutreachKeys;
 }): Promise<boolean> {
   const { mode, decision, input } = args;
   const { candidate } = input;
@@ -239,7 +271,7 @@ async function enqueueImapPendingValidation(args: {
   // Id déterministe (mailbox + uid + décision) ⇒ upsert idempotent si re-polled,
   // NON DESTRUCTIF via mergePendingValidationEnqueue : une re-passe ne remplace
   // jamais un lien d'artefact non-null par null ni ne ré-ouvre un `sent`.
-  const validationId = `val_imap_${input.mailboxId}_${input.uid}_${decision}`;
+  const validationId = `${args.keys.validationPrefix}_${decision}`;
   const nowIso = new Date().toISOString();
   const fresh: PendingValidation = {
     id: validationId,
@@ -258,7 +290,7 @@ async function enqueueImapPendingValidation(args: {
       // Porté DANS la validation pour que le preview HITL puisse émettre le
       // lien natif sans avoir à re-dériver la clé depuis l'identifiant de
       // validation (repli conservé côté lecture pour les validations en vol).
-      analysisId: imapAnalysisId(input.mailboxId, input.uid),
+      analysisId: args.keys.analysisId,
       candidate,
       jobTitle: input.jobTitle,
       summary: candidate.summary,
@@ -290,7 +322,7 @@ async function enqueueImapPendingValidation(args: {
 
   await appendJournalEntry({
     action: 'imap_outreach_pending',
-    actor: 'imap_poller',
+    actor: args.keys.actor,
     campaignId: campaignIdForJournal,
     payload: {
       mode,
@@ -310,6 +342,7 @@ async function composeAndSendCandidateMail(args: {
   mode: 'reject' | 'invite';
   input: OutreachInput;
   ownerKey: { campaignId: string } | { taskId: string };
+  keys: OutreachKeys;
 }): Promise<SendResult> {
   const { mode, input, ownerKey } = args;
   const { candidate } = input;
@@ -327,7 +360,7 @@ async function composeAndSendCandidateMail(args: {
       jobTitle: input.jobTitle,
       campaignId: input.campaignId,
       // Clé d'idempotence du lien natif : l'ANALYSE, pas l'uid brut.
-      analysisId: imapAnalysisId(input.mailboxId, input.uid),
+      analysisId: args.keys.analysisId,
       uid: input.uid,
     });
     // La sonde du gate a dit « on peut inviter », mais entre-temps le lien a
@@ -337,7 +370,7 @@ async function composeAndSendCandidateMail(args: {
     if (out.blocked) {
       await appendJournalEntry({
         action: 'imap_outreach_skipped',
-        actor: 'imap_poller',
+        actor: args.keys.actor,
         campaignId: campaignIdForJournal,
         payload: {
           reason: out.blockedReason ?? 'link_unavailable',
@@ -353,7 +386,7 @@ async function composeAndSendCandidateMail(args: {
   } catch (err) {
     await appendJournalEntry({
       action: 'imap_outreach_failed',
-      actor: 'imap_poller',
+      actor: args.keys.actor,
       campaignId: campaignIdForJournal,
       payload: {
         stage: 'compose',
@@ -375,12 +408,12 @@ async function composeAndSendCandidateMail(args: {
   //                    prochain poll verra soit confirmé, soit périmé (reprise).
   //   - won          : ce process a la main (insert gagné ou reprise d'un
   //                    claim orphelin de crash après TTL).
-  const claimKey = { mailboxId: input.mailboxId, uid: input.uid, mode } as const;
+  const claimKey = { ...args.keys.claim, mode } as const;
   const claimVerdict = await claimOutreach(claimKey);
   if (claimVerdict === 'already_sent') {
     await appendJournalEntry({
       action: 'imap_outreach_duplicate_skipped',
-      actor: 'imap_poller',
+      actor: args.keys.actor,
       campaignId: campaignIdForJournal,
       payload: {
         mode,
@@ -516,7 +549,7 @@ async function composeAndSendCandidateMail(args: {
 
   await appendJournalEntry({
     action: 'imap_outreach_mail',
-    actor: 'imap_poller',
+    actor: args.keys.actor,
     campaignId: campaignIdForJournal,
     payload: {
       mode,

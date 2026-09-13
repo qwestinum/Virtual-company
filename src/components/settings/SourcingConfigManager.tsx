@@ -19,7 +19,10 @@ export type SourcingConfigManagerProps = {
 
 export function SourcingConfigManager({ config, onSave }: SourcingConfigManagerProps) {
   const [draft, setDraft] = useState<SourcingConfig>(config);
-  const dirty = draft.enabled !== config.enabled || draft.defaultLanguage !== config.defaultLanguage;
+  const dirty =
+    draft.enabled !== config.enabled ||
+    draft.defaultLanguage !== config.defaultLanguage ||
+    (draft.privacyContact ?? '') !== (config.privacyContact ?? '');
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-stone-200 bg-white px-4 py-3">
@@ -52,6 +55,20 @@ export function SourcingConfigManager({ config, onSave }: SourcingConfigManagerP
           </label>
         ))}
       </div>
+
+      <label className="flex flex-col gap-1 font-body text-[13px] text-stone-700">
+        <span>Contact pour les données personnelles (délégué ou service)</span>
+        <input
+          type="text"
+          value={draft.privacyContact ?? ''}
+          placeholder="ex. dpo@cabinet.fr"
+          onChange={(e) => setDraft({ ...draft, privacyContact: e.target.value.trim() === '' ? null : e.target.value })}
+          className="max-w-sm rounded-md border border-stone-300 px-2 py-1 text-[13px]"
+        />
+        <span className="text-[12px] text-stone-500">
+          Affiché aux personnes approchées. Vide : l’adresse de réception de la campagne.
+        </span>
+      </label>
 
       <p className="font-body text-[12px] text-stone-500">
         L’onglet « Sourcing » n’apparaît que si l’installation l’autorise aussi (configuration

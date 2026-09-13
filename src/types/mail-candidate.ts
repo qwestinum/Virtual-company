@@ -12,6 +12,7 @@
 import { z } from 'zod';
 
 import { DecisionZoneSchema } from './hitl';
+import { LlmDecisionSchema } from './scoring';
 import type { CVApplication } from './cv-analysis';
 
 export const MailCandidateSchema = z.object({
@@ -32,6 +33,18 @@ export const MailCandidateSchema = z.object({
   strengths: z.array(z.string().min(1)),
   weaknesses: z.array(z.string().min(1)),
   justification: z.string().min(1),
+  /**
+   * Candidature née d'une approche du module Sourcing : le briefing dit qui a
+   * approché la personne et quand, à la place du paragraphe « repêché ».
+   */
+  sourcingApproach: z.object({ recruiterName: z.string().min(1), approachedAt: z.string() }).optional(),
+  /**
+   * Critère → verdict → citation, pour que le briefing montre SUR QUOI repose
+   * le score. Optionnel : les briefings déjà en file n'en ont pas.
+   */
+  criteria: z
+    .array(z.object({ label: z.string().min(1), decision: LlmDecisionSchema, quote: z.string() }))
+    .optional(),
 });
 export type MailCandidate = z.infer<typeof MailCandidateSchema>;
 
@@ -51,5 +64,10 @@ export function cvApplicationToMailCandidate(
     strengths: narration.strengths,
     weaknesses: narration.weaknesses,
     justification: narration.justification,
+    criteria: scoringResult.breakdown.map((b) => ({
+      label: b.criterionLabel,
+      decision: b.llmDecision,
+      quote: b.llmCVQuote,
+    })),
   };
 }

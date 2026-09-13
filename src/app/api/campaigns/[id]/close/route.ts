@@ -11,10 +11,11 @@
  * Raisons de clôture : `campagne_cloturee` ou `poste_pourvu` (clôture après GO).
  * Les gris en cours d'envoi sont sautés et signalés dans le résumé.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 
 import { getApiUser } from '@/lib/auth/require-api-user';
+import { purgeCampaignSourcing } from '@/lib/sourcing/server/maintenance';
 import {
   dismissOpenCandidatures,
   type BatchDismissalSummary,
@@ -79,6 +80,11 @@ export async function POST(
         payload: { reason: parsed.reason ?? 'campagne_cloturee', ...summary },
       });
     }
+
+    // Sourcing : les profils trouvés pour cette campagne ne lui survivent pas
+    // (spec sourcing §12.1). Après la réponse, fail-soft ; le rail de drain
+    // rattrape une purge manquée.
+    after(() => purgeCampaignSourcing(id, 'closure'));
 
     return NextResponse.json({ campaign: updated, summary });
   } catch (err) {

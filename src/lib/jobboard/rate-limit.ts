@@ -30,8 +30,8 @@ const WINDOW_SECONDS = 600;
 
 export type RateVerdict = { allowed: boolean; retryAfterSeconds: number };
 
-function windowStart(now: Date): Date {
-  const size = WINDOW_SECONDS * 1000;
+function windowStart(now: Date, windowSeconds: number): Date {
+  const size = windowSeconds * 1000;
   return new Date(Math.floor(now.getTime() / size) * size);
 }
 
@@ -44,21 +44,32 @@ export async function consumeApplyQuota(
   ip: string | null,
   now: Date = new Date(),
 ): Promise<RateVerdict> {
-  const start = windowStart(now);
+  return consumeQuota({ key: `jobs:apply:${ip ?? 'unknown'}`, limit: LIMIT, windowSeconds: WINDOW_SECONDS }, now);
+}
+
+/**
+ * Compteur en base, FAIL-CLOSED : base absente ou en erreur ⇒ refusé. Partagé
+ * par les surfaces publiques sans jeton d'accès fort (jobboard) ou dont chaque
+ * requête coûte (page d'atterrissage du sourcing : analyse et envoi).
+ */
+export async function consumeQuota(
+  policy: { key: string; limit: number; windowSeconds: number },
+  now: Date = new Date(),
+): Promise<RateVerdict> {
+  const start = windowStart(now, policy.windowSeconds);
   const retryAfterSeconds = Math.max(
     1,
-    Math.ceil((start.getTime() + WINDOW_SECONDS * 1000 - now.getTime()) / 1000),
+    Math.ceil((start.getTime() + policy.windowSeconds * 1000 - now.getTime()) / 1000),
   );
-  const key = `jobs:apply:${ip ?? 'unknown'}`;
 
   const db = getServerSupabase();
   if (!db) return { allowed: false, retryAfterSeconds };
 
   try {
     const { data, error } = await db.rpc('sched_rate_limit_hit', {
-      p_key: key,
+      p_key: policy.key,
       p_window_start: start.toISOString(),
-      p_limit: LIMIT,
+      p_limit: policy.limit,
     });
     if (error) return { allowed: false, retryAfterSeconds };
     return data === false

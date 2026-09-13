@@ -125,6 +125,8 @@ export type CandidateAnalysisInsert = {
    * propagera vers `candidate_analyses`.
    */
   decidedBy?: DecidedBy;
+  /** Auteur d'une décision humaine posée dès l'insertion (sourcing). */
+  decidedByUser?: { id: string; email: string | null };
 };
 
 /**
@@ -225,8 +227,11 @@ export async function insertCandidateAnalysis(
     decision_zone:
       scoringResult.decisionZone ?? deriveDecisionZone(scoringResult.status),
     decided_by: input.decidedBy ?? 'auto',
-    decided_by_user_id: null,
-    decided_by_user_email: null,
+    // Identité posée à l'INSERTION seulement quand la décision naît humaine
+    // (sourcing : le recruteur qui a approché la personne). Partout ailleurs
+    // elle arrive par `updateCandidateAnalysisDecision`.
+    decided_by_user_id: input.decidedByUser?.id ?? null,
+    decided_by_user_email: input.decidedByUser?.email ?? null,
   });
   if (error) throw new Error(`insertCandidateAnalysis: ${error.message}`);
 }

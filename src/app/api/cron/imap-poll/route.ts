@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server';
 
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { pollAllMailboxes } from '@/lib/imap/poller';
+import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 
 export const runtime = 'nodejs';
@@ -50,11 +51,14 @@ export async function GET(request: Request): Promise<NextResponse> {
     // n'exécutent aucun traitement métier, c'est ici que les briefings
     // partent. Ne peut pas faire échouer la relève (drain fail-soft).
     const drained = await drainSchedulingEvents();
+    // Sourcing : purge des campagnes closes, reprise des admissions en panne.
+    const sourcing = await runSourcingMaintenance();
     return NextResponse.json({
       ok: true,
       polledAt: new Date().toISOString(),
       mailboxesPolled: outcomes.length,
       bookingEvents: drained,
+      sourcing,
     });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

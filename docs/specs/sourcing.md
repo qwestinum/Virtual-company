@@ -718,7 +718,7 @@ Jamais affichés : photo, mentions, disponibilité détectée, données hors par
 
 Journal `sourcing_profiles_purged { campaignId, count, byState }` si `count > 0`.
 
-### 12.2 Script `purge:candidate` — **livré avec le lot 1 (13/09/2026), sauf `art_src_`**
+### 12.2 Script `purge:candidate` — **livré avec le lot 1 (13/09/2026) ; `art_src_` au lot 4**
 Verdicts : `sourcing_searches` **CONSERVER** · `sourcing_profiles` **EFFACER** ·
 `sourcing_exclusions` **CONSERVER** · `sourcing_approaches` **PSEUDONYMISER**.
 
@@ -744,8 +744,8 @@ Verdicts : `sourcing_searches` **CONSERVER** · `sourcing_profiles` **EFFACER** 
 - Régression **S20** (`tests/regression/s20-purge-sourcing.test.ts`, 12 tests) : non manifesté par
   empreinte sur deux campagnes avec homonyme intact, profil portant l'adresse, manifesté retrouvé
   par email, admission en cours ; contrôle sondé sur un profil survivant ; rejeu « déjà effacé ».
-- **Reste à faire** avec l'admission (lot ultérieur) : les artefacts `art_src_cv_*` /
-  `art_src_cvfile_*` au balayage du stockage — ils n'existent pas encore.
+- **Lot 4** : les artefacts `art_src_cv_*` / `art_src_cvfile_*` (et toute métadonnée portant
+  l'`approachId`) entrent au périmètre, fichiers compris.
 
 ### 12.3 Préalable Phase 2 — **livré (lot 0, 13/09/2026)**
 Registre `src/lib/gdpr/table-inventory.ts` (verdict + traitement `step` | `cascade` par table) et
@@ -967,7 +967,8 @@ pouvez fermer cet onglet »).
 | `sourcing_link_opened` | `approachId` — première ouverture |
 | `sourcing_opposition_recorded` | `fingerprint` |
 | `sourcing_candidate_manifested` | `approachId, analysisId, campaignId, recruiterId, channel` |
-| `sourcing_admission_deferred` | `approachId, cause` |
+| `sourcing_admission_deferred` | `approachId, cause` (nom de l'erreur), `attempt` |
+| `sourcing_admission_refused` | `approachId, campaignStatus, scoringSheetValidated` — offre fermée entre-temps |
 | `sourcing_profiles_purged` | `campaignId, count, byState` — si `count > 0` |
 
 `approachId` et `fingerprint` n'entrent pas dans `LINK_KEYS` (`src/lib/gdpr/journal-scope.ts:54-63`).
@@ -1115,8 +1116,7 @@ après le dernier résultat ; réponses des routes sans coût ; agrégation mens
 
 ### Lot 3 — arbitrage et approche (14/09/2026, `feat/sourcing`, non mergé)
 
-> ⚠️ **Le lien porté par le message (`/s/<jeton>`) ne mène encore à rien** : la page
-> d'atterrissage et l'admission sont le lot 4. Ne pas approcher de vraies personnes avant.
+> Le lien porté par le message (`/s/<jeton>`) mène à la page d'atterrissage livrée au lot 4.
 
 Livré :
 - **Repères de ligne** (`SourcingRowMarks`) : « En recherche » (liste fermée, `availability.ts`,
@@ -1157,7 +1157,79 @@ exclusion reconnue par le dédoublonnage, approche avec `[lien]`, confirmation (
 « declined » jamais rétrogradé, révocation refusée sur un lien ouvert, note > 300 refusée par la
 base, préférences persistées.
 
+### Lot 4 — page d'atterrissage, manifestation, opposition, purge (14/09/2026, `feat/sourcing`, non mergé)
+
+Aucune migration : le lot s'appuie sur les colonnes et contraintes du lot 1.
+
+Livré :
+- **Page `/s/<jeton>`** (`src/app/s/[token]/page.tsx`, composants `src/components/sourcing-landing/`) :
+  état résolu côté serveur par un résolveur UNIQUE partagé avec les routes
+  (`server/landing-context.ts`, règle pure `resolveLandingState`) — la page ne montre un
+  formulaire que là où la route l'accepterait. Jamais de 404 : invitation plus disponible (jeton
+  inconnu/révoqué, module éteint, panne de lecture), offre plus ouverte (aucune donnée affichée),
+  recrutement suspendu (lien valable), candidature déjà reçue. Formulaire : message du recruteur
+  sans `[lien]`, poste, **bandeau art. 14** (pré-rempli si un profil existe encore, suppression à
+  la clôture, responsable de traitement = nom d'organisation, contact = réglage
+  `sourcingConfig.privacyContact` — nouveau champ en Paramètres —, à défaut l'adresse de réception
+  de la campagne, à défaut l'expéditeur), opposition confirmée avant envoi ; récapitulatif en
+  lecture seule, **« corriger ✎ » ligne à ligne**, ajout/retrait de lignes ; email pré-rempli « à
+  confirmer », téléphone facultatif, CV facultatif PDF/DOCX 10 Mo, **une** case obligatoire.
+  Jamais affichés : disponibilité, extrait, compétences, URL du profil.
+- **Robots d'aperçu** (LinkedIn, messageries — `isLinkPreviewAgent`) : ils ouvrent l'URL pour la
+  vignette. Ils reçoivent un écran neutre sans aucune donnée, et **ne marquent pas l'ouverture** —
+  sinon un faux « lien ouvert » interdirait au recruteur de « Recopier ». `sourcing_link_opened`
+  à la première ouverture par un navigateur.
+- **Routes publiques** `POST /api/sourcing/approach/[token]/submit` et `/oppose` : entrée unique
+  `/api/sourcing/approach` dans `API_SELF_AUTHENTICATED` (la correspondance exige `/` après le
+  préfixe : `/api/sourcing/approaches/…`, recruteur, reste gardée) ; `/s/` et
+  `/api/sourcing/approach/` au régime `noindex`/`no-store`/`no-referrer`. Débit **fail-closed** en
+  base (`consumeQuota`, généralisation de la limite du jobboard) : ouverture 60/10 min, soumission
+  et opposition 5/10 min par adresse, consommé AVANT la lecture du corps.
+- **`admitSourcedCandidate`** (`server/admit.ts`, règles pures `admission.ts`) : réservation
+  conditionnelle (un seul gagnant — un second envoi voit « bien reçue ») ; garde campagne active +
+  fiche validée + `canInviteForCampaign`, sinon réservation relâchée et saisie effacée ; CV joint
+  lisible ⇒ `art_src_cvfile_<id>`, sinon (absent ou défaut PROUVÉ du document) CV structuré
+  déterministe texte + PDF ⇒ `art_src_cv_<id>` ; **une** analyse `source: 'sourcing'` (relue, pas
+  refaite, à la reprise) ; zone forcée `auto_accept`, score et détail inchangés, coordonnées de la
+  page ; `decided_by='user'` + identité du recruteur **à l'insertion** (`decidedByUser`) ; vivier ;
+  `dispatchCandidateOutreach` avec les clés sourcing (aucune seconde règle d'envoi) ; approche
+  `submitted` + `analysis_id`, saisie effacée, profil supprimé, exclusion portée à `manifested` ;
+  `sourcing_candidate_manifested`. **Panne** ⇒ approche en attente, tentative et cause écrites,
+  `sourcing_admission_deferred`, la personne voit « bien reçue ».
+- **Rail de drain** (`server/maintenance.ts`, après `drainSchedulingEvents` au cron et au tick) :
+  reprise des admissions échues (1, 5, 15 min puis toutes les heures, jamais d'abandon — 2 par
+  passage) ; filet de purge des campagnes ni actives ni suspendues portant encore des profils.
+  **Clôture** : `after()` sur `POST /api/campaigns/[id]/close`. `sourcing_profiles_purged
+  { campaignId, count, byState, trigger }` seulement si `count > 0`. Indépendant du flag.
+- **Opposition** : exclusion globale d'abord, profils supprimés sur toutes les campagnes, liens
+  actifs/révoqués de l'empreinte révoqués et **vidés** (`purged_at`) ; une candidature déjà créée
+  n'est pas touchée (s'opposer au démarchage n'est pas retirer une candidature).
+- **Briefing** : CV repris de l'artefact quand le vivier ne l'a pas (clé `can_src_` du briefing) ;
+  **tableau critère → verdict → citation pour toute candidature** (`MailCandidate.criteria`,
+  optionnel pour les briefings déjà en file) ; « Profil approché par [recruteur] le [date] » à la
+  place du paragraphe de repêchage, verdict conservé.
+- **Origine** `'sourcing'` ajoutée à `CVSourceSchema` (libellé « Sourcing »), hors `CV_SOURCES` :
+  rien à cocher.
+- **RGPD** : `art_src_cvfile_*` / `art_src_cv_*` (et toute métadonnée portant l'`approachId`)
+  entrent au périmètre de `purge:candidate`.
+
+Tests : état de page, message rappelé, saisie (case obligatoire, adresse normalisée), CV structuré,
+robots d'aperçu ; admission (nominal, panne sans persistance ni envoi, reprise sans ré-analyse,
+offre fermée) ; routes (429 avant lecture du corps, 400 case, réservation perdue, panne ⇒ « bien
+reçue », opposition sans donnée personnelle au journal) ; rendu (bandeau complet, « corriger ✎ »,
+une seule case, rien de ce qui ne doit pas s'afficher, écrans terminaux) ; briefing (tableau,
+paragraphe sourcing) ; entretien (journal de purge conditionnel, filet, reprise échue).
+**Régression S22** sur la base réelle (5 tests) : réservation unique et relâche, manifestation
+(analyse `decided_by_user_*`, `submitted` + `analysis_id` accepté par la contrainte, exclusion
+`manifested`), panne (tentative comptée), opposition (2 campagnes, lien vidé, candidature
+intacte), clôture (compte par état, exclusions gardées, filet).
+
 ## 19. Backlog
+
+- Relance de la personne sur une admission qui reste en panne longtemps (aujourd'hui : cause
+  lisible en base, reprise horaire sans fin).
+- Rejouer un CV joint rejeté par le fournisseur de stockage (aujourd'hui : message à la personne,
+  qui peut renvoyer sans CV).
 
 - Geste de ré-analyse manuel d'une candidature.
 - Encoder les **missions** de la fiche dans la requête (le domaine fin, §3.2) : à mesurer avec

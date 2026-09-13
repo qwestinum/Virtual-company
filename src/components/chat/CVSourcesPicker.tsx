@@ -33,6 +33,7 @@ const SOURCE_ICONS: Record<CVSource, typeof Globe> = {
   manual: Paperclip,
   email: Inbox,
   vivier: Library,
+  sourcing: Target,
   local_folder: FolderOpen,
   linkedin: Sparkles,
   indeed: Newspaper,

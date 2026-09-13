@@ -30,6 +30,7 @@
  */
 
 import { pollAllMailboxes } from '@/lib/imap/poller';
+import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -97,6 +98,7 @@ async function runTick(): Promise<void> {
     // Même rail qu'en production (cf. /api/cron/imap-poll) : sans lui, un
     // rendez-vous pris en local ne délivrerait jamais son briefing.
     await drainSchedulingEvents();
+    await runSourcingMaintenance();
   } catch (err) {
     // Le poll capture déjà les erreurs par mailbox. Ce catch
     // protège contre un crash en dehors (Supabase down, etc.). On

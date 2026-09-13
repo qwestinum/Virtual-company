@@ -10,6 +10,7 @@
  * affiche donc le créneau réservé plutôt qu'un lien à réserver.
  */
 
+import { LLM_DECISION_LABELS } from '@/lib/reporting/audit-display';
 import type { InterviewQuestion } from '@/types/interview-brief';
 import type { MailCandidate } from '@/types/mail-candidate';
 
@@ -98,7 +99,10 @@ export function buildInterviewBriefMail(input: InterviewBriefMailInput): {
     '</ul>',
     '<h3>Synthèse</h3>',
     `<p>${escapeHtml(c.summary)}</p>`,
-    repechage
+    c.criteria && c.criteria.length > 0 ? criteriaTableHtml(c.criteria) : '',
+    c.sourcingApproach
+      ? `<h3>Décision</h3><p>${escapeHtml(sourcingApproachSentence(c.sourcingApproach))}</p><h3>Verdict CV Analyzer</h3><p>${escapeHtml(c.justification)}</p>`
+      : repechage
       ? '<h3>Décision</h3><p>Candidat <strong>repêché par le recruteur</strong> : reçu en entretien bien que le pré-tri automatique l’ait placé sous le seuil. Le verdict d’écartage du pré-tri ne s’applique plus.</p>'
       : `<h3>Verdict CV Analyzer</h3><p>${escapeHtml(c.justification)}</p>`,
     "<h3>Trame d'entretien proposée</h3>",
@@ -150,7 +154,17 @@ export function buildInterviewBriefText(input: InterviewBriefMailInput): string 
 
   lines.push('SYNTHÈSE', c.summary, '');
 
-  if (repechage) {
+  if (c.criteria && c.criteria.length > 0) {
+    lines.push('CRITÈRES');
+    for (const k of c.criteria) {
+      lines.push(`• ${k.label} — ${LLM_DECISION_LABELS[k.decision]}${k.quote ? ` — « ${k.quote} »` : ''}`);
+    }
+    lines.push('');
+  }
+
+  if (c.sourcingApproach) {
+    lines.push('DÉCISION', sourcingApproachSentence(c.sourcingApproach), '', 'VERDICT CV ANALYZER', c.justification);
+  } else if (repechage) {
     lines.push(
       'DÉCISION',
       'Candidat repêché par le recruteur : reçu en entretien bien que le pré-tri automatique l’ait placé sous le seuil. Le verdict d’écartage du pré-tri ne s’applique plus.',
@@ -189,4 +203,25 @@ export function buildUnmatchedBookingMail(input: {
     subject: `Réservation à rattacher — ${who}`,
     html,
   };
+}
+
+/** « Profil approché par Jane R. le 14 septembre 2026 » — la décision d'inviter est celle du recruteur. */
+function sourcingApproachSentence(a: { recruiterName: string; approachedAt: string }): string {
+  let date = a.approachedAt;
+  try {
+    date = new Date(a.approachedAt).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', year: 'numeric' });
+  } catch {
+    // date brute
+  }
+  return `Profil approché par ${a.recruiterName} le ${date} : la personne a répondu et confirmé son parcours. L’invitation découle de cette approche, pas du pré-tri automatique — le score est un éclairage.`;
+}
+
+function criteriaTableHtml(criteria: NonNullable<MailCandidate['criteria']>): string {
+  const rows = criteria
+    .map(
+      (k) =>
+        `<tr><td>${escapeHtml(k.label)}</td><td>${escapeHtml(LLM_DECISION_LABELS[k.decision])}</td><td>${k.quote ? `« ${escapeHtml(k.quote)} »` : '—'}</td></tr>`,
+    )
+    .join('');
+  return `<h3>Critères</h3><table cellpadding="4" style="border-collapse:collapse"><tr><th align="left">Critère</th><th align="left">Verdict</th><th align="left">Citation du CV</th></tr>${rows}</table>`;
 }

@@ -53,6 +53,8 @@ describe('cvApplicationToMailCandidate', () => {
       strengths: ['IFRS', 'Anglais'],
       weaknesses: ['Ancienneté'],
       justification: 'Au-dessus du seuil.',
+      // Critère → verdict → citation, pour le briefing (vide : pas de grille ici).
+      criteria: [],
     });
     expect(MailCandidateSchema.safeParse(m).success).toBe(true);
   });
