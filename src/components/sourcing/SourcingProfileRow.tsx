@@ -53,6 +53,8 @@ export function SourcingProfileRow({
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-400" />
           )}
           <span className="min-w-0 truncate font-body text-[13px] text-stone-800">
+            <span className="font-display text-[14px] font-bold text-stone-900">{s.name}</span>
+            <span className="text-stone-400"> · </span>
             <span className="font-semibold">{summary.join(' — ')}</span>
             <span className={outOfZone ? 'font-semibold text-amber-800' : 'text-stone-500'}>
               {' — '}
@@ -77,10 +79,7 @@ function ProfileDetail({ profile }: { profile: SourcingProfileView }) {
   return (
     <div id={`profile-detail-${profile.id}`} className="flex flex-col gap-2 border-t border-stone-100 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-body text-[13px] font-semibold text-stone-900">
-          {s.name}
-          {age ? <span className="font-normal text-stone-400"> · {age}</span> : null}
-        </p>
+        <p className="font-body text-[12px] text-stone-400">{age ?? ''}</p>
         <a
           href={s.url}
           target="_blank"

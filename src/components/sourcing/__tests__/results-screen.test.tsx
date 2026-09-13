@@ -63,6 +63,9 @@ const COST = /\$|€|\bUSD\b|coût|cout\b|tarif|factur/i;
 describe('1. une ligne par profil, repliée par défaut', () => {
   it('repliée : intitulé — entreprise — localisation — ancienneté, sans le détail', () => {
     const html = renderToStaticMarkup(<SourcingProfileRow profile={row(1)} expanded={false} onToggle={() => {}} />);
+    // Le nom EN TÊTE de ligne, mis en évidence (demande du 14/09).
+    expect(html.indexOf('Personne 1')).toBeLessThan(html.indexOf('Business Analyst 1'));
+    expect(html).toMatch(/font-bold[^>]*>Personne 1</);
     expect(html).toContain('Business Analyst 1 — Banque 1');
     expect(html).toContain('Paris, Île-de-France, France');
     expect(html).toContain('depuis');
