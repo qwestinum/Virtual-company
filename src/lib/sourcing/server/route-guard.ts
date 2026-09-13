@@ -12,6 +12,12 @@ import { NextResponse } from 'next/server';
 
 import { getApiUser, unauthorizedResponse } from '@/lib/auth/require-api-user';
 import { getCampaign } from '@/lib/db/repos/campaigns';
+import {
+  getSourcingApproach,
+  getSourcingProfile,
+  type SourcingApproachRecord,
+  type SourcingProfileRecord,
+} from '@/lib/db/repos/sourcing-approaches';
 import { isSourcingEnabled } from '@/lib/sourcing/flag';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 
@@ -41,4 +47,34 @@ export async function guardSourcingCampaign(
     };
   }
   return { ok: true, value: { user: guard.value, campaign } };
+}
+
+/** Un profil d'une campagne active. Profil introuvable (décliné, purgé) ⇒ 404. */
+export async function guardSourcingProfile(
+  profileId: string,
+): Promise<Guarded<{ user: User; campaign: ActiveCampaign; profile: SourcingProfileRecord }>> {
+  if (!(await isSourcingEnabled())) return { ok: false, response: notFound() };
+  const profile = await getSourcingProfile(profileId);
+  if (!profile) return { ok: false, response: notFound() };
+  const guard = await guardSourcingCampaign(profile.campaignId);
+  if (!guard.ok) return guard;
+  return { ok: true, value: { ...guard.value, profile } };
+}
+
+/**
+ * Une approche, par SON recruteur seulement : confirmer ou annuler le geste
+ * d'un collègue écrirait une décision à son nom.
+ */
+export async function guardSourcingApproach(
+  approachId: string,
+): Promise<Guarded<{ user: User; campaign: ActiveCampaign; approach: SourcingApproachRecord }>> {
+  if (!(await isSourcingEnabled())) return { ok: false, response: notFound() };
+  const approach = await getSourcingApproach(approachId);
+  if (!approach) return { ok: false, response: notFound() };
+  const guard = await guardSourcingCampaign(approach.campaignId);
+  if (!guard.ok) return guard;
+  if (approach.recruiterId !== guard.value.user.id) {
+    return { ok: false, response: NextResponse.json({ error: 'not_your_approach' }, { status: 403 }) };
+  }
+  return { ok: true, value: { ...guard.value, approach } };
 }

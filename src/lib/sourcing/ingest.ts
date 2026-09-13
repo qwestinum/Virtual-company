@@ -17,8 +17,10 @@
  * pas à être prévu.
  * ─────────────────────────────────────────────────────────────────────────
  */
+import { detectAvailability } from '@/lib/sourcing/availability';
 import type { ExaResult } from '@/lib/sourcing/exa-schema';
 import { normalizeProfileUrl } from '@/lib/sourcing/fingerprint';
+import { extractHolderEmails } from '@/lib/sourcing/holder-email';
 import type { ExaSnapshot } from '@/types/sourcing';
 
 const ALLOWED_SECTIONS = {
@@ -176,5 +178,20 @@ export function projectExaResult(result: ExaResult): ExaSnapshot | null {
     certifications: clip(allowed.sections.certifications, LIMITS.certifications),
     highlight: clip(keepHighlightIfAllowed(result.highlights?.[0], allowed.text), LIMITS.highlight),
     indexedAt: result.publishedDate ?? null,
+    // Sur le texte AUTORISÉ, et AVANT le retrait des coordonnées : l'adresse du
+    // titulaire est la seule qui ressorte, toutes les autres restent retirées.
+    contacts: {
+      emails: extractHolderEmails({
+        headline: allowed.headline,
+        about: allowed.sections.about ?? null,
+        firstName: props?.firstName ?? null,
+        lastName: props?.lastName ?? null,
+      }),
+    },
+    availability: detectAvailability({
+      title: current?.title ?? null,
+      headline: allowed.headline,
+      about: allowed.sections.about ?? null,
+    }),
   };
 }

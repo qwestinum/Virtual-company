@@ -29,6 +29,7 @@ const EducationEntrySchema = z.object({
 const PersonPropertiesSchema = z.object({
   name: Str,
   firstName: Str,
+  lastName: Str,
   location: Str,
   workHistory: z.array(WorkEntrySchema).nullish(),
   educationHistory: z.array(EducationEntrySchema).nullish(),

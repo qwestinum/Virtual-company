@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 
 import { BATCH_SIZE } from '@/lib/sourcing/selection';
 import type { ExpansionState } from '@/lib/sourcing/expansion';
+import { orderProfiles } from '@/lib/sourcing/ordering';
 import type { ProfilesView } from '@/lib/sourcing/profiles-view';
 import type { SourcingProfileView } from '@/types/sourcing';
 
@@ -32,6 +33,9 @@ export function SourcingResultsList({
   onMore,
   promoting,
   extras = {},
+  availableFirst = false,
+  onAvailableFirstChange,
+  myApproaches,
 }: {
   view: ProfilesView;
   expansion: ExpansionState;
@@ -40,6 +44,9 @@ export function SourcingResultsList({
   onMore: () => void;
   promoting: boolean;
   extras?: RowExtras;
+  availableFirst?: boolean;
+  onAvailableFirstChange?: (value: boolean) => void;
+  myApproaches?: number;
 }) {
   const latest = view.groups[0];
   const shown = latest?.profiles.length ?? 0;
@@ -49,11 +56,20 @@ export function SourcingResultsList({
       <div className="flex flex-wrap items-center justify-between gap-3 font-body text-[12.5px] text-stone-600">
         <span data-testid="profiles-counter">
           {shown} profil{shown > 1 ? 's' : ''} affiché{shown > 1 ? 's' : ''} · {view.reserveCount} en réserve
+          {myApproaches !== undefined ? ` · mes approches sur cette campagne : ${myApproaches}` : ''}
         </span>
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" checked={expansion.single} onChange={(e) => onSingleChange(e.target.checked)} />
-          Déplier une ligne à la fois
-        </label>
+        <span className="flex flex-wrap items-center gap-3">
+          {onAvailableFirstChange ? (
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={availableFirst} onChange={(e) => onAvailableFirstChange(e.target.checked)} />
+              En recherche d’abord
+            </label>
+          ) : null}
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={expansion.single} onChange={(e) => onSingleChange(e.target.checked)} />
+            Déplier une ligne à la fois
+          </label>
+        </span>
       </div>
 
       {view.coverage.limited ? <CoverageBanner coverage={view.coverage} /> : null}
@@ -66,7 +82,7 @@ export function SourcingResultsList({
             </p>
           ) : null}
           <ul className="flex flex-col gap-1">
-            {group.profiles.map((p) => (
+            {orderProfiles(group.profiles, availableFirst).map((p) => (
               <SourcingProfileRow
                 key={p.id}
                 profile={p}

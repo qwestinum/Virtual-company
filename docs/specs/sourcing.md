@@ -1113,6 +1113,50 @@ motif de coût dans le HTML de la liste, de l'écran de requête et de la liste 
 après le dernier résultat ; réponses des routes sans coût ; agrégation mensuelle (bascule de mois
 à minuit à Paris, coût non communiqué compté à part).
 
+### Lot 3 — arbitrage et approche (14/09/2026, `feat/sourcing`, non mergé)
+
+> ⚠️ **Le lien porté par le message (`/s/<jeton>`) ne mène encore à rien** : la page
+> d'atterrissage et l'admission sont le lot 4. Ne pas approcher de vraies personnes avant.
+
+Livré :
+- **Repères de ligne** (`SourcingRowMarks`) : « En recherche » (liste fermée, `availability.ts`,
+  13/306 retrouvés par l'implémentation de production, comme à l'étude), « Peut-être dans votre
+  vivier » (nom exact + entreprise dans le texte du CV, lecture seule, `vivier-hints.ts`), mots de
+  la fiche retrouvés (`mentions.ts` — jamais de négatif ; détail par critère, « pas de mention »
+  pour un critère en phrase). Tri **« En recherche d'abord »** stable, préférence du recruteur.
+- **Email du titulaire** (`holder-email.ts`, 7/306 comme à l'étude), extrait du texte autorisé
+  AVANT le retrait des coordonnées ; seul à ressortir, dans `exa_snapshot.contacts`.
+- **Décliner** : exclusion de campagne PUIS suppression de la ligne ; refusé sur un profil déjà
+  approché.
+- **Approche en deux temps** — imposé par le navigateur : ouvrir un onglet et écrire le
+  presse-papier exigent le clic de l'utilisateur, privilège perdu pendant l'attente du modèle.
+  « Se connecter » / « Contacter par email » PRÉPARE (message rédigé, approche et jeton créés) ;
+  le panneau propose ensuite **un** bouton qui, dans le même clic, lance la copie PUIS ouvre le
+  profil (la copie avant l'onglet : un onglet ouvert retire le focus et le navigateur refuse la
+  copie) — ou ouvre la messagerie du recruteur — et confirme. Copie refusée ⇒ texte sélectionné,
+  jamais d'échec muet. Annuler ⇒ lien révoqué (jamais ouvert). Profil approché : il **reste dans la
+  liste**, marqué « Contacté ».
+- **Message** (`message.ts`, `compose-message.ts`) : un appel au modèle, vérifié par le code (lien
+  une fois, longueur **avec le vrai lien**, aucune évaluation citée), une seconde tentative plus
+  courte, puis gabarit déterministe. Ligne d'information ajoutée par le code aux emails. `mailto:`
+  trop long ⇒ l'objet seul, corps copié.
+- **Le jeton n'est jamais stocké en clair, y compris dans le message** : le message est conservé
+  avec `[lien]` ; l'URL n'existe que dans la réponse au recruteur. À la confirmation, le texte
+  retouché est ramené à `[lien]` ; un message dont le lien a été retiré est refusé (422).
+- **Seul le recruteur de l'approche** la confirme ou l'annule (403 sinon).
+- Préférences (`/api/sourcing/preferences`) : format LinkedIn, tri « en recherche d'abord » —
+  colonnes du lot 1 sur `recruiters`.
+
+Tests : 21 cas de disponibilité, email du titulaire, mentions, message (longueur avec lien réel,
+URL jamais stockée), jeton, ordre ; routes (ce qui est écrit, 422 lien retiré ou note trop longue,
+403 autre recruteur, 409 déclin d'un contacté, 404 module éteint) ; rendu (aucun repère négatif,
+bouton email seulement avec une adresse retenue, aucun coût dans le panneau) ; ingestion (adresse
+du titulaire seulement dans `contacts`, jamais une adresse de Social). **Régression S21** sur la
+base réelle (7 tests) : les écritures du lot 3 passent les contraintes du lot 1 — déclin puis
+exclusion reconnue par le dédoublonnage, approche avec `[lien]`, confirmation (contacté + auteur),
+« declined » jamais rétrogradé, révocation refusée sur un lien ouvert, note > 300 refusée par la
+base, préférences persistées.
+
 ## 19. Backlog
 
 - Geste de ré-analyse manuel d'une candidature.

@@ -9,7 +9,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/components/referent/ReferentMention', () => ({ ReferentMention: () => <span>Réf. Jane R.</span> }));
 
+import { SourcingApproachPanel } from '@/components/sourcing/SourcingApproachPanel';
 import { SourcingCampaignList } from '@/components/sourcing/SourcingCampaignList';
+import { SourcingRowActions, SourcingRowMarks } from '@/components/sourcing/SourcingRowMarks';
 import { SourcingProfileRow } from '@/components/sourcing/SourcingProfileRow';
 import { SourcingQueryPanel } from '@/components/sourcing/SourcingQueryPanel';
 import { SourcingResultsList } from '@/components/sourcing/SourcingResultsList';
@@ -139,5 +141,61 @@ describe('3. « 50 de plus » en fin de liste', () => {
     const html = renderList(view(0, true));
     expect(html).not.toContain('de plus');
     expect(html.indexOf('100 profils examinés — modifiez la requête')).toBeGreaterThan(html.lastIndexOf('data-profile-row="id-3"'));
+  });
+});
+
+// ─── Lot 3 : repères et actions ──────────────────────────────────────────
+
+describe('lot 3 — repères de ligne et actions', () => {
+  const marked = (over: Partial<SourcingProfileView> = {}, snap: Partial<ExaSnapshot> = {}): SourcingProfileView => ({
+    ...row(1),
+    snapshot: { ...snapshot(1), ...snap },
+    mentions: [
+      { criterionId: 'a', label: 'Parcours digitaux et UX', terms: ['Parcours digitaux', 'UX'], found: ['UX'] },
+      { criterionId: 'b', label: 'Secteur financier', terms: ['secteur financier'], found: [] },
+    ],
+    vivierCandidateId: 'v1',
+    ...over,
+  });
+
+  it('badges et mentions : que des indices positifs, jamais un « non »', () => {
+    const html = renderToStaticMarkup(<SourcingRowMarks profile={marked({}, { availability: { expression: 'disponible immédiatement', zone: 'about' } })} />);
+    expect(html).toContain('En recherche');
+    expect(html).toContain('Peut-être dans votre vivier');
+    expect(html).toContain('✓ UX');
+    expect(html).not.toMatch(/✗|\bnon\b|0\s*\/|secteur financier/i);
+  });
+
+  it('le détail dit « — » pour un terme absent et « pas de mention » pour un critère en phrase, sans verdict', () => {
+    const p = marked();
+    p.mentions!.push({ criterionId: 'c', label: 'Piloter le programme', terms: [], found: [] });
+    const html = renderToStaticMarkup(<SourcingProfileRow profile={p} expanded onToggle={() => {}} />);
+    expect(html).toContain('pas de mention (critère rédigé en phrase)');
+    expect(html).toContain('Indice de lecture, pas une évaluation.');
+    expect(html).not.toMatch(/non satisfait|insuffisant|score/i);
+  });
+
+  it('« Contacter par email » n’apparaît que si une adresse du titulaire a été retenue ; « Décliner » disparaît une fois contacté', () => {
+    const noEmail = renderToStaticMarkup(<SourcingRowActions profile={marked({}, { contacts: { emails: [] } })} busy={false} onDecline={() => {}} onApproach={() => {}} />);
+    expect(noEmail).not.toContain('Contacter par email');
+    expect(noEmail).toContain('Décliner');
+    const withEmail = renderToStaticMarkup(<SourcingRowActions profile={marked({ state: 'contacted' }, { contacts: { emails: ['c@x.fr'] } })} busy={false} onDecline={() => {}} onApproach={() => {}} />);
+    expect(withEmail).toContain('Contacter par email');
+    expect(withEmail).not.toContain('Décliner');
+  });
+
+  it('panneau : message prêt, compteur, un seul bouton qui ouvre ET copie, aucun coût', () => {
+    const url = 'https://orqa.exemple.fr/s/AbCdEfGhIjKlMnOpQrStUv';
+    const html = renderToStaticMarkup(
+      <SourcingApproachPanel
+        prepared={{ approachId: 'a1', channel: 'linkedin', format: 'connection_note', limit: 300, url, profileUrl: 'https://www.linkedin.com/in/p1', subject: null, message: `Bonjour Claire ${url}`, mailto: null, email: null }}
+        onConfirm={async () => null}
+        onCancel={() => {}}
+        onFormatChange={() => {}}
+      />,
+    );
+    expect(html).toContain('Ouvrir le profil et copier le message');
+    expect(html).toContain(`${`Bonjour Claire ${url}`.length} / 300 caractères`);
+    expect(html).not.toMatch(COST);
   });
 });

@@ -121,12 +121,21 @@ describe('extrait du moteur — fragments retrouvés dans le texte autorisé seu
 });
 
 describe('projection — liste blanche et coordonnées', () => {
-  it('emails et téléphones du texte sont retirés en attendant la règle du titulaire', () => {
-    const r = profile('Contactez-moi : claire.test@exemple.fr ou au 06 12 34 56 78.', 'x');
-    const s = stored(r);
-    expect(s).not.toContain('claire.test@exemple.fr');
-    expect(s).not.toContain('06 12 34 56 78');
+  it('l’adresse du TITULAIRE ne ressort que dans `contacts` ; le texte stocké n’en garde aucune, ni aucun numéro', () => {
+    const r = profile('Contactez-moi : claire.test@exemple.fr ou au 06 12 34 56 78. Mon manager : paul.tiers@exemple.fr', 'x');
+    const p = projectExaResult(r)!;
+    expect(p.contacts).toEqual({ emails: ['claire.test@exemple.fr'] });
+    const withoutContacts = JSON.stringify({ ...p, contacts: undefined });
+    expect(withoutContacts).not.toContain('@exemple.fr');
+    expect(JSON.stringify(p)).not.toContain('06 12 34 56 78');
+    expect(JSON.stringify(p)).not.toContain('paul.tiers');
     expect(redactContacts('+33 6 12 34 56 78')).toBe('[numéro retiré]');
+  });
+
+  it('une adresse citée dans Social n’est jamais retenue comme celle du titulaire', () => {
+    const p = projectExaResult(profile('Consultante AMOA.', 'Contactez-moi : claire.test@exemple.fr'))!;
+    expect(p.contacts).toEqual({ emails: [] });
+    expect(JSON.stringify(p)).not.toContain('claire.test@exemple.fr');
   });
 
   it('un champ que le moteur ajouterait demain (photo, contact) n’entre pas', () => {

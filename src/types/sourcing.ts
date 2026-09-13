@@ -74,7 +74,15 @@ export type ExaSnapshot = {
   certifications: string | null;
   highlight: string | null;
   indexedAt: string | null;
+  /**
+   * Lot 3. Facultatifs : un instantané du lot 2 ne les porte pas, et l'écran
+   * doit le lire sans erreur (absence ⇒ ni badge, ni contact).
+   */
+  contacts?: { emails: string[] };
+  availability?: { expression: string; zone: 'title' | 'headline' | 'about' } | null;
 };
+
+export type ProfileMention = { criterionId: string; label: string; terms: string[]; found: string[] };
 
 export type SourcingProfileView = {
   id: string;
@@ -83,6 +91,10 @@ export type SourcingProfileView = {
   state: SourcingProfileState;
   snapshot: ExaSnapshot;
   inZone: boolean | null;
+  /** Lot 3 — indices de lecture, jamais un verdict. */
+  mentions?: ProfileMention[];
+  /** Lot 3 — dossier du vivier probablement identique (nom + entreprise). */
+  vivierCandidateId?: string | null;
 };
 
 export type CoverageVerdict = {

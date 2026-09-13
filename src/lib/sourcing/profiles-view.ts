@@ -34,16 +34,17 @@ export function buildProfilesView(
   const latest = ordered[0] ?? null;
   const city = cleanLocation(fdpLocation);
 
-  const latestShown = latest
-    ? profiles.filter((p) => p.searchId === latest.id && p.state === 'to_review')
-    : [];
+  // « Montré » = à examiner OU déjà contacté : un profil approché reste dans la
+  // liste (marqué), le recruteur ne perd pas la trace de son geste.
+  const isShown = (p: StoredSourcingProfile): boolean => p.state !== 'reserve';
+  const latestShown = latest ? profiles.filter((p) => p.searchId === latest.id && isShown(p)) : [];
   const coverage = coverageOf(city, latestShown.map((p) => p.snapshot));
   const terms = city ? zoneTerms(city, latestShown.map((p) => p.snapshot)) : null;
 
   const groups: SearchGroupView[] = [];
   for (const s of ordered) {
     const shown = profiles
-      .filter((p) => p.searchId === s.id && p.state === 'to_review')
+      .filter((p) => p.searchId === s.id && isShown(p))
       .sort((a, b) => a.exaRank - b.exaRank)
       .map<SourcingProfileView>((p) => ({
         id: p.id,
