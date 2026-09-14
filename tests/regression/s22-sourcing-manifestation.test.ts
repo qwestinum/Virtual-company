@@ -43,6 +43,7 @@ vi.mock('@/lib/db/repos/campaigns', () => ({
 
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
 import {
+  claimAdmissionAttempt,
   findCampaignWithLeftoverProfiles,
   getLandingApproach,
   purgeCampaignProfiles,
@@ -186,6 +187,13 @@ describe('S22.3 — panne d’analyse', () => {
     expect(data!.submission).not.toBeNull();
     const { data: none } = await db().from('candidate_analyses').select('id').eq('id', `can_src_${id}`);
     expect(none).toEqual([]);
+  });
+
+  it('reprise : deux passages concurrents sur la même lecture, un seul prend la tentative', async () => {
+    const read = (await getLandingApproach(approaches.failing!))!;
+    const [a, b] = await Promise.all([claimAdmissionAttempt(read), claimAdmissionAttempt(read)]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    expect(await claimAdmissionAttempt((await getLandingApproach(approaches.failing!))!)).toBe(true);
   });
 });
 

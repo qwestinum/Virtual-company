@@ -148,14 +148,38 @@ export async function recordAdmissionFailure(approach: LandingApproach, cause: s
   if (error) throw new Error(`recordAdmissionFailure: ${error.message}`);
 }
 
-/** La candidature existe : la saisie disparaît, l'identifiant d'analyse reste. */
-export async function completeAdmission(id: string, analysisId: string): Promise<void> {
-  const { error } = await requireServerSupabase()
+/**
+ * La candidature existe : la saisie disparaît, l'identifiant d'analyse reste.
+ * `false` si un autre passage l'a déjà terminée — l'appelant ne journalise
+ * alors RIEN (le journal de dev portait deux « manifestée » pour une approche).
+ */
+export async function completeAdmission(id: string, analysisId: string): Promise<boolean> {
+  const { data, error } = await requireServerSupabase()
     .from('sourcing_approaches')
     .update({ status: 'submitted', analysis_id: analysisId, submission: null, admission_last_error: null, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('status', 'admission_pending');
+    .eq('status', 'admission_pending')
+    .select('id');
   if (error) throw new Error(`completeAdmission: ${error.message}`);
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Le rail RÉSERVE une tentative avant de la lancer : `updated_at` repoussé à
+ * maintenant, à condition qu'il n'ait pas bougé depuis la lecture. Deux
+ * passages concurrents (cron sur instances isolées) : un seul gagne, l'autre
+ * voit une admission « pas encore due ».
+ */
+export async function claimAdmissionAttempt(approach: LandingApproach): Promise<boolean> {
+  const { data, error } = await requireServerSupabase()
+    .from('sourcing_approaches')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', approach.id)
+    .eq('status', 'admission_pending')
+    .eq('updated_at', approach.updatedAt)
+    .select('id');
+  if (error) throw new Error(`claimAdmissionAttempt: ${error.message}`);
+  return (data ?? []).length > 0;
 }
 
 export async function listPendingAdmissions(limit: number): Promise<LandingApproach[]> {

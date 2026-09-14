@@ -37,11 +37,21 @@ export function forceAcceptedApplication(application: CVApplication, submission:
 }
 
 /**
+ * Une admission JAMAIS tentée appartient à la route de soumission qui l'a
+ * réservée et l'analyse en ce moment (jusqu'à `maxDuration` = 60 s). Le rail
+ * ne la reprend qu'une fois ce délai largement dépassé — la prendre plus tôt
+ * lancerait une seconde analyse en parallèle, voire relâcherait la réservation
+ * sous les pieds de la route. Défaut attrapé par S20.4 : le tick du scheduler
+ * relâchait une admission fraîchement réservée.
+ */
+export const FIRST_ATTEMPT_GRACE_MINUTES = 5;
+
+/**
  * Reprise d'une admission en panne : 1, 5, 15 minutes, puis toutes les heures.
  * Jamais d'abandon — la personne a vu « bien reçue » ; un humain lit la cause
  * dans `admission_last_error` si la panne dure.
  */
 export function admissionRetryDue(attempts: number, lastUpdateIso: string, now: Date): boolean {
-  const minutes = attempts <= 0 ? 0 : attempts === 1 ? 1 : attempts === 2 ? 5 : attempts === 3 ? 15 : 60;
+  const minutes = attempts <= 0 ? FIRST_ATTEMPT_GRACE_MINUTES : attempts === 1 ? 1 : attempts === 2 ? 5 : attempts === 3 ? 15 : 60;
   return now.getTime() - new Date(lastUpdateIso).getTime() >= minutes * 60_000;
 }

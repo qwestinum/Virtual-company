@@ -10,11 +10,12 @@ vi.mock('@/lib/db/repos/sourcing-admission', () => ({
   purgeCampaignProfiles: vi.fn(async () => ({ count: 0, byState: { reserve: 0, to_review: 0, contacted: 0 } })),
   findCampaignWithLeftoverProfiles: vi.fn(async () => null),
   listPendingAdmissions: vi.fn(async () => []),
+  claimAdmissionAttempt: vi.fn(async () => true),
 }));
 vi.mock('@/lib/sourcing/server/admit', () => ({ admitSourcedCandidate: vi.fn(async () => ({ kind: 'admitted' })) }));
 
 import { appendJournalEntry } from '@/lib/db/repos/journal';
-import { findCampaignWithLeftoverProfiles, listPendingAdmissions, purgeCampaignProfiles } from '@/lib/db/repos/sourcing-admission';
+import { claimAdmissionAttempt, findCampaignWithLeftoverProfiles, listPendingAdmissions, purgeCampaignProfiles } from '@/lib/db/repos/sourcing-admission';
 import { admitSourcedCandidate } from '@/lib/sourcing/server/admit';
 import { purgeCampaignSourcing, runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
 
@@ -59,5 +60,14 @@ describe('rail de drain', () => {
     const out = await runSourcingMaintenance(now);
     expect(vi.mocked(admitSourcedCandidate).mock.calls.map((c) => (c[0] as { id: string }).id)).toEqual(['due1', 'due2']);
     expect(out.admitted).toBe(2);
+  });
+
+  it('une tentative prise par un autre passage n’est pas relancée', async () => {
+    vi.mocked(admitSourcedCandidate).mockClear();
+    vi.mocked(listPendingAdmissions).mockResolvedValueOnce([{ id: 'taken', admissionAttempts: 2, updatedAt: '2026-09-14T10:00:00Z' } as never]);
+    vi.mocked(claimAdmissionAttempt).mockResolvedValueOnce(false);
+    const out = await runSourcingMaintenance(new Date('2026-09-14T12:00:00Z'));
+    expect(admitSourcedCandidate).not.toHaveBeenCalled();
+    expect(out.admitted + out.deferred + out.closed).toBe(0);
   });
 });

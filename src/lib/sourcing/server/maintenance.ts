@@ -10,6 +10,7 @@
 
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
+  claimAdmissionAttempt,
   findCampaignWithLeftoverProfiles,
   listPendingAdmissions,
   purgeCampaignProfiles,
@@ -67,6 +68,7 @@ export async function runSourcingMaintenance(now: Date = new Date()): Promise<So
   try {
     const pending = (await listPendingAdmissions(20)).filter((a) => admissionRetryDue(a.admissionAttempts, a.updatedAt, now));
     for (const approach of pending.slice(0, ADMISSIONS_PER_TICK)) {
+      if (!(await claimAdmissionAttempt(approach))) continue; // un autre passage l'a prise
       const r = await admitSourcedCandidate(approach);
       if (r.kind === 'admitted') outcome.admitted++;
       else if (r.kind === 'closed') outcome.closed++;

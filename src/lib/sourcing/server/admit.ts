@@ -124,8 +124,10 @@ export async function admitSourcedCandidate(approach: LandingApproach): Promise<
       { analysisId, claim: { mailboxId: 'sourcing', uid: approach.id }, validationPrefix: `val_src_${approach.id}`, actor: 'sourcing' },
     );
 
-    await completeAdmission(approach.id, analysisId);
+    const won = await completeAdmission(approach.id, analysisId);
     await settleManifestedProfile(approach);
+    // Terminée par un autre passage : la candidature existe, le journal aussi.
+    if (!won) return { kind: 'admitted', analysisId, recruiterName: recruiter?.displayName ?? null };
     await appendJournalEntry({
       action: 'sourcing_candidate_manifested',
       actor: 'sourcing',
