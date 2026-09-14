@@ -14,9 +14,10 @@ const styles = StyleSheet.create({
   heading: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 14, marginBottom: 4, letterSpacing: 0.6 },
   mention: { fontSize: 9, color: '#78716c', marginTop: 6 },
   line: { marginBottom: 2, lineHeight: 1.4 },
+  detail: { marginBottom: 2, marginLeft: 14, lineHeight: 1.4, color: '#44403c' },
 });
 
-const HEADINGS = new Set(['RÉSUMÉ', 'EXPÉRIENCE PROFESSIONNELLE', 'FORMATION']);
+const HEADINGS = new Set(['RÉSUMÉ', 'EXPÉRIENCE PROFESSIONNELLE', 'FORMATION', 'COMPÉTENCES', 'LANGUES', 'CERTIFICATIONS']);
 
 function StructuredCv({ text }: { text: string }) {
   const [name, ...rest] = text.split('\n');
@@ -29,6 +30,8 @@ function StructuredCv({ text }: { text: string }) {
             <Text key={i} style={styles.heading}>{line}</Text>
           ) : line.startsWith('Profil confirmé par le candidat') ? (
             <Text key={i} style={styles.mention}>{line}</Text>
+          ) : line.startsWith('    ') ? (
+            <Text key={i} style={styles.detail}>{line.trim()}</Text>
           ) : (
             <Text key={i} style={styles.line}>{line}</Text>
           ),

@@ -8,12 +8,12 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
-import { AboutSection, CareerTimelineSection, CurrentPositionSection, EducationSection } from '@/components/sourcing/profile/CareerSections';
+import { AboutSection, CareerTimelineSection, CurrentPositionSection, EducationSection, SkillsSection } from '@/components/sourcing/profile/CareerSections';
 import type { Submission } from '@/lib/sourcing/landing';
 
-import { AboutEditor, EducationLineEditor, WorkLineEditor } from './LineEditors';
+import { AboutEditor, EducationLineEditor, SkillsEditor, WorkLineEditor } from './LineEditors';
 
-export type Recap = Pick<Submission, 'workHistory' | 'education' | 'about'>;
+export type Recap = Pick<Submission, 'workHistory' | 'education' | 'about' | 'skills' | 'languages' | 'certifications'>;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
 
@@ -77,6 +77,19 @@ export function ParcoursEditor({ value, onChange, initiallyOpen = false }: { val
             text={editing === 'about' ? null : value.about}
             action={correct('about')}
             editor={editing === 'about' ? <AboutEditor value={value.about} onChange={(about) => onChange({ ...value, about })} onDone={() => setEditing(null)} /> : null}
+          />
+          <SkillsSection
+            value={{ skills: value.skills ?? null, languages: value.languages ?? null, certifications: value.certifications ?? null }}
+            action={correct('skills')}
+            editor={
+              editing === 'skills' ? (
+                <SkillsEditor
+                  value={{ skills: value.skills ?? null, languages: value.languages ?? null, certifications: value.certifications ?? null }}
+                  onChange={(v) => onChange({ ...value, ...v })}
+                  onDone={() => setEditing(null)}
+                />
+              ) : undefined
+            }
           />
         </div>
       ) : null}

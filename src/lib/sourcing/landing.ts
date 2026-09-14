@@ -64,12 +64,25 @@ export const SubmissionSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   /** Le parcours tel que la personne l'a relu — corrigé ligne à ligne ou non. */
   workHistory: z
-    .array(z.object({ title: Line.min(1), company: Line.nullable(), from: z.string().max(10).nullable(), to: z.string().max(10).nullable() }))
+    .array(
+      z.object({
+        title: Line.min(1),
+        company: Line.nullable(),
+        from: z.string().max(10).nullable(),
+        to: z.string().max(10).nullable(),
+        description: z.string().trim().max(1500).nullable().optional(),
+      }),
+    )
     .max(30),
   education: z
     .array(z.object({ degree: Line.nullable(), institution: Line.nullable(), from: z.string().max(10).nullable(), to: z.string().max(10).nullable() }))
     .max(15),
   about: z.string().trim().max(3000).nullable(),
+  /** CV enrichi (14/09/2026) — lus sur le profil public, montrés et corrigeables avant envoi. */
+  location: z.string().trim().max(120).nullable().optional(),
+  skills: z.string().trim().max(1000).nullable().optional(),
+  languages: z.string().trim().max(400).nullable().optional(),
+  certifications: z.string().trim().max(800).nullable().optional(),
 });
 export type Submission = z.infer<typeof SubmissionSchema>;
 
@@ -80,9 +93,13 @@ export function initialSubmission(snapshot: ExaSnapshot | null): Omit<Submission
     phone: undefined,
     consent: false,
     fullName: snapshot?.name ?? '',
-    workHistory: (snapshot?.workHistory ?? []).map((w) => ({ title: w.title, company: w.company, from: w.from, to: w.to })),
+    workHistory: (snapshot?.workHistory ?? []).map((w) => ({ title: w.title, company: w.company, from: w.from, to: w.to, description: w.description ?? null })),
     education: (snapshot?.education ?? []).map((e) => ({ degree: e.degree, institution: e.institution, from: e.from, to: e.to })),
     about: snapshot?.about ?? null,
+    location: snapshot?.location ?? null,
+    skills: snapshot?.skills ?? null,
+    languages: snapshot?.languages ?? null,
+    certifications: snapshot?.certifications ?? null,
   };
 }
 
@@ -101,7 +118,9 @@ const period = (from: string | null, to: string | null): string => {
  */
 export function buildStructuredCvText(submission: Submission, confirmedAtIso: string): string {
   const confirmed = new Date(confirmedAtIso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', year: 'numeric' });
-  const lines: string[] = [submission.fullName, submission.email];
+  const lines: string[] = [submission.fullName];
+  if (submission.location) lines.push(submission.location);
+  lines.push(submission.email);
   if (submission.phone) lines.push(submission.phone);
   lines.push('', `Profil confirmé par le candidat le ${confirmed} — source initiale : profil professionnel public.`);
   if (submission.about) lines.push('', 'RÉSUMÉ', submission.about);
@@ -109,6 +128,7 @@ export function buildStructuredCvText(submission: Submission, confirmedAtIso: st
     lines.push('', 'EXPÉRIENCE PROFESSIONNELLE');
     for (const w of submission.workHistory) {
       lines.push(`${period(w.from, w.to)}  ${w.title}${w.company ? ` — ${w.company}` : ''}`.trim());
+      if (w.description) for (const d of w.description.split('\n')) if (d.trim()) lines.push(`    ${d.trim()}`);
     }
   }
   if (submission.education.length > 0) {
@@ -117,6 +137,9 @@ export function buildStructuredCvText(submission: Submission, confirmedAtIso: st
       lines.push(`${period(e.from, e.to)}  ${[e.degree, e.institution].filter(Boolean).join(' — ')}`.trim());
     }
   }
+  if (submission.skills) lines.push('', 'COMPÉTENCES', submission.skills);
+  if (submission.languages) lines.push('', 'LANGUES', submission.languages);
+  if (submission.certifications) lines.push('', 'CERTIFICATIONS', submission.certifications);
   return lines.join('\n');
 }
 

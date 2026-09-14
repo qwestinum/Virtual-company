@@ -23,8 +23,9 @@ import type { LandingView } from '@/lib/sourcing/server/landing-context';
 const firstWord = (s: string | null) => (s ?? '').trim().split(/\s+/)[0] || null;
 
 export function LandingForm({ token, view, prefilled }: { token: string; view: LandingView; prefilled: boolean }) {
-  const [recap, setRecap] = useState<Recap>({ workHistory: view.initial.workHistory, education: view.initial.education, about: view.initial.about });
-  const [contact, setContact] = useState<Contact>({ fullName: view.initial.fullName, email: view.initial.email, phone: '', cv: null });
+  const i = view.initial;
+  const [recap, setRecap] = useState<Recap>({ workHistory: i.workHistory, education: i.education, about: i.about, skills: i.skills ?? null, languages: i.languages ?? null, certifications: i.certifications ?? null });
+  const [contact, setContact] = useState<Contact>({ fullName: i.fullName, location: i.location ?? '', email: i.email, phone: '', cv: null });
   const [consent, setConsent] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +44,10 @@ export function LandingForm({ token, view, prefilled }: { token: string; view: L
       consent,
       fullName: contact.fullName,
       about: recap.about,
+      location: contact.location.trim() || null,
+      skills: recap.skills ?? null,
+      languages: recap.languages ?? null,
+      certifications: recap.certifications ?? null,
       workHistory: recap.workHistory.filter((w) => w.title.trim() !== ''),
       education: recap.education.filter((e) => (e.degree ?? e.institution ?? '').trim() !== ''),
     };

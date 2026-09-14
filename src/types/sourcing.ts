@@ -61,6 +61,12 @@ export type ExaSnapshot = {
     location: string | null;
     from: string | null;
     to: string | null;
+    /**
+     * Texte écrit par la personne sous ce poste (section Experience), sans les
+     * enrichissements du moteur. Facultatif : les instantanés antérieurs au
+     * 14/09/2026 n'en portent pas.
+     */
+    description?: string | null;
   }[];
   education: {
     degree: string | null;

@@ -7,14 +7,14 @@
  * trié du plus récent au plus ancien, la correction vise la bonne donnée.
  * `lineEditor(index)` s'insère sous la ligne en cours de correction.
  */
-import { Briefcase, GraduationCap, History, Quote } from 'lucide-react';
+import { Briefcase, GraduationCap, History, Quote, Wrench } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { currentPositionOf, durationLabel, newestFirst, periodLabel, tenureLabel } from '@/lib/sourcing/display';
 
 import { ProfileSection } from './ProfileSection';
 
-export type CareerItem = { title: string; company: string | null; from: string | null; to: string | null };
+export type CareerItem = { title: string; company: string | null; from: string | null; to: string | null; description?: string | null };
 export type EducationItem = { degree: string | null; institution: string | null; from: string | null; to: string | null };
 
 type LineHooks = { lineAction?: (index: number) => ReactNode; lineEditor?: (index: number) => ReactNode };
@@ -60,6 +60,9 @@ export function CareerTimelineSection({ items, lineAction, lineEditor, footer }:
                 </p>
                 {lineAction?.(index)}
               </div>
+              {item.description ? (
+                <p className="mt-1 whitespace-pre-line font-body text-[12.5px] leading-relaxed" style={{ color: 'var(--dash-text-secondary)' }}>{item.description}</p>
+              ) : null}
               {lineEditor?.(index)}
             </div>
           </li>
@@ -106,6 +109,34 @@ export function AboutSection({ text, action, editor }: { text: string | null; ac
         <p className="font-body text-[13px] italic" style={muted}>Aucun résumé.</p>
       )}
       {editor}
+    </ProfileSection>
+  );
+}
+
+export type SkillsValue = { skills: string | null; languages: string | null; certifications: string | null };
+
+export function SkillsSection({ value, action, editor }: { value: SkillsValue; action?: ReactNode; editor?: ReactNode }) {
+  const rows: [string | null, string | null][] = [
+    [null, value.skills],
+    ['Langues', value.languages],
+    ['Certifications', value.certifications],
+  ];
+  const filled = rows.filter(([, v]) => v);
+  if (filled.length === 0 && !editor && !action) return null;
+  return (
+    <ProfileSection title="Compétences" icon={Wrench} accent="indigo" aside={action} testId="skills">
+      {editor ?? (
+        filled.length > 0 ? (
+          filled.map(([label, v]) => (
+            <p key={label ?? 'skills'} className="font-body text-[13px]" style={{ color: label ? 'var(--dash-text-secondary)' : 'var(--dash-text)' }}>
+              {label ? `${label} : ` : ''}
+              {v}
+            </p>
+          ))
+        ) : (
+          <p className="font-body text-[13px] italic" style={muted}>Aucune compétence renseignée.</p>
+        )
+      )}
     </ProfileSection>
   );
 }

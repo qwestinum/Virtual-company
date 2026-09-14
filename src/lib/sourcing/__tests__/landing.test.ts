@@ -48,10 +48,11 @@ describe('saisie de la personne', () => {
   });
 
   it('les valeurs initiales viennent du profil public, et seulement de lui', () => {
-    const snap = { name: 'Claire Martin', contacts: { emails: ['claire.martin@exemple.fr'] }, workHistory: [{ title: 'BA', company: 'Banque X', location: 'Paris', from: '2024-05-01', to: null }], education: [], about: 'AMOA' } as unknown as ExaSnapshot;
+    const snap = { name: 'Claire Martin', location: 'Paris', skills: 'UML', contacts: { emails: ['claire.martin@exemple.fr'] }, workHistory: [{ title: 'BA', company: 'Banque X', location: 'Paris', from: '2024-05-01', to: null, description: 'Ateliers.' }], education: [], about: 'AMOA' } as unknown as ExaSnapshot;
     const init = initialSubmission(snap);
     expect(init).toMatchObject({ email: 'claire.martin@exemple.fr', fullName: 'Claire Martin', consent: false, about: 'AMOA' });
-    expect(init.workHistory[0]).toEqual({ title: 'BA', company: 'Banque X', from: '2024-05-01', to: null });
+    expect(init.workHistory[0]).toEqual({ title: 'BA', company: 'Banque X', from: '2024-05-01', to: null, description: 'Ateliers.' });
+    expect(init).toMatchObject({ location: 'Paris', skills: 'UML' });
     expect(initialSubmission(null)).toMatchObject({ email: '', fullName: '', workHistory: [] });
   });
 });
@@ -70,6 +71,22 @@ describe('CV structuré', () => {
     expect(text).toContain('05/2024 – aujourd’hui  Business Analyst — Banque X');
     expect(text).toContain('2014 – 2016  Master SI — Université W');
     expect(text.split('\n')[0]).toBe('Claire Martin');
+  });
+
+  it('CV enrichi : localisation, description de chaque poste, compétences, langues, certifications', () => {
+    const text = buildStructuredCvText(
+      SubmissionSchema.parse({
+        email: 'claire.martin@exemple.fr', consent: true, fullName: 'Claire Martin', about: null, location: 'Paris, France',
+        workHistory: [{ title: 'Business Analyst', company: 'Banque X', from: '2024-05-01', to: null, description: 'Refonte des parcours.\nAteliers et recette.' }],
+        education: [], skills: 'UML, SQL', languages: 'Anglais courant', certifications: 'PSPO I',
+      }),
+      '2026-09-14T10:00:00Z',
+    );
+    expect(text.split('\n')[1]).toBe('Paris, France');
+    expect(text).toContain('Business Analyst — Banque X\n    Refonte des parcours.\n    Ateliers et recette.');
+    expect(text).toContain('COMPÉTENCES\nUML, SQL');
+    expect(text).toContain('LANGUES\nAnglais courant');
+    expect(text).toContain('CERTIFICATIONS\nPSPO I');
   });
 });
 

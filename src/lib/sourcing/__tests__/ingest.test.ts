@@ -157,3 +157,25 @@ describe('projection — liste blanche et coordonnées', () => {
     expect(projectExaResult({ ...profile('a', 'b'), title: '', entities: [] })).toBeNull();
   });
 });
+
+describe('descriptions de poste (CV enrichi, 14/09/2026)', () => {
+  const withExperience = (experienceBody: string, social: string) => {
+    const base = profile('Parcours AMOA.', social);
+    return ExaResultSchema.parse({
+      ...base,
+      text: base.text!.replace('### Consultante AMOA — Banque X', `### Consultante AMOA - [Banque X](https://www.linkedin.com/company/x) (Current)\n\nOct 2021 - Present (4 years)\n\n${experienceBody}\n\nDepartment: Consulting • Level: Specialist\n\nBanque X is a Banking company. Banque X has 1,000-2,000 employees.`),
+    });
+  };
+
+  it('la description écrite sous le poste est gardée, rattachée au poste ; les ajouts du moteur non', () => {
+    const snap = projectExaResult(withExperience('Pilotage de la recette SWIFT, joignable au 06 12 34 56 78.', 'rien'))!;
+    expect(snap.workHistory[0]!.description).toBe('Pilotage de la recette SWIFT, joignable au [numéro retiré].');
+    expect(JSON.stringify(snap)).not.toMatch(/Department:|employees|is a Banking company/);
+  });
+
+  it('un texte de poste placé dans Social n’entre jamais', () => {
+    const snap = projectExaResult(withExperience('', `### Consultante AMOA - [Banque X](x)\n\nOct 2021 - Present\n\n${MARK} missions`))!;
+    expect(snap.workHistory[0]!.description ?? null).toBeNull();
+    expect(JSON.stringify(snap)).not.toContain(MARK);
+  });
+});

@@ -5,13 +5,13 @@
  * formation, résumé, repères regroupés, puis les actions en pied. Le parcours
  * est rendu par les MÊMES composants que la page d'atterrissage.
  */
-import { ExternalLink, Sparkles, Wrench } from 'lucide-react';
+import { ExternalLink, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { indexedAgeLabel } from '@/lib/sourcing/display';
 import type { SourcingProfileView } from '@/types/sourcing';
 
-import { AboutSection, CareerTimelineSection, CurrentPositionSection, EducationSection } from './profile/CareerSections';
+import { AboutSection, CareerTimelineSection, CurrentPositionSection, EducationSection, SkillsSection } from './profile/CareerSections';
 import { ProfileSection } from './profile/ProfileSection';
 import { SourcingRowMarks } from './SourcingRowMarks';
 
@@ -38,13 +38,7 @@ export function SourcingProfileDetail({ profile, actions }: { profile: SourcingP
         <div className="flex flex-col gap-3">
           <MarksSection profile={profile} />
           <AboutSection text={s.about} />
-          {s.skills || s.languages || s.certifications ? (
-            <ProfileSection title="Compétences" icon={Wrench} accent="indigo" testId="skills">
-              {s.skills ? <p className={text} style={{ color: 'var(--dash-text)' }}>{s.skills}</p> : null}
-              {s.languages ? <p className={text} style={{ color: 'var(--dash-text-secondary)' }}>Langues : {s.languages}</p> : null}
-              {s.certifications ? <p className={text} style={{ color: 'var(--dash-text-secondary)' }}>Certifications : {s.certifications}</p> : null}
-            </ProfileSection>
-          ) : null}
+          <SkillsSection value={{ skills: s.skills, languages: s.languages, certifications: s.certifications }} />
         </div>
       </div>
 

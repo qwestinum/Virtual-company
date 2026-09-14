@@ -653,7 +653,16 @@ ligne** · email **pré-rempli s'il est connu, à confirmer** · téléphone opt
 facultatif (PDF ou DOCX, 10 Mo) · **une case obligatoire** « Ces informations sont exactes et
 peuvent être utilisées pour ma candidature » · bouton « Envoyer ma candidature ».
 
-Jamais affichés : photo, mentions, disponibilité détectée, données hors parcours/formation/résumé.
+Jamais affichés : photo, mentions, disponibilité détectée, extrait, URL du profil.
+
+**Amendement du 14/09/2026 — CV enrichi (décision du DO).** Le CV fabriqué quand la personne n'en
+joint pas ne portait que coordonnées, résumé, intitulés et dates de postes, formation : trop pauvre
+pour l'analyse (scores de 12 et 30 en recette). Il porte désormais aussi la **localisation**, la
+**description écrite sous chaque poste**, les **compétences**, **langues** et **certifications**.
+Règle inchangée et étendue : **tout ce qui entre dans le CV est MONTRÉ à la personne et corrigeable
+avant envoi** (localisation dans « Vos coordonnées », descriptions et section Compétences dans
+« Votre parcours ») — elle ne confirme jamais un document dont elle ne voit pas tout (information
+art. 14).
 
 ### 9.3 Proxy et débit
 `/api/sourcing/approach` dans `API_SELF_AUTHENTICATED` ; `/s/` au régime `noindex` + `no-store` +
@@ -1249,6 +1258,28 @@ le double journal. Sondé sur la base de dev : une admission fraîche relâchée
 garde le code chargé à ce moment — un rechargement à chaud ne suffit pas. Après toute
 modification de `src/lib/sourcing/server/maintenance.ts` ou de ses dépendances, **redémarrer**
 avant de lancer la régression (sinon S20.4 échoue sur l'ancien rail).
+
+### CV enrichi à partir du profil (14/09/2026)
+
+- **Descriptions de poste** (`experience-descriptions.ts`, pur/testé) : lues dans la section
+  AUTORISÉE `## Experience` (jamais `## Social`), coordonnées retirées, rattachées au poste
+  structuré du **même intitulé** (et de la même entreprise quand les deux la portent), sans
+  réemploi ni devinette. **Seul le texte de la personne** est gardé : la ligne « Department: X •
+  Level: Y » et la **fiche d'organisme** rédigées par le moteur sont écartées — reconnues à leurs
+  marqueurs constants (« is a … company/agency/university… », « has N-N employees »,
+  « Headquartered in »), car elle ne dit pas toujours « company ». Mesuré sur 3 lots de l'étude
+  (250 profils) : ~55 % des postes portent une description, médiane ~300 caractères, **zéro**
+  enrichissement du moteur retenu après correctif (4 fiches d'organismes passaient avec la seule
+  règle « company »). Plafond 1 200 caractères. `ExaSnapshot.workHistory[].description` est
+  **facultatif** : les profils trouvés avant le 14/09 n'en ont pas — une nouvelle recherche les
+  apporte.
+- **Saisie** (`SubmissionSchema`) : `description` par poste, `location`, `skills`, `languages`,
+  `certifications` — facultatifs, préremplis depuis l'instantané, corrigeables.
+- **CV structuré** (`buildStructuredCvText` → texte analysé ET PDF, même matière) : localisation
+  sous le nom, description en retrait sous chaque poste, sections COMPÉTENCES / LANGUES /
+  CERTIFICATIONS.
+- **Rendu partagé** : la frise affiche la description sous le poste, `SkillsSection` remplace le
+  bloc compétences du détail recruteur et devient corrigeable côté candidat.
 
 ### Correctif — la candidature sourcing ne comptait pas dans sa campagne (14/09/2026)
 

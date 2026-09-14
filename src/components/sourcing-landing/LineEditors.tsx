@@ -4,7 +4,7 @@
  * Correction d'UNE ligne du parcours, ouverte sous la ligne par « corriger ✎ ».
  * Champs pleine largeur sur mobile, côte à côte dès que la place le permet.
  */
-import type { CareerItem, EducationItem } from '@/components/sourcing/profile/CareerSections';
+import type { CareerItem, EducationItem, SkillsValue } from '@/components/sourcing/profile/CareerSections';
 
 const input = 'w-full rounded-md border bg-white px-3 py-2 font-body text-[14px]';
 const border = { borderColor: 'var(--dash-border-strong)' } as const;
@@ -50,6 +50,14 @@ export function WorkLineEditor({ value, onChange, onDone, onRemove }: { value: C
         <input className={input} style={border} value={value.company ?? ''} placeholder="Entreprise" onChange={(e) => onChange({ ...value, company: e.target.value || null })} />
       </div>
       <Dates from={value.from} to={value.to} onChange={(from, to) => onChange({ ...value, from, to })} />
+      <textarea
+        className={`${input} min-h-[90px]`}
+        style={border}
+        maxLength={1500}
+        value={value.description ?? ''}
+        placeholder="Missions, réalisations (facultatif)"
+        onChange={(e) => onChange({ ...value, description: e.target.value || null })}
+      />
     </Frame>
   );
 }
@@ -70,6 +78,25 @@ export function AboutEditor({ value, onChange, onDone }: { value: string | null;
   return (
     <div className="mt-2 flex flex-col gap-2">
       <textarea className={`${input} min-h-[120px]`} style={border} value={value ?? ''} maxLength={3000} onChange={(e) => onChange(e.target.value || null)} />
+      <button type="button" onClick={onDone} className="self-end rounded-md border bg-white px-3 py-1 font-body text-[13px] font-semibold" style={border}>
+        OK
+      </button>
+    </div>
+  );
+}
+
+export function SkillsEditor({ value, onChange, onDone }: { value: SkillsValue; onChange: (v: SkillsValue) => void; onDone: () => void }) {
+  const area = (key: keyof SkillsValue, label: string, max: number) => (
+    <label className="flex flex-col gap-1 font-body text-[12px]" style={{ color: 'var(--dash-text-secondary)' }}>
+      {label}
+      <textarea className={`${input} min-h-[64px]`} style={border} maxLength={max} value={value[key] ?? ''} onChange={(e) => onChange({ ...value, [key]: e.target.value || null })} />
+    </label>
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      {area('skills', 'Compétences', 1000)}
+      {area('languages', 'Langues', 400)}
+      {area('certifications', 'Certifications', 800)}
       <button type="button" onClick={onDone} className="self-end rounded-md border bg-white px-3 py-1 font-body text-[13px] font-semibold" style={border}>
         OK
       </button>

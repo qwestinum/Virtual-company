@@ -19,6 +19,7 @@
  */
 import { detectAvailability } from '@/lib/sourcing/availability';
 import type { ExaResult } from '@/lib/sourcing/exa-schema';
+import { attachDescriptions, parseExperienceSection } from '@/lib/sourcing/experience-descriptions';
 import { normalizeProfileUrl } from '@/lib/sourcing/fingerprint';
 import { extractHolderEmails } from '@/lib/sourcing/holder-email';
 import type { ExaSnapshot } from '@/types/sourcing';
@@ -147,7 +148,7 @@ export function projectExaResult(result: ExaResult): ExaSnapshot | null {
 
   const allowed = keepAllowedSections(result.text);
 
-  const workHistory = (props?.workHistory ?? [])
+  const structured = (props?.workHistory ?? [])
     .filter((w) => (w.title ?? '').trim().length > 0)
     .map((w) => ({
       title: w.title!.trim(),
@@ -156,6 +157,11 @@ export function projectExaResult(result: ExaResult): ExaSnapshot | null {
       from: w.dates?.from ?? null,
       to: w.dates?.to ?? null,
     }));
+  // Descriptions de poste : lues dans la section AUTORISÉE, coordonnées retirées.
+  const workHistory = attachDescriptions(structured, parseExperienceSection(allowed.sections.experience)).map((w) => ({
+    ...w,
+    description: w.description ? redactContacts(w.description) : null,
+  }));
   const current = workHistory.find((w) => w.to === null) ?? workHistory[0] ?? null;
 
   return {

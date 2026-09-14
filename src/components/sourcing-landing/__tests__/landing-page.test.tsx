@@ -15,7 +15,7 @@ import type { ExaSnapshot } from '@/types/sourcing';
 
 const snapshot = {
   url: 'https://www.linkedin.com/in/claire', name: 'Claire Martin', firstName: 'Claire', location: 'Paris', headline: null,
-  current: null, workHistory: [{ title: 'Business Analyst digital', company: 'Banque X', location: 'Paris', from: '2023-05-01', to: null }],
+  current: null, workHistory: [{ title: 'Business Analyst digital', company: 'Banque X', location: 'Paris', from: '2023-05-01', to: null, description: 'Refonte des parcours mobiles.' }],
   education: [{ degree: 'Master SI', institution: 'Université W', from: '2014', to: '2016' }],
   about: 'Business Analyst sur les parcours digitaux.', skills: 'UML', languages: null, certifications: null,
   highlight: 'du cadrage à la recette', indexedAt: null, contacts: { emails: ['claire.martin@exemple.fr'] },
@@ -51,10 +51,16 @@ describe('formulaire', () => {
     expect(html).toContain('1 expérience · 1 formation');
     expect(html).toContain('vérifier ✎');
     expect(html).not.toContain('data-section="career"');
-    const open = renderToStaticMarkup(<ParcoursEditor value={{ workHistory: view.initial.workHistory, education: view.initial.education, about: view.initial.about }} onChange={() => {}} initiallyOpen />);
-    for (const k of ['current', 'career', 'education', 'about']) expect(open).toContain(`data-section="${k}"`);
+    const i = view.initial;
+    const open = renderToStaticMarkup(
+      <ParcoursEditor value={{ workHistory: i.workHistory, education: i.education, about: i.about, skills: i.skills, languages: i.languages, certifications: i.certifications }} onChange={() => {}} initiallyOpen />,
+    );
+    for (const k of ['current', 'career', 'education', 'about', 'skills']) expect(open).toContain(`data-section="${k}"`);
     expect(open).toContain('Business Analyst digital');
-    expect(open.match(/corriger ✎/g)!.length).toBe(3);
+    // CV enrichi : ce qui entrera dans le CV est MONTRÉ avant envoi — description du poste, compétences.
+    expect(open).toContain('Refonte des parcours mobiles.');
+    expect(open).toContain('UML');
+    expect(open.match(/corriger ✎/g)!.length).toBe(4);
     expect(open).not.toMatch(/<input[^>]*value="Business Analyst digital"/);
   });
 
@@ -70,11 +76,11 @@ describe('formulaire', () => {
     expect(html).toContain('PDF ou DOCX, 10 Mo');
   });
 
-  it('jamais affichés : disponibilité détectée, extrait, compétences, adresse du profil', () => {
+  it('jamais affichés : disponibilité détectée, extrait, adresse du profil ; la localisation est proposée à confirmer', () => {
     expect(html).not.toContain('écoute du marché');
     expect(html).not.toContain('du cadrage à la recette');
-    expect(html).not.toContain('UML');
     expect(html).not.toContain('linkedin.com');
+    expect(html).toMatch(/value="Paris"/);
   });
 });
 

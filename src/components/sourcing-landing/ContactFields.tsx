@@ -9,13 +9,16 @@
 const field = 'w-full rounded-md border bg-white px-3 py-2.5 font-body text-[15px]';
 const border = { borderColor: 'var(--dash-border-strong)' } as const;
 
-export type Contact = { fullName: string; email: string; phone: string; cv: File | null };
+export type Contact = { fullName: string; location: string; email: string; phone: string; cv: File | null };
 
 export function ContactFields({ value, onChange, emailToConfirm }: { value: Contact; onChange: (next: Contact) => void; emailToConfirm: boolean }) {
   return (
     <div className="flex flex-col gap-4 rounded-lg border bg-white px-4 py-4" style={{ borderColor: 'var(--dash-border)' }}>
       <Labeled label="Nom complet" required>
         <input className={field} style={border} required value={value.fullName} onChange={(e) => onChange({ ...value, fullName: e.target.value })} autoComplete="name" enterKeyHint="next" />
+      </Labeled>
+      <Labeled label="Localisation" hint="ville, région">
+        <input className={field} style={border} value={value.location} onChange={(e) => onChange({ ...value, location: e.target.value })} autoComplete="address-level2" enterKeyHint="next" />
       </Labeled>
       <Labeled label="Email" required hint={emailToConfirm ? 'à confirmer' : undefined}>
         <input className={field} style={border} type="email" inputMode="email" required value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} autoComplete="email" enterKeyHint="next" />
