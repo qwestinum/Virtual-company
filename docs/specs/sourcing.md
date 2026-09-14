@@ -1250,6 +1250,26 @@ garde le code chargé à ce moment — un rechargement à chaud ne suffit pas. A
 modification de `src/lib/sourcing/server/maintenance.ts` ou de ses dépendances, **redémarrer**
 avant de lancer la régression (sinon S20.4 échoue sur l'ancien rail).
 
+### Correctif — la candidature sourcing ne comptait pas dans sa campagne (14/09/2026)
+
+**Constat (recette).** Une candidature issue du sourcing existait en base (`candidate_analyses`,
+`source='sourcing'`) et recevait son invitation, mais n'augmentait ni les CV reçus ni
+« shortlistés » / « invités » de la campagne, et sa fiche n'affichait aucun CV.
+
+**Causes.** (1) Les compteurs de campagne et la liste du Bureau se **dérivent du journal**
+(`journalToCampaignMetric`, `journalToCandidatesList`) à partir de `imap_cv_received` +
+`imap_cv_analyzed`, que la relève IMAP et l'upload chat écrivent — l'admission ne les écrivait
+pas ; l'invitation (`imap_outreach_mail`, clé `uid`) ne se rattachait donc à aucun candidat.
+(2) La fiche résout le CV par convention d'identifiant (`art_cv_…`, `art_imap_cvfile_…`) et ne
+connaissait pas `art_src_…` : le CV structuré était fabriqué et stocké, mais invisible.
+
+**Correctif.** `admitSourcedCandidate` écrit `imap_cv_received` + `imap_cv_analyzed`
+(`uid = can_src_<approche>`, `source: 'sourcing'`, `aboveThreshold` = zone forcée) **une fois**, à
+l'insertion de l'analyse, **avant** l'envoi ; `/api/reporting/audit/candidates/[id]` cherche
+`art_src_cvfile_<approche>` puis `art_src_cv_<approche>`. Régression S22.2 : la métrique de
+campagne dérivée compte le CV reçu et le shortlisté. Les deux candidatures de recette en dev ont
+été rattrapées (entrées datées de leur réception, `payload.backfill: true`).
+
 ### Retouches de design (14/09/2026)
 
 - **Un seul rendu du parcours** (`src/components/sourcing/profile/`) : `ProfileSection` (titre en

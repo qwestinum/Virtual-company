@@ -53,6 +53,7 @@ vi.mock('@/lib/vivier/match-application', () => ({ matchVivierApplication: vi.fn
 import { analyzeCVApplication } from '@/lib/agents/server/cv-application-analyze';
 import { canInviteForCampaign } from '@/lib/agents/server/interview-mail';
 import { getCandidateAnalysis, persistCandidateAnalysisStrict } from '@/lib/db/repos/candidate-analyses';
+import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { completeAdmission, recordAdmissionFailure, releaseSubmission, settleManifestedProfile } from '@/lib/db/repos/sourcing-admission';
 import { dispatchCandidateOutreach } from '@/lib/imap/outreach';
 import { admissionRetryDue, approachIdOfAnalysis, forceAcceptedApplication } from '@/lib/sourcing/admission';
@@ -98,6 +99,15 @@ describe('admission', () => {
     expect(input.cvArtifactId).toBe(`art_src_cv_${APPROACH_ID}`);
     expect(completeAdmission).toHaveBeenCalledWith(APPROACH_ID, `can_src_${APPROACH_ID}`);
     expect(settleManifestedProfile).toHaveBeenCalled();
+    // Compteurs de campagne : les mêmes actions que la relève IMAP, clé uid, AVANT l'envoi.
+    const entries = vi.mocked(appendJournalEntry).mock.calls.map((c) => c[0]);
+    const received = entries.find((e) => e.action === 'imap_cv_received');
+    const analyzedEntry = entries.find((e) => e.action === 'imap_cv_analyzed');
+    expect(received).toMatchObject({ campaignId: 'CAMP-2026-293', payload: { uid: `can_src_${APPROACH_ID}`, source: 'sourcing' } });
+    expect(analyzedEntry).toMatchObject({ payload: { uid: `can_src_${APPROACH_ID}`, score: 41, aboveThreshold: true, candidate: 'Claire Martin' } });
+    expect(vi.mocked(appendJournalEntry).mock.invocationCallOrder[entries.indexOf(analyzedEntry!)]).toBeLessThan(
+      vi.mocked(dispatchCandidateOutreach).mock.invocationCallOrder[0]!,
+    );
   });
 
   it('panne d’analyse : rien de persisté, rien d’envoyé, l’approche reste en attente', async () => {
@@ -115,10 +125,13 @@ describe('admission', () => {
 
   it('reprise après une analyse déjà persistée : on la relit, on ne la refait pas', async () => {
     vi.mocked(analyzeCVApplication).mockClear();
+    vi.mocked(appendJournalEntry).mockClear();
     vi.mocked(getCandidateAnalysis).mockResolvedValueOnce({ application: forceAcceptedApplication(analyzed as unknown as CVApplication, submission) } as never);
     const out = await admitSourcedCandidate({ ...pending, admissionAttempts: 1 });
     expect(out.kind).toBe('admitted');
     expect(analyzeCVApplication).not.toHaveBeenCalled();
+    // Déjà comptée à la première passe : pas un second « CV reçu ».
+    expect(vi.mocked(appendJournalEntry).mock.calls.map((c) => c[0].action)).not.toContain('imap_cv_received');
   });
 
   it('offre fermée entre-temps, ou invitation impossible : réservation relâchée, rien d’autre', async () => {

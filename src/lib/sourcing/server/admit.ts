@@ -94,7 +94,7 @@ export async function admitSourcedCandidate(approach: LandingApproach): Promise<
         thresholdHigh: campaign.thresholdHigh,
       });
       application = forceAcceptedApplication(analyzed.application, submission);
-      await persistCandidateAnalysisStrict({
+      const persisted = await persistCandidateAnalysisStrict({
         id: analysisId,
         uid: analysisId,
         campaignId: campaign.id,
@@ -102,6 +102,7 @@ export async function admitSourcedCandidate(approach: LandingApproach): Promise<
         decidedBy: 'user',
         decidedByUser: { id: approach.recruiterId, email: recruiter?.email ?? null },
       });
+      if (persisted === 'inserted') await journalReceivedAndAnalyzed(campaign.id, analysisId, cv.fileName, application, approach.id);
     }
 
     void feedVivierFromApplication({ application, cvText: cv.text, cvContent: cv.content, cvMimeType: cv.mime });
@@ -198,4 +199,34 @@ async function materializeCv(approach: LandingApproach, campaignId: string, subm
     metadata: { source: 'sourcing', approachId: approach.id, structured: true },
   });
   return { text, content, mime: 'application/pdf', fileName, artifactId };
+}
+
+/**
+ * Les MÊMES actions que la relève IMAP et l'upload chat (`imap_cv_received` +
+ * `imap_cv_analyzed`, clé `uid`) : les compteurs de campagne (CV reçus,
+ * shortlistés, invités, score moyen) et la liste du Bureau se DÉRIVENT du
+ * journal. Sans elles, une candidature sourcing existait en base mais comptait
+ * pour zéro, et son invitation ne se rattachait à personne. Écrites une seule
+ * fois, à l'insertion de l'analyse, avant l'envoi.
+ */
+async function journalReceivedAndAnalyzed(
+  campaignId: string,
+  analysisId: string,
+  fileName: string,
+  application: CVApplication,
+  approachId: string,
+): Promise<void> {
+  const base = { uid: analysisId, fileName, candidate: application.candidate.fullName, source: 'sourcing' as const, approachId };
+  await appendJournalEntry({ action: 'imap_cv_received', actor: 'sourcing', campaignId, payload: base });
+  await appendJournalEntry({
+    action: 'imap_cv_analyzed',
+    actor: 'sourcing',
+    campaignId,
+    payload: {
+      ...base,
+      email: application.candidate.email,
+      score: application.scoringResult.totalScore,
+      aboveThreshold: application.scoringResult.status === 'accepted',
+    },
+  });
 }

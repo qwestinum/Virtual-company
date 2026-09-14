@@ -16,29 +16,40 @@ import {
 import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
 import { extractCandidateTimelineFacts } from '@/lib/reporting/timeline-facts';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import {
+  approachIdOfAnalysis,
+  sourcingCvFileArtifactId,
+  sourcingStructuredCvArtifactId,
+} from '@/lib/sourcing/admission';
 
 export const runtime = 'nodejs';
 
 /**
  * Id de l'artefact CV à partir de l'id d'analyse (conventions de persistance) :
  * chat → `art_cv_<id>` ; IMAP → `art_imap_cvfile_…` (l'id d'analyse `can_imap_…`
- * partage le suffixe mailbox+uid). On NE renvoie PAS d'URL signée ici : le
+ * partage le suffixe mailbox+uid) ; sourcing → `art_src_cvfile_<approche>` puis
+ * `art_src_cv_<approche>` (CV structuré). On NE renvoie PAS d'URL signée ici : le
  * client la demande au clic (`/api/artifacts/<id>/signed-url`, TTL court, RGPD).
  */
-function cvArtifactIdFor(analysisId: string): string {
-  return analysisId.startsWith('can_imap_')
-    ? analysisId.replace('can_imap_', 'art_imap_cvfile_')
-    : `art_cv_${analysisId}`;
+function cvArtifactIdsFor(analysisId: string): string[] {
+  if (analysisId.startsWith('can_imap_')) return [analysisId.replace('can_imap_', 'art_imap_cvfile_')];
+  // Sourcing : le CV joint par la personne d'abord, sinon le CV structuré
+  // fabriqué à partir de ce qu'elle a confirmé.
+  const approachId = approachIdOfAnalysis(analysisId);
+  if (approachId) return [sourcingCvFileArtifactId(approachId), sourcingStructuredCvArtifactId(approachId)];
+  return [`art_cv_${analysisId}`];
 }
 
 async function resolveCvArtifactId(analysisId: string): Promise<string | null> {
-  const candidateId = cvArtifactIdFor(analysisId);
-  try {
-    const meta = await getArtifactMeta(candidateId);
-    return meta?.storagePath ? meta.id : null;
-  } catch {
-    return null;
+  for (const candidateId of cvArtifactIdsFor(analysisId)) {
+    try {
+      const meta = await getArtifactMeta(candidateId);
+      if (meta?.storagePath) return meta.id;
+    } catch {
+      return null;
+    }
   }
+  return null;
 }
 
 export async function GET(

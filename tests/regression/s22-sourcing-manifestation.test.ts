@@ -52,6 +52,7 @@ import {
   reserveSubmission,
   type StoredSubmission,
 } from '@/lib/db/repos/sourcing-admission';
+import type { JournalEntry } from '@/lib/db/repos/journal';
 import { mintApproachToken } from '@/lib/sourcing/approach-token';
 import { admitSourcedCandidate } from '@/lib/sourcing/server/admit';
 
@@ -172,6 +173,19 @@ describe('S22.2 — manifestation', () => {
     expect(prof).toEqual([]);
     const { data: ex } = await db().from('sourcing_exclusions').select('reason').eq('fingerprint', FP.manifest).eq('campaign_id', camp);
     expect(ex).toEqual([{ reason: 'manifested' }]);
+  });
+
+  it('la candidature compte dans la campagne : CV reçu, shortlisté, au Bureau', async () => {
+    const id = approaches.manifest!;
+    const { data: rows } = await db().from('journal').select('action, campaign_id, payload, created_at').eq('campaign_id', camp).in('action', ['imap_cv_received', 'imap_cv_analyzed']);
+    const mine = (rows ?? []).filter((r) => (r.payload as { uid?: string }).uid === `can_src_${id}`);
+    expect(mine.map((r) => r.action).sort()).toEqual(['imap_cv_analyzed', 'imap_cv_received']);
+    const { journalToCampaignMetric } = await import('@/lib/dashboard/derive-metrics');
+    const metric = journalToCampaignMetric(
+      mine.map((r, i): JournalEntry => ({ id: i, actor: 'sourcing', action: r.action as string, campaignId: r.campaign_id as string, payload: r.payload as Record<string, unknown>, createdAt: r.created_at as string })),
+      camp,
+    );
+    expect(metric).toMatchObject({ candidates: 1, shortlisted: 1, avgScore: 41 });
   });
 });
 
