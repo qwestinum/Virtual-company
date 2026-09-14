@@ -1259,6 +1259,25 @@ garde le code chargé à ce moment — un rechargement à chaud ne suffit pas. A
 modification de `src/lib/sourcing/server/maintenance.ts` ou de ses dépendances, **redémarrer**
 avant de lancer la régression (sinon S20.4 échoue sur l'ancien rail).
 
+### Régression sourcing consolidée (14/09/2026)
+
+Quatre scénarios sur la base de dev (37 tests), plus un garde unitaire du proxy :
+
+| Scénario | Ce qu'il prouve |
+|---|---|
+| **S20** `s20-purge-sourcing` | effacement : profils par empreinte, approches pseudonymisées, opposition, arrêt sur admission en cours ; **CV sourcing au périmètre** (`art_src_cv_…` par convention, tout artefact portant l'`approachId` en métadonnée, fichiers compris) |
+| **S21** `s21-sourcing-approches` | écritures du lot 3 contre les contraintes : déclin, approche `[lien]`, confirmation, révocation |
+| **S22** `s22-sourcing-manifestation` | transitions du lot 4 : réservation unique, admission, panne, **réservation d'une tentative du rail**, opposition, purge ; **journal `imap_cv_*` ⇒ métrique de campagne** |
+| **S23** `s23-sourcing-parcours` | le **parcours par les routes réelles** : états du lien (prérempli enrichi, suspendu, fermé sans donnée, inconnu/retiré), première ouverture unique, case obligatoire, soumission ⇒ analyse RÉELLE d'un profil faible à zone forcée, décision du recruteur, CV fabriqué stocké, invitation par le chemin commun, briefing en file, profil soldé ; **la campagne compte la candidature** (reçu, shortlisté, invité) ; **la fiche trouve le CV** ; second envoi sans effet ; opposition globale sans donnée au journal ; **débit fail-closed** (6ᵉ envoi ⇒ 429) ; **clôture par la route** ⇒ purge + journal `byState`, exclusions gardées |
+| unitaire `src/__tests__/proxy-sourcing.test.ts` | `/s/…` et `/api/sourcing/approach/…` sans session avec `noindex`/`no-store`/`no-referrer` ; `/api/sourcing/approaches/…` et voisines **restent en 401** |
+
+**Sondés** (le test échoue bien quand le défaut est réintroduit) : journal `imap_cv_*` retiré de
+l'admission ⇒ S23.3 rouge ; résolution `art_src_` retirée de la fiche ⇒ S23.3 rouge ; préfixe
+public du proxy sans `/` final ⇒ 2 cas en 401 attendus deviennent 200. S23 marque le profil
+« faible » par le marqueur des fixtures dans le résumé : l'analyse tourne réellement, seul le
+modèle est simulé. ⚠️ Lancer la régression **application fermée** (le tick du scheduler rejoue
+le rail de reprise sur les données de test).
+
 ### CV enrichi à partir du profil (14/09/2026)
 
 - **Descriptions de poste** (`experience-descriptions.ts`, pur/testé) : lues dans la section

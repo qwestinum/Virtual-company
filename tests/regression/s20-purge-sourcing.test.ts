@@ -50,6 +50,8 @@ const ADDRESS_FP = fpOf(`https://www.linkedin.com/in/adresse-s20-${Math.random()
 const MANIF_EMAIL = 'manifeste-s20@test.local';
 const MANIF_FP = fpOf(`https://www.linkedin.com/in/manifeste-s20-${Math.random().toString(36).slice(2, 8)}`);
 const manifApproachId = randomUUID();
+const MANIF_CV_PATH = `campagnes/treg-s20/sourcing-cv-${manifApproachId.slice(0, 8)}.pdf`;
+const MANIF_FREE_PATH = `campagnes/treg-s20/autre-${manifApproachId.slice(0, 8)}.pdf`;
 const manifAnalysisId = `can_src_${manifApproachId}`;
 // Parcours 4 — admission en cours.
 const PENDING_FP = fpOf(`https://www.linkedin.com/in/attente-s20-${Math.random().toString(36).slice(2, 8)}`);
@@ -187,6 +189,13 @@ beforeAll(async () => {
     submitted_at: now,
     analysis_id: manifAnalysisId,
   });
+  // Ses CV sourcing (lot 4) : le CV structuré par convention d'identifiant, et
+  // un artefact d'identifiant libre qui ne porte l'approche qu'en métadonnée.
+  const { error: artErr } = await db().from('artifacts_meta').insert([
+    { id: `art_src_cv_${manifApproachId}`, campaign_id: campA, kind: 'cv', name: 'cv-structure.pdf', mime: 'application/pdf', storage_bucket: 'artifacts', storage_path: MANIF_CV_PATH, metadata: { source: 'sourcing', approachId: manifApproachId, structured: true } },
+    { id: `art_treg_s20_libre_${manifApproachId.slice(0, 8)}`, campaign_id: campA, kind: 'cv', name: 'autre.pdf', mime: 'application/pdf', storage_bucket: 'artifacts', storage_path: MANIF_FREE_PATH, metadata: { source: 'sourcing', approachId: manifApproachId } },
+  ]);
+  if (artErr) throw new Error(`seed artefacts : ${artErr.message}`);
 
   // 4. Une soumission en cours de création.
   await insertApproach({
@@ -339,6 +348,10 @@ describe('S20.3 — un candidat manifesté, retrouvé par son email', () => {
     expect(identity.sourcingApproachIds).toContain(manifApproachId);
     expect(identity.sourcingFingerprints).toContain(MANIF_FP);
     expect(identity.sourcingProfileIds).toHaveLength(1);
+    // Ses CV sourcing entrent au périmètre, fichiers compris — par convention d'identifiant
+    // ET par l'approche portée en métadonnée.
+    expect(identity.artifactIds).toEqual(expect.arrayContaining([`art_src_cv_${manifApproachId}`, `art_treg_s20_libre_${manifApproachId.slice(0, 8)}`]));
+    expect(identity.storagePaths).toEqual(expect.arrayContaining([MANIF_CV_PATH, MANIF_FREE_PATH]));
   });
 
   it('l’exécution pseudonymise l’approche SANS toucher à son statut ni à sa candidature', async () => {
