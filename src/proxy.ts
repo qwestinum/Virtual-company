@@ -129,8 +129,8 @@ export async function proxy(request: NextRequest) {
 
   const { response, user } = await getUserFromMiddleware(request);
 
-  // Régime API : deny-by-default, 401 (pas de redirect).
-  if (pathname.startsWith('/api/')) {
+  // Régime API : deny-by-default, 401 (pas de redirect). `/api` nu compris.
+  if (pathname === '/api' || pathname.startsWith('/api/')) {
     if (isApiSelfAuthenticated(pathname)) return response;
     if (!user) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -167,8 +167,16 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Exclut : _next assets, favicon, fichiers static. `/api` est désormais
-    // INCLUS (gate deny-by-default dans `proxy`).
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|woff2?)$).*)',
+    // Exclut : _next assets, favicon, fichiers statiques. `/api` est INCLUS
+    // (gate deny-by-default dans `proxy`).
+    //
+    // ⚠️ L'exemption par EXTENSION ne vaut QUE hors de `/api` — `(?!api(?:/|$))`.
+    // Posée sur le chemin entier, elle laissait `/api/…/<id>.png` contourner le
+    // proxy : la route s'exécutait sans session (trou constaté le 14/09/2026).
+    // Les autres exceptions (`_next/…`, `favicon.ico`) sont ancrées au début du
+    // chemin et ne peuvent pas désigner une route `/api`. Tenu par
+    // `src/__tests__/proxy-matcher.test.ts`, qui teste le matcher tel que Next
+    // l'applique : un test de `proxy()` seul ne voit pas un chemin exclu.
+    '/((?!_next/static|_next/image|favicon.ico|(?!api(?:/|$)).*\\.(?:png|jpg|jpeg|svg|webp|woff2?)$).*)',
   ],
 };
