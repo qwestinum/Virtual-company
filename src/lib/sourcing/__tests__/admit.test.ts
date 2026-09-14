@@ -74,10 +74,9 @@ describe('règles pures', () => {
 
   it('reprise : 1, 5, 15 minutes puis toutes les heures, jamais d’abandon', () => {
     const at = (min: number) => new Date(Date.parse('2026-09-14T10:00:00Z') + min * 60_000);
-    // Jamais tentée : c'est la route de soumission qui l'analyse — le rail attend.
-    expect(admissionRetryDue(0, '2026-09-14T10:00:00Z', at(0))).toBe(false);
-    expect(admissionRetryDue(0, '2026-09-14T10:00:00Z', at(4))).toBe(false);
-    expect(admissionRetryDue(0, '2026-09-14T10:00:00Z', at(5))).toBe(true);
+    // Jamais tentée : la route ne fait plus que réserver — le rail la prend
+    // dès le passage suivant (14/09/2026).
+    expect(admissionRetryDue(0, '2026-09-14T10:00:00Z', at(0))).toBe(true);
     expect(admissionRetryDue(1, '2026-09-14T10:00:00Z', at(0.5))).toBe(false);
     expect(admissionRetryDue(1, '2026-09-14T10:00:00Z', at(1))).toBe(true);
     expect(admissionRetryDue(3, '2026-09-14T10:00:00Z', at(14))).toBe(false);

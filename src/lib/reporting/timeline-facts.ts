@@ -14,8 +14,12 @@ import {
   VALIDATION_MARKER_ACTION,
 } from '@/lib/candidatures/decision-markers';
 import { getScheduledInterviewByUid } from '@/lib/db/repos/interview-briefs';
-import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
+import {
+  listJournalEntriesByActions,
+  type JournalEntry,
+} from '@/lib/db/repos/journal';
 import type { CandidateTimelineFacts } from '@/lib/reporting/candidate-timeline';
+import { pickActions } from '@/lib/reporting/journal-preload';
 import { DISMISSAL_REASON_LABELS } from '@/types/dismissal';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 
@@ -26,6 +30,17 @@ const VALIDATION_ACTION = VALIDATION_MARKER_ACTION;
 const CORRECTION_ACTION = DECISION_CORRECTED_ACTION;
 /** Validation HITL d'un gris envoyée (accept/reject) — par uid. */
 const HITL_SENT_ACTION = 'hitl_validation_sent';
+
+/** Actions du journal lues pour la frise. */
+export const TIMELINE_JOURNAL_ACTIONS: readonly string[] = [
+  OUTREACH_ACTION,
+  INTERVIEW_ACTION,
+  VALIDATION_ACTION,
+  HITL_SENT_ACTION,
+  CORRECTION_ACTION,
+];
+
+type VivierOriginFacts = { contactedAt: string | null; appliedAt: string | null } | null;
 
 function asText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
@@ -39,22 +54,30 @@ function resolveAnalyzedAt(detail: CandidateAnalysisDetail): string {
 
 export async function extractCandidateTimelineFacts(
   detail: CandidateAnalysisDetail,
-  vivierOrigin: { contactedAt: string | null; appliedAt: string | null } | null,
+  /**
+   * L'origine vivier, ou sa lecture EN COURS : la frise lance alors ses propres
+   * lectures sans l'attendre. Un rejet remonte à l'appelant, comme si la
+   * lecture avait été faite avant l'appel.
+   */
+  vivierOrigin: VivierOriginFacts | Promise<VivierOriginFacts>,
+  /**
+   * Lecture du journal déjà lancée par l'appelant, sur le MÊME périmètre
+   * (`detail.campaignId`) et couvrant au moins `TIMELINE_JOURNAL_ACTIONS`.
+   * Même repli qu'en interne : un rejet vaut une frise sans faits de journal.
+   */
+  preloaded: { journal?: Promise<JournalEntry[]> } = {},
 ): Promise<CandidateTimelineFacts> {
   const uid = detail.uid;
 
   // Faits PAR-UID (cohérent avec le parcours). Le RDV vient d'interview_briefs
   // rattaché PAR UID (fiable, ≠ email) ; le reste, du journal filtré par uid.
-  const [entries, rdv] = await Promise.all([
-    listJournalEntriesByActions(
-      [
-        OUTREACH_ACTION,
-        INTERVIEW_ACTION,
-        VALIDATION_ACTION,
-        HITL_SENT_ACTION,
-        CORRECTION_ACTION,
-      ],
-      { campaignId: detail.campaignId ?? undefined },
+  const [origin, entries, rdv] = await Promise.all([
+    vivierOrigin,
+    (preloaded.journal
+      ? preloaded.journal.then((all) => pickActions(all, TIMELINE_JOURNAL_ACTIONS))
+      : listJournalEntriesByActions([...TIMELINE_JOURNAL_ACTIONS], {
+          campaignId: detail.campaignId ?? undefined,
+        })
     ).catch(() => []),
     getScheduledInterviewByUid(uid).catch(() => null),
   ]);
@@ -146,8 +169,8 @@ export async function extractCandidateTimelineFacts(
     status: detail.status,
     decisionJustification: detail.application.narration.justification,
     fromVivier: detail.fromVivier,
-    vivierContactedAt: vivierOrigin?.contactedAt ?? null,
-    vivierAppliedAt: vivierOrigin?.appliedAt ?? null,
+    vivierContactedAt: origin?.contactedAt ?? null,
+    vivierAppliedAt: origin?.appliedAt ?? null,
     validatedAt,
     invitationSentAt,
     rejectionSentAt,

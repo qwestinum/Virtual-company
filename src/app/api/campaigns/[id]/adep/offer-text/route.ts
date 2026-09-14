@@ -79,8 +79,23 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  if (!(await getApiUser())) return unauthorizedResponse();
   const { id } = await context.params;
+
+  // Les lectures partent avec l'authentification ; les décisions restent dans
+  // l'ordre d'origine (401, 400, échec de la campagne, 404). Les rejets d'une
+  // lecture qu'on n'attend plus (401/400) sont rendus muets.
+  const userP = getApiUser();
+  const campaignP = getCampaign(id);
+  void campaignP.catch(() => undefined);
+  // Contact de la mention : l'adresse à laquelle un candidat demandera la
+  // suppression de ses données. Même cascade que la pré-rédaction d'annonce.
+  const settingsP = getAppSettings().catch(() => null);
+  const receptionP = settingsP.then((settings) =>
+    resolveCampaignReceptionAddress(id, settings?.intakeEmail).catch(() => null),
+  );
+  const senderP = getSenderEmail().catch(() => null);
+
+  if (!(await userP)) return unauthorizedResponse();
 
   let body: z.infer<typeof BodySchema>;
   try {
@@ -97,7 +112,7 @@ export async function POST(
 
   let campaign;
   try {
-    campaign = await getCampaign(id);
+    campaign = await campaignP;
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json({ error: 'supabase_not_configured' }, { status: 503 });
@@ -118,15 +133,7 @@ export async function POST(
     body.positionDescription?.trim() || list(fdp, 'main_missions').join('. '),
   );
 
-  // Contact de la mention : l'adresse à laquelle un candidat demandera la
-  // suppression de ses données. Même cascade que la pré-rédaction d'annonce.
-  const settings = await getAppSettings().catch(() => null);
-  const contact =
-    (await resolveCampaignReceptionAddress(id, settings?.intakeEmail).catch(
-      () => null,
-    )) ||
-    (await getSenderEmail().catch(() => null)) ||
-    '';
+  const contact = (await receptionP) || (await senderP) || '';
 
   try {
     const texts = await writeApecOfferText(

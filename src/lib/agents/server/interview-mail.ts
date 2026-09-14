@@ -14,7 +14,9 @@
 
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import {
+  type CampaignBookingContext,
   canEmitBookingLink,
+  createCampaignBookingContext,
   emitCampaignBookingLink,
   isNativeSchedulingCampaign,
   resolveCampaignMeetingLocation,
@@ -100,14 +102,18 @@ export async function getResolvedAgendaLink(
 export async function canInviteForCampaign(
   campaignId?: string | null,
 ): Promise<boolean> {
-  if (campaignId && (await isNativeSchedulingCampaign(campaignId))) {
-    return canEmitBookingLink(campaignId);
+  const ctx = campaignId ? createCampaignBookingContext(campaignId) : undefined;
+  if (campaignId && ctx && (await isNativeSchedulingCampaign(campaignId, ctx))) {
+    return canEmitBookingLink(campaignId, ctx);
   }
   return (await getResolvedAgendaLink(campaignId)).length > 0;
 }
 
 /** Récupère nom + intitulé + référent d'une campagne (best-effort, jamais throw). */
-async function fetchCampaignFacts(campaignId: string): Promise<{
+async function fetchCampaignFacts(
+  campaignId: string,
+  ctx?: CampaignBookingContext,
+): Promise<{
   name: string | null;
   jobTitle: string | null;
   ownerUserId: string | null;
@@ -116,7 +122,7 @@ async function fetchCampaignFacts(campaignId: string): Promise<{
     return { name: null, jobTitle: null, ownerUserId: null };
   }
   try {
-    const campaign = await getCampaign(campaignId);
+    const campaign = ctx ? await ctx.campaign() : await getCampaign(campaignId);
     if (!campaign) return { name: null, jobTitle: null, ownerUserId: null };
     const raw = campaign.fdp.fields.job_title?.value;
     const jobTitle = typeof raw === 'string' && raw.trim() ? raw.trim() : null;
@@ -135,6 +141,8 @@ async function fetchCampaignFacts(campaignId: string): Promise<{
  * PAS l'annonce de sélection — la répéter à quelqu'un dont on déplace le
  * rendez-vous sonne faux, et il l'a déjà reçue.
  */
+type AppSettingsForMail = Awaited<ReturnType<typeof getAppSettings>>;
+
 export type InterviewMailMode = 'invite' | 'reject' | 'reschedule';
 
 /** Modes qui portent un lien de réservation. Le refus n'en fait JAMAIS partie. */
@@ -169,6 +177,12 @@ export type BuildInterviewMailArgs = {
    * qui a décalé, et quand. Ignorée par les autres modes.
    */
   intro?: string | null;
+  /**
+   * Contexte de réservation déjà résolu par la requête appelante (campagne,
+   * cible, liens, ressource du référent). Absent, il est créé pour ce seul
+   * appel — jamais conservé au-delà.
+   */
+  bookingContext?: CampaignBookingContext;
 };
 
 export type BuildInterviewMailResult = {
@@ -205,8 +219,10 @@ export type BuildInterviewMailResult = {
 async function resolveInvitationLink(
   args: BuildInterviewMailArgs,
   config: InterviewConfig,
+  ctx: CampaignBookingContext,
+  settingsPromise: Promise<AppSettingsForMail>,
 ): Promise<{ link: string; reason?: BuildInterviewMailResult['blockedReason'] }> {
-  if (await isNativeSchedulingCampaign(args.campaignId)) {
+  if (await isNativeSchedulingCampaign(args.campaignId, ctx)) {
     if (!args.analysisId) {
       console.error(
         '[interview-mail] campagne en réservation native sans identifiant d’analyse',
@@ -219,7 +235,7 @@ async function resolveInvitationLink(
     // confirmation omettrait purement et simplement la ligne « Où ». La sonde
     // du gate a déjà vérifié ce point, mais elle a pu tourner il y a plusieurs
     // secondes — c'est ici que rien n'est encore parti.
-    const place = await resolveCampaignMeetingLocation(args.campaignId);
+    const place = await resolveCampaignMeetingLocation(args.campaignId, ctx);
     if (!place.resolved) {
       console.error(
         '[interview-mail] campagne en réservation native sans lieu d’entretien',
@@ -227,7 +243,7 @@ async function resolveInvitationLink(
       );
       return { link: '', reason: 'meeting_location_missing' };
     }
-    const settings = await getAppSettings().catch(() => null);
+    const settings = await settingsPromise.catch(() => null);
     const url = await emitCampaignBookingLink({
       campaignId: args.campaignId,
       analysisId: args.analysisId,
@@ -237,7 +253,7 @@ async function resolveInvitationLink(
       candidateEmail: args.candidate.email ?? null,
       jobTitle: args.jobTitle,
       organizationName: resolveOrganizationName(settings),
-    }).catch((err) => {
+    }, ctx).catch((err) => {
       console.error('[interview-mail] émission du lien de réservation KO', err);
       return null;
     });
@@ -248,7 +264,7 @@ async function resolveInvitationLink(
 
   const link =
     (await ownerAgendaLink(
-      (await fetchCampaignFacts(args.campaignId)).ownerUserId,
+      (await fetchCampaignFacts(args.campaignId, ctx)).ownerUserId,
     )) || resolveAgendaLink(config);
   return link ? { link } : { link: '', reason: 'agenda_link_not_configured' };
 }
@@ -261,9 +277,15 @@ async function resolveInvitationLink(
 export async function buildInterviewMail(
   args: BuildInterviewMailArgs,
 ): Promise<BuildInterviewMailResult> {
-  const settings = await getAppSettings();
+  // Réglages et campagne sont indépendants : lus ensemble, une seule fois pour
+  // tout l'appel (la résolution du lien les réutilise).
+  const ctx = args.bookingContext ?? createCampaignBookingContext(args.campaignId);
+  const settingsPromise = getAppSettings();
+  const factsPromise = fetchCampaignFacts(args.campaignId, ctx);
+  settingsPromise.catch(() => undefined);
+  const settings = await settingsPromise;
   const config = settings?.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG;
-  const facts = await fetchCampaignFacts(args.campaignId);
+  const facts = await factsPromise;
 
   // VERROU : un refus ne déclenche aucune résolution, donc aucune émission de
   // lien. C'est ce qui protège du modèle de refus contenant `[lien d'agenda]`.
@@ -271,7 +293,7 @@ export async function buildInterviewMail(
   // « invite » — ajouter un mode ne doit pas rouvrir le trou par distraction.
   const carriesLink = LINK_BEARING_MODES.has(args.mode);
   const resolved = carriesLink
-    ? await resolveInvitationLink(args, config)
+    ? await resolveInvitationLink(args, config, ctx, settingsPromise)
     : { link: '' };
   const agendaLink = resolved.link;
 

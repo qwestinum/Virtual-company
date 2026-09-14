@@ -233,9 +233,14 @@ export async function applyDecisionCorrection(args: {
 async function resolveStageAfter(
   analysis: CandidateAnalysisSummary,
 ): Promise<DecisionCorrectionResult['nextStage']> {
-  const fresh = (await getCandidateAnalysis(analysis.id).catch(() => null)) ?? analysis;
-  const signals = await loadStageSignals(
-    fresh.campaignId ? { campaignId: fresh.campaignId } : {},
-  );
+  // Les deux relectures partent ensemble. Le périmètre des signaux est la
+  // campagne de l'analyse : aucune correction ne la change (ni les marqueurs,
+  // ni la décision de screening, ni la réouverture), la relire d'abord ne
+  // servait qu'à attendre.
+  const [freshRead, signals] = await Promise.all([
+    getCandidateAnalysis(analysis.id).catch(() => null),
+    loadStageSignals(analysis.campaignId ? { campaignId: analysis.campaignId } : {}),
+  ]);
+  const fresh = freshRead ?? analysis;
   return stageFor(fresh, signals);
 }

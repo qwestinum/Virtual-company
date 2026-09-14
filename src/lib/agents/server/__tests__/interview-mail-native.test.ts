@@ -37,6 +37,11 @@ vi.mock('@/lib/scheduling-host/campaign-booking', () => ({
   isNativeSchedulingCampaign: isNativeMock,
   canEmitBookingLink: canEmitMock,
   resolveCampaignMeetingLocation: resolveLocationMock,
+  // Contexte de requête : la campagne passe par le même dépôt (mocké).
+  createCampaignBookingContext: (campaignId: string) => ({
+    campaignId,
+    campaign: () => getCampaignMock(campaignId),
+  }),
 }));
 
 import {
@@ -114,6 +119,8 @@ describe('flag ON — invitation', () => {
         linkKey: 'can_imap_box-a_102',
         uid: '102',
       }),
+      // Contexte de réservation de la requête, transmis tel quel.
+      expect.objectContaining({ campaignId: 'CAMP-0001' }),
     );
   });
 
@@ -157,6 +164,7 @@ describe('flag ON — invitation', () => {
       // L'identité de la candidature reste `can_1` — c'est elle qui voyage
       // dans le contexte de la réservation.
       expect.objectContaining({ analysisId: 'can_1', linkKey: 'can_1#r2' }),
+      expect.objectContaining({ campaignId: 'CAMP-0001' }),
     );
   });
 });
@@ -183,7 +191,10 @@ describe('VERROU — un refus ne mint jamais', () => {
 describe('sonde du gate — sans effet', () => {
   it('interroge la capacité du référent, n’émet AUCUN jeton', async () => {
     expect(await canInviteForCampaign('CAMP-0001')).toBe(true);
-    expect(canEmitMock).toHaveBeenCalledWith('CAMP-0001');
+    expect(canEmitMock).toHaveBeenCalledWith(
+      'CAMP-0001',
+      expect.objectContaining({ campaignId: 'CAMP-0001' }),
+    );
     expect(emitLinkMock).not.toHaveBeenCalled();
   });
 

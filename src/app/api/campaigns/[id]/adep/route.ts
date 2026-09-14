@@ -16,7 +16,7 @@ import { resolveCampaignReceptionAddress } from '@/lib/campaign/reception-addres
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { getJobPost } from '@/lib/db/repos/demo-job-posts';
-import { getCurrentJobPosting, listJobPostings } from '@/lib/db/repos/job-postings';
+import { listJobPostings } from '@/lib/db/repos/job-postings';
 import { getRecruiter } from '@/lib/db/repos/recruiters';
 import { getSite } from '@/lib/db/repos/sites';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -32,25 +32,57 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  if (!(await getApiUser())) return unauthorizedResponse();
   const { id } = await context.params;
 
+  // ── Lectures en parallèle, décisions dans l'ordre d'origine ────────────────
+  //
+  // Tout ce qui ne dépend que de l'identifiant part en même temps que
+  // l'authentification ; le site et le référent partent dès que la campagne
+  // est connue. Les statuts rendus ne changent pas : 401, puis l'échec de la
+  // campagne (503/500), puis 404, puis les autres échecs — dans cet ordre.
+  // Chaque promesse porte un `catch` muet pour qu'un rejet qu'on n'attend plus
+  // (401, 404) ne remonte pas en « unhandled rejection » ; celles qu'on attend
+  // lèvent toujours à l'endroit prévu.
+  const userP = getApiUser();
+  const campaignP = getCampaign(id);
+  const settingsP = getAppSettings().catch(() => null);
+  const applicationEmailP = settingsP.then((settings) =>
+    resolveCampaignReceptionAddress(id, settings?.intakeEmail),
+  );
+  const previousP = listJobPostings(id, 'apec');
+  // Fail-soft : la table du jobboard peut être absente d'une installation qui
+  // n'a jamais activé la démonstration. Un panneau APEC vide vaut mieux qu'un
+  // panneau en erreur.
+  const jobPostP = getJobPost(id).catch(() => null);
+  // Le code INSEE se saisit une fois sur le site ; sans site, le champ reste
+  // vide et l'écran le demande.
+  const siteP = campaignP.then((c) =>
+    c?.siteId ? getSite(c.siteId).catch(() => null) : null,
+  );
+  const ownerP = campaignP.then((c) =>
+    c?.ownerUserId ? getRecruiter(c.ownerUserId).catch(() => null) : null,
+  );
+  for (const p of [campaignP, applicationEmailP, previousP, siteP, ownerP]) {
+    void p.catch(() => undefined);
+  }
+
+  if (!(await userP)) return unauthorizedResponse();
+
   try {
-    const campaign = await getCampaign(id);
+    const campaign = await campaignP;
     if (!campaign) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
 
-    const settings = await getAppSettings().catch(() => null);
+    const settings = await settingsP;
     const config = settings?.adepConfig ?? DEFAULT_ADEP_CONFIG;
-    const applicationEmail =
-      (await resolveCampaignReceptionAddress(id, settings?.intakeEmail)) ?? '';
+    const applicationEmail = (await applicationEmailP) ?? '';
 
-    // Le code INSEE se saisit une fois sur le site ; sans site, le champ reste
-    // vide et l'écran le demande.
-    const site = campaign.siteId ? await getSite(campaign.siteId).catch(() => null) : null;
+    const site = await siteP;
 
-    const previous = await listJobPostings(id, 'apec');
+    // Une seule lecture de l'historique : la tentative COURANTE est la plus
+    // récente (`getCurrentJobPosting` ne fait rien d'autre que `list[0]`).
+    const previous = await previousP;
     const attempt = nextAttempt(previous.map((p) => p.clientReference));
     const clientReference = buildClientReference(id, attempt);
 
@@ -59,11 +91,7 @@ export async function GET(
     // rien ici — rédiger à l'ouverture d'un panneau serait écrire à la place de
     // quelqu'un, et le ferait à chaque rechargement de l'écran. La
     // rédaction des textes vit dans la sous-route `offer-text`.
-    //
-    // Fail-soft : la table du jobboard peut être absente d'une installation qui
-    // n'a jamais activé la démonstration. Un panneau APEC vide vaut mieux qu'un
-    // panneau en erreur.
-    const jobPost = await getJobPost(id).catch(() => null);
+    const jobPost = await jobPostP;
     const prefill = prefillFromJobPost(jobPost);
 
     const draft = buildAdepDraft({
@@ -84,9 +112,7 @@ export async function GET(
     for (const missing of missingAdepSettings(config)) {
       blockers.push(`Réglages APEC du cabinet incomplets : ${missing}.`);
     }
-    const owner = campaign.ownerUserId
-      ? await getRecruiter(campaign.ownerUserId).catch(() => null)
-      : null;
+    const owner = await ownerP;
     if (!owner) {
       blockers.push(
         "Cette campagne n'a pas de recruteur référent : l'Apec exige l'identifiant du recruteur qui recevra les candidatures.",
@@ -117,7 +143,7 @@ export async function GET(
       owner: owner
         ? { id: owner.id, displayName: owner.displayName, hasAdepNumeroDossier: owner.hasAdepNumeroDossier }
         : null,
-      posting: await getCurrentJobPosting(id, 'apec'),
+      posting: previous[0] ?? null,
       history: previous,
     });
   } catch (err) {

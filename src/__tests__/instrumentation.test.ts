@@ -21,6 +21,29 @@ describe('instrumentation.register — démarrage du scheduler au boot', () => {
     expect(scheduler.ensureSchedulerStarted).toHaveBeenCalledTimes(1);
   });
 
+  it('Vercel → sort AVANT d’importer le scheduler (démarrage à froid)', async () => {
+    process.env.NEXT_RUNTIME = 'nodejs';
+    const previous = process.env.VERCEL;
+    process.env.VERCEL = '1';
+    vi.resetModules();
+    const imported = vi.fn();
+    vi.doMock('@/lib/imap/scheduler', () => {
+      imported();
+      return scheduler;
+    });
+    try {
+      const { register } = await import('@/instrumentation');
+      await register();
+      expect(imported).not.toHaveBeenCalled();
+      expect(scheduler.ensureSchedulerStarted).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = previous;
+      vi.doUnmock('@/lib/imap/scheduler');
+      vi.resetModules();
+    }
+  });
+
   it('runtime edge → ne démarre PAS (IMAP = Node only)', async () => {
     process.env.NEXT_RUNTIME = 'edge';
     const { register } = await import('@/instrumentation');

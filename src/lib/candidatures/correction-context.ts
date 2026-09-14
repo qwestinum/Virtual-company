@@ -11,15 +11,23 @@
  */
 
 import {
+  INTERVIEW_MARKER_ACTION,
+  VALIDATION_MARKER_ACTION,
+} from '@/lib/candidatures/decision-markers';
+import {
   correctionNoticesFor,
   correctionOptionsFor,
   resolveCurrentDecision,
 } from '@/lib/candidatures/correction-options';
-import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
+import {
+  listJournalEntriesByActions,
+  type JournalEntry,
+} from '@/lib/db/repos/journal';
 import {
   CANDIDATE_STAGE_LABELS,
   type CandidateStage,
 } from '@/lib/reporting/candidate-stage';
+import { pickActions, unionActions } from '@/lib/reporting/journal-preload';
 import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
 import { bookingLinkStateForAnalysis } from '@/lib/scheduling-host/campaign-booking';
 import type {
@@ -33,6 +41,14 @@ const HITL_SENT_ACTION = 'hitl_validation_sent';
 const HITL_NOT_SENT_ACTION = 'hitl_mail_not_sent';
 const OUTREACH_ACTION = 'imap_outreach_mail';
 const DISMISSED_ACTION = 'candidature_dismissed';
+
+/** Actions du journal dont se tirent les faits d'envoi. */
+const MAIL_FACT_ACTIONS: readonly string[] = [
+  HITL_SENT_ACTION,
+  HITL_NOT_SENT_ACTION,
+  OUTREACH_ACTION,
+  DISMISSED_ACTION,
+];
 
 function frDate(iso: string): string {
   const d = new Date(iso);
@@ -70,6 +86,8 @@ type MailFacts = {
 
 async function loadMailFacts(
   analysis: CandidateAnalysisSummary,
+  /** Lecture du journal du MÊME périmètre, couvrant `MAIL_FACT_ACTIONS`. */
+  journal: Promise<JournalEntry[]>,
 ): Promise<MailFacts> {
   const facts: MailFacts = {
     sentAt: null,
@@ -77,10 +95,9 @@ async function loadMailFacts(
     notSentCause: null,
     hitlDecidedAt: null,
   };
-  const entries = await listJournalEntriesByActions(
-    [HITL_SENT_ACTION, HITL_NOT_SENT_ACTION, OUTREACH_ACTION, DISMISSED_ACTION],
-    { campaignId: analysis.campaignId ?? undefined },
-  ).catch(() => []);
+  const entries = await journal
+    .then((all) => pickActions(all, MAIL_FACT_ACTIONS))
+    .catch(() => []);
 
   // Journal DESC : la première occurrence par fait est la plus récente.
   for (const e of entries) {
@@ -169,8 +186,34 @@ function mailSideEffects(
 export async function loadDecisionCorrectionContext(
   analysis: CandidateAnalysisSummary,
 ): Promise<DecisionCorrectionContext> {
+  // ── Une vague de lectures ──────────────────────────────────────────────
+  //
+  // Les faits d'envoi, l'état du lien et le rendez-vous ne dépendent que de
+  // l'analyse : ils partent AVEC les signaux d'étape au lieu de les attendre.
+  // Chacun garde son repli (aucun ne rejette) ; ils ne servent que si une
+  // décision est corrigible. Le journal est lu UNE fois pour les marqueurs
+  // d'étape et les faits d'envoi — même périmètre de campagne.
+  const scope = analysis.campaignId ?? undefined;
+  const journalP = listJournalEntriesByActions(
+    // Les marqueurs d'étape (mêmes actions que `STAGE_MARKER_ACTIONS`) + les
+    // faits d'envoi.
+    unionActions(
+      [INTERVIEW_MARKER_ACTION, VALIDATION_MARKER_ACTION],
+      MAIL_FACT_ACTIONS,
+    ),
+    { campaignId: scope },
+  );
+  void journalP.catch(() => undefined);
+  const factsP = loadMailFacts(analysis, journalP);
+  const linkStateP = bookingLinkStateForAnalysis(analysis.campaignId, analysis.id);
+  const scheduledP = loadScheduledInterview(analysis.uid);
+  for (const p of [factsP, linkStateP, scheduledP]) {
+    void p.catch(() => undefined);
+  }
+
   const signals = await loadStageSignals(
     analysis.campaignId ? { campaignId: analysis.campaignId } : {},
+    { journal: journalP },
   );
   const stage: CandidateStage = stageFor(analysis, signals);
   const current = resolveCurrentDecision({
@@ -202,9 +245,9 @@ export async function loadDecisionCorrectionContext(
   }
 
   const [facts, linkState, scheduled] = await Promise.all([
-    loadMailFacts(analysis),
-    bookingLinkStateForAnalysis(analysis.campaignId, analysis.id),
-    loadScheduledInterview(analysis.uid),
+    factsP,
+    linkStateP,
+    scheduledP,
   ]);
 
   const sideEffects = mailSideEffects(

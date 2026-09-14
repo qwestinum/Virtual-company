@@ -109,6 +109,44 @@ function isTableMissing(err: { code?: string; message?: string }): boolean {
 }
 
 /**
+ * Validations OUVERTES (pending/sending) portant un uid d'analyse donné, les
+ * plus anciennes d'abord — le sous-ensemble exact de `listPendingValidations`
+ * pour cet uid, lu par un filtre en base au lieu de la file entière (le
+ * classement sans suite le relisait pour CHAQUE dossier d'une clôture).
+ * Exhaustif : pagination par clé. Même mode dégradé (table absente, base non
+ * configurée ⇒ liste vide).
+ */
+export async function listOpenValidationsForUid(uid: string): Promise<PendingValidation[]> {
+  try {
+    const rows = await fetchAllKeyset<PendingValidationRow>({
+      cursorOf: (row) => row.id,
+      fetchPage: async (afterId, limit) => {
+        let query = requireServerSupabase()
+          .from(TABLE)
+          .select('*')
+          .in('status', ['pending', 'sending'])
+          .eq('payload->>uid', uid);
+        if (afterId !== null) query = query.gt('id', afterId);
+        const { data, error } = await query
+          .order('id', { ascending: true })
+          .limit(limit);
+        if (error) {
+          if (isTableMissing(error)) return [];
+          throw new Error(`listOpenValidationsForUid: ${error.message}`);
+        }
+        return (data ?? []) as PendingValidationRow[];
+      },
+    });
+    return rows
+      .map((r) => rowToDomain(r))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return [];
+    throw err;
+  }
+}
+
+/**
  * Validations en attente, les plus anciennes d'abord. Inclut `sending`
  * (réservation d'envoi en cours, état de quelques secondes — ou ≤ TTL 5 min
  * après un crash) : pour TOUS les lecteurs (compteurs zone grise, stage,

@@ -40,14 +40,55 @@ export type AssembledCampaignReport = {
 };
 
 /**
+ * La campagne d'un rapport : trouvée ET clôturée, sinon `null` (404 côté
+ * appelant). Exposée pour que la route PDF puisse consulter son cache — dont la
+ * clé ne dépend QUE de la campagne — avant d'assembler quoi que ce soit.
+ */
+export async function loadReportableCampaign(
+  campaignId: string,
+): Promise<ActiveCampaign | null> {
+  const campaign = await getCampaign(campaignId);
+  if (!campaign || campaign.status !== 'closed') return null;
+  return campaign;
+}
+
+/**
+ * Nom du fichier PDF (et donc clé du cache) : intitulé de poste + date de
+ * clôture, rien d'autre. Identique à `AssembledCampaignReport.fileName`.
+ */
+export function campaignReportFileNameOf(campaign: ActiveCampaign): string {
+  return campaignReportFileName(
+    jobTitleOf(campaign),
+    campaign.closedAt ?? campaign.updatedAt,
+  );
+}
+
+/**
  * Assemble le rapport d'une campagne CLÔTURÉE. Retourne null si la campagne
  * est introuvable ou non clôturée (l'appelant traduit en 404).
+ *
+ * `preloaded` : la campagne déjà relue par `loadReportableCampaign` sur la même
+ * requête — on ne la relit pas.
  */
 export async function assembleCampaignReport(
   campaignId: string,
+  preloaded?: { campaign: ActiveCampaign },
 ): Promise<AssembledCampaignReport | null> {
-  const campaign = await getCampaign(campaignId);
-  if (!campaign || campaign.status !== 'closed') return null;
+  const campaign = preloaded
+    ? preloaded.campaign
+    : await loadReportableCampaign(campaignId);
+  if (!campaign) return null;
+
+  // Donneur d'ordre et site partent AVEC les autres lectures ; ils sont
+  // attendus APRÈS, pour que l'échec éventuel d'une lecture principale reste
+  // celui qui est rapporté (même précédence qu'en séquence). Rejets muets tant
+  // qu'on ne les attend pas.
+  const donneurP = campaign.donneurOrdreId
+    ? getDonneurOrdre(campaign.donneurOrdreId)
+    : Promise.resolve(null);
+  const siteP = campaign.siteId ? getSite(campaign.siteId) : Promise.resolve(null);
+  void donneurP.catch(() => undefined);
+  void siteP.catch(() => undefined);
 
   const [analyses, signals, sentJournal, vivierCounts] = await Promise.all([
     // EXHAUSTIF (audit C8/A10) : un rapport de campagne à > 1000 candidatures
@@ -66,10 +107,8 @@ export async function assembleCampaignReport(
     analysisToDatum(a, signals),
   );
 
-  const donneur = campaign.donneurOrdreId
-    ? await getDonneurOrdre(campaign.donneurOrdreId)
-    : null;
-  const site = campaign.siteId ? await getSite(campaign.siteId) : null;
+  const donneur = await donneurP;
+  const site = await siteP;
 
   const launchedAt = campaign.launchedAt ?? campaign.createdAt;
   const closedAt = campaign.closedAt ?? campaign.updatedAt;

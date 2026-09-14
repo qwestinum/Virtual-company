@@ -20,8 +20,8 @@ import { z } from 'zod';
 
 import {
   forbiddenResponse,
-  getAdminApiUser,
   getApiUser,
+  isAdminApiUser,
   unauthorizedResponse,
 } from '@/lib/auth/require-api-user';
 import { getRecruiter } from '@/lib/db/repos/recruiters';
@@ -82,7 +82,9 @@ async function guard(targetId: string): Promise<NextResponse | null> {
   const user = await getApiUser();
   if (!user) return unauthorizedResponse();
   if (user.id === targetId) return null;
-  return (await getAdminApiUser()) ? null : forbiddenResponse();
+  // Même règle qu'avant, sur la session DÉJÀ vérifiée : pas de second
+  // aller-retour d'authentification pour un admin qui ouvre l'agenda d'un autre.
+  return (await isAdminApiUser(user)) ? null : forbiddenResponse();
 }
 
 export async function GET(
@@ -109,10 +111,12 @@ export async function GET(
     }
     const from = new Date().toISOString();
     const to = new Date(Date.now() + PREVIEW_DAYS * 86_400_000).toISOString();
+    // La ressource vient d'être lue : règles, exceptions et aperçu partent
+    // dessus, sans la relire ni rechercher son identifiant.
     const [rules, exceptions, preview] = await Promise.all([
-      listWeeklyRules(id),
-      listExceptions(id, { from: from.slice(0, 10) }),
-      previewSlots(id, { from, to }),
+      listWeeklyRules(resource),
+      listExceptions(resource, { from: from.slice(0, 10) }),
+      previewSlots(resource, { from, to }),
     ]);
     return NextResponse.json({
       configured: true,
@@ -189,44 +193,54 @@ export async function PUT(
         : {}),
     });
 
-    if (parsed.rules) await setWeeklyRules(id, parsed.rules);
+    if (parsed.rules) await setWeeklyRules(resource, parsed.rules);
 
     if (parsed.exceptions) {
       // Remplacement : on retire ce qui n'est plus là, on ajoute le reste.
-      const existing = await listExceptions(id);
+      const existing = await listExceptions(resource);
       const wanted = new Set(
         parsed.exceptions.map(
           (e) => `${e.day}|${e.startMinute ?? ''}|${e.endMinute ?? ''}`,
         ),
       );
-      for (const ex of existing) {
-        const key = `${ex.day}|${ex.startMinute ?? ''}|${ex.endMinute ?? ''}`;
-        if (!wanted.has(key)) await removeException(ex.id);
-      }
+      // Retraits indépendants entre eux, puis ajouts indépendants entre eux :
+      // chaque groupe part en une vague, l'ordre retraits → ajouts est gardé.
+      await Promise.all(
+        existing
+          .filter(
+            (ex) => !wanted.has(`${ex.day}|${ex.startMinute ?? ''}|${ex.endMinute ?? ''}`),
+          )
+          .map((ex) => removeException(ex.id)),
+      );
       const known = new Set(
         existing.map(
           (ex) => `${ex.day}|${ex.startMinute ?? ''}|${ex.endMinute ?? ''}`,
         ),
       );
-      for (const ex of parsed.exceptions) {
-        const key = `${ex.day}|${ex.startMinute ?? ''}|${ex.endMinute ?? ''}`;
-        if (!known.has(key)) {
-          await addException(id, {
-            day: ex.day,
-            startMinute: ex.startMinute ?? null,
-            endMinute: ex.endMinute ?? null,
-            label: ex.label ?? null,
-          });
-        }
-      }
+      await Promise.all(
+        parsed.exceptions
+          .filter(
+            (ex) => !known.has(`${ex.day}|${ex.startMinute ?? ''}|${ex.endMinute ?? ''}`),
+          )
+          .map((ex) =>
+            addException(resource, {
+              day: ex.day,
+              startMinute: ex.startMinute ?? null,
+              endMinute: ex.endMinute ?? null,
+              label: ex.label ?? null,
+            }),
+          ),
+      );
     }
 
     const from = new Date().toISOString();
     const to = new Date(Date.now() + PREVIEW_DAYS * 86_400_000).toISOString();
+    // La ressource vient d'être lue : règles, exceptions et aperçu partent
+    // dessus, sans la relire ni rechercher son identifiant.
     const [rules, exceptions, preview] = await Promise.all([
-      listWeeklyRules(id),
-      listExceptions(id, { from: from.slice(0, 10) }),
-      previewSlots(id, { from, to }),
+      listWeeklyRules(resource),
+      listExceptions(resource, { from: from.slice(0, 10) }),
+      previewSlots(resource, { from, to }),
     ]);
     return NextResponse.json({
       configured: true,

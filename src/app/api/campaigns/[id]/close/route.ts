@@ -17,11 +17,10 @@ import { z } from 'zod';
 import { getApiUser } from '@/lib/auth/require-api-user';
 import { purgeCampaignSourcing } from '@/lib/sourcing/server/maintenance';
 import {
-  dismissOpenCandidatures,
+  closeWithDismissals,
   type BatchDismissalSummary,
 } from '@/lib/candidatures/dismissal-batch';
 import { getCampaign, patchCampaign } from '@/lib/db/repos/campaigns';
-import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 
 export const runtime = 'nodejs';
@@ -63,9 +62,12 @@ export async function POST(
     }
 
     let summary: BatchDismissalSummary | null = null;
+    // Au-delà de 20 dossiers, le lot part sur le rail : la réponse le DIT
+    // (`dismissalQueued`) plutôt que de rendre un résumé qui n'existe pas encore.
+    let dismissalQueued: { total: number } | null = null;
     if (parsed.dismissOpen) {
       const user = await getApiUser();
-      summary = await dismissOpenCandidatures(id, {
+      const outcome = await closeWithDismissals(id, {
         reason: parsed.reason ?? 'campagne_cloturee',
         sendMail: parsed.sendMail ?? false,
         dismissedByUser: user
@@ -73,12 +75,8 @@ export async function POST(
           : null,
         actor: 'user',
       });
-      await appendJournalEntry({
-        action: 'campaign_closure_dismissals',
-        actor: 'user',
-        campaignId: id,
-        payload: { reason: parsed.reason ?? 'campagne_cloturee', ...summary },
-      });
+      if (outcome.kind === 'done') summary = outcome.summary;
+      else dismissalQueued = { total: outcome.total };
     }
 
     // Sourcing : les profils trouvés pour cette campagne ne lui survivent pas
@@ -86,7 +84,7 @@ export async function POST(
     // rattrape une purge manquée.
     after(() => purgeCampaignSourcing(id, 'closure'));
 
-    return NextResponse.json({ campaign: updated, summary });
+    return NextResponse.json({ campaign: updated, summary, dismissalQueued });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json(

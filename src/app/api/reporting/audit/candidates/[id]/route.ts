@@ -7,14 +7,25 @@ import { NextResponse } from 'next/server';
 
 import { getArtifactMeta } from '@/lib/db/repos/artifacts';
 import { getCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
+import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { findContactedProposalByEmail } from '@/lib/db/repos/vivier-preselection';
 import { buildCandidateTimeline } from '@/lib/reporting/candidate-timeline';
+import { unionActions } from '@/lib/reporting/journal-preload';
 import {
+  CANDIDATE_MARKER_ACTIONS,
   journeyFromSignals,
   loadJourneySignals,
 } from '@/lib/reporting/journey-lookup';
-import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
-import { extractCandidateTimelineFacts } from '@/lib/reporting/timeline-facts';
+import {
+  loadStageSignals,
+  STAGE_MARKER_ACTIONS,
+  stageFor,
+} from '@/lib/reporting/stage-signals';
+import {
+  extractCandidateTimelineFacts,
+  TIMELINE_JOURNAL_ACTIONS,
+} from '@/lib/reporting/timeline-facts';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
   approachIdOfAnalysis,
@@ -62,10 +73,57 @@ export async function GET(
     if (!candidate) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
-    // Enrichit avec le parcours dérivé du journal + file HITL (lecture seule).
-    const signals = await loadJourneySignals({
-      campaignId: candidate.campaignId ?? undefined,
-    });
+    // ── Une vague de lectures, au lieu de trois étages ─────────────────────
+    //
+    // Parcours, frise et étape dérivent tous du journal sur le MÊME périmètre
+    // (la campagne de l'analyse) et, pour deux d'entre eux, de la file HITL :
+    // on lit l'UNION des actions une fois et la file une fois, chaque
+    // dérivation reprend ses actions et garde son propre repli en cas d'échec.
+    // Seule la lecture vivier peut faire échouer la requête — comme avant.
+    const scope = candidate.campaignId ?? undefined;
+    const journalP = listJournalEntriesByActions(
+      unionActions(
+        CANDIDATE_MARKER_ACTIONS,
+        TIMELINE_JOURNAL_ACTIONS,
+        STAGE_MARKER_ACTIONS,
+      ),
+      { campaignId: scope },
+    );
+    const pendingP = listPendingValidations();
+    // Annotation factuelle « issu du vivier » (§6.3), dérivée du proposal —
+    // visible par le recruteur. Rapprochement EXACT par email.
+    const vivierOriginP =
+      candidate.campaignId && candidate.candidateEmail
+        ? findContactedProposalByEmail(
+            candidate.campaignId,
+            candidate.candidateEmail,
+          )
+        : Promise.resolve(null);
+    for (const p of [journalP, pendingP, vivierOriginP]) {
+      void p.catch(() => undefined);
+    }
+    // Pièces + frise datée (niveau 3). Le CV est référencé par id (lien signé à
+    // la demande). La frise croise analyse + journal + vivier + réservation.
+    // `stage` = étape COURANTE (même dérivation que la liste) : le panneau/la
+    // page s'en servent pour des actions à jour après chaque clic, sans
+    // dépendre du snapshot de liste.
+    const [signals, vivierOrigin, cvArtifactId, timelineFacts, stageSignals] =
+      await Promise.all([
+        // Enrichit avec le parcours dérivé du journal + file HITL (lecture seule).
+        loadJourneySignals({
+          campaignId: scope,
+          preloaded: { journal: journalP, pending: pendingP },
+        }),
+        vivierOriginP,
+        resolveCvArtifactId(candidate.id),
+        extractCandidateTimelineFacts(candidate, vivierOriginP, {
+          journal: journalP,
+        }),
+        loadStageSignals(
+          { campaignId: scope },
+          { journal: journalP, pending: pendingP },
+        ),
+      ]);
     const journey = journeyFromSignals(
       signals,
       candidate.uid,
@@ -74,25 +132,6 @@ export async function GET(
       candidate.decidedBy,
       candidate.dismissedAt !== null,
     );
-    // Annotation factuelle « issu du vivier » (§6.3), dérivée du proposal —
-    // visible par le recruteur. Rapprochement EXACT par email.
-    const vivierOrigin =
-      candidate.campaignId && candidate.candidateEmail
-        ? await findContactedProposalByEmail(
-            candidate.campaignId,
-            candidate.candidateEmail,
-          )
-        : null;
-    // Pièces + frise datée (niveau 3). Le CV est référencé par id (lien signé à
-    // la demande). La frise croise analyse + journal + vivier + réservation.
-    // `stage` = étape COURANTE (même dérivation que la liste) : le panneau/la
-    // page s'en servent pour des actions à jour après chaque clic, sans
-    // dépendre du snapshot de liste.
-    const [cvArtifactId, timelineFacts, stageSignals] = await Promise.all([
-      resolveCvArtifactId(candidate.id),
-      extractCandidateTimelineFacts(candidate, vivierOrigin),
-      loadStageSignals({ campaignId: candidate.campaignId ?? undefined }),
-    ]);
     const timeline = buildCandidateTimeline(timelineFacts);
     const stage = stageFor(candidate, stageSignals);
     return NextResponse.json({

@@ -11,7 +11,11 @@ import { NextResponse } from 'next/server';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { renderCampaignReportPdf } from '@/lib/reporting/campaign-report-pdf';
-import { assembleCampaignReport } from '@/lib/reporting/campaign-report-loader';
+import {
+  assembleCampaignReport,
+  campaignReportFileNameOf,
+  loadReportableCampaign,
+} from '@/lib/reporting/campaign-report-loader';
 import { downloadArtifact, uploadArtifactBinary } from '@/lib/storage/blob';
 
 export const runtime = 'nodejs';
@@ -25,15 +29,32 @@ export async function GET(
   const force = new URL(request.url).searchParams.get('force') === '1';
 
   try {
-    const report = await assembleCampaignReport(id);
+    const campaign = await loadReportableCampaign(id);
+    if (!campaign) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+    // La clé du cache ne dépend que de la campagne (intitulé + date de
+    // clôture) : on la consulte AVANT d'assembler le rapport, qui n'est
+    // nécessaire qu'au rendu. Un cache présent est resservi tel quel.
+    const cachePath = `campagnes/${id}/${campaignReportFileNameOf(campaign)}`;
+    // `undefined` = consultation impossible (on la refera à sa place d'origine).
+    let early: Buffer | null | undefined = undefined;
+    if (!force) {
+      early = await downloadArtifact(cachePath).catch(() => undefined);
+      if (early) {
+        return pdfResponse(early, campaignReportFileNameOf(campaign), 'hit');
+      }
+    }
+
+    const report = await assembleCampaignReport(id, { campaign });
     if (!report) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
     const { data, fileName } = report;
-    const cachePath = `campagnes/${id}/${fileName}`;
 
-    // Cache stable : on resert le PDF stocké (sauf régénération forcée).
-    if (!force) {
+    // Cache stable : on resert le PDF stocké (sauf régénération forcée). Déjà
+    // consulté plus haut ; on ne recommence que si cette consultation a échoué.
+    if (!force && early === undefined) {
       const cached = await downloadArtifact(cachePath);
       if (cached) return pdfResponse(cached, fileName, 'hit');
     }

@@ -130,7 +130,8 @@ export async function recruiterCanHostBookings(
     await ensureSchedulingConfigured();
     const resource = await getResource(userId);
     if (!resource || !resource.isActive) return false;
-    const rules = await listWeeklyRules(userId);
+    // La ressource est déjà lue : ses règles partent sur son identifiant.
+    const rules = await listWeeklyRules(resource);
     return rules.length > 0;
   } catch {
     return false;

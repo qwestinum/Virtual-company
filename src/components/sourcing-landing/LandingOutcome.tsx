@@ -30,7 +30,7 @@ export function LandingOutcome({ outcome, organizationName, privacyContact }: { 
           <p className="font-body text-[14px] text-stone-700">
             {outcome.kind === 'sent'
               ? `Vous allez recevoir un email pour choisir un créneau d’entretien${outcome.recruiterName ? ` avec ${outcome.recruiterName}` : ''}.`
-              : 'Nous revenons vers vous par email très prochainement.'}
+              : 'Vous recevrez un email pour choisir un créneau.'}
           </p>
           {dataLine}
         </>

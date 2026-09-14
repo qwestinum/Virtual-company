@@ -9,6 +9,7 @@
 
 import { chunk, fetchAllKeyset } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
+import { aggregateSourcingCounters } from '@/lib/sourcing/counters';
 import type {
   ExaSnapshot,
   QueryMethod,
@@ -288,6 +289,109 @@ export async function countersForCampaign(campaignId: string): Promise<SourcingC
     lastSearchAt: ((last.data ?? [])[0] as { created_at: string } | undefined)?.created_at ?? null,
   };
 }
+
+/**
+ * Lecture EXHAUSTIVE des lignes d'une table pour un ensemble de campagnes :
+ * `in` découpé en lots (lus ensemble, concaténés dans l'ordre des lots), chaque
+ * lot paginé en keyset sur la PK `id`. `page` pose les filtres métier.
+ */
+async function readAllForCampaigns<Row extends { id: string }>(
+  campaignIds: readonly string[],
+  page: (part: string[], after: string | null, limit: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  label: string,
+): Promise<Row[]> {
+  const parts = await Promise.all(
+    chunk([...campaignIds], IN_CHUNK).map((part) =>
+      fetchAllKeyset<Row>({
+        fetchPage: async (after, limit) => {
+          const { data, error } = await page(part, after, limit);
+          if (error) throw new Error(`${label}: ${error.message}`);
+          return (data ?? []) as Row[];
+        },
+        cursorOf: (r) => r.id,
+      }),
+    ),
+  );
+  return parts.flat();
+}
+
+/**
+ * Même résultat que `countersForCampaign` appelé pour chaque campagne, en
+ * quatre lectures groupées (profils, exclusions, approches, recherches) au lieu
+ * de cinq requêtes PAR campagne. Le décompte se fait en JS
+ * (`aggregateSourcingCounters`) sur des projections minimales.
+ */
+export async function countersForCampaigns(
+  campaignIds: readonly string[],
+): Promise<Map<string, SourcingCounters>> {
+  const ids = [...new Set(campaignIds)];
+  if (ids.length === 0) return aggregateSourcingCounters([], EMPTY_COUNTER_ROWS);
+  const db = requireServerSupabase();
+  const [shownProfiles, declinedExclusions, approaches, searches] = await Promise.all([
+    readAllForCampaigns<{ id: string; campaign_id: string }>(
+      ids,
+      (part, after, limit) => {
+        let q = db
+          .from('sourcing_profiles')
+          .select('id, campaign_id')
+          .in('campaign_id', part)
+          .in('state', ['to_review', 'contacted'])
+          .order('id')
+          .limit(limit);
+        if (after) q = q.gt('id', after);
+        return q;
+      },
+      'countersForCampaigns/profiles',
+    ),
+    readAllForCampaigns<{ id: string; campaign_id: string | null }>(
+      ids,
+      (part, after, limit) => {
+        let q = db
+          .from('sourcing_exclusions')
+          .select('id, campaign_id')
+          .in('campaign_id', part)
+          .eq('reason', 'declined')
+          .order('id')
+          .limit(limit);
+        if (after) q = q.gt('id', after);
+        return q;
+      },
+      'countersForCampaigns/exclusions',
+    ),
+    readAllForCampaigns<{ id: string; campaign_id: string; status: string }>(
+      ids,
+      (part, after, limit) => {
+        let q = db
+          .from('sourcing_approaches')
+          .select('id, campaign_id, status')
+          .in('campaign_id', part)
+          .neq('status', 'revoked')
+          .order('id')
+          .limit(limit);
+        if (after) q = q.gt('id', after);
+        return q;
+      },
+      'countersForCampaigns/approaches',
+    ),
+    readAllForCampaigns<{ id: string; campaign_id: string; created_at: string }>(
+      ids,
+      (part, after, limit) => {
+        let q = db
+          .from('sourcing_searches')
+          .select('id, campaign_id, created_at')
+          .in('campaign_id', part)
+          .order('id')
+          .limit(limit);
+        if (after) q = q.gt('id', after);
+        return q;
+      },
+      'countersForCampaigns/searches',
+    ),
+  ]);
+  return aggregateSourcingCounters(ids, { shownProfiles, declinedExclusions, approaches, searches });
+}
+
+const EMPTY_COUNTER_ROWS = { shownProfiles: [], declinedExclusions: [], approaches: [], searches: [] };
 
 /** Coûts du moteur par recherche depuis une date — donnée d'ADMINISTRATION. */
 export async function listSearchCostsSince(sinceIso: string): Promise<{ createdAt: string; exaCostUsd: number | null }[]> {

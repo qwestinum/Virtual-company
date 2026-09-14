@@ -52,6 +52,7 @@ export {
   removeException,
   setWeeklyRules,
   updateResource,
+  type ResourceHandle,
 } from './resources';
 
 // Cibles : l'alias re-pointable entre un lien et une ressource
@@ -59,6 +60,7 @@ export {
   createTarget,
   getTarget,
   getTargetById,
+  getTargets,
   getTargetImpact,
   listOrphanTargets,
   repointTarget,
@@ -83,6 +85,7 @@ export {
   getBookingByManageToken,
   getConfirmedBookingByLink,
   listBookings,
+  listConfirmedBookingsByLinkTokens,
   listSlotsForLink,
   listSlotsForManageToken,
   rescheduleBooking,

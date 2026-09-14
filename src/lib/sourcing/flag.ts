@@ -32,10 +32,13 @@ export function isSourcingDeploymentEnabled(
 }
 
 /** Étages 1 et 2. Ne lève jamais : toute erreur rend `false`. */
-export async function isSourcingEnabled(): Promise<boolean> {
+export async function isSourcingEnabled(
+  /** Réglages déjà demandés par l'appelant (évite une seconde lecture). */
+  preloadedSettings?: Promise<Awaited<ReturnType<typeof getAppSettings>>>,
+): Promise<boolean> {
   if (!isSourcingDeploymentEnabled()) return false;
   try {
-    const settings = await getAppSettings();
+    const settings = await (preloadedSettings ?? getAppSettings());
     return settings?.sourcingConfig.enabled === true;
   } catch {
     return false;

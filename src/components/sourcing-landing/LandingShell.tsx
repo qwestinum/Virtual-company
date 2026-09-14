@@ -51,7 +51,7 @@ const NOTICES = {
   unavailable: { title: 'Cette invitation n’est plus disponible.', body: null },
   closed: { title: 'Cette offre n’est plus ouverte.', body: 'Merci de l’intérêt que vous lui avez porté.' },
   paused: { title: 'Ce recrutement est momentanément suspendu, votre lien reste valable.', body: 'Vous pourrez y revenir dès sa reprise.' },
-  received: { title: 'Votre candidature est bien reçue.', body: 'Nous revenons vers vous par email.' },
+  received: { title: 'Votre candidature est bien reçue.', body: 'Vous recevrez un email pour choisir un créneau.' },
   // Ce que voit un robot d'aperçu : ni poste, ni message, ni donnée de profil.
   preview: { title: 'Invitation à candidater', body: null },
   rate_limited: { title: 'Trop de tentatives en peu de temps.', body: 'Merci de réessayer dans quelques minutes.' },

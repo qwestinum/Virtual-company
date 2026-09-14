@@ -5,8 +5,15 @@
  *
  * Ordre : débit (fail-closed, avant de lire le corps) → état du lien (le même
  * résolveur que la page) → validation → CV joint stocké → réservation
- * conditionnelle → admission. Une panne d'analyse rend « bien reçue » : la
- * saisie est conservée et le rail reprend.
+ * conditionnelle → réponse « bien reçue ».
+ *
+ * L'ADMISSION (analyse, CV structuré, invitation) ne tourne PLUS ici : elle
+ * part sur le rail de reprise (`runSourcingMaintenance`) dès que la
+ * réservation et la saisie sont durablement en base. La personne n'attend plus
+ * une analyse complète (LLM, extraction, PDF, mail) derrière son clic — la
+ * réponse arrive en quelques allers-retours, l'invitation au tick suivant
+ * (diagnostic de latence du 14/09/2026). Le rail étant désormais le SEUL à
+ * admettre, il n'y a plus de route à attendre (cf. `FIRST_ATTEMPT_GRACE_MINUTES`).
  */
 import { NextResponse } from 'next/server';
 
@@ -15,10 +22,8 @@ import { isSupportedCvAttachment } from '@/lib/imap/cv-attachment';
 import { clientIp, consumeQuota } from '@/lib/jobboard/rate-limit';
 import { MAX_CV_BYTES } from '@/lib/jobboard/application-mail';
 import { SubmissionSchema } from '@/lib/sourcing/landing';
-import { admitSourcedCandidate } from '@/lib/sourcing/server/admit';
 import { resolveLandingContext } from '@/lib/sourcing/server/landing-context';
 import { deleteArtifact, uploadArtifactBinary } from '@/lib/storage/blob';
-import { getLandingApproach } from '@/lib/db/repos/sourcing-admission';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -81,17 +86,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   }
 
   const won = await reserveSubmission(approach.id, { ...parsed.data, cv }).catch(() => false);
-  if (!won) {
-    if (cv) await deleteArtifact(cv.storagePath).catch(() => {});
-    return NextResponse.json({ outcome: 'received', firstName: firstName(parsed.data.fullName) });
-  }
-
-  const reserved = await getLandingApproach(approach.id).catch(() => null);
-  const outcome = reserved ? await admitSourcedCandidate(reserved) : { kind: 'deferred' as const, cause: 'reload_failed' };
-  if (outcome.kind === 'closed') return NextResponse.json({ outcome: 'closed' });
-  return NextResponse.json({
-    outcome: outcome.kind === 'admitted' ? 'sent' : 'received',
-    firstName: firstName(parsed.data.fullName),
-    recruiterName: outcome.kind === 'admitted' ? outcome.recruiterName : null,
-  });
+  if (!won && cv) await deleteArtifact(cv.storagePath).catch(() => {});
+  // Gagnée : réservation + saisie sont en base, le rail admet au prochain
+  // passage. Perdue : un envoi précédent l'a déjà faite. Dans les deux cas la
+  // candidature est entre de bonnes mains — une seule réponse.
+  return NextResponse.json({ outcome: 'received', firstName: firstName(parsed.data.fullName) });
 }

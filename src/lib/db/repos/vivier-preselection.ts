@@ -12,6 +12,11 @@ import { fetchAllKeyset } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { VivierPreselectionRow } from '@/lib/db/types';
 import {
+  lastGeneratedByCampaign,
+  planRecencyChunks,
+  type PendingCount,
+} from '@/lib/vivier/pending-recency';
+import {
   reconcilePreselection,
   type ExistingPreselectionRow,
 } from '@/lib/vivier/preselection-reconcile';
@@ -217,6 +222,62 @@ export async function repechageToPreselection(
   return 'identified';
 }
 
+/** Plafond PostgREST d'une lecture, et budget de lignes attendues par lot (marge). */
+const RECENCY_PAGE = 1000;
+const RECENCY_ROW_BUDGET = 900;
+const RECENCY_MAX_IDS = 100;
+
+type RecencyRow = { campaign_id: string; generated_at: string };
+
+/**
+ * Récence : max(generated_at) par campagne (sur les `identified`), calculée en
+ * JS pour ne pas dépendre d'une nouvelle RPC (pas de migration à appliquer).
+ * EXHAUSTIVE : lots dimensionnés sur les compteurs connus et lus ensemble ; un
+ * lot qui revient plein (volume accru entre-temps) est relu campagne par
+ * campagne en keyset sur `candidate_id` (unique à campaign_id fixe).
+ */
+async function loadLastGeneratedAt(
+  supabase: ReturnType<typeof requireServerSupabase>,
+  counts: readonly PendingCount[],
+): Promise<Map<string, string>> {
+  const parts = await Promise.all(
+    planRecencyChunks(counts, RECENCY_ROW_BUDGET, RECENCY_MAX_IDS).map(async (part) => {
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select('campaign_id, generated_at')
+        .eq('state', 'identified')
+        .in('campaign_id', part)
+        .limit(RECENCY_PAGE);
+      if (error) throw new Error(`listPendingByCampaign(récence): ${error.message}`);
+      const rows = (data ?? []) as RecencyRow[];
+      if (rows.length < RECENCY_PAGE) return [rows];
+      return Promise.all(
+        part.map((campaignId) =>
+          fetchAllKeyset<RecencyRow & { candidate_id: string }>({
+            cursorOf: (r) => r.candidate_id,
+            fetchPage: async (afterId, limit) => {
+              let q = supabase
+                .from(TABLE)
+                .select('candidate_id, campaign_id, generated_at')
+                .eq('state', 'identified')
+                .eq('campaign_id', campaignId)
+                .order('candidate_id', { ascending: true })
+                .limit(limit);
+              if (afterId !== null) q = q.gt('candidate_id', afterId);
+              const res = await q;
+              if (res.error) throw new Error(`listPendingByCampaign(récence): ${res.error.message}`);
+              return (res.data ?? []) as (RecencyRow & { candidate_id: string })[];
+            },
+          }),
+        ),
+      );
+    }),
+  );
+  const lastGen = new Map<string, string>();
+  for (const groups of parts) for (const rows of groups) lastGeneratedByCampaign(rows, lastGen);
+  return lastGen;
+}
+
 /** Une campagne avec des prises de contact vivier en attente (worklist §5). */
 export type PendingCampaignSummary = {
   campaignId: string;
@@ -244,28 +305,18 @@ export async function listPendingByCampaign(): Promise<PendingCampaignSummary[]>
   if (counts.length === 0) return [];
 
   const ids = counts.map((c) => c.campaignId);
-  const { data: camps, error: campErr } = await supabase
-    .from('campaigns')
-    .select('id, name')
-    .in('id', ids);
+  // Noms et récence sont indépendants : lus ensemble, erreurs décidées dans
+  // l'ordre d'origine (noms d'abord).
+  // `Promise.resolve` déclenche la requête tout de suite (le builder est paresseux).
+  const namesPromise = Promise.resolve(supabase.from('campaigns').select('id, name').in('id', ids));
+  const lastGenPromise = loadLastGeneratedAt(supabase, counts);
+  lastGenPromise.catch(() => undefined);
+  const { data: camps, error: campErr } = await namesPromise;
   if (campErr) throw new Error(`listPendingByCampaign(noms): ${campErr.message}`);
   const names = new Map(
     ((camps ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]),
   );
-
-  // Récence : max(generated_at) par campagne (sur les `identified`), calculée en
-  // JS pour ne pas dépendre d'une nouvelle RPC (pas de migration à appliquer).
-  const { data: gen, error: genErr } = await supabase
-    .from(TABLE)
-    .select('campaign_id, generated_at')
-    .eq('state', 'identified')
-    .in('campaign_id', ids);
-  if (genErr) throw new Error(`listPendingByCampaign(récence): ${genErr.message}`);
-  const lastGen = new Map<string, string>();
-  for (const r of (gen ?? []) as { campaign_id: string; generated_at: string }[]) {
-    const cur = lastGen.get(r.campaign_id);
-    if (!cur || r.generated_at > cur) lastGen.set(r.campaign_id, r.generated_at);
-  }
+  const lastGen = await lastGenPromise;
 
   return counts
     .map((c) => ({

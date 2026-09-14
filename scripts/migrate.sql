@@ -113,6 +113,16 @@ create index if not exists journal_created_at_idx
 create index if not exists journal_campaign_idx
   on public.journal (campaign_id, created_at desc);
 
+-- Lectures PAR ACTION (diagnostic de latence du 14/09/2026) : fil d'activité
+-- (`listRecentJournalEntriesByActions`), marqueurs d'étape et de parcours
+-- (`listJournalEntriesByActions` — signaux d'étape, rapports, audit), totaux du
+-- Bureau. Sans cet index, chaque `action = ANY(…)` parcourt la table entière
+-- (prod : 24 409 seq scans, 38,7 M tuples lus) — bénin à 2 400 lignes, coût qui
+-- croît avec le journal. `created_at desc` sert à la fois les fenêtres
+-- « les N plus récents » et l'ordre des lectures exhaustives.
+create index if not exists journal_action_created_at_idx
+  on public.journal (action, created_at desc);
+
 -- ──────────────────────────────────────────────────────────────────────
 -- Trigger updated_at pour campaigns + tasks_archived
 -- ──────────────────────────────────────────────────────────────────────

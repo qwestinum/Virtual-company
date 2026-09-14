@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server';
 
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { pollAllMailboxes } from '@/lib/imap/poller';
+import { runQueuedClosureDismissals } from '@/lib/candidatures/dismissal-batch';
 import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 
@@ -53,12 +54,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     const drained = await drainSchedulingEvents();
     // Sourcing : purge des campagnes closes, reprise des admissions en panne.
     const sourcing = await runSourcingMaintenance();
+    // Clôtures de plus de 20 dossiers mises en file (fail-soft).
+    const closureBatches = await runQueuedClosureDismissals();
     return NextResponse.json({
       ok: true,
       polledAt: new Date().toISOString(),
       mailboxesPolled: outcomes.length,
       bookingEvents: drained,
       sourcing,
+      closureBatches,
     });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

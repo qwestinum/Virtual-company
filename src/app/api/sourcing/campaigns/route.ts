@@ -8,10 +8,10 @@ import { NextResponse } from 'next/server';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
   countApproachesSince,
-  countersForCampaign,
+  countersForCampaigns,
   listActiveCampaignsForSourcing,
 } from '@/lib/db/repos/sourcing';
-import { loadReferentContext } from '@/lib/referent/context';
+import { prepareReferentContext } from '@/lib/referent/context';
 import { guardSourcing } from '@/lib/sourcing/server/route-guard';
 import type { SourcingCampaignSummary } from '@/types/sourcing';
 
@@ -28,17 +28,24 @@ export async function GET(): Promise<NextResponse> {
   const user = guard.value;
 
   try {
+    // Ce qui ne dépend pas de la liste des campagnes part tout de suite
+    // (recruteurs, compte du mois) ; la session est celle de la garde, jamais
+    // relue. Les erreurs sont décidées dans l'ordre d'avant : la liste d'abord.
+    const referentContextFor = prepareReferentContext({ user });
+    const myApproachesPromise = countApproachesSince(user.id, startOfMonthParis());
+    myApproachesPromise.catch(() => undefined);
     const campaigns = await listActiveCampaignsForSourcing();
+    const ids = campaigns.map((c) => c.id);
     const [referents, myApproachesThisMonth, counters] = await Promise.all([
-      loadReferentContext(campaigns.map((c) => c.id)),
-      countApproachesSince(user.id, startOfMonthParis()),
-      Promise.all(campaigns.map((c) => countersForCampaign(c.id))),
+      referentContextFor(ids),
+      myApproachesPromise,
+      countersForCampaigns(ids),
     ]);
-    const items: SourcingCampaignSummary[] = campaigns.map((c, i) => ({
+    const items: SourcingCampaignSummary[] = campaigns.map((c) => ({
       campaignId: c.id,
       name: c.name,
       referent: referents.referentByCampaign[c.id] ?? null,
-      ...counters[i]!,
+      ...counters.get(c.id)!,
     }));
     return NextResponse.json(
       { campaigns: items, myApproachesThisMonth },

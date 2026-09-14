@@ -30,6 +30,7 @@
  */
 
 import { pollAllMailboxes } from '@/lib/imap/poller';
+import { runQueuedClosureDismissals } from '@/lib/candidatures/dismissal-batch';
 import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 
@@ -99,6 +100,7 @@ async function runTick(): Promise<void> {
     // rendez-vous pris en local ne délivrerait jamais son briefing.
     await drainSchedulingEvents();
     await runSourcingMaintenance();
+    await runQueuedClosureDismissals();
   } catch (err) {
     // Le poll capture déjà les erreurs par mailbox. Ce catch
     // protège contre un crash en dehors (Supabase down, etc.). On

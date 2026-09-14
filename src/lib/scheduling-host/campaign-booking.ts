@@ -24,19 +24,128 @@ import {
   createBookingLink,
   createTarget,
   getBooking,
-  getConfirmedBookingByLink,
+  getResource,
   getTarget,
+  listConfirmedBookingsByLinkTokens,
   listLinksForTarget,
+  listWeeklyRules,
   repointTarget,
   resolveMeetingLocation,
   revokeLink,
   type Booking,
   type BookingLink,
   type MeetingLocation,
+  type Resource,
+  type Target,
+  type WeeklyRule,
 } from '@/lib/scheduling';
+import type { ActiveCampaign } from '@/stores/campaigns-store';
 
 import { ensureSchedulingConfigured } from './configure';
-import { getRecruiterResource, recruiterCanHostBookings } from './recruiter-resource';
+
+/**
+ * CONTEXTE DE RÉSERVATION D'UNE CAMPAGNE — résolu au plus UNE fois par
+ * requête, puis transmis.
+ *
+ * Une même requête (relancer un lien, classer sans suite, composer une
+ * invitation) relisait la campagne, la cible, ses liens et la ressource du
+ * référent à chaque sous-étape : jusqu'à 48 allers-retours enchaînés pour une
+ * relance (diagnostic de latence du 14/09/2026). Ce contexte lit chaque
+ * élément au premier besoin et le garde pour la suite de la requête.
+ *
+ * ⚠️ Jamais de mémoire ENTRE requêtes : l'objet naît dans la requête et meurt
+ * avec elle. Toute écriture qui change ce qu'il a lu l'OUBLIE aussitôt
+ * (`forgetTarget`, `forgetLinks`) — la lecture suivante repart de la base.
+ * Les échecs sont partagés tels quels : chaque appelant garde son propre
+ * `catch`, donc son propre repli, exactement comme avant.
+ */
+export type CampaignBookingContext = {
+  readonly campaignId: string;
+  campaign(): Promise<ActiveCampaign | null>;
+  target(): Promise<Target | null>;
+  /** Liens de la cible (toutes générations). Vide si la cible n'existe pas. */
+  links(): Promise<BookingLink[]>;
+  /** Ressource d'un compte (le référent, en pratique). */
+  resource(userId: string): Promise<Resource | null>;
+  weeklyRules(resource: Resource): Promise<WeeklyRule[]>;
+  forgetTarget(): void;
+  forgetLinks(): void;
+  /**
+   * Contexte FRÈRE pour un autre geste de la même requête : il partage ce qui
+   * est stable (campagne, cible, ressources) mais relit les LIENS. Sert aux
+   * lots (clôture) où chaque dossier doit voir un lien émis entre-temps.
+   */
+  fork(): CampaignBookingContext;
+};
+
+export function createCampaignBookingContext(
+  campaignId: string,
+  seed?: { campaign?: ActiveCampaign | null },
+  inherited?: Map<string, Promise<unknown>>,
+): CampaignBookingContext {
+  const memo = new Map<string, Promise<unknown>>(
+    [...(inherited ?? new Map<string, Promise<unknown>>())].filter(([key]) => key !== 'links'),
+  );
+  const once = <T>(key: string, load: () => Promise<T>): Promise<T> => {
+    let promise = memo.get(key) as Promise<T> | undefined;
+    if (!promise) {
+      promise = load();
+      memo.set(key, promise);
+    }
+    return promise;
+  };
+  if (seed && 'campaign' in seed) memo.set('campaign', Promise.resolve(seed.campaign ?? null));
+
+  const context: CampaignBookingContext = {
+    campaignId,
+    campaign: () => once('campaign', () => getCampaign(campaignId)),
+    target: () =>
+      once('target', async () => {
+        await ensureSchedulingConfigured();
+        return getTarget(campaignId);
+      }),
+    links: () =>
+      once('links', async () => {
+        const target = await context.target();
+        return target ? listLinksForTarget(target) : [];
+      }),
+    resource: (userId) =>
+      once(`resource:${userId}`, async () => {
+        await ensureSchedulingConfigured();
+        return getResource(userId);
+      }),
+    weeklyRules: (resource) =>
+      once(`rules:${resource.id}`, () => listWeeklyRules(resource)),
+    forgetTarget: () => {
+      memo.delete('target');
+      memo.delete('links');
+    },
+    forgetLinks: () => {
+      memo.delete('links');
+    },
+    fork: () => createCampaignBookingContext(campaignId, undefined, memo),
+  };
+  return context;
+}
+
+/**
+ * Le référent peut-il recevoir des réservations ? Même règle que
+ * `recruiterCanHostBookings` (ressource active + au moins une règle), lue
+ * dans le contexte de la requête.
+ */
+async function ownerCanHostBookings(
+  ctx: CampaignBookingContext,
+  userId: string | null,
+): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const resource = await ctx.resource(userId);
+    if (!resource || !resource.isActive) return false;
+    return (await ctx.weeklyRules(resource)).length > 0;
+  } catch {
+    return false;
+  }
+}
 
 /** Durée de vie d'un lien d'invitation — alignée sur le lien CV signé. */
 const LINK_TTL_DAYS = 30;
@@ -69,10 +178,11 @@ export function parseBookingContext(value: unknown): BookingContext | null {
 /** Une campagne réserve-t-elle en natif ? Une tâche isolée : jamais. */
 export async function isNativeSchedulingCampaign(
   campaignId: string | null | undefined,
+  ctx?: CampaignBookingContext,
 ): Promise<boolean> {
   if (!campaignId || campaignId.startsWith('TASK-')) return false;
   try {
-    const campaign = await getCampaign(campaignId);
+    const campaign = await (ctx ?? createCampaignBookingContext(campaignId)).campaign();
     return campaign?.schedulingNative === true;
   } catch {
     // Campagne illisible ⇒ on ne bascule pas : le régime historique reste la
@@ -88,18 +198,27 @@ export async function isNativeSchedulingCampaign(
  * Émettre un jeton ici laisserait un lien orphelin derrière chaque envoi
  * avorté — d'où la séparation stricte entre « peut-on ? » et « émets ».
  */
-export async function canEmitBookingLink(campaignId: string): Promise<boolean> {
+export async function canEmitBookingLink(
+  campaignId: string,
+  ctx: CampaignBookingContext = createCampaignBookingContext(campaignId),
+): Promise<boolean> {
   try {
-    const campaign = await getCampaign(campaignId);
+    const campaign = await ctx.campaign();
     if (!campaign?.ownerUserId) return false;
-    const recruiter = await getRecruiter(campaign.ownerUserId);
+    const ownerUserId = campaign.ownerUserId;
+    // Les trois vérifications sont indépendantes : lues ENSEMBLE, jugées dans
+    // l'ordre d'origine (le verdict est le même, une panne rend `false`).
+    const recruiterPromise = getRecruiter(ownerUserId);
+    const canHostPromise = ownerCanHostBookings(ctx, ownerUserId);
+    const locationPromise = resolveCampaignMeetingLocation(campaignId, ctx);
+    const recruiter = await recruiterPromise;
     if (!recruiter?.isActive) return false;
-    if (!(await recruiterCanHostBookings(campaign.ownerUserId))) return false;
+    if (!(await canHostPromise)) return false;
     // Un agenda ouvert ne suffit pas : sans lieu, le candidat réserverait un
     // rendez-vous dont personne ne lui dit où il se tient. C'est le seul
     // endroit qui le garantit pour TOUS les chemins d'envoi (chat, poller,
     // réinvitation, refus groupé) — l'écran, lui, ne fait que prévenir.
-    const location = await resolveCampaignMeetingLocation(campaignId);
+    const location = await locationPromise;
     return location.resolved !== null;
   } catch {
     return false;
@@ -120,7 +239,10 @@ export async function canEmitBookingLink(campaignId: string): Promise<boolean> {
  * d'envoyer (la sonde) traite alors « inconnu » comme « pas de lieu », ce qui
  * bloque — c'est le bon sens de la panne pour une garde.
  */
-export async function resolveCampaignMeetingLocation(campaignId: string): Promise<{
+export async function resolveCampaignMeetingLocation(
+  campaignId: string,
+  ctx: CampaignBookingContext = createCampaignBookingContext(campaignId),
+): Promise<{
   /** Lieu du référent de la campagne. */
   inherited: MeetingLocation | null;
   /** Lieu propre à la campagne, s'il a été posé. */
@@ -131,13 +253,14 @@ export async function resolveCampaignMeetingLocation(campaignId: string): Promis
   const empty = { inherited: null, override: null, resolved: null };
   try {
     await ensureSchedulingConfigured();
-    const campaign = await getCampaign(campaignId);
+    const campaign = await ctx.campaign();
     if (!campaign) return empty;
     const [resource, target] = await Promise.all([
+      // Même repli que `getRecruiterResource` : ressource illisible ⇒ aucune.
       campaign.ownerUserId
-        ? getRecruiterResource(campaign.ownerUserId)
+        ? ctx.resource(campaign.ownerUserId).catch(() => null)
         : Promise.resolve(null),
-      getTarget(campaignId),
+      ctx.target(),
     ]);
     const inherited = resource?.meetingLocation ?? null;
     const override = target?.meetingLocationOverride ?? null;
@@ -163,18 +286,21 @@ export async function resolveCampaignMeetingLocation(campaignId: string): Promis
 export async function ensureCampaignTarget(
   campaignId: string,
   ownerUserId: string | null,
+  ctx: CampaignBookingContext = createCampaignBookingContext(campaignId),
 ): Promise<void> {
   await ensureSchedulingConfigured();
-  const existing = await getTarget(campaignId);
+  const existing = await ctx.target();
   if (!existing) {
     await createTarget({
       externalRef: campaignId,
       resourceExternalRef: ownerUserId,
     });
+    ctx.forgetTarget();
     return;
   }
   if (existing.resourceExternalRef !== ownerUserId) {
     await repointTarget(campaignId, ownerUserId);
+    ctx.forgetTarget();
   }
 }
 
@@ -194,10 +320,10 @@ function isKeyForAnalysis(key: string, analysisId: string): boolean {
 
 /** Tous les liens (toutes générations) d'une candidature, du plus ancien au plus récent. */
 async function linksForAnalysis(
-  campaignId: string,
+  ctx: CampaignBookingContext,
   analysisId: string,
 ): Promise<BookingLink[]> {
-  const links = await listLinksForTarget(campaignId);
+  const links = await ctx.links();
   return links.filter((l) => isKeyForAnalysis(l.idempotencyKey, analysisId));
 }
 
@@ -229,12 +355,17 @@ export type EmitBookingLinkInput = {
  */
 export async function emitCampaignBookingLink(
   input: EmitBookingLinkInput,
+  ctx: CampaignBookingContext = createCampaignBookingContext(input.campaignId),
 ): Promise<string | null> {
-  const campaign = await getCampaign(input.campaignId).catch(() => null);
+  const campaign = await ctx.campaign().catch(() => null);
   const ownerUserId = campaign?.ownerUserId ?? null;
-  if (!(await recruiterCanHostBookings(ownerUserId))) return null;
+  // La cible est lue en même temps que la vérification du référent (elle en
+  // est indépendante) ; la décision reste dans l'ordre d'origine.
+  const targetPromise = ctx.target();
+  targetPromise.catch(() => undefined);
+  if (!(await ownerCanHostBookings(ctx, ownerUserId))) return null;
 
-  await ensureCampaignTarget(input.campaignId, ownerUserId);
+  await ensureCampaignTarget(input.campaignId, ownerUserId, ctx);
 
   const context: BookingContext = {
     uid: input.uid,
@@ -242,6 +373,7 @@ export async function emitCampaignBookingLink(
     campaignId: input.campaignId,
   };
 
+  ctx.forgetLinks();
   const result = await createBookingLink({
     targetExternalRef: input.campaignId,
     idempotencyKey: input.linkKey ?? input.analysisId,
@@ -269,14 +401,19 @@ export async function revokeCampaignBookingLink(
   campaignId: string | null,
   analysisId: string,
   reason: string,
+  ctx?: CampaignBookingContext,
 ): Promise<void> {
   if (!campaignId || campaignId.startsWith('TASK-')) return;
+  const context = ctx ?? createCampaignBookingContext(campaignId);
   await ensureSchedulingConfigured();
-  const target = await getTarget(campaignId);
+  const target = await context.target();
   if (!target) return; // aucune cible ⇒ aucun lien natif n'a jamais été émis
-  for (const link of await linksForAnalysis(campaignId, analysisId)) {
-    if (link.status === 'active') await revokeLink(link.token, reason);
-  }
+  const active = (await linksForAnalysis(context, analysisId)).filter(
+    (link) => link.status === 'active',
+  );
+  // Révocations indépendantes (un jeton chacune, update conditionnel).
+  await Promise.all(active.map((link) => revokeLink(link.token, reason)));
+  if (active.length > 0) context.forgetLinks();
 }
 
 /**
@@ -290,13 +427,15 @@ export async function revokeCampaignBookingLink(
 export async function bookingLinkStateForAnalysis(
   campaignId: string | null,
   analysisId: string,
+  ctx?: CampaignBookingContext,
 ): Promise<{ hasActive: boolean; statuses: BookingLink['status'][] } | null> {
   if (!campaignId || campaignId.startsWith('TASK-')) return null;
   try {
+    const context = ctx ?? createCampaignBookingContext(campaignId);
     await ensureSchedulingConfigured();
-    const target = await getTarget(campaignId);
+    const target = await context.target();
     if (!target) return null;
-    const links = await linksForAnalysis(campaignId, analysisId);
+    const links = await linksForAnalysis(context, analysisId);
     return {
       hasActive: links.some((l) => l.status === 'active'),
       statuses: links.map((l) => l.status),
@@ -314,11 +453,12 @@ export async function bookingLinkStateForAnalysis(
 export async function nextReissueKey(
   campaignId: string,
   analysisId: string,
+  ctx: CampaignBookingContext = createCampaignBookingContext(campaignId),
 ): Promise<string> {
   await ensureSchedulingConfigured();
-  const target = await getTarget(campaignId);
+  const target = await ctx.target();
   if (!target) return analysisId;
-  const existing = await linksForAnalysis(campaignId, analysisId);
+  const existing = await linksForAnalysis(ctx, analysisId);
   return reissueKey(analysisId, existing.length + 1);
 }
 
@@ -329,17 +469,39 @@ export async function nextReissueKey(
 export async function findConfirmedBookingForAnalysis(
   campaignId: string | null,
   analysisId: string,
+  ctx?: CampaignBookingContext,
 ): Promise<Booking | null> {
   if (!campaignId || campaignId.startsWith('TASK-')) return null;
+  const context = ctx ?? createCampaignBookingContext(campaignId);
   await ensureSchedulingConfigured();
-  const target = await getTarget(campaignId);
+  const target = await context.target();
   if (!target) return null;
   // Toutes générations confondues, la plus récente d'abord : c'est le dernier
   // lien qui porte le rendez-vous en cours.
-  const links = (await linksForAnalysis(campaignId, analysisId)).reverse();
-  for (const link of links) {
-    const booking = await getConfirmedBookingByLink(link.token);
-    if (booking) return booking;
+  const links = (await linksForAnalysis(context, analysisId)).reverse();
+  if (links.length === 0) return null;
+  // UNE lecture pour tous les liens (au lieu d'une par lien), puis le même
+  // choix : le lien le plus récent qui porte un rendez-vous confirmé, et pour
+  // ce lien la réservation la plus récente.
+  const bookings = await listConfirmedBookingsByLinkTokens(links.map((l) => l.token));
+  return pickConfirmedBookingForLinks(links, bookings);
+}
+
+/**
+ * Choix PUR (testé) : parcourt les liens dans l'ordre donné (le plus récent
+ * d'abord) et rend, pour le premier lien qui en porte une, sa réservation
+ * confirmée la plus récente — exactement ce que faisait la lecture lien par
+ * lien (`order created_at desc, limit 1`).
+ */
+export function pickConfirmedBookingForLinks(
+  linksMostRecentFirst: readonly Pick<BookingLink, 'token'>[],
+  bookings: readonly Booking[],
+): Booking | null {
+  for (const link of linksMostRecentFirst) {
+    const forLink = bookings
+      .filter((b) => b.linkToken === link.token && b.status === 'confirmed')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (forLink[0]) return forLink[0];
   }
   return null;
 }
@@ -360,14 +522,20 @@ export async function cancelBookingForAnalysis(params: {
    * il faudrait le relire pour rien.
    */
   onBooking?: (booking: Booking) => void;
+  /** Contexte déjà résolu par la requête appelante. */
+  context?: CampaignBookingContext;
 }): Promise<'cancelled' | 'none'> {
   const booking = await findConfirmedBookingForAnalysis(
     params.campaignId,
     params.analysisId,
+    params.context,
   );
   if (!booking) return 'none';
   params.onBooking?.(booking);
-  const verdict = await cancelBookingByOrganizer(booking.id, {
+  // La réservation vient d'être lue : on la transmet plutôt que de la relire.
+  // L'annulation reste conditionnée à `confirmed` en base — une course perdue
+  // rend `already_cancelled`, comme avant.
+  const verdict = await cancelBookingByOrganizer(booking, {
     reason: params.reason,
     notifyAttendee: params.notifyAttendee,
   });

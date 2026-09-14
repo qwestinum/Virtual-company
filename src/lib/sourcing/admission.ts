@@ -37,14 +37,17 @@ export function forceAcceptedApplication(application: CVApplication, submission:
 }
 
 /**
- * Une admission JAMAIS tentée appartient à la route de soumission qui l'a
- * réservée et l'analyse en ce moment (jusqu'à `maxDuration` = 60 s). Le rail
- * ne la reprend qu'une fois ce délai largement dépassé — la prendre plus tôt
- * lancerait une seconde analyse en parallèle, voire relâcherait la réservation
- * sous les pieds de la route. Défaut attrapé par S20.4 : le tick du scheduler
- * relâchait une admission fraîchement réservée.
+ * Délai avant la PREMIÈRE tentative d'une admission réservée.
+ *
+ * Il valait 5 minutes tant que la route de soumission analysait elle-même la
+ * candidature : le rail devait lui laisser le temps de finir (défaut attrapé
+ * par S20.4, un tick relâchait une admission fraîchement réservée). Depuis le
+ * 14/09/2026 la route ne fait plus que RÉSERVER et répondre : le rail est le
+ * seul à admettre, il prend donc la réservation dès le passage suivant. Deux
+ * passages concurrents restent départagés par `claimAdmissionAttempt`
+ * (réservation conditionnelle sur `updated_at`).
  */
-export const FIRST_ATTEMPT_GRACE_MINUTES = 5;
+export const FIRST_ATTEMPT_GRACE_MINUTES = 0;
 
 /**
  * Reprise d'une admission en panne : 1, 5, 15 minutes, puis toutes les heures.

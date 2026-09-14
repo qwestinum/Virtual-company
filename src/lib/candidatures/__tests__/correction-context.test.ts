@@ -170,3 +170,19 @@ describe('rien à corriger', () => {
     expect(ctx.sideEffects).toEqual([]);
   });
 });
+
+describe('lectures groupées', () => {
+  it('le journal est lu UNE fois pour l’étape et les faits d’envoi', async () => {
+    interviewMarks.set('uid-malaka', 'realized');
+    stage.mockReturnValue('entretien_fait');
+    await load();
+    expect(listJournalEntriesByActions).toHaveBeenCalledTimes(1);
+  });
+
+  it('une lecture annexe en échec reste muette quand rien n’est corrigible', async () => {
+    stage.mockReturnValue('a_valider');
+    getScheduledInterviewByUid.mockRejectedValue(new Error('briefs KO'));
+    const ctx = await load();
+    expect(ctx.current).toBeNull();
+  });
+});

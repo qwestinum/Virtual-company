@@ -114,6 +114,34 @@ export async function resolveAdepCredentials(
   return { atsId, numeroDossier, atsPassword };
 }
 
+/**
+ * Mémoïse la résolution d'identité POUR UNE INVOCATION de service.
+ *
+ * Une publication demande l'identité jusqu'à trois fois (flux caviardé, envoi,
+ * lecture de réconciliation) : trois dérivations Argon2 et trois lectures de la
+ * fiche recruteur pour la même valeur, à quelques millisecondes d'écart.
+ *
+ * ⚠️ Jamais au niveau du module : entre deux requêtes, le numéro de dossier du
+ * référent peut changer. Et seul un SUCCÈS est retenu — un échec est rejoué au
+ * prochain appel, exactement comme avant (une lecture de fiche qui hoquette ne
+ * doit pas condamner la suite de l'invocation).
+ */
+export function memoizeCredentials(
+  resolve: () => Promise<AdepCredentials>,
+): () => Promise<AdepCredentials> {
+  let pending: Promise<AdepCredentials> | null = null;
+  return () => {
+    if (!pending) {
+      const attempt = resolve();
+      pending = attempt;
+      attempt.catch(() => {
+        if (pending === attempt) pending = null;
+      });
+    }
+    return pending;
+  };
+}
+
 export type AdepServiceDeps = {
   /** Injecté par les tests ; en service, choisi selon `ADEP_ENABLED`. */
   transport?: AdepTransport;
@@ -231,8 +259,9 @@ export async function publishToAdep(input: {
   const trackingId = (deps.trackingId ?? defaultTrackingId)(clientReference);
   const offer: AdepOffer = { ...input.offer, clientPositionId: clientReference, trackingId };
 
-  const credentials =
-    deps.credentials ?? (() => resolveAdepCredentials(input.ownerUserId));
+  const credentials = memoizeCredentials(
+    deps.credentials ?? (() => resolveAdepCredentials(input.ownerUserId)),
+  );
 
   // On construit le flux AVANT de réserver, pour pouvoir en stocker la version
   // caviardée : une ligne réservée dont on ignore ce qui devait partir serait
@@ -402,7 +431,9 @@ export async function transitionAdepPosting(input: {
 
   const publisher = new AdepSepPublisher({
     transport,
-    credentials: deps.credentials ?? (() => resolveAdepCredentials(input.ownerUserId)),
+    credentials: memoizeCredentials(
+      deps.credentials ?? (() => resolveAdepCredentials(input.ownerUserId)),
+    ),
     ...(deps.trackingId ? { trackingId: deps.trackingId } : {}),
   });
 
@@ -482,7 +513,9 @@ export async function refreshAdepStatus(input: {
 
   const publisher = new AdepSepPublisher({
     transport,
-    credentials: deps.credentials ?? (() => resolveAdepCredentials(input.ownerUserId)),
+    credentials: memoizeCredentials(
+      deps.credentials ?? (() => resolveAdepCredentials(input.ownerUserId)),
+    ),
     ...(deps.trackingId ? { trackingId: deps.trackingId } : {}),
   });
 

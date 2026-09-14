@@ -27,7 +27,10 @@ import {
   type ValidationMarkEffect,
 } from '@/lib/candidatures/decision-markers';
 import { listScheduledInterviewUids } from '@/lib/db/repos/interview-briefs';
-import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
+import {
+  listJournalEntriesByActions,
+  type JournalEntry,
+} from '@/lib/db/repos/journal';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import {
   type CandidateStage,
@@ -39,10 +42,30 @@ import {
   countCandidateAnalyses,
   listAllCandidateAnalyses,
 } from '@/lib/db/repos/candidate-analyses';
+import type { PendingValidation } from '@/types/hitl';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
 const INTERVIEW_ACTION = INTERVIEW_MARKER_ACTION;
 const VALIDATION_ACTION = VALIDATION_MARKER_ACTION;
+
+/** Actions du journal dont dérivent les marqueurs d'étape. */
+export const STAGE_MARKER_ACTIONS: readonly string[] = [
+  INTERVIEW_ACTION,
+  VALIDATION_ACTION,
+];
+
+/**
+ * Lectures déjà lancées par l'appelant (optionnel, additif). Mêmes replis que
+ * les lectures internes : un rejet vaut une liste vide.
+ *   · `journal` — lecture du journal sur le MÊME `campaignId` que le périmètre,
+ *     couvrant au moins `STAGE_MARKER_ACTIONS` (les autres actions sont
+ *     ignorées par le pliage) ;
+ *   · `pending` — `listPendingValidations()`.
+ */
+export type StageSignalsPreload = {
+  journal?: Promise<JournalEntry[]>;
+  pending?: Promise<PendingValidation[]>;
+};
 
 export type StageSignals = {
   /** uids présents dans la file HITL en `pending` (gris à trancher). */
@@ -80,15 +103,19 @@ function payloadUid(payload: Record<string, unknown>): string | null {
  */
 export async function loadStageSignals(
   perimeter: StagePerimeter = {},
+  preloaded: StageSignalsPreload = {},
 ): Promise<StageSignals> {
   const [pending, scheduledUids, markers] = await Promise.all([
-    listPendingValidations().catch(() => []),
+    (preloaded.pending ?? listPendingValidations()).catch(() => []),
     listScheduledInterviewUids(perimeter.campaignId).catch(
       () => new Set<string>(),
     ),
-    listJournalEntriesByActions([INTERVIEW_ACTION, VALIDATION_ACTION], {
-      campaignId: perimeter.campaignId,
-    }).catch(() => []),
+    (
+      preloaded.journal ??
+      listJournalEntriesByActions([INTERVIEW_ACTION, VALIDATION_ACTION], {
+        campaignId: perimeter.campaignId,
+      })
+    ).catch(() => []),
   ]);
 
   const pendingUids = new Set<string>();

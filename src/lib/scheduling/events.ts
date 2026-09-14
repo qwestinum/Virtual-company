@@ -224,42 +224,6 @@ export async function resolveRefs(
   };
 }
 
-/**
- * `resolveRefs` pour un LOT de lignes : deux lectures `in(id)` au lieu de deux
- * par ligne. Même résultat ligne à ligne (y compris le repli sur l'identifiant
- * interne quand la référence est introuvable) ; une liste de N réservations
- * coûtait 2N allers-retours.
- */
-export async function resolveRefsBatch(
-  rows: readonly { target_id: string; resource_id: string }[],
-): Promise<(row: { target_id: string; resource_id: string }) => {
-  targetExternalRef: string;
-  resourceExternalRef: string;
-}> {
-  const refsOf = async (tableName: string, ids: string[], operation: string) => {
-    const refs = new Map<string, string>();
-    const slices = await Promise.all(
-      chunk(ids, 200).map(async (slice) => {
-        const { data, error } = await table(tableName)
-          .select('id, external_ref')
-          .in('id', slice);
-        assertOk(operation, error);
-        return (data ?? []) as { id: string; external_ref: string }[];
-      }),
-    );
-    for (const row of slices.flat()) refs.set(row.id, row.external_ref);
-    return refs;
-  };
-  const [targets, resources] = await Promise.all([
-    refsOf(TABLES.targets, [...new Set(rows.map((r) => r.target_id))], 'resolveRefs.target'),
-    refsOf(TABLES.resources, [...new Set(rows.map((r) => r.resource_id))], 'resolveRefs.resource'),
-  ]);
-  return (row) => ({
-    targetExternalRef: targets.get(row.target_id) ?? row.target_id,
-    resourceExternalRef: resources.get(row.resource_id) ?? row.resource_id,
-  });
-}
-
 function toEventBooking(booking: Booking, extras: EmitExtras): SchedEventBooking {
   return {
     id: booking.id,

@@ -16,6 +16,10 @@
 import { useEffect, useState } from 'react';
 
 import { AvailabilityEditor } from './availability/AvailabilityEditor';
+import {
+  fetchAvailability,
+  type PreloadedAvailability,
+} from './availability/load-availability';
 
 type RecruiterOption = { id: string; displayName: string };
 
@@ -28,9 +32,18 @@ export function AgendaSettings({
 }) {
   const [options, setOptions] = useState<RecruiterOption[] | null>(null);
   const [selected, setSelected] = useState<string | null>(currentUserId);
+  // L'agenda de l'utilisateur courant se lit EN MÊME TEMPS que la liste des
+  // recruteurs, au lieu de l'attendre ; l'éditeur le reprend s'il s'ouvre bien
+  // sur cet agenda (sinon il relit, comme avant). Rien ne change à l'écran.
+  const [preload, setPreload] = useState<PreloadedAvailability | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    // Posé dans l'état EN MÊME TEMPS que la liste : l'éditeur n'est monté
+    // qu'une fois celle-ci arrivée, il trouve donc toujours la lecture en cours.
+    const preloaded: PreloadedAvailability | null = currentUserId
+      ? { recruiterId: currentUserId, promise: fetchAvailability(currentUserId), used: false }
+      : null;
     void (async () => {
       try {
         const res = await fetch('/api/recruiters/options', { cache: 'no-store' });
@@ -39,13 +52,17 @@ export function AgendaSettings({
         if (cancelled) return;
         const list = json.options ?? [];
         setOptions(list);
+        setPreload(preloaded);
         // Un administrateur qui n'est pas lui-même dans la liste (compte
         // désactivé, par exemple) doit quand même pouvoir ouvrir un agenda.
         if (!list.some((o) => o.id === currentUserId) && list.length > 0) {
           setSelected(list[0]!.id);
         }
       } catch {
-        if (!cancelled) setOptions([]);
+        if (!cancelled) {
+          setOptions([]);
+          setPreload(preloaded);
+        }
       }
     })();
     return () => {
@@ -105,7 +122,7 @@ export function AgendaSettings({
       {selected ? (
         // `key` : changer de recruteur doit RECHARGER l'éditeur, pas lui
         // laisser la grille du précédent le temps d'un aller-retour.
-        <AvailabilityEditor key={selected} recruiterId={selected} />
+        <AvailabilityEditor key={selected} recruiterId={selected} preload={preload} />
       ) : null}
     </div>
   );

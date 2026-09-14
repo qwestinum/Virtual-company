@@ -35,7 +35,14 @@ export type LandingContext = { state: LandingState; approach: LandingApproach | 
 const TOKEN_SHAPE = /^[A-Za-z0-9_-]{16,64}$/;
 
 export async function resolveLandingContext(token: string): Promise<LandingContext> {
-  const settings = await getAppSettings().catch(() => null);
+  // Réglages et lien lus ENSEMBLE (indépendants) ; les décisions restent dans
+  // l'ordre d'origine, et toute panne de lecture rend l'état neutre comme avant.
+  const settingsRead = getAppSettings();
+  const approachRead = TOKEN_SHAPE.test(token)
+    ? getApproachByTokenHash(hashApproachToken(token))
+    : Promise.resolve(null);
+  approachRead.catch(() => undefined);
+  const settings = await settingsRead.catch(() => null);
   const branding = settings?.brandingConfig ?? DEFAULT_BRANDING_CONFIG;
   const view: LandingView = {
     organizationName: resolveOrganizationName(settings),
@@ -50,13 +57,19 @@ export async function resolveLandingContext(token: string): Promise<LandingConte
   const unavailable: LandingContext = { state: { kind: 'unavailable' }, approach: null, view };
 
   try {
-    const moduleEnabled = await isSourcingEnabled();
+    const moduleEnabled = await isSourcingEnabled(settingsRead);
     if (!moduleEnabled || !TOKEN_SHAPE.test(token)) return unavailable;
-    const approach = await getApproachByTokenHash(hashApproachToken(token));
+    const approach = await approachRead;
     if (!approach) return unavailable;
 
-    const campaign = await getCampaign(approach.campaignId);
-    const profile = approach.profileId ? await getProfileSnapshot(approach.profileId) : null;
+    // Campagne et profil, puis le recruteur : trois lectures indépendantes,
+    // lancées ensemble. Le recruteur n'est UTILISÉ que si l'état l'autorise.
+    const campaignRead = getCampaign(approach.campaignId);
+    const profileRead = approach.profileId ? getProfileSnapshot(approach.profileId) : Promise.resolve(null);
+    const recruiterRead = getRecruiter(approach.recruiterId).catch(() => null);
+    profileRead.catch(() => undefined);
+    const campaign = await campaignRead;
+    const profile = await profileRead;
     const state = resolveLandingState({
       moduleEnabled,
       approach,
@@ -66,7 +79,7 @@ export async function resolveLandingContext(token: string): Promise<LandingConte
     // Offre fermée, lien retiré : AUCUNE donnée affichée, pas même le poste.
     if (state.kind === 'unavailable' || state.kind === 'closed') return { state, approach, view };
 
-    const recruiter = await getRecruiter(approach.recruiterId).catch(() => null);
+    const recruiter = await recruiterRead;
     view.recruiterName = recruiter?.displayName ?? null;
     view.recruiterMessage = recruiterMessageForLanding(approach.message);
     view.job = campaign ? { title: fdpJobTitle(campaign.fdp), location: fdpText(campaign.fdp, 'location'), contract: fdpContract(campaign.fdp) } : null;

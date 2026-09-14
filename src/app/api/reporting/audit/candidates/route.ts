@@ -58,10 +58,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     // sélection d'audit sans aucun signal. Le filtre d'étape étant dérivé
     // post-enrichissement, toute borne en amont serait une troncature cachée ;
     // `loadJourneySignals` scanne déjà tout le journal, même ordre de coût.
-    const candidates = await listAllCandidateAnalyses(filters);
+    //
     // Enrichit chaque candidat avec son parcours dérivé du journal + file HITL.
-    // Un seul scan (toutes campagnes) → signaux partagés.
-    const signals = await loadJourneySignals();
+    // Un seul scan (toutes campagnes) → signaux partagés. Les deux lectures sont
+    // indépendantes : elles partent ensemble (`loadJourneySignals` ne rejette
+    // jamais — seul l'échec des analyses fait échouer la requête, comme avant).
+    const [candidates, signals] = await Promise.all([
+      listAllCandidateAnalyses(filters),
+      loadJourneySignals(),
+    ]);
     const enriched = candidates.map((c) => ({
       ...c,
       journey: journeyFromSignals(

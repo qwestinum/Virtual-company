@@ -17,10 +17,7 @@ vi.mock('@/lib/campaign/reception-address', () => ({
 vi.mock('@/lib/db/repos/app-settings', () => ({ getAppSettings: vi.fn() }));
 vi.mock('@/lib/db/repos/campaigns', () => ({ getCampaign: vi.fn() }));
 vi.mock('@/lib/db/repos/demo-job-posts', () => ({ getJobPost: vi.fn() }));
-vi.mock('@/lib/db/repos/job-postings', () => ({
-  getCurrentJobPosting: vi.fn(),
-  listJobPostings: vi.fn(),
-}));
+vi.mock('@/lib/db/repos/job-postings', () => ({ listJobPostings: vi.fn() }));
 vi.mock('@/lib/db/repos/recruiters', () => ({ getRecruiter: vi.fn() }));
 vi.mock('@/lib/db/repos/sites', () => ({ getSite: vi.fn() }));
 vi.mock('@/lib/jobboards/adep/service', () => ({ isAdepEnabled: () => false }));
@@ -31,7 +28,7 @@ import { resolveCampaignReceptionAddress } from '@/lib/campaign/reception-addres
 import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { getJobPost } from '@/lib/db/repos/demo-job-posts';
-import { getCurrentJobPosting, listJobPostings } from '@/lib/db/repos/job-postings';
+import { listJobPostings } from '@/lib/db/repos/job-postings';
 import { getRecruiter } from '@/lib/db/repos/recruiters';
 import { getSite } from '@/lib/db/repos/sites';
 import { ADEP_LIMITS } from '@/lib/jobboards/adep/validate';
@@ -40,7 +37,6 @@ import type { DemoJobPost } from '@/types/job-post';
 const user = vi.mocked(getApiUser);
 const campaign = vi.mocked(getCampaign);
 const post = vi.mocked(getJobPost);
-const current = vi.mocked(getCurrentJobPosting);
 const history = vi.mocked(listJobPostings);
 const settings = vi.mocked(getAppSettings);
 const site = vi.mocked(getSite);
@@ -104,7 +100,6 @@ describe('GET /api/campaigns/[id]/adep — pré-remplissage', () => {
     } as never);
     address.mockResolvedValue('recrutement@exemple.fr' as never);
     history.mockResolvedValue([] as never);
-    current.mockResolvedValue(null as never);
     post.mockResolvedValue(null as never);
   });
 
@@ -158,7 +153,9 @@ describe('GET /api/campaigns/[id]/adep — pré-remplissage', () => {
       remoteStatus: 'PUBLIEE',
       publishedAt: '2026-08-12T10:00:00.000Z',
     };
-    current.mockResolvedValue(published as never);
+    // La tentative courante est la plus récente de l'historique : la route ne
+    // relit plus la table pour la retrouver.
+    history.mockResolvedValue([published] as never);
     // …et l'annonce générique a été réécrite depuis.
     const rewritten = 'Texte entièrement réécrit après la publication. '.repeat(6);
     post.mockResolvedValue(
@@ -182,5 +179,56 @@ describe('GET /api/campaigns/[id]/adep — pré-remplissage', () => {
 
     expect(json.prefill).toBeNull();
     expect(json.draft.positionTitle).toBe('Comptable général');
+  });
+});
+
+describe('GET /api/campaigns/[id]/adep — lectures groupées', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    campaign.mockResolvedValue({
+      id: ID,
+      fdp: { fields: { job_title: { value: 'Comptable général' } } },
+      siteId: null,
+      ownerUserId: null,
+    } as never);
+    settings.mockResolvedValue(null as never);
+    address.mockResolvedValue(null as never);
+    history.mockResolvedValue([] as never);
+    post.mockResolvedValue(null as never);
+  });
+
+  it('401 sans session, même si la lecture de la campagne échoue', async () => {
+    user.mockResolvedValue(null as never);
+    campaign.mockRejectedValue(new Error('boom'));
+    const res = await GET(request, params);
+    expect(res.status).toBe(401);
+  });
+
+  it('404 prime sur un échec de lecture de l’historique', async () => {
+    user.mockResolvedValue({ id: 'u1' } as never);
+    campaign.mockResolvedValue(null as never);
+    history.mockRejectedValue(new Error('boom'));
+    const res = await GET(request, params);
+    expect(res.status).toBe(404);
+  });
+
+  it('500 quand l’historique est illisible sur une campagne existante', async () => {
+    user.mockResolvedValue({ id: 'u1' } as never);
+    history.mockRejectedValue(new Error('boom'));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const res = await GET(request, params);
+    expect(res.status).toBe(500);
+  });
+
+  it('lit l’historique UNE fois et en rend la tentative la plus récente', async () => {
+    user.mockResolvedValue({ id: 'u1' } as never);
+    const recent = { id: 'jp2', clientReference: `${ID}-2`, requestXml: null };
+    const older = { id: 'jp1', clientReference: `${ID}-1`, requestXml: null };
+    history.mockResolvedValue([recent, older] as never);
+    const res = await GET(request, params);
+    const json = (await res.json()) as Json & { history: unknown[] };
+    expect(history).toHaveBeenCalledTimes(1);
+    expect(json.posting?.clientReference).toBe(`${ID}-2`);
+    expect(json.history).toHaveLength(2);
   });
 });

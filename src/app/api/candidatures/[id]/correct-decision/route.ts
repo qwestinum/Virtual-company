@@ -48,13 +48,19 @@ export async function POST(
     );
   }
 
+  // Session et analyse partent ensemble ; l'ordre des décisions ne change pas
+  // (échec/absence de l'analyse d'abord, puis la session). Rejet muet de la
+  // session tant qu'on ne l'attend pas (404, 503).
+  const userP = getApiUser();
+  void userP.catch(() => undefined);
+
   try {
     const analysis = await getCandidateAnalysis(id);
     if (!analysis) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
 
-    const user = await getApiUser();
+    const user = await userP;
     const correctionContext = await loadDecisionCorrectionContext(analysis);
     const outcome = await applyDecisionCorrection({
       analysis,

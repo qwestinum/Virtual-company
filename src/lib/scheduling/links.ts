@@ -13,11 +13,21 @@
  */
 import { isUniqueViolation, SchedulingStoreError } from './errors';
 import { bookingUrl, nowIso } from './runtime';
-import { TABLES, toLink, type LinkRow } from './rows';
+import {
+  TABLES,
+  toLink,
+  toResource,
+  toTarget,
+  type LinkRow,
+  type ResourceRow,
+  type TargetRow,
+} from './rows';
 import { assertOk, fetchAllKeyset, table } from './store';
 import { generateToken, isTokenShaped } from './tokens';
 import type {
   BookingLink,
+  Resource,
+  Target,
   CreateLinkInput,
   CreateLinkResult,
   RevokeLinkVerdict,
@@ -26,6 +36,11 @@ import type {
 const LINK_COLUMNS =
   'token, target_id, idempotency_key, status, expires_at, context, display, ' +
   'revoked_reason, created_at';
+
+/** Même projection, clé de la cible JOINTE (clé étrangère `target_id`). */
+const LINK_COLUMNS_WITH_TARGET_REF = `${LINK_COLUMNS}, target:sched_targets(external_ref)`;
+
+type LinkRowWithTargetRef = LinkRow & { target: { external_ref: string } | null };
 
 /**
  * Émet (ou retrouve) le lien d'une clé d'idempotence.
@@ -77,14 +92,51 @@ export async function createBookingLink(
 export async function getBookingLink(token: string): Promise<BookingLink | null> {
   if (!isTokenShaped(token)) return null;
   const { data, error } = await table(TABLES.links)
-    .select(LINK_COLUMNS)
+    .select(LINK_COLUMNS_WITH_TARGET_REF)
     .eq('token', token)
-    .maybeSingle<LinkRow>();
+    .maybeSingle<LinkRowWithTargetRef>();
   assertOk('getBookingLink', error);
   if (!data) return null;
 
   const row = await expireIfNeeded(data);
-  return toLink(row, await targetRefById(row.target_id));
+  // Repli sur l'identifiant interne si la cible est introuvable — comme la
+  // lecture séparée qu'elle remplace.
+  return toLink(row, data.target?.external_ref ?? row.target_id);
+}
+
+/**
+ * Lien + cible + ressource complète, en UNE requête (clés étrangères
+ * `target_id` puis `resource_id`). La page publique, la liste des créneaux et
+ * la confirmation lisaient ces trois lignes l'une après l'autre, plus deux
+ * relectures de clé. L'expiration reste résolue à la lecture, comme
+ * `getBookingLink`. Interne au module (non exporté par l'index).
+ */
+export async function getBookingLinkChain(token: string): Promise<{
+  link: BookingLink;
+  target: Target | null;
+  resource: Resource | null;
+} | null> {
+  if (!isTokenShaped(token)) return null;
+  const { data, error } = await table(TABLES.links)
+    .select(
+      `${LINK_COLUMNS}, target:sched_targets(id, external_ref, resource_id, ` +
+        'meeting_location_override, version, created_at, updated_at, resource:sched_resources(*))',
+    )
+    .eq('token', token)
+    .maybeSingle<
+      LinkRow & { target: (TargetRow & { resource: ResourceRow | null }) | null }
+    >();
+  assertOk('getBookingLink', error);
+  if (!data) return null;
+
+  const row = await expireIfNeeded(data);
+  const targetRow = data.target;
+  const resourceRow = targetRow?.resource ?? null;
+  return {
+    link: toLink(row, targetRow?.external_ref ?? row.target_id),
+    target: targetRow ? toTarget(targetRow, resourceRow?.external_ref ?? null) : null,
+    resource: resourceRow ? toResource(resourceRow) : null,
+  };
 }
 
 export async function revokeLink(
@@ -125,10 +177,14 @@ export async function revokeLinkByKey(
 }
 
 export async function listLinksForTarget(
-  targetExternalRef: string,
+  /** Clé externe, ou la cible déjà lue par l'appelant (aucune relecture). */
+  targetOrRef: string | Pick<Target, 'id' | 'externalRef'>,
   options?: { status?: BookingLink['status'] },
 ): Promise<BookingLink[]> {
-  const target = await targetByRef(targetExternalRef);
+  const targetExternalRef =
+    typeof targetOrRef === 'string' ? targetOrRef : targetOrRef.externalRef;
+  const target =
+    typeof targetOrRef === 'string' ? await targetByRef(targetOrRef) : targetOrRef;
   const rows = await fetchAllKeyset<LinkRow>(
     'listLinksForTarget',
     (after, limit) => {
@@ -200,13 +256,4 @@ async function targetByRef(externalRef: string): Promise<{ id: string }> {
   assertOk('targetByRef', error);
   if (!data) throw new Error(`cible inconnue : ${externalRef}`);
   return data;
-}
-
-async function targetRefById(id: string): Promise<string> {
-  const { data, error } = await table(TABLES.targets)
-    .select('external_ref')
-    .eq('id', id)
-    .maybeSingle<{ external_ref: string }>();
-  assertOk('targetRefById', error);
-  return data?.external_ref ?? id;
 }

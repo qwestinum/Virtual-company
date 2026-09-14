@@ -234,3 +234,187 @@ sur dev, démo et prod. Vérification : l'en-tête `x-vercel-id` d'une page rend
 | Prod (`orqa-bia-prod.vercel.app`) | ✅ `cdg1::cdg1` vérifié |
 | Démo | ⚠️ non vérifié (URL non connue du dépôt) |
 | Dev | ⚠️ non vérifié (URL non connue du dépôt) |
+
+---
+
+# Deuxième passe — pages et actions restantes
+
+## Phase 1 — Mesure (14/09/2026)
+
+### Méthode
+
+- **Pages (GET)** : build de production local de `perf/latence-2026-09`, instrumentation
+  `PERF_TRACE=1` réactivée (non commitée), base DEV (eu-west-1, ~50 ms par aller-retour
+  depuis le poste), session admin de test. Chaque surface rejouée avec exactement les
+  requêtes du code client (cartographie par lecture du code) : 1 passage à froid (serveur
+  neuf) + 5 à chaud. Aucune route LLM, Exa, APEC ni email appelée.
+- **Actions (POST/PUT)** : suite de régression S1–S22 tracée (enveloppe temporaire autour
+  de `helpers/api.ts`, chaque appel de route mesuré dans son contexte). Routes réelles, base
+  réelle, **LLM, email et APEC neutralisés par la suite** ⇒ aucun effet de bord. Pas de proxy
+  (handlers appelés directement), et `after()` y est exécuté **immédiatement** : les durées
+  d'actions incluent le travail différé qui, en prod, part après la réponse.
+- **Pages publiques en prod** (lecture seule) : `/r/` et `/b/` avec un jeton INVALIDE — aucun
+  quota ni aucune écriture sur ce chemin ; `/s/` exclu (consomme un quota dès le GET).
+- Chiffres absolus = poste → Irlande. En prod (fonctions `cdg1`, base Paris), un aller-retour
+  coûte ~5–10 ms : **le nombre d'étapes enchaînées reste l'indicateur transposable**.
+
+### Tableau classé (durée mesurée, médiane)
+
+Colonnes : durée (froid) · étapes enchaînées · requêtes base · auth · cause principale · gain
+théorique de la correction.
+
+| # | Page / action | Durée | Étapes | Base | Auth | Cause principale | Gain théorique |
+|---|---|---|---|---|---|---|---|
+| 1 | **Relancer / replanifier un lien** `POST /api/interviews/reissue` | **2 519 ms** (max 2 660) | **48** | 52 | 1 | Résolutions répétées cible→ressource (`sched_resources` ×11, `sched_targets` ×10, `campaigns` ×7) avant et pendant la réémission ; drain de livraison inclus (~1,5 s, `after()`) | ~48 → ~12 étapes ; partie synchrone ~1 s → ~0,3 s |
+| 2 | **Classer sans suite (avec RDV)** `POST /api/candidatures/[id]/dismiss` | **1 776 ms** (médiane 369 sans RDV) | **36** | 39 | 1 | Révocation du lien puis annulation du RDV refont chacune `getTarget` + `listLinksForTarget` ; hydratation par RDV | 36 → ~10 |
+| 3 | **Clôture** `POST /api/campaigns/[id]/close` | **1 707 ms** pour 2 candidatures | **29** | 32 | 1 | Boucle **séquentielle par candidature** (~12–15 allers-retours chacune) : file HITL ENTIÈRE relue à chaque dossier, campagne/réglages/adresse relus à chaque dossier, mail envoyé en ligne | O(N) → O(1) étapes de lecture ; envois bornés en concurrence |
+| 4 | **Page publique `/r/`** (page + créneaux) | **747 ms** (froid **1 376 ms**) ; prod froid **852 ms** vs ~130 chaud | 4 + 8 | 4 + 12 | 0 | Cascade HTML → hydratation → créneaux ; lien/cible/ressource relus par la route des créneaux, `requireResourceId` ×2, 2 RPC de quota enchaînées. **À froid : démarrage domine** (voir plus bas) | 12 → ~5 étapes ; froid : voir config |
+| 5 | **Onglet Sourcing** `GET /api/sourcing/campaigns` | **674 ms** | 5 | **80** | 3 | 5 comptages PAR campagne (5N+4 requêtes) ; garde (réglages → auth → campagne) en série ; 3ᵉ vérification de session dans `loadReferentContext` | 80 → ~6 requêtes (1 RPC groupée), 5 → 2 étapes |
+| 6 | **Aperçu HITL** `POST /api/mail-composer` | 390 ms (max 1 075) | 6 (max 15) | 6–16 | 0 | Résolution du lien natif : campagne, cible, ressource, règles relues | 15 → ~6 |
+| 7 | **Présélection vivier** `POST …/vivier-preselection` | 684 ms **hors LLM/embeddings** | 9 | 11 | 0 | ~14 étapes dont LLM + embeddings, toutes après la campagne alors qu'indépendantes ; modèles d'embeddings relus sur TOUTE la table | 9 → ~4 (+ LLM en parallèle) |
+| 8 | **Disponibilités** `PUT/GET /api/recruiters/[id]/availability` | 650 / 337 ms | 8 / 4 | 16 / 11 | 0 / 2 | Ressource relue 6×, règles et exceptions 2× (aperçu des créneaux recalcule tout) | 11 → ~4 requêtes |
+| 9 | **Rouvrir** `POST …/reopen` | 608 ms | 9 | 10 | 0 | `listVoidValidations` global, briefs relus en série | 9 → ~4 |
+| 10 | **Réglages (ouverture)** | 646 ms | chaîne client 3 | — | — | Toutes les sections attendent `/api/settings` ; agenda attend les options recruteurs | 3 → 1 étape client |
+| 11 | **Édition — Canaux** `GET …/adep` (+ dialog de clôture) | **562 ms** | **10** | 8 | 2 | 8 lectures indépendantes enchaînées ; `listJobPostings` ×2 ; appelée aussi par CHAQUE dialog de clôture, même sans APEC | 10 → ~3 |
+| 12 | **Page publique `/b/`** créneaux de replanification | 393 ms (page 107) ; prod froid **1 854 ms** | 6 | 11 | 0 | Même cascade que `/r/` ; **à froid : démarrage domine** | 6 → ~3 |
+| 13 | **Édition — Réservation** `GET …/scheduling` | 360 ms | 6 | 10 | 1 | Campagne ×2, cible ×2 ; `countActiveLinks` attend les RDV ; recruteurs table entière | 6 → ~3 |
+| 14 | **Correction de décision** contexte + application | 178 + 326 ms | 3 + 7 | 7 + 13 | — | Contexte recalculé entièrement à l'application ; `loadStageSignals` ×2, analyse ×2 | 7 → ~4 |
+| 15 | **Audit candidat (détail)** `GET /api/reporting/audit/candidates/[id]` | 316 ms | 5 | 10 | 1 | Journal lu 3× (actions qui se recouvrent), file HITL 2× | 5 → ~2 |
+| 16 | **Sourcing — profils** `GET …/profiles` | 302 ms | 5 | 6 | 2 | Garde en série ; indices vivier : une recherche plein texte PAR correspondance, lots en série | 5 → ~2 |
+| 17 | **Publication APEC** `POST …/adep/publish` | 247–443 ms **hors SOAP** | 4–8 | 4–8 | 1 | `credentials()` résolu 3× (argon2 + recruteur) ; 2 appels SOAP inhérents | −2 lectures ; argon2 ×1 |
+| 18 | **Rapports** (campagnes, détail, multi, audit liste) | 190–420 ms | 3 | 3–7 | 1 | **Faible en dev car volume faible** : scan du journal de TOUTE l'organisation (6 actions, pagination offset, pas d'index `action`) à chaque liste, onglet, frappe ; multi = 2 chargements complets | Croissance O(journal) → bornée (index + filtrage par campagne) |
+| 19 | **Vivier** validations / présélection GET | 214 / 210 ms | 4 | 3 | 1 | 3 lectures en série ; N×`getCampaign(select *)` ; badge + liste = 2 appels identiques | 4 → 2 |
+| 20 | **Chat Manager** (tour) | DB : 1 étape | — | 2 | — | **Dominé par 2 appels LLM successifs** (non mesurés : aucun appel LLM réel lancé) ; lot de CV traité **en série** côté client, 4 LLM + 5 écritures par CV | lot N CV : ÷3 (concurrence 3) ; tour : chargement en parallèle du classifieur |
+| 21 | **Marquer un entretien** `POST /api/journal` | 49 ms | 1 | 1 | — | Rapide ; le rechargement de `/api/interviews` qui suit est déjà traité (1ʳᵉ passe) | — |
+| 22 | `/jobs`, `/jobs/[id]` | 58–77 ms | 1 | 1 | 0 | Rien à corriger | — |
+
+### Pages publiques — le démarrage à froid domine
+
+| Mesure | Froid | Chaud |
+|---|---|---|
+| Prod `/r/<jeton invalide>` | **852 ms** | 117–195 ms |
+| Prod `/b/<jeton invalide>` | **1 854 ms** | 113–165 ms |
+| Prod `/login` (témoin) | 179 ms | 92–126 ms |
+| Local `/r/` page | 595–601 ms | 256–283 ms |
+
+**Constat** : à froid, le premier chargement d'une page ouverte depuis un mail coûte **6 à 14×**
+le chaud. Une cause est **dans le code**, les autres dans la **configuration** :
+
+- **Code (mesuré)** : `src/instrumentation.ts` importe `@/lib/imap/scheduler` **avant** que
+  `ensureSchedulerStarted` teste `VERCEL`. Next attend `register()` avant de servir la
+  première requête : chaque démarrage à froid charge le poller IMAP, l'extraction de CV, les
+  SDK LLM, react-pdf… pour ne rien démarrer. **Mesuré : 280 ms en local** (machine rapide,
+  cache disque chaud) — davantage sur une fonction froide. Correction : sortir de `register()`
+  sur Vercel AVANT l'import (sans effet : le scheduler ne démarre déjà pas sur Vercel).
+- **Configuration (à vérifier dans Vercel, non visible depuis le dépôt)** : Fluid Compute
+  activé ou non (réutilisation d'instances), et éventuellement une requête de maintien au
+  chaud sur les pages publiques. `/r/` et `/b/` froids consécutifs (852 puis 1 854 ms)
+  suggèrent des instances distinctes.
+- `/s/` (non mesuré en valide : seule l'empreinte du jeton est en base) : 8–13 étapes par
+  lecture de code, **3 écritures sur GET** (quota avant le test des robots d'aperçu,
+  `first_opened_at` réécrit à chaque ouverture, journal) ; la soumission exécute l'admission
+  COMPLÈTE en ligne (LLM, extraction, PDF, mail) pendant que la personne attend.
+
+### Top 5 des causes (contribution)
+
+1. **Démarrage à froid des pages publiques** : 0,7–1,7 s en prod, dont l'import inutile du
+   scheduler au boot (≥ 280 ms).
+2. **Actions de cycle d'entretien** (relance, sans suite avec RDV, clôture) : 29–48 étapes —
+   mêmes lectures cible/ressource/liens répétées par chaque sous-étape, boucles par dossier.
+3. **Comptages par campagne / par élément** (onglet Sourcing 5N+4, indices vivier par
+   correspondance, `getCampaign` par campagne en présélection).
+4. **Lectures indépendantes enchaînées** dans les routes d'édition (APEC 10 étapes,
+   réservation 6, disponibilités 11 requêtes) et chaînes client (Réglages, créneaux).
+5. **Scans du journal d'organisation entière** (rapports, audit) : bénins aujourd'hui, en
+   croissance avec le volume (pas d'index `action`, pagination offset).
+
+## Phase 2 — Corrections de la deuxième passe (14/09/2026)
+
+### Méthode de mesure avant / après
+
+- **Pages (GET)** : deux builds de production côte à côte — AVANT = commit précédent de la
+  branche, APRÈS = ce commit — instrumentés (`PERF_TRACE`, copie de mesure non versionnée),
+  sur la même base DEV, rejoués **en alternance** (1 passage à froid sur serveurs neufs,
+  5 passages chauds, médianes) : mêmes conditions réseau des deux côtés.
+- **Actions** : la même suite de régression tracée qu'en phase 1, rejouée sur le code APRÈS
+  (routes réelles, base réelle, LLM/email/APEC neutralisés ; `after()` exécuté en ligne).
+- Absolu = poste → Irlande (~50 ms/aller-retour). En prod (`cdg1` → Paris) seules les
+  **étapes enchaînées** et le **nombre de requêtes** se transposent.
+
+### Résultats par ligne du tableau classé
+
+| # | Page / action | Avant | Après | Étapes · requêtes avant → après | Correction |
+|---|---|---|---|---|---|
+| 1 | Relancer / replanifier un lien | 2 519 ms (max 2 660) | **1 738 ms** (max 1 815) | 49 · 53 → **24 · 29** | Contexte de réservation résolu une fois par requête (campagne, cible, liens, ressource du référent) et transmis ; rendez-vous retrouvés en UNE lecture pour tous les liens ; réservation transmise à l'annulation au lieu d'être relue ; envoi du mail ∥ mise en file du briefing. Inclut le drain de livraison (en prod : après la réponse) |
+| 2 | Classer sans suite (avec RDV) | 1 776 ms max | **1 321 ms** max | 36 · 39 → **19 · 26** | Même contexte partagé révocation → annulation (ordre CONSERVÉ : une révocation en échec n'annule pas le RDV) ; validation ouverte lue par uid au lieu de la file entière ; lectures du mail anticipées |
+| 3 | Clôture (2 dossiers) | 1 707 ms max | **1 134 ms** max | 29 · 32 → **10 · 27** | Concurrence **5** ; campagne, cible et faits du mail lus UNE fois pour le lot, liens relus par dossier ; **> 20 dossiers : réponse immédiate, lot complet sur le rail** (voir arbitrage) |
+| 4 | Page `/r/` (page + créneaux) | chaud 918 · froid 1 377 | **chaud 457 · froid 1 062** | page 4 → 2 · créneaux 12 → 6 requêtes | Lien + cible + ressource en UNE requête (jointures PostgREST) ; règles et exceptions lues sur la ressource déjà connue (plus de recherche d'identifiant). Chaud : page 371 → **143 ms**, créneaux 546 → **314 ms** |
+| 5 | Onglet Sourcing | 725 ms | **270 ms** (−63 %) | 5 · 80 → **3 · ~9** | Comptages groupés pour toutes les campagnes (lectures exhaustives par clé), garde parallèle, plus de 3ᵉ vérification de session |
+| 6 | Aperçu HITL (mail-composer) | 390 ms (max 1 075) | **345 ms** (max 578) | 15 · 17 → **6 · 9** | Contexte de réservation dans `buildInterviewMail` (campagne, lieu, émission) ; réglages ∥ campagne |
+| 7 | Présélection vivier (POST) | 684 ms | 681 ms | 9 · 11 → 9 · 11 | **Non traité** (hors ordre de phase 2 validé) |
+| 8 | Disponibilités PUT / GET | 650 / 303 ms | **470 / 218 ms** | PUT 17 → **11** requêtes | Ressource transmise aux règles, exceptions et aperçu ; retraits puis ajouts d'exceptions en vagues ; plus de 2ᵉ vérification de session pour un admin |
+| 9 | Rouvrir un dossier | 608 ms | 582 ms | 10 · 11 → 9 · 9 | Effet indirect (lectures de réservation plus légères) |
+| 10 | Réglages (ouverture) | 612 ms | **459 ms** | chaîne client | Agenda : options recruteurs ∥ disponibilités. Attente de `/api/settings` **conservée** (la lever change l'affichage) |
+| 11 | Édition — Canaux (APEC) | 533 ms | **232 ms** (−56 %) | 7 → **2** étapes | Lectures indépendantes ensemble, liste des publications lue une fois ; identifiants APEC résolus une fois par publication/transition |
+| 12 | Page `/b/` créneaux | 381 ms | **229 ms** | 11 → 6 requêtes | Réservation + ressource complète en une requête |
+| 13 | Édition — Réservation | 350 ms | **206 ms** | 5 · 11 → **3 · 7** | Contexte (campagne déjà lue, cible) partagé impact ∥ lieu ; recruteurs lus dès l'entrée |
+| 14 | Correction de décision (contexte / application) | 178 / 326 ms | **138 / 325 ms** | 3 → 2 · 7 → 5 étapes | Journal lu une fois pour marqueurs + faits du mail ; analyse ∥ session. Relecture après écriture **conservée** (l'étape doit refléter l'écriture) |
+| 15 | Audit candidat (détail) | 330 ms | **180 ms** (−45 %) | 4 · 10 → **2 · 7** | Journal lu une fois (union des actions), file HITL une fois |
+| 16 | Sourcing — profils | 323 ms | **193 ms** (−40 %) | 5 → 3 étapes | Garde parallèle ; indices vivier groupés par lot, lots en parallèle |
+| 17 | Publication APEC | 247 / 443 ms | **202 / 352 ms** | 8 → **6** | `credentials()` (argon2 + recruteur) résolu une fois par appel |
+| 18 | Rapports (liste, détail, multi, audit liste) | 217–411 ms | 154–422 ms | — | Détail : donneur ∥ site ; PDF : cache vérifié AVANT l'assemblage ; audit liste en parallèle. **Journal non restreint par campagne** (marqueurs sans `campaign_id` possibles : risque de perte dans les PDF) |
+| 19 | Vivier (validations / présélection) | 191 / 215 ms | 163 / 223 ms | — | Lectures parallèles ; titres de campagne groupés ; **correction d'exactitude** : récence des présélections lue exhaustivement (tronquable à 1 000 avant) |
+| — | **Entretiens** (demande spécifique) | route 393 ms · surface 404 ms | **route 298 ms · surface 377 ms** | 37 → **22** requêtes base | Cibles des campagnes natives lues avec l'étape parallèle, liens et rendez-vous directement sur ces cibles. La surface est désormais **plafonnée par les signaux métier** (~325 ms, 17 requêtes en 2 étapes) chargés en parallèle |
+
+### Arbitrages appliqués
+
+1. **Soumission `/s/` asynchrone.** La route RÉSERVE (réservation + saisie en base) et répond
+   « bien reçue » ; l'admission (analyse, CV structuré, invitation) part sur le rail de
+   reprise, désormais seul à admettre (`FIRST_ATTEMPT_GRACE_MINUTES` : 5 → **0**). Texte :
+   « Vous recevrez un email pour choisir un créneau. » L'import statique de toute la chaîne
+   d'admission (SDK LLM, react-pdf) quitte la route. **Régression S24** : réponse < 500 ms,
+   candidature créée au tick suivant, un seul mail même si le rail repasse.
+   **Robots d'aperçu** : filtrés AVANT toute écriture — ni quota, ni `first_opened_at`, ni
+   journal (test de page sondé : l'ancienne page échoue sur 6 cas sur 7). Première ouverture :
+   marquage seulement si non encore ouvert, journal après la réponse.
+2. **Clôture** : concurrence bornée à 5 (`mapWithConcurrency`, testée) ; **> 20 dossiers** :
+   la route clôt la campagne, met le lot EN FILE (journal `campaign_closure_dismissals_queued`)
+   et répond (`dismissalQueued`) ; le rail (cron de relève + tick du scheduler) exécute le lot
+   COMPLET — classement ET mails, même code — sous un claim deux-phases de lot (deux passages
+   n'en exécutent qu'un, un passage tué est repris après 5 min) et écrit l'entrée de fin
+   habituelle. Claims de mail inchangés : un mail, jamais deux. Choix assumé : sur une grosse
+   clôture, les candidatures passent « sans suite » au tick suivant (≤ 1 min en prod) plutôt
+   que d'introduire un état « mail en file » que tous les lecteurs du journal devraient
+   apprendre. Le flux « poste pourvu » bénéficie de la concurrence mais reste synchrone.
+3. **Module de réservation** : contexte résolu une fois par requête et transmis
+   (`CampaignBookingContext` côté hôte ; cibles, liens, ressources et réservations acceptant
+   l'objet déjà lu côté module ; jointures PostgREST sur les clés étrangères). Jamais de
+   mémoire entre requêtes ; toute écriture oublie ce qu'elle rend périmé. Frontière
+   d'autonomie intacte (lint + `frontier.test.ts` verts).
+4. **Index `journal(action, created_at desc)`** : bloc livré dans `scripts/migrate.sql`
+   (rejouable). **À appliquer** en dev puis en prod par le donneur d'ordre.
+5. **`register()`** sort sur Vercel AVANT d'importer le scheduler (test sondé : sans la garde,
+   il échoue). Effet mesurable en prod uniquement après déploiement : vérifier le TTFB à froid
+   de `/r/` et `/b/` (avant : 852 et 1 854 ms).
+
+### Non-régression
+
+- Suite unitaire verte ; typecheck complet ; lint des fichiers modifiés.
+- Régression **S1–S24 verte (23 fichiers, 191 tests)**. Un premier passage a montré deux
+  échecs, tous deux hors des corrections : **S13.2** comptait les réservations d'une heure
+  donnée TOUTES ressources confondues — une vraie réservation de la base de dev à la même
+  heure le faisait échouer (vérification désormais restreinte à la ressource du test) ;
+  **S22.5** perdait sa course contre le tick du serveur de dev lancé à côté (purge des
+  profils de campagnes closes — l'en-tête de la suite exige l'application fermée).
+
+### Points ouverts
+
+- **Au merge de `feat/sourcing`** : S23.2 attend l'ancienne réponse synchrone (`sent`, invitation
+  pendant la requête). À adapter : réponse `received`, puis `runSourcingMaintenance()` avant
+  les vérifications d'analyse, de mail et de profil (le modèle est S24.2).
+- Deux comportements en panne changent, jugés acceptables : un PDF de rapport déjà en cache
+  est servi même si la base est indisponible ; une soumission sourcing dont la campagne est
+  fermée entre la réservation et le tick du rail voit sa saisie relâchée sans que la personne
+  ne l'apprenne (la route disait « offre fermée » quand elle admettait elle-même).
+- Restent hors passe : présélection vivier (POST), signaux métier au-delà de 2 étapes (RPC),
+  journal des rapports restreint par campagne (données à vérifier en prod).

@@ -8,10 +8,12 @@
  *   1. le lien reçu : chaque état a sa page (formulaire prérempli, suspendu,
  *      offre fermée sans aucune donnée, lien inconnu ou retiré), la première
  *      ouverture n'est comptée qu'une fois ;
- *   2. la soumission : débit consommé avant tout, case obligatoire, puis UNE
- *      candidature ordinaire — CV fabriqué (enrichi), analyse réelle, zone
- *      forcée même sur un profil faible, décision du recruteur, invitation
- *      envoyée par le chemin commun, briefing en file, profil soldé ;
+ *   2. la soumission : débit consommé avant tout, case obligatoire, réponse
+ *      « bien reçue » immédiate, puis — au tick du rail de reprise, seul à
+ *      admettre depuis le 14/09/2026 — UNE candidature ordinaire : CV fabriqué
+ *      (enrichi), analyse réelle, zone forcée même sur un profil faible,
+ *      décision du recruteur, invitation envoyée par le chemin commun,
+ *      briefing en file, profil soldé ;
  *   3. la candidature COMPTE : CV reçu, shortlisté, invité dans la métrique de
  *      campagne ; son CV est trouvé par la fiche candidature (défauts de
  *      recette du 14/09) ; un second envoi du même lien ne crée rien ;
@@ -42,6 +44,7 @@ import { fetchCandidateTotalRows } from '@/lib/db/repos/metrics';
 import { markApproachOpened } from '@/lib/db/repos/sourcing-admission';
 import { mintApproachToken } from '@/lib/sourcing/approach-token';
 import { resolveLandingContext } from '@/lib/sourcing/server/landing-context';
+import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
 
 import { call, callWithId, testCampaignPayload, until } from './helpers/api';
 import { cleanAll, db, newTestCampaignId } from './helpers/db';
@@ -241,7 +244,11 @@ describe('S23.2 — la soumission', () => {
     resetSentEmails();
     const res = await submit(post('submit', approaches.claire!.token, ip(), submission()), tokenParams(approaches.claire!.token));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ outcome: 'sent', firstName: 'Claire', recruiterName: 'Jane S23' });
+    // La route réserve et répond ; l'admission part sur le rail (cf. S24).
+    expect(await res.json()).toEqual({ outcome: 'received', firstName: 'Claire' });
+    expect(sentEmails.filter((m) => [m.to].flat().includes(EMAIL))).toHaveLength(0);
+    const tick = await runSourcingMaintenance();
+    expect(tick.admitted).toBe(1);
 
     const analysisId = `can_src_${approaches.claire!.id}`;
     const { data: analysis } = await db()

@@ -21,9 +21,9 @@
  * jamais traîner une réservation « à moitié faite ».
  */
 import { isSlotClaimConflict } from './errors';
-import { emitEvent, resolveRefs, resolveRefsBatch } from './events';
+import { emitEvent } from './events';
 import {
-  getBookingLink,
+  getBookingLinkChain,
   markLinkUsed,
   restoreLinkActive,
 } from './links';
@@ -37,7 +37,7 @@ import { loadEngineInput } from './resources';
 import { nowIso } from './runtime';
 import { TABLES, toBooking, toResource, type BookingRow, type ResourceRow } from './rows';
 import { computeSlots, findOfferedSlot } from './slots';
-import { assertOk, fetchAllKeyset, table } from './store';
+import { assertOk, chunk, fetchAllKeyset, table } from './store';
 import { generateToken, isTokenShaped } from './tokens';
 import { getTargetById } from './targets';
 import type {
@@ -49,9 +49,31 @@ import type {
   RescheduleResult,
   Resource,
   Slot,
+  Target,
 } from './types';
 
 const BOOKING_COLUMNS = '*';
+
+/**
+ * Réservation avec les clés externes de sa cible et de sa ressource JOINTES
+ * (clés étrangères `target_id`, `resource_id`). Hydrater une réservation
+ * coûtait deux lectures de plus par ligne.
+ */
+const BOOKING_COLUMNS_WITH_REFS =
+  '*, target:sched_targets(external_ref), resource:sched_resources(external_ref)';
+
+type BookingRowWithRefs = BookingRow & {
+  target: { external_ref: string } | null;
+  resource: { external_ref: string } | null;
+};
+
+/** Même repli que l'ancienne résolution séparée : l'identifiant interne. */
+function toBookingWithRefs(row: BookingRowWithRefs): Booking {
+  return toBooking(row, {
+    targetExternalRef: row.target?.external_ref ?? row.target_id,
+    resourceExternalRef: row.resource?.external_ref ?? row.resource_id,
+  });
+}
 
 // ─── Page publique ──────────────────────────────────────────────────────
 
@@ -61,14 +83,15 @@ const BOOKING_COLUMNS = '*';
  * doit produire une page compréhensible, pas une pile d'exception.
  */
 export async function resolveBookingPage(token: string): Promise<BookingPageState> {
-  const link = await getBookingLink(token);
-  if (!link) return { status: 'gone', display: null, reason: 'unknown' };
+  // Lien, cible et ressource en une lecture.
+  const chain = await getBookingLinkChain(token);
+  if (!chain) return { status: 'gone', display: null, reason: 'unknown' };
+  const { link, target } = chain;
   if (link.status !== 'active') {
     return { status: 'gone', display: link.display, reason: link.status };
   }
 
-  const target = await getTargetById(link.targetId);
-  const resource = target?.resourceId ? await resourceById(target.resourceId) : null;
+  const resource = target?.resourceId ? chain.resource : null;
   if (!resource || !resource.isActive) {
     return { status: 'degraded', display: link.display };
   }
@@ -95,10 +118,9 @@ export async function listSlotsForLink(
   token: string,
   window: { from: string; to: string },
 ): Promise<Slot[]> {
-  const link = await getBookingLink(token);
-  if (!link || link.status !== 'active') return [];
-  const target = await getTargetById(link.targetId);
-  const resource = target?.resourceId ? await resourceById(target.resourceId) : null;
+  const chain = await getBookingLinkChain(token);
+  if (!chain || chain.link.status !== 'active') return [];
+  const resource = chain.target?.resourceId ? chain.resource : null;
   if (!resource || !resource.isActive) return [];
   return computeSlots(await loadEngineInput(resource, window));
 }
@@ -112,9 +134,9 @@ export async function listSlotsForManageToken(
   manageToken: string,
   window: { from: string; to: string },
 ): Promise<Slot[]> {
-  const booking = await getBookingByManageToken(manageToken);
-  if (!booking || booking.status !== 'confirmed') return [];
-  const resource = await resourceById(booking.resourceId);
+  const found = await bookingWithResourceByManageToken(manageToken);
+  if (!found || found.booking.status !== 'confirmed') return [];
+  const { booking, resource } = found;
   if (!resource || !resource.isActive) return [];
 
   const engineInput = await loadEngineInput(resource, window);
@@ -130,9 +152,10 @@ export async function listSlotsForManageToken(
 export async function confirmBooking(
   input: ConfirmBookingInput,
 ): Promise<ConfirmBookingResult> {
-  // ── 1. Lien ──────────────────────────────────────────────────────────
-  const link = await getBookingLink(input.token);
-  if (!link) return { ok: false, reason: 'link_not_found' };
+  // ── 1. Lien (+ cible et ressource, lues dans la même requête) ─────────
+  const chain = await getBookingLinkChain(input.token);
+  if (!chain) return { ok: false, reason: 'link_not_found' };
+  const link = chain.link;
   if (link.status === 'expired') return { ok: false, reason: 'link_expired' };
   if (link.status === 'revoked') return { ok: false, reason: 'link_gone' };
   if (link.status === 'used') {
@@ -146,11 +169,11 @@ export async function confirmBooking(
   }
 
   // ── 1bis. Cible + ressource ──────────────────────────────────────────
-  const target = await getTargetById(link.targetId);
+  const target = chain.target;
   if (!target?.resourceId) return { ok: false, reason: 'resource_unavailable' };
   const versionBefore = target.version;
 
-  const resource = await resourceById(target.resourceId);
+  const resource = chain.resource;
   if (!resource || !resource.isActive) {
     return { ok: false, reason: 'resource_unavailable' };
   }
@@ -234,10 +257,12 @@ export async function cancelBookingByAttendee(
  * c'est une de trop.
  */
 export async function cancelBookingByOrganizer(
-  bookingId: string,
+  /** Identifiant, ou la réservation déjà lue par l'appelant (aucune relecture). */
+  bookingOrId: string | Booking,
   options?: { reason?: string | null; notifyAttendee?: boolean },
 ): Promise<CancelVerdict> {
-  const booking = await getBooking(bookingId);
+  const booking =
+    typeof bookingOrId === 'string' ? await getBooking(bookingOrId) : bookingOrId;
   if (!booking) return 'not_found';
   return cancelBooking(
     booking,
@@ -273,8 +298,12 @@ async function cancelBooking(
     targetExternalRef: booking.targetExternalRef,
     resourceExternalRef: booking.resourceExternalRef,
   });
-  await emitEvent('booking.cancelled', cancelled, { cancelReason: reason });
-  const organizer = await resourceById(cancelled.resourceId);
+  // L'organisateur ne dépend pas de l'écriture de l'événement : lus ensemble,
+  // et la notification part toujours APRÈS l'outbox.
+  const [, organizer] = await Promise.all([
+    emitEvent('booking.cancelled', cancelled, { cancelReason: reason }),
+    resourceById(cancelled.resourceId),
+  ]);
   await notifyBookingCancelled(
     cancelled,
     organizer?.notifyEmail ?? null,
@@ -308,11 +337,12 @@ export async function rescheduleBooking(
   manageToken: string,
   input: { startAt: string },
 ): Promise<RescheduleResult> {
-  const previous = await getBookingByManageToken(manageToken);
-  if (!previous) return { ok: false, reason: 'booking_not_found' };
+  const found = await bookingWithResourceByManageToken(manageToken);
+  if (!found) return { ok: false, reason: 'booking_not_found' };
+  const previous = found.booking;
   if (previous.status === 'cancelled') return { ok: false, reason: 'booking_cancelled' };
 
-  const resource = await resourceById(previous.resourceId);
+  const resource = found.resource;
   if (!resource || !resource.isActive) {
     return { ok: false, reason: 'resource_unavailable' };
   }
@@ -400,23 +430,51 @@ export async function getConfirmedBookingByLink(
 ): Promise<Booking | null> {
   if (!isTokenShaped(linkToken)) return null;
   const { data, error } = await table(TABLES.bookings)
-    .select(BOOKING_COLUMNS)
+    .select(BOOKING_COLUMNS_WITH_REFS)
     .eq('link_token', linkToken)
     .eq('status', 'confirmed')
     .order('created_at', { ascending: false })
     .limit(1)
-    .maybeSingle<BookingRow>();
+    .maybeSingle<BookingRowWithRefs>();
   assertOk('getConfirmedBookingByLink', error);
-  return data ? hydrate(data) : null;
+  return data ? toBookingWithRefs(data) : null;
+}
+
+/**
+ * Réservations CONFIRMÉES produites par un ensemble de liens, en une lecture
+ * par tranche (au lieu d'une par lien). Exhaustif : pagination par clé.
+ * L'appelant choisit parmi elles ; aucun ordre n'est garanti ici.
+ */
+export async function listConfirmedBookingsByLinkTokens(
+  linkTokens: readonly string[],
+): Promise<Booking[]> {
+  const tokens = [...new Set(linkTokens.filter(isTokenShaped))];
+  const slices = await Promise.all(
+    chunk(tokens, 200).map((slice) =>
+      fetchAllKeyset<BookingRowWithRefs>(
+        'listConfirmedBookingsByLinkTokens',
+        (after, limit) => {
+          let query = table(TABLES.bookings)
+            .select(BOOKING_COLUMNS_WITH_REFS)
+            .in('link_token', slice)
+            .eq('status', 'confirmed');
+          if (after !== null) query = query.gt('id', after);
+          return query.order('id', { ascending: true }).limit(limit);
+        },
+        (row) => row.id,
+      ),
+    ),
+  );
+  return slices.flat().map(toBookingWithRefs);
 }
 
 export async function getBooking(id: string): Promise<Booking | null> {
   const { data, error } = await table(TABLES.bookings)
-    .select(BOOKING_COLUMNS)
+    .select(BOOKING_COLUMNS_WITH_REFS)
     .eq('id', id)
-    .maybeSingle<BookingRow>();
+    .maybeSingle<BookingRowWithRefs>();
   assertOk('getBooking', error);
-  return data ? hydrate(data) : null;
+  return data ? toBookingWithRefs(data) : null;
 }
 
 /**
@@ -429,37 +487,43 @@ export async function getBookingByManageToken(
 ): Promise<Booking | null> {
   if (!isTokenShaped(manageToken)) return null;
   const { data, error } = await table(TABLES.bookings)
-    .select(BOOKING_COLUMNS)
+    .select(BOOKING_COLUMNS_WITH_REFS)
     .eq('manage_token', manageToken)
     .order('created_at', { ascending: false })
     .limit(10);
   assertOk('getBookingByManageToken', error);
 
-  const rows = (data ?? []) as BookingRow[];
+  const rows = (data ?? []) as BookingRowWithRefs[];
   const row = rows.find((r) => r.status === 'confirmed') ?? rows[0];
-  return row ? hydrate(row) : null;
+  return row ? toBookingWithRefs(row) : null;
 }
 
 export async function listBookings(filter?: {
   targetExternalRef?: string;
+  /** La cible déjà lue par l'appelant : dispense de la relire par sa clé. */
+  target?: Pick<Target, 'id'>;
   resourceExternalRef?: string;
   from?: string;
   to?: string;
   status?: 'confirmed' | 'cancelled';
 }): Promise<Booking[]> {
   const [targetId, resourceId] = await Promise.all([
-    filter?.targetExternalRef ? idByRef(TABLES.targets, filter.targetExternalRef) : null,
+    filter?.target
+      ? filter.target.id
+      : filter?.targetExternalRef
+        ? idByRef(TABLES.targets, filter.targetExternalRef)
+        : null,
     filter?.resourceExternalRef
       ? idByRef(TABLES.resources, filter.resourceExternalRef)
       : null,
   ]);
-  if (filter?.targetExternalRef && !targetId) return [];
+  if ((filter?.target || filter?.targetExternalRef) && !targetId) return [];
   if (filter?.resourceExternalRef && !resourceId) return [];
 
-  const rows = await fetchAllKeyset<BookingRow>(
+  const rows = await fetchAllKeyset<BookingRowWithRefs>(
     'listBookings',
     (after, limit) => {
-      let query = table(TABLES.bookings).select(BOOKING_COLUMNS);
+      let query = table(TABLES.bookings).select(BOOKING_COLUMNS_WITH_REFS);
       if (targetId) query = query.eq('target_id', targetId);
       if (resourceId) query = query.eq('resource_id', resourceId);
       if (filter?.status) query = query.eq('status', filter.status);
@@ -470,8 +534,7 @@ export async function listBookings(filter?: {
     },
     (row) => row.id,
   );
-  const refsOf = await resolveRefsBatch(rows);
-  const bookings = rows.map((row) => toBooking(row, refsOf(row)));
+  const bookings = rows.map(toBookingWithRefs);
   return bookings.sort((a, b) => a.startAt.localeCompare(b.startAt));
 }
 
@@ -510,8 +573,36 @@ async function compensate(bookingId: string): Promise<void> {
   assertOk('compensate', deleteError);
 }
 
-async function hydrate(row: BookingRow): Promise<Booking> {
-  return toBooking(row, await resolveRefs(row.target_id, row.resource_id));
+/**
+ * Réservation d'un jeton de gestion AVEC sa ressource complète, en une lecture
+ * (même sélection que `getBookingByManageToken` : la confirmée d'abord, sinon
+ * la plus récente). Sert aux créneaux de déplacement et au déplacement, qui
+ * relisaient la ressource juste après.
+ */
+async function bookingWithResourceByManageToken(
+  manageToken: string,
+): Promise<{ booking: Booking; resource: Resource | null } | null> {
+  if (!isTokenShaped(manageToken)) return null;
+  const { data, error } = await table(TABLES.bookings)
+    .select('*, target:sched_targets(external_ref), resource:sched_resources(*)')
+    .eq('manage_token', manageToken)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  assertOk('getBookingByManageToken', error);
+
+  const rows = (data ?? []) as (BookingRow & {
+    target: { external_ref: string } | null;
+    resource: ResourceRow | null;
+  })[];
+  const row = rows.find((r) => r.status === 'confirmed') ?? rows[0];
+  if (!row) return null;
+  return {
+    booking: toBooking(row, {
+      targetExternalRef: row.target?.external_ref ?? row.target_id,
+      resourceExternalRef: row.resource?.external_ref ?? row.resource_id,
+    }),
+    resource: row.resource ? toResource(row.resource) : null,
+  };
 }
 
 async function findBookingByLink(
@@ -519,16 +610,16 @@ async function findBookingByLink(
   startAt: string,
 ): Promise<Booking | null> {
   const { data, error } = await table(TABLES.bookings)
-    .select(BOOKING_COLUMNS)
+    .select(BOOKING_COLUMNS_WITH_REFS)
     .eq('link_token', token)
     .eq('status', 'confirmed')
     .limit(5);
   assertOk('findBookingByLink', error);
   const target = Date.parse(startAt);
-  const row = ((data ?? []) as BookingRow[]).find(
+  const row = ((data ?? []) as BookingRowWithRefs[]).find(
     (candidate) => Date.parse(candidate.start_at) === target,
   );
-  return row ? hydrate(row) : null;
+  return row ? toBookingWithRefs(row) : null;
 }
 
 async function resourceById(id: string): Promise<Resource | null> {

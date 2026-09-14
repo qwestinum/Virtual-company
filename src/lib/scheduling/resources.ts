@@ -29,6 +29,18 @@ import type {
   WeeklyRuleInput,
 } from './types';
 
+/**
+ * Une ressource désignée par sa clé externe, OU déjà lue par l'appelant. Dans
+ * le second cas, aucune relecture : l'identifiant interne est connu. C'est ce
+ * qui permet à une requête de résoudre sa ressource UNE fois et de la
+ * transmettre (jamais de mémoire d'une requête à l'autre).
+ */
+export type ResourceHandle = string | Pick<Resource, 'id' | 'externalRef'>;
+
+async function resourceIdOf(operation: string, handle: ResourceHandle): Promise<string> {
+  return typeof handle === 'string' ? requireResourceId(operation, handle) : handle.id;
+}
+
 const RESOURCE_COLUMNS =
   'id, external_ref, display_name, timezone, slot_duration_minutes, buffer_minutes, ' +
   'min_notice_minutes, horizon_days, meeting_location, notify_email, is_active, ' +
@@ -153,10 +165,10 @@ export async function listBookableResources(): Promise<string[]> {
  * fusionnée à moitié.
  */
 export async function setWeeklyRules(
-  externalRef: string,
+  handle: ResourceHandle,
   rules: WeeklyRuleInput[],
 ): Promise<WeeklyRule[]> {
-  const resource = await requireResourceId('setWeeklyRules', externalRef);
+  const resource = await resourceIdOf('setWeeklyRules', handle);
 
   const { error: deleteError } = await table(TABLES.rules)
     .delete()
@@ -179,8 +191,8 @@ export async function setWeeklyRules(
   return ((data ?? []) as RuleRow[]).map(toWeeklyRule);
 }
 
-export async function listWeeklyRules(externalRef: string): Promise<WeeklyRule[]> {
-  const resource = await requireResourceId('listWeeklyRules', externalRef);
+export async function listWeeklyRules(handle: ResourceHandle): Promise<WeeklyRule[]> {
+  const resource = await resourceIdOf('listWeeklyRules', handle);
   const rows = await fetchAllKeyset<RuleRow>(
     'listWeeklyRules',
     (after, limit) => {
@@ -201,10 +213,10 @@ export async function listWeeklyRules(externalRef: string): Promise<WeeklyRule[]
 // ─── Exceptions datées ──────────────────────────────────────────────────
 
 export async function addException(
-  externalRef: string,
+  handle: ResourceHandle,
   input: AvailabilityExceptionInput,
 ): Promise<AvailabilityException> {
-  const resource = await requireResourceId('addException', externalRef);
+  const resource = await resourceIdOf('addException', handle);
   const { data, error } = await table(TABLES.exceptions)
     .insert({
       resource_id: resource,
@@ -225,10 +237,10 @@ export async function removeException(exceptionId: string): Promise<void> {
 }
 
 export async function listExceptions(
-  externalRef: string,
+  handle: ResourceHandle,
   window?: { from?: string; to?: string },
 ): Promise<AvailabilityException[]> {
-  const resource = await requireResourceId('listExceptions', externalRef);
+  const resource = await resourceIdOf('listExceptions', handle);
   const rows = await fetchAllKeyset<ExceptionRow>(
     'listExceptions',
     (after, limit) => {
@@ -256,9 +268,11 @@ export async function loadEngineInput(
   resource: Resource,
   window: { from: string; to: string },
 ): Promise<SlotEngineInput> {
+  // La ressource est déjà lue : règles et exceptions partent sur son
+  // identifiant, sans relire la ressource deux fois.
   const [rules, exceptions, busy] = await Promise.all([
-    listWeeklyRules(resource.externalRef),
-    listExceptions(resource.externalRef, {
+    listWeeklyRules(resource),
+    listExceptions(resource, {
       // Marge d'un jour de part et d'autre : la fenêtre est en UTC, les
       // exceptions en dates LOCALES — les bords peuvent déborder.
       from: shiftIsoDate(window.from, -1),
@@ -305,10 +319,12 @@ export async function listBusyIntervals(
 }
 
 export async function previewSlots(
-  externalRef: string,
+  /** Clé externe, ou la ressource déjà lue par l'appelant. */
+  resourceOrRef: string | Resource,
   window: { from: string; to: string },
 ): Promise<Slot[]> {
-  const resource = await getResource(externalRef);
+  const resource =
+    typeof resourceOrRef === 'string' ? await getResource(resourceOrRef) : resourceOrRef;
   if (!resource || !resource.isActive) return [];
   return computeSlots(await loadEngineInput(resource, window));
 }

@@ -24,6 +24,8 @@
  * de lecture — il ne doit jamais emporter les dossiers eux-mêmes.
  */
 
+import type { User } from '@supabase/supabase-js';
+
 import { getApiUser } from '@/lib/auth/require-api-user';
 import { listCampaignSummaries } from '@/lib/db/repos/campaigns';
 import { listRecruiters } from '@/lib/db/repos/recruiters';
@@ -35,10 +37,18 @@ export type ReferentContext = {
   currentUserId: string | null;
 };
 
+/**
+ * Options de résolution. `user` : la session DÉJÀ lue par l'appelant (sa garde
+ * d'accès, typiquement) — fournie, elle évite de relire la session ; absente,
+ * la session est lue ici comme avant. `null` vaut « aucune session ».
+ */
+export type ReferentContextOptions = { user?: User | null };
+
 export async function loadReferentContext(
   campaignIds: readonly (string | null)[],
+  options: ReferentContextOptions = {},
 ): Promise<ReferentContext> {
-  return prepareReferentContext()(campaignIds);
+  return prepareReferentContext(options)(campaignIds);
 }
 
 /**
@@ -48,11 +58,14 @@ export async function loadReferentContext(
  * Une route qui ne connaît ses campagnes qu'après sa propre lecture n'attend
  * plus ces deux allers-retours à la fin.
  */
-export function prepareReferentContext(): (
+export function prepareReferentContext(options: ReferentContextOptions = {}): (
   campaignIds: readonly (string | null)[],
 ) => Promise<ReferentContext> {
   const recruitersPromise = listRecruiters().catch(() => []);
-  const userPromise = getApiUser().catch(() => null);
+  const userPromise =
+    options.user !== undefined
+      ? Promise.resolve(options.user)
+      : getApiUser().catch(() => null);
   return async (campaignIds) => {
     try {
       const ids = [

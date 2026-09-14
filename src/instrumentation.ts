@@ -18,6 +18,14 @@
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+  // Serverless (Vercel) : le scheduler NE DÉMARRE PAS (la relève passe par le
+  // cron, cf. `ensureSchedulerStarted`). On sort donc AVANT l'import : Next
+  // attend `register()` avant de servir la première requête, et ce module tire
+  // le poller IMAP, l'extraction de CV, les SDK LLM et react-pdf — mesuré à
+  // 280 ms sur une machine rapide, payés à chaque démarrage à froid pour ne
+  // rien démarrer (diagnostic de latence du 14/09/2026). La garde reste aussi
+  // dans `ensureSchedulerStarted` : les routes qui l'appellent la gardent.
+  if (process.env.VERCEL) return;
   const { ensureSchedulerStarted } = await import('@/lib/imap/scheduler');
   ensureSchedulerStarted();
 }

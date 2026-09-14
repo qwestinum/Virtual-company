@@ -18,14 +18,18 @@ import {
   journalToCandidatesList,
   type CandidateRow,
 } from '@/lib/dashboard/derive-metrics';
-import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
+import {
+  listJournalEntriesByActions,
+  type JournalEntry,
+} from '@/lib/db/repos/journal';
+import { pickActions } from '@/lib/reporting/journal-preload';
 
 /**
  * Actions dont `journalToCandidatesList` dérive la liste + les marqueurs de
  * parcours. Set BORNÉ (événements liés aux candidats), donc `listJournalEntries
  * ByActions` reste efficace tout en étant exhaustif (pas de cap 500).
  */
-const CANDIDATE_MARKER_ACTIONS: string[] = [
+export const CANDIDATE_MARKER_ACTIONS: readonly string[] = [
   'imap_cv_analyzed',
   'imap_outreach_mail',
   'imap_outreach_brief',
@@ -34,6 +38,7 @@ const CANDIDATE_MARKER_ACTIONS: string[] = [
   'candidate_validation_marked',
 ];
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
+import type { PendingValidation } from '@/types/hitl';
 import {
   deriveJourneyFor,
   type CandidateJourney,
@@ -50,6 +55,17 @@ export type JourneySignals = {
 
 export async function loadJourneySignals(opts?: {
   campaignId?: string;
+  /**
+   * Lectures déjà lancées par l'appelant, pour ne pas les refaire. Mêmes
+   * règles que les lectures internes : un rejet rend des signaux vides.
+   *   · `journal` — lecture du journal sur le MÊME `campaignId`, couvrant au
+   *     moins `CANDIDATE_MARKER_ACTIONS` (les autres actions sont écartées) ;
+   *   · `pending` — `listPendingValidations()`.
+   */
+  preloaded?: {
+    journal?: Promise<JournalEntry[]>;
+    pending?: Promise<PendingValidation[]>;
+  };
 }): Promise<JourneySignals> {
   try {
     const [rows, pending] = await Promise.all([
@@ -57,10 +73,14 @@ export async function loadJourneySignals(opts?: {
       // tronquait les marqueurs entretien/**recruté** → time-to-hire et
       // « recrutés par canal » faux à volume dans les PDF. On cible les seules
       // actions dont `journalToCandidatesList` dérive, paginées SANS cap.
-      listJournalEntriesByActions(CANDIDATE_MARKER_ACTIONS, {
-        campaignId: opts?.campaignId,
-      }),
-      listPendingValidations(),
+      opts?.preloaded?.journal
+        ? opts.preloaded.journal.then((all) =>
+            pickActions(all, CANDIDATE_MARKER_ACTIONS),
+          )
+        : listJournalEntriesByActions([...CANDIDATE_MARKER_ACTIONS], {
+            campaignId: opts?.campaignId,
+          }),
+      opts?.preloaded?.pending ?? listPendingValidations(),
     ]);
     // Pas de pendingUids passé ici → les candidats en attente RESTENT dans
     // la liste (on veut les afficher « en attente de validation »).

@@ -22,7 +22,12 @@ import { listRecruiters } from '@/lib/db/repos/recruiters';
 import type { ReferentInfo } from '@/lib/referent/filter';
 import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
-import { listBookings, listLinksForTarget, listOrphanTargets } from '@/lib/scheduling';
+import {
+  getTargets,
+  listBookings,
+  listLinksForTarget,
+  listOrphanTargets,
+} from '@/lib/scheduling';
 import { parseBookingContext } from '@/lib/scheduling-host/campaign-booking';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { InterviewBrief } from '@/types/interview-brief';
@@ -139,7 +144,7 @@ export async function loadInterviewPipeline(
     .map((b) => b.campaignId)
     .filter((c): c is string => c !== null);
 
-  const [analyses, signals, recruiters, orphanTargets, briefCampaigns] = await Promise.all([
+  const [analyses, signals, recruiters, orphanTargets, briefCampaigns, briefTargets] = await Promise.all([
     uids.length > 0
       ? listAllCandidateAnalyses({ uidIn: uids }).catch(() => [])
       : Promise.resolve([]),
@@ -153,6 +158,14 @@ export async function loadInterviewPipeline(
     // les lit dès maintenant, et seules les références orphelines encore
     // inconnues coûtent une lecture de plus.
     listCampaignSummaries(briefCampaignIds).catch(() => null),
+    // Cibles de réservation des campagnes des briefings, lues DÈS MAINTENANT :
+    // une campagne sans cible n'en rend simplement pas. Évite une étape de plus
+    // pour les campagnes natives (leurs liens et rendez-vous partent sur ces
+    // cibles déjà lues).
+    (async () => {
+      await ensureSchedulingConfigured();
+      return getTargets(briefCampaignIds);
+    })().catch(() => null),
   ]);
 
   // Campagnes RÉELLEMENT en jeu : celles des briefings, plus celles que le
@@ -186,19 +199,45 @@ export async function loadInterviewPipeline(
   );
   if (nativeCampaigns.length > 0) {
     await ensureSchedulingConfigured();
-    // Lectures lancées ensemble (campagnes entre elles, liens et rendez-vous
-    // d'une même campagne) ; les résultats sont APPLIQUÉS dans l'ordre des
-    // campagnes, exactement comme la boucle séquentielle qu'elles remplacent.
+    // Les cibles de TOUTES les campagnes natives en une lecture, puis liens et
+    // rendez-vous de chacune lancés ensemble sur la cible déjà lue (plus de
+    // relecture par clé). Une campagne sans cible n'a ni lien ni rendez-vous —
+    // ce que rendaient déjà les deux lectures en échec. Les résultats sont
+    // APPLIQUÉS dans l'ordre des campagnes, comme la boucle d'origine.
+    // Cibles déjà connues : celles des briefings (lues à l'étape précédente)
+    // et celles des cibles orphelines ; seules les campagnes natives encore
+    // inconnues coûtent une lecture.
+    const known = new Map([
+      ...(briefTargets ?? new Map()),
+      ...orphanTargets.map((o) => [o.target.externalRef, o.target] as const),
+    ]);
+    const missingNative = nativeCampaigns.map((c) => c.id).filter((id) => !known.has(id));
+    const targets =
+      briefTargets === null
+        ? await getTargets(nativeCampaigns.map((c) => c.id)).catch(() => null)
+        : missingNative.length === 0
+          ? known
+          : await getTargets(missingNative)
+              .then((extra) => new Map([...known, ...extra]))
+              .catch(() => null);
     const perCampaign = await Promise.all(
-      nativeCampaigns.map((campaign) =>
-        Promise.all([
-          listLinksForTarget(campaign.id).catch(() => []),
-          listBookings({
-            targetExternalRef: campaign.id,
-            status: 'confirmed',
-          }).catch(() => []),
-        ]),
-      ),
+      nativeCampaigns.map((campaign) => {
+        // Lecture groupée en échec : repli sur la lecture par clé d'origine.
+        if (!targets) {
+          return Promise.all([
+            listLinksForTarget(campaign.id).catch(() => []),
+            listBookings({ targetExternalRef: campaign.id, status: 'confirmed' }).catch(
+              () => [],
+            ),
+          ]);
+        }
+        const target = targets.get(campaign.id);
+        if (!target) return Promise.resolve([[], []] as const);
+        return Promise.all([
+          listLinksForTarget(target).catch(() => []),
+          listBookings({ target, status: 'confirmed' }).catch(() => []),
+        ]);
+      }),
     );
     for (const [links, bookings] of perCampaign) {
       for (const link of links) {

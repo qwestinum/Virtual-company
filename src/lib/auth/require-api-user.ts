@@ -56,6 +56,14 @@ async function roleFor(user: User): Promise<'admin' | 'member' | null> {
   return role;
 }
 
+/**
+ * Rôle admin d'une session DÉJÀ vérifiée — même règle que `getAdminApiUser`
+ * (fail-closed, cache de rôle 60 s), sans relancer la vérification de session.
+ */
+export async function isAdminApiUser(user: User): Promise<boolean> {
+  return (await roleFor(user)) === 'admin';
+}
+
 export async function getAdminApiUser(): Promise<User | null> {
   const user = await getApiUser();
   if (!user) return null;

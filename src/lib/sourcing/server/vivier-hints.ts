@@ -22,36 +22,104 @@ function splitName(p: SourcingProfileView): { first: string; last: string } | nu
   return first.length >= 2 && last.length >= 2 ? { first, last } : null;
 }
 
+const ID_CHUNK = 100;
+
+type Candidate = { p: SourcingProfileView; name: { first: string; last: string }; company: string };
+type NameRow = { id: string; nom: string; prenom: string | null };
+type Db = ReturnType<typeof requireServerSupabase>;
+
+/** Issue d'une vérification d'entreprise : trouvé, rien, ou exception (arrêt). */
+type CompanyCheck = { kind: 'hit'; id: string } | { kind: 'none' } | { kind: 'threw' };
+
+/**
+ * Homonymes stricts (nom ET prénom repliés), dans l'ordre des lignes rendues —
+ * cet ordre départage quand plusieurs homonymes portent l'entreprise.
+ */
+export function sameNameRows(rows: readonly NameRow[], name: { first: string; last: string }): NameRow[] {
+  return rows.filter(
+    (r) => fold(r.nom) === fold(name.last) && r.prenom !== null && fold(r.prenom) === fold(name.first),
+  );
+}
+
+/** Premier id (dans l'ordre `orderedIds`) présent dans `found`, sinon `null`. */
+export function firstFound(orderedIds: readonly string[], found: ReadonlySet<string>): string | null {
+  for (const id of orderedIds) if (found.has(id)) return id;
+  return null;
+}
+
+const companyQuery = (db: Db, ids: string[], company: string) =>
+  db
+    .from('vivier_candidates')
+    .select('id')
+    .in('id', ids)
+    .textSearch('cv_tsv', escapeFilter(company), { config: 'french', type: 'websearch' })
+    .limit(ids.length);
+
+/**
+ * Parmi les homonymes d'un profil, le premier (dans l'ordre) dont le CV cite
+ * l'entreprise. Une requête groupée pour tous les homonymes ; si elle échoue,
+ * repli sur la vérification ligne à ligne d'origine (une erreur sur un homonyme
+ * n'y empêchait pas d'essayer le suivant).
+ */
+async function checkCompany(db: Db, c: Candidate, rows: NameRow[]): Promise<CompanyCheck> {
+  try {
+    const ids = rows.map((r) => r.id);
+    const grouped = await Promise.all(chunk(ids, ID_CHUNK).map((part) => companyQuery(db, part, c.company)));
+    if (grouped.every((g) => !g.error)) {
+      const found = new Set(grouped.flatMap((g) => ((g.data ?? []) as { id: string }[]).map((r) => r.id)));
+      const id = firstFound(ids, found);
+      return id ? { kind: 'hit', id } : { kind: 'none' };
+    }
+    for (const r of rows) {
+      const hit = await companyQuery(db, [r.id], c.company);
+      if (!hit.error && (hit.data ?? []).length > 0) return { kind: 'hit', id: r.id };
+    }
+    return { kind: 'none' };
+  } catch {
+    return { kind: 'threw' };
+  }
+}
+
+/**
+ * Lots de noms lus ENSEMBLE, puis vérifications d'entreprise lancées ensemble ;
+ * les résultats s'appliquent dans l'ordre d'origine (lot, puis profil), avec
+ * les mêmes arrêts : un lot en erreur ou une exception rend les indices déjà
+ * acquis, rien au-delà.
+ */
 export async function findVivierHints(profiles: SourcingProfileView[]): Promise<Map<string, string>> {
   const hints = new Map<string, string>();
   try {
     const candidates = profiles
       .map((p) => ({ p, name: splitName(p), company: p.snapshot.current?.company?.trim() ?? null }))
-      .filter((c): c is { p: SourcingProfileView; name: { first: string; last: string }; company: string } => !!c.name && !!c.company);
+      .filter((c): c is Candidate => !!c.name && !!c.company);
     if (candidates.length === 0) return hints;
 
     const db = requireServerSupabase();
-    for (const part of chunk(candidates, 40)) {
-      const or = part.map((c) => `nom.ilike.${escapeFilter(c.name.last)}`).join(',');
-      const { data, error } = await db.from('vivier_candidates').select('id, nom, prenom').or(or).limit(500);
-      if (error) return hints;
-      const rows = (data ?? []) as { id: string; nom: string; prenom: string | null }[];
-      for (const c of part) {
-        const sameName = rows.filter(
-          (r) => fold(r.nom) === fold(c.name.last) && r.prenom !== null && fold(r.prenom) === fold(c.name.first),
-        );
-        for (const r of sameName) {
-          const hit = await db
-            .from('vivier_candidates')
-            .select('id')
-            .eq('id', r.id)
-            .textSearch('cv_tsv', escapeFilter(c.company), { config: 'french', type: 'websearch' })
-            .limit(1);
-          if (!hit.error && (hit.data ?? []).length > 0) {
-            hints.set(c.p.id, r.id);
-            break;
-          }
+    const batches = await Promise.all(
+      chunk(candidates, 40).map(async (part) => {
+        try {
+          const or = part.map((c) => `nom.ilike.${escapeFilter(c.name.last)}`).join(',');
+          const { data, error } = await db.from('vivier_candidates').select('id, nom, prenom').or(or).limit(500);
+          if (error) return { kind: 'error' as const };
+          const rows = (data ?? []) as NameRow[];
+          const checks = await Promise.all(
+            part.map((c) => {
+              const same = sameNameRows(rows, c.name);
+              return same.length === 0 ? Promise.resolve<CompanyCheck>({ kind: 'none' }) : checkCompany(db, c, same);
+            }),
+          );
+          return { kind: 'ok' as const, part, checks };
+        } catch {
+          return { kind: 'threw' as const };
         }
+      }),
+    );
+    for (const batch of batches) {
+      if (batch.kind !== 'ok') return hints;
+      for (let i = 0; i < batch.part.length; i += 1) {
+        const check = batch.checks[i]!;
+        if (check.kind === 'threw') return hints;
+        if (check.kind === 'hit') hints.set(batch.part[i]!.p.id, check.id);
       }
     }
   } catch {

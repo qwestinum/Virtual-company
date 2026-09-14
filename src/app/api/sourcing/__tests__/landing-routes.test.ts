@@ -69,18 +69,19 @@ describe('soumission', () => {
     expect(reserveSubmission).not.toHaveBeenCalled();
   });
 
-  it('nominal : réservation puis admission ; la réponse dit « envoyée » et avec qui', async () => {
+  it('nominal : réservation puis réponse « bien reçue » — l’admission part sur le RAIL, jamais dans la requête', async () => {
     const res = await submit(formRequest(valid), params);
-    expect(await res.json()).toEqual({ outcome: 'sent', firstName: 'Claire', recruiterName: 'Jane R.' });
+    expect(await res.json()).toEqual({ outcome: 'received', firstName: 'Claire' });
     expect(vi.mocked(reserveSubmission).mock.calls[0]![1]).toMatchObject({ email: 'claire@exemple.fr', consent: true, cv: null });
-    expect(admitSourcedCandidate).toHaveBeenCalledTimes(1);
+    // La personne n'attend ni analyse, ni PDF, ni mail derrière son clic.
+    expect(admitSourcedCandidate).not.toHaveBeenCalled();
   });
 
-  it('panne d’analyse ⇒ « bien reçue », jamais une erreur', async () => {
-    vi.mocked(admitSourcedCandidate).mockResolvedValueOnce({ kind: 'deferred', cause: 'AnalysisUnavailableError' });
+  it('réponse rapide : rien derrière la réservation n’est attendu', async () => {
+    const started = performance.now();
     const res = await submit(formRequest(valid), params);
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { outcome: string }).outcome).toBe('received');
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it('second envoi (réservation perdue) ⇒ « bien reçue », aucune seconde admission', async () => {

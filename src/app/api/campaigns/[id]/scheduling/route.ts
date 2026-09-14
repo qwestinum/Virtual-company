@@ -18,7 +18,10 @@ import { getCampaign } from '@/lib/db/repos/campaigns';
 import { listRecruiters } from '@/lib/db/repos/recruiters';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { getTargetImpact } from '@/lib/scheduling';
-import { resolveCampaignMeetingLocation } from '@/lib/scheduling-host/campaign-booking';
+import {
+  createCampaignBookingContext,
+  resolveCampaignMeetingLocation,
+} from '@/lib/scheduling-host/campaign-booking';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 
 export const runtime = 'nodejs';
@@ -46,13 +49,19 @@ export async function GET(
     }
 
     await ensureSchedulingConfigured();
+    // Contexte résolu UNE fois : la campagne (déjà lue ci-dessus) et la cible
+    // servent à la fois l'impact et le lieu, au lieu d'être relues par chacun.
+    const bookingContext = createCampaignBookingContext(id, { campaign });
+    // Les noms des recruteurs ne dépendent de rien : lus dès maintenant, même
+    // repli qu'avant (liste vide).
+    const recruitersPromise = listRecruiters().catch(() => []);
     // Le lieu HÉRITÉ voyage avec la surcharge : un écran qui propose
     // « hériter du référent » doit montrer ce dont il hérite. Annoncer un
     // héritage sans dire lequel laisse croire au recruteur qu'il a posé le
     // lieu qu'il avait en tête — c'est exactement le malentendu à couper.
     const [impact, place] = await Promise.all([
-      getTargetImpact(id),
-      resolveCampaignMeetingLocation(id),
+      bookingContext.target().then((target) => (target ? getTargetImpact(target) : null)),
+      resolveCampaignMeetingLocation(id, bookingContext),
     ]);
     const meetingLocationOverride = place.override;
     const inheritedMeetingLocation = place.inherited;
@@ -68,9 +77,7 @@ export async function GET(
 
     // Les identifiants de ressource sont des identifiants de compte : on rend
     // des NOMS, sinon le dialog affiche un UUID à un humain.
-    const names = new Map(
-      (await listRecruiters().catch(() => [])).map((r) => [r.id, r.displayName]),
-    );
+    const names = new Map((await recruitersPromise).map((r) => [r.id, r.displayName]));
     return NextResponse.json({
       native: true,
       meetingLocationOverride,

@@ -297,3 +297,35 @@ export async function listCampaignSummaries(
   }
   return out;
 }
+
+/**
+ * Intitulé de poste d'un ensemble de campagnes — projection MINIMALE (nom +
+ * `fdp.fields.job_title.value` extrait en base), chunkée, jamais `select('*')`.
+ * Map id → { name, jobTitleValue } ; une campagne introuvable est absente.
+ * `jobTitleValue` est la valeur JSON brute (pas forcément une chaîne) :
+ * l'appelant applique sa propre règle de repli.
+ */
+export async function listCampaignJobTitles(
+  campaignIds: readonly string[],
+): Promise<Map<string, { name: string; jobTitleValue: unknown }>> {
+  const ids = [...new Set(campaignIds)];
+  const out = new Map<string, { name: string; jobTitleValue: unknown }>();
+  if (ids.length === 0) return out;
+  const supabase = requireServerSupabase();
+  const parts = await Promise.all(
+    chunk(ids, 300).map(async (part) => {
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select('id, name, job_title:fdp->fields->job_title->value')
+        .in('id', part);
+      if (error) throw new Error(`listCampaignJobTitles: ${error.message}`);
+      return data;
+    }),
+  );
+  for (const data of parts) {
+    for (const row of (data ?? []) as unknown as { id: string; name: string; job_title: unknown }[]) {
+      out.set(row.id, { name: row.name, jobTitleValue: row.job_title ?? null });
+    }
+  }
+  return out;
+}

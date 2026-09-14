@@ -85,13 +85,13 @@ describe('formulaire', () => {
 });
 
 describe('écrans terminaux et neutres', () => {
-  it('envoyée : créneau avec le recruteur ; différée : « très prochainement »', () => {
+  it('envoyée : créneau avec le recruteur ; bien reçue : un email pour choisir un créneau (pas « immédiatement »)', () => {
     const sent = renderToStaticMarkup(<LandingOutcome outcome={{ kind: 'sent', firstName: 'Claire', recruiterName: 'Jane R.' }} organizationName="Cabinet" privacyContact="dpo@cabinet.fr" />);
     expect(sent).toContain('Merci Claire, votre candidature est bien reçue.');
     expect(sent).toContain('choisir un créneau d’entretien avec Jane R.');
     const received = renderToStaticMarkup(<LandingOutcome outcome={{ kind: 'received', firstName: 'Claire' }} organizationName="Cabinet" privacyContact={null} />);
-    expect(received).toContain('très prochainement');
-    expect(received).not.toContain('créneau');
+    expect(received).toContain('Vous recevrez un email pour choisir un créneau.');
+    expect(received).not.toContain('immédiatement');
   });
 
   it('opposition : ce qui est supprimé, ce qui reste', () => {

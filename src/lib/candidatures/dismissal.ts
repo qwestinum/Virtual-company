@@ -42,7 +42,7 @@ import {
 } from '@/lib/db/repos/interview-briefs';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
-  listPendingValidations,
+  listOpenValidationsForUid,
   listVoidValidations,
   unvoidPendingValidation,
   voidPendingValidation,
@@ -50,6 +50,8 @@ import {
 import { getSenderEmail } from '@/lib/email/addresses';
 import {
   cancelBookingForAnalysis,
+  createCampaignBookingContext,
+  type CampaignBookingContext,
   isBookingStillConfirmed,
   revokeCampaignBookingLink,
 } from '@/lib/scheduling-host/campaign-booking';
@@ -81,11 +83,67 @@ function firstName(nom: string): string {
   return nom.trim().split(/\s+/)[0] ?? nom;
 }
 
-async function jobTitleFor(campaignId: string | null): Promise<string> {
+async function jobTitleFor(
+  campaignId: string | null,
+  ctx?: CampaignBookingContext,
+): Promise<string> {
   if (!campaignId) return 'le poste visé';
-  const campaign = await getCampaign(campaignId).catch(() => null);
+  const campaign = await (ctx ? ctx.campaign() : getCampaign(campaignId)).catch(() => null);
   const v = campaign?.fdp.fields.job_title?.value;
   return typeof v === 'string' && v.trim() ? v.trim() : 'le poste visé';
+}
+
+/** Faits du mail d'information communs à toute une campagne. */
+type DismissalMailFacts = {
+  organisation: string;
+  reception: string | null;
+  rgpdContact: string;
+  jobTitle: string;
+};
+
+/**
+ * Lectures du mail d'information (réglages, adresse de réception, expéditeur,
+ * intitulé) — mêmes replis qu'avant, lancées ENSEMBLE quand elles sont
+ * indépendantes. Une clôture les partage pour tous ses dossiers.
+ */
+async function loadDismissalMailFacts(
+  campaignId: string | null,
+  ctx?: CampaignBookingContext,
+): Promise<DismissalMailFacts> {
+  const settingsPromise = getAppSettings().catch(() => null);
+  const jobTitlePromise = jobTitleFor(campaignId, ctx);
+  const senderPromise = getSenderEmail().catch(() => null);
+  const settings = await settingsPromise;
+  const organisation =
+    settings?.vivierConfig?.organisationName?.trim() ||
+    DEFAULT_VIVIER_CONFIG.organisationName.trim() ||
+    'L’équipe recrutement';
+  const reception = campaignId
+    ? await resolveCampaignReceptionAddress(campaignId, settings?.intakeEmail).catch(
+        () => null,
+      )
+    : (settings?.intakeEmail ?? null);
+  const rgpdContact = reception || (await senderPromise) || '';
+  return { organisation, reception, rgpdContact, jobTitle: await jobTitlePromise };
+}
+
+/**
+ * Ce qu'une série de classements d'une MÊME campagne peut partager : le
+ * contexte de réservation (campagne, cible) et les faits du mail. Créé par
+ * l'appelant pour la durée de SA requête — jamais conservé au-delà.
+ */
+export type DismissalSharedContext = {
+  bookingContext?: CampaignBookingContext;
+  mailFacts?: () => Promise<DismissalMailFacts>;
+};
+
+export function createDismissalSharedContext(campaignId: string): DismissalSharedContext {
+  const bookingContext = createCampaignBookingContext(campaignId);
+  let facts: Promise<DismissalMailFacts> | null = null;
+  return {
+    bookingContext,
+    mailFacts: () => (facts ??= loadDismissalMailFacts(campaignId, bookingContext)),
+  };
 }
 
 /**
@@ -95,7 +153,9 @@ async function jobTitleFor(campaignId: string | null): Promise<string> {
 async function findOpenValidationId(
   analysis: CandidateAnalysisSummary,
 ): Promise<string | null> {
-  const pending = await listPendingValidations();
+  // Lecture ciblée sur l'uid (même filtre, même ordre) plutôt que la file
+  // entière relue pour chaque dossier.
+  const pending = await listOpenValidationsForUid(analysis.uid);
   const match = pending.find(
     (v) =>
       v.payload?.uid === analysis.uid &&
@@ -107,26 +167,16 @@ async function findOpenValidationId(
 async function sendDismissalMail(
   analysis: CandidateAnalysisSummary,
   reason: DismissalReason,
+  factsPromise: Promise<DismissalMailFacts>,
 ): Promise<DismissalMailStatus> {
   if (!dismissalMailAllowed(reason)) return 'not_applicable';
   if (!analysis.candidateEmail) return 'skipped_no_email';
 
-  const settings = await getAppSettings().catch(() => null);
-  const organisation =
-    settings?.vivierConfig?.organisationName?.trim() ||
-    DEFAULT_VIVIER_CONFIG.organisationName.trim() ||
-    'L’équipe recrutement';
-  const reception = analysis.campaignId
-    ? await resolveCampaignReceptionAddress(
-        analysis.campaignId,
-        settings?.intakeEmail,
-      ).catch(() => null)
-    : (settings?.intakeEmail ?? null);
-  const rgpdContact = reception || (await getSenderEmail().catch(() => null)) || '';
+  const { organisation, reception, rgpdContact, jobTitle } = await factsPromise;
 
   const mail = renderDismissalMail(reason, {
     prenom: firstName(analysis.candidateName),
-    jobTitle: await jobTitleFor(analysis.campaignId),
+    jobTitle,
     organisation,
     rgpdContact,
   });
@@ -182,6 +232,7 @@ export type DismissCandidatureOptions = {
 export async function dismissCandidature(
   analysis: CandidateAnalysisSummary,
   opts: DismissCandidatureOptions,
+  shared?: DismissalSharedContext,
 ): Promise<DismissCandidatureResult> {
   // 1. Fermer la validation HITL ouverte AVANT le classement — la porte
   // d'envoi est verrouillée en premier (un void n'est plus réservable).
@@ -205,6 +256,21 @@ export async function dismissCandidature(
   if (outcome === 'not_found') return { status: 'not_found' };
   if (outcome === 'already_dismissed') return { status: 'already_dismissed' };
 
+  // Contexte de réservation : celui du lot s'il y en a un, sinon un contexte
+  // propre à ce classement. Les LIENS, eux, sont relus pour chaque dossier (un
+  // lien émis pendant une clôture doit être révoqué) : seules la campagne et
+  // la cible, stables, sont partagées.
+  const bookingContext = analysis.campaignId
+    ? (shared?.bookingContext?.fork() ?? createCampaignBookingContext(analysis.campaignId))
+    : undefined;
+  // Les lectures du mail partent dès maintenant (elles ne dépendent de rien
+  // de ce qui suit) ; l'ENVOI, lui, reste après les étapes 3 et 3 bis.
+  const factsPromise =
+    opts.sendMail && dismissalMailAllowed(opts.reason) && analysis.candidateEmail
+      ? (shared?.mailFacts?.() ?? loadDismissalMailFacts(analysis.campaignId, bookingContext))
+      : null;
+  factsPromise?.catch(() => undefined);
+
   // 3. Briefs d'entretien : annulation best-effort (un échec ne doit pas
   // annuler le classement déjà posé — signalé au journal via mailStatus).
   try {
@@ -223,10 +289,14 @@ export async function dismissCandidature(
   // une voix de trop. Best-effort, comme les briefs.
   let bookingCancelled = false;
   try {
+    // Toujours dans CET ordre : une révocation en échec n'annule pas le
+    // rendez-vous (et le journal le dit). Le contexte partagé évite seulement
+    // de relire campagne, cible et liens entre les deux gestes.
     await revokeCampaignBookingLink(
       analysis.campaignId,
       analysis.id,
       `classée sans suite (${opts.reason})`,
+      bookingContext,
     );
     bookingCancelled =
       (await cancelBookingForAnalysis({
@@ -234,6 +304,7 @@ export async function dismissCandidature(
         analysisId: analysis.id,
         reason: 'candidature classée sans suite',
         notifyAttendee: false,
+        context: bookingContext,
       })) === 'cancelled';
   } catch (err) {
     console.error('[dismissal] révocation/annulation de réservation KO', err);
@@ -243,7 +314,11 @@ export async function dismissCandidature(
   let mailStatus: DismissalMailStatus = 'not_requested';
   if (opts.sendMail) {
     try {
-      mailStatus = await sendDismissalMail(analysis, opts.reason);
+      mailStatus = await sendDismissalMail(
+        analysis,
+        opts.reason,
+        factsPromise ?? loadDismissalMailFacts(analysis.campaignId, bookingContext),
+      );
     } catch (err) {
       console.error('[dismissal] mail send threw', err);
       mailStatus = 'send_failed';

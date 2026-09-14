@@ -26,6 +26,7 @@ import {
   createResource,
   createTarget,
   drainPendingEvents,
+  getResource,
   getBookingByManageToken,
   listSlotsForLink,
   registerEventConsumer,
@@ -225,10 +226,16 @@ describe('S13.2 — concurrence sur un créneau', () => {
       // Vrai à CHAQUE tentative, qu'il y ait eu course ou non.
       expect(outcomes.filter((r) => r.ok)).toHaveLength(1);
 
-      // Et la base le confirme : une seule réservation tient ce créneau.
+      // Et la base le confirme : une seule réservation tient ce créneau SUR
+      // CETTE RESSOURCE. Sans le filtre, une vraie réservation d'un autre
+      // agenda à la même heure (base de dev partagée) faisait échouer le test
+      // sans aucun défaut — observé le 14/09/2026 : le premier créneau libre
+      // tombait sur un rendez-vous réel du lendemain 08:00 UTC.
+      const resource = await getResource(RESOURCE_REF);
       const { data } = await db()
         .from('sched_bookings')
         .select('id')
+        .eq('resource_id', resource!.id)
         .eq('start_at', slot!.startAt)
         .eq('status', 'confirmed');
       expect(data ?? []).toHaveLength(1);

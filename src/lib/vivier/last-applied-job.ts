@@ -2,18 +2,18 @@
  * Résolution du « dernier poste visé » d'un ou plusieurs candidats vivier
  * (Session V3 — contexte de validation). DÉRIVÉ, non stocké : la candidature la
  * plus récente d'un email (candidate_analyses) → la campagne → son intitulé de
- * poste (FDP, repli sur le nom). Batch (1 requête analyses + N campagnes
- * distinctes) pour alimenter la liste de validation sans N requêtes. Server-only.
+ * poste (FDP, repli sur le nom). Batch : 1 requête analyses + 1 lecture groupée
+ * (chunkée) des intitulés des campagnes distinctes. Server-only.
  */
 
 import { getLatestApplicationsByEmails } from '@/lib/db/repos/candidate-analyses';
-import { getCampaign } from '@/lib/db/repos/campaigns';
-import type { ActiveCampaign } from '@/stores/campaigns-store';
+import { listCampaignJobTitles } from '@/lib/db/repos/campaigns';
 
 export type LastAppliedJob = { jobTitle: string; at: string };
 
-function jobTitleOf(c: ActiveCampaign): string {
-  const v = c.fdp?.fields?.job_title?.value;
+/** Intitulé FDP s'il est une chaîne non vide, sinon le nom de la campagne. */
+export function jobTitleOf(c: { name: string; jobTitleValue: unknown }): string {
+  const v = c.jobTitleValue;
   return typeof v === 'string' && v.trim().length > 0 ? v.trim() : c.name;
 }
 
@@ -35,9 +35,9 @@ export async function resolveLastAppliedJobs(
         .filter((x): x is string => Boolean(x)),
     ),
   ];
-  const campaigns = await Promise.all(campaignIds.map((cid) => getCampaign(cid)));
+  const campaigns = await listCampaignJobTitles(campaignIds);
   const titleById = new Map<string, string>();
-  for (const c of campaigns) if (c) titleById.set(c.id, jobTitleOf(c));
+  for (const [id, c] of campaigns) titleById.set(id, jobTitleOf(c));
 
   for (const [email, a] of apps) {
     const title = a.campaignId ? titleById.get(a.campaignId) : undefined;

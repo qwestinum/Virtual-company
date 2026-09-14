@@ -6,6 +6,12 @@
  * confirmerait. Ensuite l'utilisateur, puis la campagne : on ne source que pour
  * une campagne ACTIVE (les candidatures d'une campagne en brouillon ne seraient
  * pas traitées).
+ *
+ * Latence : les lectures INDÉPENDANTES (flag, session, campagne) partent
+ * ensemble, mais la DÉCISION suit toujours cet ordre — flag, puis session, puis
+ * campagne. Une lecture dont le verdict n'est pas consulté (ex. la session quand
+ * le flag est éteint) voit son éventuel rejet absorbé ; une lecture consultée
+ * rejette exactement comme avant.
  */
 import type { User } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
@@ -26,19 +32,40 @@ export const notFound = (): NextResponse =>
 
 type Guarded<T> = { ok: true; value: T } | { ok: false; response: NextResponse };
 
+/**
+ * Lance une lecture tout de suite, en absorbant d'avance son éventuel rejet :
+ * si le verdict n'est jamais consulté, aucun rejet non géré ne remonte ; s'il
+ * l'est, `await` sur la promesse rendue rejette comme l'appel direct.
+ */
+function started<T>(run: () => Promise<T>): Promise<T> {
+  const promise = (async () => run())();
+  promise.catch(() => undefined);
+  return promise;
+}
+
+async function decideFlagThenUser(
+  enabled: Promise<boolean>,
+  user: Promise<User | null>,
+): Promise<Guarded<User>> {
+  if (!(await enabled)) return { ok: false, response: notFound() };
+  const u = await user;
+  if (!u) return { ok: false, response: unauthorizedResponse() };
+  return { ok: true, value: u };
+}
+
 export async function guardSourcing(): Promise<Guarded<User>> {
-  if (!(await isSourcingEnabled())) return { ok: false, response: notFound() };
-  const user = await getApiUser();
-  if (!user) return { ok: false, response: unauthorizedResponse() };
-  return { ok: true, value: user };
+  return decideFlagThenUser(started(isSourcingEnabled), started(getApiUser));
 }
 
 export async function guardSourcingCampaign(
   campaignId: string,
 ): Promise<Guarded<{ user: User; campaign: ActiveCampaign }>> {
-  const guard = await guardSourcing();
+  const enabled = started(isSourcingEnabled);
+  const userP = started(getApiUser);
+  const campaignP = started(() => getCampaign(campaignId));
+  const guard = await decideFlagThenUser(enabled, userP);
   if (!guard.ok) return guard;
-  const campaign = await getCampaign(campaignId);
+  const campaign = await campaignP;
   if (!campaign) return { ok: false, response: notFound() };
   if (campaign.status !== 'active') {
     return {

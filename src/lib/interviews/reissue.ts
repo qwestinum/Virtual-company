@@ -24,6 +24,7 @@ import { queueInterviewBrief } from '@/lib/interview/queue-brief';
 import { formatDateTime } from '@/lib/scheduling';
 import {
   cancelBookingForAnalysis,
+  createCampaignBookingContext,
   isNativeSchedulingCampaign,
   nextReissueKey,
 } from '@/lib/scheduling-host/campaign-booking';
@@ -74,7 +75,18 @@ export async function reissueBookingLink(params: {
   // incrémenter — seulement le message à renvoyer, avec le lien d'agenda
   // résolu comme d'habitude. Refuser ici laisserait le bouton principal de la
   // page grisé pour la moitié du parc pendant toute la coexistence.
-  const native = await isNativeSchedulingCampaign(campaignId);
+  //
+  // Contexte de réservation résolu UNE fois pour toute la requête (campagne,
+  // cible, liens, ressource du référent), transmis à chaque étape.
+  const bookingContext = createCampaignBookingContext(campaignId);
+  // Lectures dont on aura besoin quoi qu'il arrive, lancées dès maintenant :
+  // la réponse de relecture du destinataire, et le briefing (seule source du
+  // créneau tombé si aucun rendez-vous natif n'est trouvé — et dans ce cas
+  // aucune annulation n'a eu lieu, il n'a donc pas pu changer entre-temps).
+  const replyToPromise = getSynthesisReplyToForCampaign(campaignId);
+  const briefPromise = getLatestBriefByUid(analysis.uid).catch(() => null);
+  replyToPromise.catch(() => undefined);
+  const native = await isNativeSchedulingCampaign(campaignId, bookingContext);
 
   // 1. Décommander, SANS notifier : le message qui suit porte la nouvelle.
   let previousStartAt: string | null = null;
@@ -87,6 +99,7 @@ export async function reissueBookingLink(params: {
       onBooking: (booking) => {
         previousStartAt = booking.startAt;
       },
+      context: bookingContext,
     });
     if (cancelled === 'none') {
       // Rien à décommander : on continue quand même — l'objectif est que le
@@ -99,7 +112,7 @@ export async function reissueBookingLink(params: {
   // Régime Cal.com : le créneau tombé se lit sur le briefing, seule trace du
   // rendez-vous côté ORQA (la réservation vit chez le prestataire).
   if (!previousStartAt) {
-    const brief = await getLatestBriefByUid(analysis.uid).catch(() => null);
+    const brief = await briefPromise;
     previousStartAt = brief?.interviewStartAt ?? null;
   }
 
@@ -107,7 +120,7 @@ export async function reissueBookingLink(params: {
   // Une clé neuve n'a de sens que pour un lien nominatif ; en Cal.com, le lien
   // est le même pour tout le monde et n'a pas de génération.
   const linkKey = native
-    ? await nextReissueKey(campaignId, analysis.id)
+    ? await nextReissueKey(campaignId, analysis.id, bookingContext)
     : analysis.id;
   const built = await buildInterviewMail({
     mode: 'reschedule',
@@ -118,6 +131,7 @@ export async function reissueBookingLink(params: {
     linkKey,
     uid: analysis.uid,
     intro: introFor(params.kind, previousStartAt),
+    bookingContext,
   });
   if (built.blocked) {
     return {
@@ -126,22 +140,26 @@ export async function reissueBookingLink(params: {
     };
   }
 
-  const sent = await sendEmail({
-    to: analysis.candidateEmail,
-    subject: built.mail.subject,
-    html: built.mail.html,
-    replyTo: (await getSynthesisReplyToForCampaign(campaignId)) || undefined,
-  });
-
+  const replyTo = (await replyToPromise) || undefined;
   // 3. Le briefing doit être EN ATTENTE pour que la prochaine réservation le
-  // trouve. Idempotent par (campagne, email).
-  await queueInterviewBrief({
-    campaignId,
-    jobTitle: null,
-    candidate,
-    actor: 'user',
-    uid: analysis.uid,
-  }).catch((err) => console.error('[reissue] mise en file KO', err));
+  // trouve. Idempotent par (campagne, email). Il était déjà mis en file que
+  // l'envoi ait réussi ou non : les deux gestes sont indépendants et partent
+  // ensemble ; le journal, lui, attend les deux.
+  const [sent] = await Promise.all([
+    sendEmail({
+      to: analysis.candidateEmail,
+      subject: built.mail.subject,
+      html: built.mail.html,
+      replyTo,
+    }),
+    queueInterviewBrief({
+      campaignId,
+      jobTitle: null,
+      candidate,
+      actor: 'user',
+      uid: analysis.uid,
+    }).catch((err) => console.error('[reissue] mise en file KO', err)),
+  ]);
 
   await appendJournalEntry({
     action: 'interview_link_reissued',

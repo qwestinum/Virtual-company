@@ -21,6 +21,13 @@ import {
 import { isMeetingLocationComplete, type MeetingLocation, type Slot } from '@/lib/scheduling';
 
 import { AvailabilityPreview } from './AvailabilityPreview';
+import {
+  availabilityEndpoint,
+  fetchAvailability,
+  usablePreload,
+  type AvailabilityPayload,
+  type PreloadedAvailability,
+} from './load-availability';
 import { ExceptionsEditor, type ExceptionDraft } from './ExceptionsEditor';
 import { MeetingLocationField } from './MeetingLocationField';
 import {
@@ -30,15 +37,14 @@ import {
 } from './SlotSettingsRow';
 import { WeeklyRulesEditor } from './WeeklyRulesEditor';
 
-type AvailabilityPayload = {
-  resource: (SlotSettings & { meetingLocation: MeetingLocation | null }) | null;
-  rules: RuleDraft[];
-  exceptions: { day: string; label: string | null }[];
-  preview: Slot[];
-  message?: string;
-};
-
-export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
+export function AvailabilityEditor({
+  recruiterId,
+  preload,
+}: {
+  recruiterId: string;
+  /** Lecture déjà lancée par la section (cf. `load-availability`). */
+  preload?: PreloadedAvailability | null;
+}) {
   const [settings, setSettings] = useState<SlotSettings>(DEFAULT_SLOT_SETTINGS);
   const [location, setLocation] = useState<MeetingLocation | null>(null);
   const [rules, setRules] = useState<RuleDraft[]>([]);
@@ -68,12 +74,13 @@ export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(endpoint(recruiterId), { cache: 'no-store' });
-        if (!res.ok || cancelled) return;
-        apply((await res.json()) as AvailabilityPayload);
-      } catch {
-        // Chargement KO : l'écran reste sur ses valeurs par défaut, et
+        // Chargement KO (`null`) : l'écran reste sur ses valeurs par défaut, et
         // l'enregistrement dira ce qui ne va pas.
+        const pending = usablePreload(preload, recruiterId);
+        const data = await (pending ?? fetchAvailability(recruiterId));
+        if (cancelled) return;
+        if (pending && preload) preload.used = true;
+        if (data) apply(data);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -81,6 +88,8 @@ export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
     return () => {
       cancelled = true;
     };
+    // `preload` n'est lu qu'au montage pour cet agenda : il ne doit pas relancer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recruiterId]);
 
   async function save() {
@@ -94,7 +103,7 @@ export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
     setSaving(true);
     setMessage(null);
     try {
-      const res = await fetch(endpoint(recruiterId), {
+      const res = await fetch(availabilityEndpoint(recruiterId), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -179,8 +188,4 @@ export function AvailabilityEditor({ recruiterId }: { recruiterId: string }) {
       </div>
     </div>
   );
-}
-
-function endpoint(recruiterId: string): string {
-  return `/api/recruiters/${encodeURIComponent(recruiterId)}/availability`;
 }
