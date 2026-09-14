@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { LandingForm } from '@/components/sourcing-landing/LandingForm';
 import { LandingOutcome } from '@/components/sourcing-landing/LandingOutcome';
+import { ParcoursEditor } from '@/components/sourcing-landing/ParcoursEditor';
 import { LandingNotice } from '@/components/sourcing-landing/LandingShell';
 import { initialSubmission } from '@/lib/sourcing/landing';
 import type { LandingView } from '@/lib/sourcing/server/landing-context';
@@ -30,9 +31,15 @@ const view: LandingView = {
 describe('formulaire', () => {
   const html = renderToStaticMarkup(<LandingForm token="AbCdEfGhIjKlMnOpQrStUv" view={view} prefilled />);
 
-  it('message rappelé, poste, bandeau d’information complet avec l’opposition', () => {
+  it('une lettre en parties nommées, dans l’ordre ; le bandeau d’information en pied', () => {
+    const titles = ['Merci de votre intérêt', 'Vos coordonnées', 'Votre parcours', 'Validation', 'Information sur vos données'];
+    const pos = titles.map((t) => html.indexOf(t));
+    expect(pos.every((p, i) => p > -1 && (i === 0 || p > pos[i - 1]!))).toBe(true);
+    expect(html).toContain('Vous avez échangé avec Jane au sujet du poste de Business Analyst (Digital ESR)');
+    expect(html).toContain('cela prend deux minutes');
     expect(html).toContain('Bonjour Claire, votre parcours nous intéresse.');
-    expect(html).toContain('Business Analyst (Digital ESR) · Paris · CDD');
+    expect(html.indexOf('Ces informations sont exactes')).toBeLessThan(html.indexOf('Envoyer ma candidature'));
+    expect(html.indexOf('Envoyer ma candidature')).toBeLessThan(html.indexOf('data-testid="privacy-banner"'));
     expect(html).toContain('Pré-rempli à partir de votre profil professionnel public');
     expect(html).toContain('supprimé à la clôture de ce recrutement');
     expect(html).toContain('responsable de traitement : Cabinet Conseil');
@@ -40,11 +47,19 @@ describe('formulaire', () => {
     expect(html).toContain('Je ne souhaite pas être recontacté·e');
   });
 
-  it('récapitulatif en lecture seule, corrigeable ligne à ligne', () => {
-    expect(html).toContain('Business Analyst digital — Banque X');
-    expect(html).toContain('Master SI — Université W');
-    expect(html.match(/corriger ✎/g)!.length).toBe(3);
-    expect(html).not.toMatch(/<input[^>]*value="Business Analyst digital"/);
+  it('parcours replié par défaut sur un résumé ; déplié, le même rendu que côté recruteur, « corriger » par ligne', () => {
+    expect(html).toContain('1 expérience · 1 formation');
+    expect(html).toContain('vérifier ✎');
+    expect(html).not.toContain('data-section="career"');
+    const open = renderToStaticMarkup(<ParcoursEditor value={{ workHistory: view.initial.workHistory, education: view.initial.education, about: view.initial.about }} onChange={() => {}} initiallyOpen />);
+    for (const k of ['current', 'career', 'education', 'about']) expect(open).toContain(`data-section="${k}"`);
+    expect(open).toContain('Business Analyst digital');
+    expect(open.match(/corriger ✎/g)!.length).toBe(3);
+    expect(open).not.toMatch(/<input[^>]*value="Business Analyst digital"/);
+  });
+
+  it('le CV est facultatif, et on dit ce qui le remplace', () => {
+    expect(html).toContain('Si vous n’en joignez pas, le parcours ci-dessous servira de CV.');
   });
 
   it('email pré-rempli à confirmer, une case obligatoire, CV facultatif', () => {

@@ -42,9 +42,9 @@ export function PrivacyBanner({
   };
 
   return (
-    <aside className="flex flex-col gap-2 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3" data-testid="privacy-banner">
-      <p className="font-body text-[12px] font-semibold uppercase tracking-wide text-stone-500">Information</p>
-      <p className="font-body text-[13px] text-stone-700">
+    <aside className="flex flex-col gap-2 border-t pt-4" style={{ borderColor: 'var(--dash-border)' }} data-testid="privacy-banner">
+      <p className="font-body text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500">Information sur vos données</p>
+      <p className="font-body text-[12.5px] leading-relaxed text-stone-600">
         {prefilled ? 'Pré-rempli à partir de votre profil professionnel public · ' : ''}
         supprimé à la clôture de ce recrutement
         {organizationName ? ` · responsable de traitement : ${organizationName}` : ''}

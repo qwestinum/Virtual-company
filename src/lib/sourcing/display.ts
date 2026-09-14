@@ -48,3 +48,45 @@ export function indexedAgeLabel(iso: string | null, now: Date = new Date()): str
   if (days === 0) return 'profil indexé aujourd’hui';
   return `profil indexé il y a ${days} jour${days > 1 ? 's' : ''}`;
 }
+
+/**
+ * Durée d'un poste : « 2 ans 4 mois », « 8 mois ». Un poste en cours se mesure
+ * jusqu'à aujourd'hui. `null` sans mois de début (une année seule ne dit pas la
+ * durée, et l'inventer serait pire que la taire).
+ */
+export function durationLabel(from: string | null, to: string | null, now: Date = new Date()): string | null {
+  const a = parse(from);
+  if (!a || a.m === null) return null;
+  const b = to === null ? { y: now.getUTCFullYear(), m: now.getUTCMonth() + 1 } : parse(to);
+  if (!b || b.m === null) return null;
+  // Poste terminé : bornes incluses (05/2023 – 04/2024 = 12 mois). En cours :
+  // jusqu'au mois courant exclu — le même compte que « depuis » du poste actuel.
+  const months = (b.y - a.y) * 12 + (b.m - a.m) + (to === null ? 0 : 1);
+  if (months < 1) return null;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  const y = years > 0 ? `${years} an${years > 1 ? 's' : ''}` : '';
+  const m = rest > 0 ? `${rest} mois` : '';
+  return [y, m].filter(Boolean).join(' ');
+}
+
+type Dated = { from: string | null; to: string | null };
+
+/** Clé de tri : en cours d'abord, puis la date de fin, puis celle de début. */
+const sortKey = (d: Dated): number => {
+  const end = d.to === null && d.from !== null ? { y: 9999, m: 12 } : parse(d.to) ?? parse(d.from);
+  const start = parse(d.from);
+  return (end ? end.y * 12 + (end.m ?? 12) : 0) * 100_000 + (start ? start.y * 12 + (start.m ?? 12) : 0);
+};
+
+/** Indices du plus récent au plus ancien — STABLE, et l'indice d'origine est gardé (corrections). */
+export function newestFirst<T extends Dated>(items: T[]): { item: T; index: number }[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((x, y) => sortKey(y.item) - sortKey(x.item) || x.index - y.index);
+}
+
+/** Le poste en cours : sans date de fin, le plus récent. */
+export function currentPositionOf<T extends Dated>(items: T[]): T | null {
+  return newestFirst(items).find((e) => e.item.to === null && e.item.from !== null)?.item ?? null;
+}

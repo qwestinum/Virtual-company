@@ -686,7 +686,9 @@ Jamais affichés : photo, mentions, disponibilité détectée, données hors par
 7. **Vivier** comme toute candidature, sans URL.
 8. Profil : ligne **supprimée**, exclusion `manifested`, journal.
 9. **Panne LLM** à l'étape 4 : la personne voit « Candidature bien reçue » ; approche
-   `admission_pending`, reprise sur le rail ; jamais de décision en panne.
+   `admission_pending`, reprise sur le rail ; jamais de décision en panne. Une admission
+   **jamais tentée** appartient à la route qui l'analyse : le rail ne la touche pas avant
+   5 min, et chaque reprise est **réservée** avant d'être lancée (voir §18, correctif du 14/09).
 
 **Page de confirmation** : maquette §14.6.
 
@@ -1223,6 +1225,59 @@ paragraphe sourcing) ; entretien (journal de purge conditionnel, filet, reprise 
 (analyse `decided_by_user_*`, `submitted` + `analysis_id` accepté par la contrainte, exclusion
 `manifested`), panne (tentative comptée), opposition (2 campagnes, lien vidé, candidature
 intacte), clôture (compte par état, exclusions gardées, filet).
+
+### Correctif — course entre la route de soumission et le rail (14/09/2026)
+
+**Constat.** S20.4 échouait (l'arrêt « admission en cours » disparaissait avant l'assertion),
+et le journal de dev portait **deux** `sourcing_candidate_manifested` pour une même approche, à
+4 s d'écart. Cause unique : `admissionRetryDue` rendait « due » une admission à 0 tentative, et
+le tick du scheduler (30 s) la saisissait pendant que la route de soumission l'analysait encore —
+seconde analyse en parallèle, ou réservation relâchée sous les pieds de la route (campagne de
+test sans fiche validée). Les verrous d'envoi ont empêché le double mail ; pas le double coût ni
+le double journal. Sondé sur la base de dev : une admission fraîche relâchée en **8 s**.
+
+**Règles désormais tenues** (`admission.ts`, `maintenance.ts`, `sourcing-admission.ts`) :
+1. **Délai de grâce** : une admission jamais tentée n'est reprise qu'après
+   `FIRST_ATTEMPT_GRACE_MINUTES` = 5 min (la route vit au plus `maxDuration` = 60 s).
+2. **Réservation de la tentative** (`claimAdmissionAttempt`) : `updated_at` repoussé à maintenant
+   à condition qu'il n'ait pas bougé depuis la lecture — deux passages concurrents (cron sur
+   instances isolées), un seul gagne. Régression S22.3 (deux réservations simultanées).
+3. **Fin d'admission conditionnelle ET honnête** : `completeAdmission` rend `false` si un autre
+   passage l'a terminée ; l'appelant ne journalise alors rien.
+
+⚠️ **Serveur de dev** : le tick du scheduler est armé au démarrage (`instrumentation.ts`) et
+garde le code chargé à ce moment — un rechargement à chaud ne suffit pas. Après toute
+modification de `src/lib/sourcing/server/maintenance.ts` ou de ses dépendances, **redémarrer**
+avant de lancer la régression (sinon S20.4 échoue sur l'ancien rail).
+
+### Retouches de design (14/09/2026)
+
+- **Un seul rendu du parcours** (`src/components/sourcing/profile/`) : `ProfileSection` (titre en
+  petites capitales, icône en pastille, liseré d'accent `--dash-*`) et `CareerSections` — poste
+  actuel, frise des postes du plus récent au plus ancien avec durée calculée
+  (`durationLabel`, `newestFirst`, `currentPositionOf` dans `display.ts`), formation (année),
+  résumé en citation. `lineAction`/`lineEditor` reçoivent l'indice **d'origine** de la ligne
+  (l'affichage est trié, la correction vise la bonne donnée). Réutilisé des deux côtés.
+- **Détail d'un profil** (`SourcingProfileDetail`) : poste actuel en tête, puis parcours +
+  formation / repères (badges, email, mots de la fiche, extrait) + résumé + compétences ; actions
+  en pied (Décliner · Se connecter · Contacter par email · Ouvrir le profil), plus répétées dans
+  l'en-tête d'une ligne dépliée. Le détail est **décalé à droite sur fond gris plat, sans
+  bordure** : la rupture ligne/détail se lit sans effet de relief.
+- **Durée d'un poste en cours = même compte que « depuis »** (le poste actuel et la frise
+  disaient 3 ans 4 mois / 3 ans 5 mois pour le même poste).
+- **Campagnes déjà sourcées** (au moins une recherche) : fond orange clair, liseré, pastille
+  « Sourcée », bouton **« Détail »** au lieu de « Sourcer ». On atterrit sur les **résultats**
+  avec « Relancer une recherche » ; l'écran de requête — qui rédige une requête par le modèle à son
+  montage — ne s'ouvre qu'au clic.
+- **Page `/s/<jeton>` = une lettre** en parties nommées, mobile d'abord, une colonne : en-tête
+  (cabinet, poste, « Votre contact »), « Merci de votre intérêt » (paragraphe + message du
+  recruteur en retrait), « Vos coordonnées » (nom, email à confirmer, téléphone et CV facultatifs,
+  « si vous n'en joignez pas, le parcours ci-dessous servira de CV »), « Votre parcours »
+  **replié** sur « N expériences · M formations — vérifier ✎ » puis le rendu partagé avec
+  « corriger ✎ » par ligne (`ParcoursEditor`, `LineEditors`), « Validation » (case puis bouton, dans
+  le flux — jamais en position fixe, qu'un clavier mobile recouvrirait), information sur les
+  données en pied. « Nom complet » ajouté aux coordonnées : il est requis pour créer la
+  candidature.
 
 ## 19. Backlog
 

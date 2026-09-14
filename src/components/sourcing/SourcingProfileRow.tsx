@@ -6,15 +6,17 @@
  * REPLIÉE, elle porte l'essentiel pour balayer vite : intitulé actuel —
  * entreprise — localisation — ancienneté dans le poste. `slot` accueille les
  * repères du lot 3 (en recherche, mentions, vivier) sans déplacer le reste.
- * DÉPLIÉE, elle montre la matière pour décider : parcours daté, formation,
- * extrait, résumé. Pas de carte pleine hauteur.
+ * DÉPLIÉE, elle montre la matière pour décider, en sections
+ * (`SourcingProfileDetail`), actions en pied.
  */
 
-import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { indexedAgeLabel, periodLabel, tenureLabel } from '@/lib/sourcing/display';
+import { tenureLabel } from '@/lib/sourcing/display';
 import type { SourcingProfileView } from '@/types/sourcing';
+
+import { SourcingProfileDetail } from './SourcingProfileDetail';
 
 export function SourcingProfileRow({
   profile,
@@ -65,110 +67,11 @@ export function SourcingProfileRow({
           </span>
         </button>
         {slot ? <span className="flex shrink-0 items-center gap-1.5">{slot}</span> : null}
-        {actions ? <span className="flex shrink-0 items-center gap-1.5">{actions}</span> : null}
+        {/* Dépliée, les actions passent en pied de détail : une seule place à la fois. */}
+        {actions && !expanded ? <span className="flex shrink-0 items-center gap-1.5">{actions}</span> : null}
       </div>
 
-      {expanded ? <ProfileDetail profile={profile} /> : null}
+      {expanded ? <SourcingProfileDetail profile={profile} actions={actions} /> : null}
     </li>
-  );
-}
-
-function ProfileDetail({ profile }: { profile: SourcingProfileView }) {
-  const s = profile.snapshot;
-  const age = indexedAgeLabel(s.indexedAt);
-  return (
-    <div id={`profile-detail-${profile.id}`} className="flex flex-col gap-2 border-t border-stone-100 px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-body text-[12px] text-stone-400">{age ?? ''}</p>
-        <a
-          href={s.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-md border border-stone-300 px-2 py-0.5 font-body text-[12px] font-semibold text-stone-600 hover:bg-stone-50"
-        >
-          Ouvrir le profil <ExternalLink className="h-3 w-3" />
-        </a>
-      </div>
-
-      {s.workHistory.length > 0 ? (
-        <Block title="Parcours">
-          {s.workHistory.map((w, i) => (
-            <Dated key={`w-${i}`} period={periodLabel(w.from, w.to)}>
-              {w.title}
-              {w.company ? <span className="text-stone-500"> — {w.company}</span> : null}
-            </Dated>
-          ))}
-        </Block>
-      ) : null}
-
-      {s.education.length > 0 ? (
-        <Block title="Formation">
-          {s.education.map((e, i) => (
-            <Dated key={`e-${i}`} period={periodLabel(e.from, e.to)}>
-              {[e.degree, e.institution].filter(Boolean).join(' — ')}
-            </Dated>
-          ))}
-        </Block>
-      ) : null}
-
-      {s.highlight ? <p className="font-body text-[12.5px] italic text-stone-600">« {s.highlight} »</p> : null}
-
-      {s.contacts?.emails.length ? (
-        <Block title="Contact">
-          <p className="font-body text-[12.5px] text-stone-700">
-            {s.contacts.emails[0]} <span className="text-stone-400">(indiqué par la personne sur son profil)</span>
-          </p>
-        </Block>
-      ) : null}
-
-      {profile.mentions && profile.mentions.length > 0 ? (
-        <Block title="Mots de la fiche retrouvés">
-          {profile.mentions.map((m) => (
-            <p key={m.criterionId} className="font-body text-[12.5px] text-stone-700">
-              <span className="text-stone-500">{m.label} : </span>
-              {m.terms.length === 0 ? (
-                <span className="italic text-stone-400">pas de mention (critère rédigé en phrase)</span>
-              ) : m.found.length > 0 ? (
-                m.found.map((t) => `✓ ${t}`).join(' · ')
-              ) : (
-                '—'
-              )}
-            </p>
-          ))}
-          <p className="font-body text-[11.5px] text-stone-400">Indice de lecture, pas une évaluation.</p>
-        </Block>
-      ) : null}
-
-      {s.about ? (
-        <Block title="Résumé">
-          <p className="whitespace-pre-line font-body text-[12.5px] text-stone-700">{s.about}</p>
-        </Block>
-      ) : null}
-      {s.skills || s.languages || s.certifications ? (
-        <Block title="Compétences">
-          {s.skills ? <p className="font-body text-[12.5px] text-stone-700">{s.skills}</p> : null}
-          {s.languages ? <p className="font-body text-[12.5px] text-stone-700">Langues : {s.languages}</p> : null}
-          {s.certifications ? <p className="font-body text-[12.5px] text-stone-700">Certifications : {s.certifications}</p> : null}
-        </Block>
-      ) : null}
-    </div>
-  );
-}
-
-function Block({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-stone-400">{title}</p>
-      {children}
-    </div>
-  );
-}
-
-function Dated({ period, children }: { period: string | null; children: ReactNode }) {
-  return (
-    <p className="font-body text-[12.5px] text-stone-700">
-      <span className="inline-block w-36 font-data text-[11.5px] text-stone-500">{period ?? '—'}</span>
-      {children}
-    </p>
   );
 }

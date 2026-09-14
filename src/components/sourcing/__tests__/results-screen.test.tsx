@@ -11,6 +11,7 @@ vi.mock('@/components/referent/ReferentMention', () => ({ ReferentMention: () =>
 
 import { SourcingApproachPanel } from '@/components/sourcing/SourcingApproachPanel';
 import { SourcingCampaignList } from '@/components/sourcing/SourcingCampaignList';
+import { SourcingCampaignView } from '@/components/sourcing/SourcingCampaignView';
 import { SourcingRowActions, SourcingRowMarks } from '@/components/sourcing/SourcingRowMarks';
 import { SourcingProfileRow } from '@/components/sourcing/SourcingProfileRow';
 import { SourcingQueryPanel } from '@/components/sourcing/SourcingQueryPanel';
@@ -76,13 +77,21 @@ describe('1. une ligne par profil, repliée par défaut', () => {
     expect(html).not.toContain('du cadrage à la recette');
   });
 
-  it('dépliée : parcours daté, formation, extrait', () => {
-    const html = renderToStaticMarkup(<SourcingProfileRow profile={row(1)} expanded onToggle={() => {}} />);
+  it('dépliée : sections distinctes, dans l’ordre, parcours du plus récent au plus ancien avec durée', () => {
+    const html = renderToStaticMarkup(<SourcingProfileRow profile={row(1)} expanded onToggle={() => {}} actions={<button>Se connecter</button>} />);
     expect(html).toContain('aria-expanded="true"');
-    expect(html).toContain('Parcours');
+    const order = ['current', 'career', 'education', 'about', 'skills'].map((k) => html.indexOf(`data-section="${k}"`));
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect(order[0]).toBeLessThan(order[1]!);
+    expect(order[1]).toBeLessThan(order[2]!);
+    expect(html.indexOf('Business Analyst 1')).toBeLessThan(html.indexOf('Consultante AMOA'));
     expect(html).toContain('09/2019 – 04/2024');
-    expect(html).toContain('Master SI — Université W');
+    expect(html).toContain('4 ans 8 mois');
+    expect(html).toContain('Master SI');
     expect(html).toContain('du cadrage à la recette');
+    // Les actions passent en pied de détail — une seule fois.
+    expect(html.indexOf('Se connecter')).toBeGreaterThan(html.indexOf('data-detail-actions'));
+    expect(html.split('Se connecter').length - 1).toBe(1);
   });
 
   it('la liste rend toutes les lignes repliées à l’ouverture', () => {
@@ -200,5 +209,42 @@ describe('lot 3 — repères de ligne et actions', () => {
     expect(html).toContain('Ouvrir le profil et copier le message');
     expect(html).toContain(`${`Bonjour Claire ${url}`.length} / 300 caractères`);
     expect(html).not.toMatch(COST);
+  });
+});
+
+// ─── Retouche du 14/09 : campagnes déjà sourcées, détail décalé ──────────
+
+describe('campagnes déjà sourcées', () => {
+  const base = { name: 'BA', referent: null, seen: 0, approached: 0, manifested: 0 };
+
+  it('une campagne sourcée est distinguée et s’ouvre par « Détail » ; une campagne neuve, par « Sourcer »', () => {
+    const html = renderToStaticMarkup(
+      <SourcingCampaignList
+        campaigns={[{ ...base, campaignId: 'CAMP-1', lastSearchAt: '2026-09-12T10:00:00Z' }, { ...base, campaignId: 'CAMP-2', lastSearchAt: null }]}
+        myApproachesThisMonth={0}
+        onSource={() => {}}
+      />,
+    );
+    const [sourced, fresh] = html.split('<li').slice(1);
+    expect(sourced).toContain('data-sourced="true"');
+    expect(sourced).toContain('Sourcée');
+    expect(sourced).toContain('>Détail<');
+    expect(sourced).not.toContain('Sourcer');
+    expect(fresh).toContain('data-sourced="false"');
+    expect(fresh).toContain('>Sourcer<');
+  });
+
+  it('on atterrit sur les résultats : « Relancer une recherche », sans écran de requête (qui rédigerait une requête pour rien)', () => {
+    const sourced = renderToStaticMarkup(<SourcingCampaignView campaign={{ ...base, campaignId: 'CAMP-1', lastSearchAt: '2026-09-12T10:00:00Z' }} onBack={() => {}} />);
+    expect(sourced).toContain('Relancer une recherche');
+    expect(sourced).not.toContain('Relancer la même requête donne la même liste.');
+    const fresh = renderToStaticMarkup(<SourcingCampaignView campaign={{ ...base, campaignId: 'CAMP-2', lastSearchAt: null }} onBack={() => {}} />);
+    expect(fresh).not.toContain('Relancer une recherche');
+    expect(fresh).toContain('Relancer la même requête donne la même liste.');
+  });
+
+  it('le détail d’une ligne dépliée est décalé à droite, dans son propre cadre', () => {
+    const html = renderToStaticMarkup(<SourcingProfileRow profile={row(1)} expanded onToggle={() => {}} />);
+    expect(html).toMatch(/data-profile-detail="true" class="[^"]*\bml-9\b/);
   });
 });
