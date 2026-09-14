@@ -22,6 +22,7 @@
 
 import { countCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
+import type { PendingValidation } from '@/types/hitl';
 import { chunk } from '@/lib/db/paginate';
 import { type ZoneCounts } from '@/lib/dashboard/derive-metrics';
 
@@ -70,8 +71,8 @@ export function combineZoneCounts(raw: {
  * séquelle de l'incident de re-analyses 07/2026).
  */
 async function countPendingMatched(uids: string[]): Promise<number> {
-  let matched = 0;
-  for (const part of chunk(uids, 300)) {
+  // Tranches comptées ensemble : la somme ne dépend pas de l'ordre.
+  const perPart = await Promise.all(chunk(uids, 300).map(async (part) => {
     const [all, human] = await Promise.all([
       countCandidateAnalyses({ status: 'rejected', uidIn: part, dismissed: false }),
       countCandidateAnalyses({
@@ -81,12 +82,18 @@ async function countPendingMatched(uids: string[]): Promise<number> {
         dismissed: false,
       }),
     ]);
-    matched += Math.max(0, all - human);
-  }
-  return matched;
+    return Math.max(0, all - human);
+  }));
+  return perPart.reduce((sum, n) => sum + n, 0);
 }
 
-export async function zoneDistribution(): Promise<ZoneCounts> {
+/**
+ * @param preloadedPending file HITL déjà demandée par l'appelant (évite une
+ *   seconde lecture exhaustive). Absente ⇒ lue ici, avec le même repli.
+ */
+export async function zoneDistribution(
+  preloadedPending?: Promise<PendingValidation[]>,
+): Promise<ZoneCounts> {
   const [
     acceptedTotal,
     rejectedTotal,
@@ -100,7 +107,7 @@ export async function zoneDistribution(): Promise<ZoneCounts> {
     countCandidateAnalyses({ status: 'accepted', decidedBy: 'user', dismissed: false }),
     countCandidateAnalyses({ status: 'rejected', decidedBy: 'user', dismissed: false }),
     countCandidateAnalyses({ dismissed: true }),
-    listPendingValidations().catch(() => []),
+    preloadedPending ?? listPendingValidations().catch(() => []),
   ]);
   const pendingUids = [
     ...new Set(

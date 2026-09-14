@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { hydrateArtifactsForCampaign } from '@/lib/db/sync/artifacts-sync';
+import { hydrateArtifactsForOwners } from '@/lib/db/sync/artifacts-sync';
 import type { ReferentByCampaign } from '@/lib/referent/filter';
 import type { DecisionZone, PendingValidation } from '@/types/hitl';
 
@@ -59,7 +59,7 @@ export function useValidationsQueue() {
         const campaigns = [
           ...new Set(json.validations.map((v) => v.campaignId)),
         ];
-        await Promise.all(campaigns.map((c) => hydrateArtifactsForCampaign(c)));
+        await hydrateArtifactsForOwners(campaigns, []);
       } catch (err) {
         if (!cancelled)
           setState({

@@ -138,6 +138,71 @@ export async function hydrateArtifactsForCampaign(
   }
 }
 
+/**
+ * Hydratation GROUPÉE — même effet que `hydrateArtifactsForCampaign` et
+ * `hydrateArtifactsForTask` appelés pour chaque identifiant, en une requête
+ * par lot de 100 propriétaires au lieu d'une par propriétaire.
+ */
+export async function hydrateArtifactsForOwners(
+  campaignIds: readonly string[],
+  taskIds: readonly string[],
+): Promise<void> {
+  const BATCH = 100;
+  const batches: { campaigns: readonly string[]; tasks: readonly string[] }[] = [];
+  for (let i = 0; i < Math.max(campaignIds.length, taskIds.length); i += BATCH) {
+    batches.push({
+      campaigns: campaignIds.slice(i, i + BATCH),
+      tasks: taskIds.slice(i, i + BATCH),
+    });
+  }
+  await Promise.all(
+    batches.map(async ({ campaigns, tasks }) => {
+      try {
+        const params = new URLSearchParams();
+        if (campaigns.length > 0) params.set('campaign_ids', campaigns.join(','));
+        if (tasks.length > 0) params.set('task_ids', tasks.join(','));
+        const res = await fetch(`/api/artifacts?${params.toString()}`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { artifacts?: HydratedArtifactJson[] };
+        seedArtifacts(json.artifacts ?? []);
+      } catch {
+        // Idem — pas de crash sur réseau coupé.
+      }
+    }),
+  );
+}
+
+type HydratedArtifactJson = {
+  id: string;
+  campaignId: string | null;
+  taskId: string | null;
+  kind: ArtifactKind;
+  name: string;
+  mime: string;
+  publicUrl: string | null;
+  storagePath: string | null;
+  createdAt: string;
+};
+
+function seedArtifacts(artifacts: HydratedArtifactJson[]): void {
+  const hydrate = useArtifactsStore.getState().hydrateArtifact;
+  for (const a of artifacts) {
+    hydrate({
+      id: a.id,
+      name: a.name,
+      mime: a.mime,
+      createdAt: a.createdAt,
+      campaignId: a.campaignId,
+      taskId: a.taskId,
+      kind: a.kind,
+      publicUrl: a.publicUrl,
+      storagePath: a.storagePath,
+    });
+  }
+}
+
 export async function hydrateArtifactsForTask(taskId: string): Promise<void> {
   try {
     const res = await fetch(

@@ -19,14 +19,18 @@ export const runtime = 'nodejs';
 
 export async function GET(request: Request): Promise<NextResponse> {
   // Métier : accessible à toute session (aucun cloisonnement de données).
+  // La session et la lecture partent ENSEMBLE (le proxy a déjà écarté les
+  // requêtes sans session) ; la réponse attend toujours la vérification.
+  const url = new URL(request.url);
+  const pipelinePromise = loadInterviewPipeline({
+    campaignId: url.searchParams.get('campaignId'),
+  });
+  pipelinePromise.catch(() => undefined);
   const user = await getApiUser();
   if (!user) return unauthorizedResponse();
 
-  const url = new URL(request.url);
   try {
-    const pipeline = await loadInterviewPipeline({
-      campaignId: url.searchParams.get('campaignId'),
-    });
+    const pipeline = await pipelinePromise;
     after(() => drainSchedulingEvents());
     // Identité du lecteur pour le raccourci « Mes campagnes » — rendue par la
     // ROUTE et non par la page, exactement comme la file des validations : un

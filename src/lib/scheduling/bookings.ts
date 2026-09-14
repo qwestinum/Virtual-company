@@ -21,7 +21,7 @@
  * jamais traîner une réservation « à moitié faite ».
  */
 import { isSlotClaimConflict } from './errors';
-import { emitEvent, resolveRefs } from './events';
+import { emitEvent, resolveRefs, resolveRefsBatch } from './events';
 import {
   getBookingLink,
   markLinkUsed,
@@ -447,12 +447,12 @@ export async function listBookings(filter?: {
   to?: string;
   status?: 'confirmed' | 'cancelled';
 }): Promise<Booking[]> {
-  const targetId = filter?.targetExternalRef
-    ? await idByRef(TABLES.targets, filter.targetExternalRef)
-    : null;
-  const resourceId = filter?.resourceExternalRef
-    ? await idByRef(TABLES.resources, filter.resourceExternalRef)
-    : null;
+  const [targetId, resourceId] = await Promise.all([
+    filter?.targetExternalRef ? idByRef(TABLES.targets, filter.targetExternalRef) : null,
+    filter?.resourceExternalRef
+      ? idByRef(TABLES.resources, filter.resourceExternalRef)
+      : null,
+  ]);
   if (filter?.targetExternalRef && !targetId) return [];
   if (filter?.resourceExternalRef && !resourceId) return [];
 
@@ -470,7 +470,8 @@ export async function listBookings(filter?: {
     },
     (row) => row.id,
   );
-  const bookings = await Promise.all(rows.map(hydrate));
+  const refsOf = await resolveRefsBatch(rows);
+  const bookings = rows.map((row) => toBooking(row, refsOf(row)));
   return bookings.sort((a, b) => a.startAt.localeCompare(b.startAt));
 }
 

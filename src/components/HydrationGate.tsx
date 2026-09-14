@@ -18,10 +18,7 @@
 
 import { useEffect } from 'react';
 
-import {
-  hydrateArtifactsForCampaign,
-  hydrateArtifactsForTask,
-} from '@/lib/db/sync/artifacts-sync';
+import { hydrateArtifactsForOwners } from '@/lib/db/sync/artifacts-sync';
 import {
   attachCampaignsSync,
   hydrateCampaigns,
@@ -36,15 +33,14 @@ export function HydrationGate(): null {
     const detachTasks = attachTasksSync();
     void (async () => {
       await Promise.all([hydrateCampaigns(), hydrateTasks()]);
-      // Round 3 — fan-out hydratation des artefacts. Parallélisé sur
-      // toutes les campagnes/tâches connues. Chaque erreur réseau
-      // est swallow par artifacts-sync, le boot reste robuste.
-      const campaignIds = useCampaignsStore.getState().order;
-      const taskIds = useTasksStore.getState().order;
-      await Promise.all([
-        ...campaignIds.map((id) => hydrateArtifactsForCampaign(id)),
-        ...taskIds.map((id) => hydrateArtifactsForTask(id)),
-      ]);
+      // Round 3 — hydratation des artefacts de toutes les campagnes/tâches
+      // connues, en lecture GROUPÉE (une requête par lot, plus une par
+      // propriétaire). Chaque erreur réseau est swallow par artifacts-sync,
+      // le boot reste robuste.
+      await hydrateArtifactsForOwners(
+        useCampaignsStore.getState().order,
+        useTasksStore.getState().order,
+      );
     })();
     return () => {
       detachCampaigns();

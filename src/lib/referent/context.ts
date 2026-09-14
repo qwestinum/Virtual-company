@@ -38,31 +38,48 @@ export type ReferentContext = {
 export async function loadReferentContext(
   campaignIds: readonly (string | null)[],
 ): Promise<ReferentContext> {
-  try {
-    const ids = [
-      ...new Set(campaignIds.filter((id): id is string => Boolean(id))),
-    ];
-    const [campaigns, recruiters, user] = await Promise.all([
-      listCampaignSummaries(ids),
-      listRecruiters().catch(() => []),
-      getApiUser().catch(() => null),
-    ]);
-    const byId = new Map(recruiters.map((r) => [r.id, r]));
-    const referentByCampaign: Record<string, ReferentInfo | null> = {};
-    for (const id of ids) {
-      const ownerId = campaigns.get(id)?.ownerUserId ?? null;
-      const recruiter = ownerId ? byId.get(ownerId) : undefined;
-      referentByCampaign[id] = recruiter
-        ? {
-            id: recruiter.id,
-            displayName: recruiter.displayName,
-            isActive: recruiter.isActive,
-          }
-        : null;
+  return prepareReferentContext()(campaignIds);
+}
+
+/**
+ * Même résolution que `loadReferentContext`, en deux temps : les lectures qui
+ * ne dépendent PAS des campagnes (recruteurs, session) partent dès l'appel ;
+ * la fonction rendue les complète quand la liste des campagnes est connue.
+ * Une route qui ne connaît ses campagnes qu'après sa propre lecture n'attend
+ * plus ces deux allers-retours à la fin.
+ */
+export function prepareReferentContext(): (
+  campaignIds: readonly (string | null)[],
+) => Promise<ReferentContext> {
+  const recruitersPromise = listRecruiters().catch(() => []);
+  const userPromise = getApiUser().catch(() => null);
+  return async (campaignIds) => {
+    try {
+      const ids = [
+        ...new Set(campaignIds.filter((id): id is string => Boolean(id))),
+      ];
+      const [campaigns, recruiters, user] = await Promise.all([
+        listCampaignSummaries(ids),
+        recruitersPromise,
+        userPromise,
+      ]);
+      const byId = new Map(recruiters.map((r) => [r.id, r]));
+      const referentByCampaign: Record<string, ReferentInfo | null> = {};
+      for (const id of ids) {
+        const ownerId = campaigns.get(id)?.ownerUserId ?? null;
+        const recruiter = ownerId ? byId.get(ownerId) : undefined;
+        referentByCampaign[id] = recruiter
+          ? {
+              id: recruiter.id,
+              displayName: recruiter.displayName,
+              isActive: recruiter.isActive,
+            }
+          : null;
+      }
+      return { referentByCampaign, currentUserId: user?.id ?? null };
+    } catch (err) {
+      console.error('[referent] context resolution failed', err);
+      return { referentByCampaign: {}, currentUserId: null };
     }
-    return { referentByCampaign, currentUserId: user?.id ?? null };
-  } catch (err) {
-    console.error('[referent] context resolution failed', err);
-    return { referentByCampaign: {}, currentUserId: null };
-  }
+  };
 }

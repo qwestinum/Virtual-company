@@ -159,32 +159,36 @@ export async function getTargetImpact(externalRef: string): Promise<TargetImpact
 export async function listOrphanTargets(): Promise<
   { target: Target; activeLinks: number }[]
 > {
-  const targets = await fetchAllKeyset<TargetRow>(
-    'listOrphanTargets',
-    (after, limit) => {
-      let query = table(TABLES.targets).select(TARGET_COLUMNS);
-      if (after !== null) query = query.gt('external_ref', after);
-      return query.order('external_ref', { ascending: true }).limit(limit);
-    },
-    (row) => row.external_ref,
-  );
+  // Trois lectures indépendantes, lancées ensemble : la ressource et le compte
+  // de liens ne dépendent pas de la liste des cibles.
+  const [targets, activeResources, linkCounts] = await Promise.all([
+    fetchAllKeyset<TargetRow>(
+      'listOrphanTargets',
+      (after, limit) => {
+        let query = table(TABLES.targets).select(TARGET_COLUMNS);
+        if (after !== null) query = query.gt('external_ref', after);
+        return query.order('external_ref', { ascending: true }).limit(limit);
+      },
+      (row) => row.external_ref,
+    ),
+    activeResourceIds(),
+    countActiveLinksByTarget(),
+  ]);
   if (targets.length === 0) return [];
 
-  const activeResources = await activeResourceIds();
-  const linkCounts = await countActiveLinksByTarget();
-
-  const orphans: { target: Target; activeLinks: number }[] = [];
-  for (const row of targets) {
-    const hasActiveResource =
-      row.resource_id !== null && activeResources.has(row.resource_id);
-    const activeLinks = linkCounts.get(row.id) ?? 0;
-    if (hasActiveResource || activeLinks === 0) continue;
-    orphans.push({
+  const orphanRows = targets
+    .map((row) => ({ row, activeLinks: linkCounts.get(row.id) ?? 0 }))
+    .filter(
+      ({ row, activeLinks }) =>
+        activeLinks > 0 &&
+        !(row.resource_id !== null && activeResources.has(row.resource_id)),
+    );
+  return Promise.all(
+    orphanRows.map(async ({ row, activeLinks }) => ({
       target: toTarget(row, await resourceRefById(row.resource_id)),
       activeLinks,
-    });
-  }
-  return orphans;
+    })),
+  );
 }
 
 // ─── Internes ───────────────────────────────────────────────────────────

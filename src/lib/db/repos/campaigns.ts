@@ -266,12 +266,18 @@ export async function listCampaignSummaries(
   const out = new Map<string, CampaignSummary>();
   if (ids.length === 0) return out;
   const supabase = requireServerSupabase();
-  for (const part of chunk(ids, 300)) {
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select('id, name, owner_user_id, scheduling_native, status')
-      .in('id', part);
-    if (error) throw new Error(`listCampaignSummaries: ${error.message}`);
+  // Tranches lues ensemble, appliquées dans l'ordre des tranches.
+  const parts = await Promise.all(
+    chunk(ids, 300).map(async (part) => {
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select('id, name, owner_user_id, scheduling_native, status')
+        .in('id', part);
+      if (error) throw new Error(`listCampaignSummaries: ${error.message}`);
+      return data;
+    }),
+  );
+  for (const data of parts) {
     const rows = (data ?? []) as {
       id: string;
       name: string;

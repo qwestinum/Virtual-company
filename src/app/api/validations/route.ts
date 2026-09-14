@@ -20,7 +20,7 @@ import {
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { mergePendingValidationEnqueue } from '@/lib/hitl/enqueue-merge';
-import { loadReferentContext } from '@/lib/referent/context';
+import { prepareReferentContext } from '@/lib/referent/context';
 import {
   HitlDecisionSchema,
   type DecisionZone,
@@ -32,6 +32,8 @@ export const runtime = 'nodejs';
 export async function GET(request: Request): Promise<NextResponse> {
   // ?status=sent → historique consultable (lot 2d) ; défaut = file en attente.
   const status = new URL(request.url).searchParams.get('status');
+  // Recruteurs et session ne dépendent pas de la file : lus dès maintenant.
+  const referentContextFor = prepareReferentContext();
   try {
     const validations =
       status === 'sent'
@@ -56,10 +58,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     const uids = [
       ...new Set(validations.map(uidOf).filter((u): u is string => u !== null)),
     ];
+    // Référent de CHAQUE campagne présente dans la file, en UNE passe pour
+    // toute la page (deux requêtes), jamais une par carte. Lancé en même temps
+    // que les zones : les deux ne dépendent que de la file.
+    const referentPromise = referentContextFor(validations.map((v) => v.campaignId));
     if (uids.length > 0) {
       const zoneByUid = new Map<string, DecisionZone | null>();
-      for (const part of chunk(uids, 300)) {
-        const rows = await listAllCandidateAnalyses({ uidIn: part });
+      const parts = await Promise.all(
+        chunk(uids, 300).map((part) => listAllCandidateAnalyses({ uidIn: part })),
+      );
+      for (const rows of parts) {
         for (const row of rows) zoneByUid.set(row.uid, row.decisionZone);
       }
       for (const v of validations) {
@@ -67,11 +75,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         zoneByValidation[v.id] = uid ? (zoneByUid.get(uid) ?? null) : null;
       }
     }
-    // Référent de CHAQUE campagne présente dans la file, en UNE passe pour
-    // toute la page (deux requêtes), jamais une par carte.
-    const { referentByCampaign, currentUserId } = await loadReferentContext(
-      validations.map((v) => v.campaignId),
-    );
+    const { referentByCampaign, currentUserId } = await referentPromise;
     return NextResponse.json({
       validations,
       zoneByValidation,

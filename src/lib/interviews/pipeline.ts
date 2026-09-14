@@ -93,6 +93,29 @@ function toFacts(brief: InterviewBrief): BriefFacts {
   };
 }
 
+/**
+ * Résumés des campagnes en jeu. Même résultat qu'une lecture unique de
+ * `briefIds ∪ orphanRefs` : si la lecture anticipée des briefings a échoué, on
+ * relit l'ensemble (comme avant), sinon on ne complète que l'inconnu.
+ */
+async function loadCampaigns(
+  briefIds: string[],
+  briefCampaigns: Map<string, CampaignSummary> | null,
+  orphanRefs: string[],
+): Promise<Map<string, CampaignSummary>> {
+  if (!briefCampaigns) {
+    return listCampaignSummaries([...briefIds, ...orphanRefs]).catch(
+      () => new Map<string, CampaignSummary>(),
+    );
+  }
+  const missing = orphanRefs.filter((ref) => !briefCampaigns.has(ref));
+  if (missing.length === 0) return briefCampaigns;
+  const extra = await listCampaignSummaries(missing).catch(
+    () => new Map<string, CampaignSummary>(),
+  );
+  return new Map([...briefCampaigns, ...extra]);
+}
+
 export async function loadInterviewPipeline(
   filter: { campaignId?: string | null } = {},
   nowMs = Date.now(),
@@ -112,7 +135,11 @@ export async function loadInterviewPipeline(
     ),
   ];
 
-  const [analyses, signals, recruiters, orphanTargets] = await Promise.all([
+  const briefCampaignIds = [...awaitingBriefs, ...scheduledBriefs]
+    .map((b) => b.campaignId)
+    .filter((c): c is string => c !== null);
+
+  const [analyses, signals, recruiters, orphanTargets, briefCampaigns] = await Promise.all([
     uids.length > 0
       ? listAllCandidateAnalyses({ uidIn: uids }).catch(() => [])
       : Promise.resolve([]),
@@ -122,18 +149,21 @@ export async function loadInterviewPipeline(
       await ensureSchedulingConfigured();
       return listOrphanTargets();
     })().catch(() => []),
+    // Les campagnes des briefings ne dépendent pas des cibles orphelines : on
+    // les lit dès maintenant, et seules les références orphelines encore
+    // inconnues coûtent une lecture de plus.
+    listCampaignSummaries(briefCampaignIds).catch(() => null),
   ]);
 
   // Campagnes RÉELLEMENT en jeu : celles des briefings, plus celles que le
   // bandeau des cibles orphelines doit nommer. Projection minimale chunkée —
   // `listCampaigns()` n'a pas de `.range()` et retombait sous le plafond
   // PostgREST de 1000, silencieusement.
-  const campaigns = await listCampaignSummaries([
-    ...[...awaitingBriefs, ...scheduledBriefs]
-      .map((b) => b.campaignId)
-      .filter((c): c is string => c !== null),
-    ...orphanTargets.map((o) => o.target.externalRef),
-  ]).catch(() => new Map<string, CampaignSummary>());
+  const campaigns = await loadCampaigns(
+    briefCampaignIds,
+    briefCampaigns,
+    orphanTargets.map((o) => o.target.externalRef),
+  );
 
   const analysisByUid = new Map(analyses.map((a) => [a.uid, a]));
   const stageOf = (uid: string): string | null => {
@@ -156,8 +186,22 @@ export async function loadInterviewPipeline(
   );
   if (nativeCampaigns.length > 0) {
     await ensureSchedulingConfigured();
-    for (const campaign of nativeCampaigns) {
-      for (const link of await listLinksForTarget(campaign.id).catch(() => [])) {
+    // Lectures lancées ensemble (campagnes entre elles, liens et rendez-vous
+    // d'une même campagne) ; les résultats sont APPLIQUÉS dans l'ordre des
+    // campagnes, exactement comme la boucle séquentielle qu'elles remplacent.
+    const perCampaign = await Promise.all(
+      nativeCampaigns.map((campaign) =>
+        Promise.all([
+          listLinksForTarget(campaign.id).catch(() => []),
+          listBookings({
+            targetExternalRef: campaign.id,
+            status: 'confirmed',
+          }).catch(() => []),
+        ]),
+      ),
+    );
+    for (const [links, bookings] of perCampaign) {
+      for (const link of links) {
         const key =
           parseBookingContext(link.context)?.analysisId ?? link.idempotencyKey;
         // La génération la plus récente fait foi : un lien réémis remplace le
@@ -167,10 +211,6 @@ export async function loadInterviewPipeline(
           linkStatusByAnalysis.set(key, link.status);
         }
       }
-      const bookings = await listBookings({
-        targetExternalRef: campaign.id,
-        status: 'confirmed',
-      }).catch(() => []);
       for (const booking of bookings) {
         holderIdByBooking.set(booking.id, booking.resourceExternalRef);
       }

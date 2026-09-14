@@ -33,6 +33,7 @@ import {
   fetchMetricsRows,
   fetchRecentRowsForActions,
 } from '@/lib/db/repos/metrics';
+import type { JournalEntry } from '@/lib/db/repos/journal';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { ensureSchedulerStarted } from '@/lib/imap/scheduler';
@@ -69,11 +70,42 @@ export async function GET(): Promise<NextResponse> {
   // par agent). SCINDÉ plutôt que gaté en bloc : un member reçoit le payload
   // avec `agents` vidé et `costEstimate` à 0 (cache de rôle 60 s — la route
   // est pollée toutes les 5 s).
-  const isAdmin = (await getAdminApiUser()) !== null;
+  //
+  // Toutes les lectures ci-dessous sont INDÉPENDANTES : elles partent ensemble
+  // (une route pollée toutes les 5 s enchaînait 9 étapes). Les résultats sont
+  // consommés dans l'ordre d'origine, avec les mêmes replis et les mêmes
+  // erreurs remontées ; une promesse dont le résultat n'est finalement pas
+  // attendu (payload offline) est neutralisée pour ne pas lever en tâche de fond.
+  const isAdminPromise = getAdminApiUser().then((u) => u !== null);
+  const resultPromise = fetchMetricsRows();
+  const campaignsPromise = listCampaigns();
+  const pendingPromise = listPendingValidations();
+  const totalRowsPromise = fetchCandidateTotalRows().catch(() => null);
+  const activityPromise = fetchRecentRowsForActions(
+    ACTIVITY_FEED_ACTIONS,
+    ACTIVITY_FETCH_ROWS,
+  ).catch(() => null);
+  const agentPromise = isAdminPromise.then((isAdmin) =>
+    isAdmin
+      ? fetchRecentRowsForActions(AGENT_METRIC_ACTIONS, AGENT_WINDOW_ROWS).catch(
+          () => null,
+        )
+      : { rows: [] as JournalEntry[] },
+  );
+  // Répartition par zone : réutilise la file déjà demandée plutôt que de la
+  // relire (même repli qu'avant côté zones : file illisible ⇒ liste vide).
+  const zonesPromise = zoneDistribution(pendingPromise.catch(() => [])).catch(
+    () => EMPTY_ZONE_COUNTS,
+  );
+  for (const p of [isAdminPromise, campaignsPromise, pendingPromise, agentPromise]) {
+    p.catch(() => undefined);
+  }
+
+  const isAdmin = await isAdminPromise;
 
   const agentIds = getAgentOrder();
 
-  const result = await fetchMetricsRows();
+  const result = await resultPromise;
   if (!result) {
     return NextResponse.json({
       offline: true,
@@ -85,11 +117,11 @@ export async function GET(): Promise<NextResponse> {
     });
   }
 
-  // Charge les campagnes en parallèle pour enrichir `role` sur les
-  // candidats. Si listCampaigns plante, on dégrade vers `role: null`.
+  // Campagnes pour enrichir `role` sur les candidats. Si listCampaigns plante,
+  // on dégrade vers `role: null`.
   let campaignNameById = new Map<string, string>();
   try {
-    const campaigns = await listCampaigns();
+    const campaigns = await campaignsPromise;
     campaignNameById = new Map(campaigns.map((c) => [c.id, c.name]));
   } catch (err) {
     if (!(err instanceof SupabaseNotConfiguredError)) {
@@ -101,7 +133,7 @@ export async function GET(): Promise<NextResponse> {
   // Sert à (a) compter « À valider », (b) MARQUER ces analyses
   // (`awaitingValidation`) : les cartes campagne les comptent en « CV reçus »,
   // le dashboard résiduel et les KPIs dérivés les écartent jusqu'à l'envoi.
-  const pending = await listPendingValidations();
+  const pending = await pendingPromise;
   const pendingUids = new Set(
     pending
       .map((v) => (typeof v.payload?.uid === 'string' ? v.payload.uid : null))
@@ -112,8 +144,7 @@ export async function GET(): Promise<NextResponse> {
   // des actions candidat/coût sans cap 500, sinon le récit « Process First »
   // du Bureau mentait au-delà de 500 événements. Même dérivation pure, input
   // complet. Repli sur la fenêtre récente si le fetch exhaustif échoue.
-  const totalRows =
-    (await fetchCandidateTotalRows().catch(() => null))?.rows ?? result.rows;
+  const totalRows = (await totalRowsPromise)?.rows ?? result.rows;
 
   const candidates = journalToCandidatesList(totalRows, pendingUids).map(
     (c) => ({
@@ -122,24 +153,18 @@ export async function GET(): Promise<NextResponse> {
     }),
   );
 
-  // Fil d'activité et métriques agents : deux fenêtres CIBLÉES, en parallèle.
+  // Fil d'activité et métriques agents : deux fenêtres CIBLÉES.
   // Repli sur la fenêtre brute si le fetch ciblé échoue — dégradé, jamais vide.
   const [activityResult, agentResult] = await Promise.all([
-    fetchRecentRowsForActions(ACTIVITY_FEED_ACTIONS, ACTIVITY_FETCH_ROWS).catch(
-      () => null,
-    ),
-    isAdmin
-      ? fetchRecentRowsForActions(AGENT_METRIC_ACTIONS, AGENT_WINDOW_ROWS).catch(
-          () => null,
-        )
-      : Promise.resolve<{ rows: typeof result.rows } | null>({ rows: [] }),
+    activityPromise,
+    agentPromise,
   ]);
   const activityRows = activityResult?.rows ?? result.rows;
   const agentRows = agentResult?.rows ?? result.rows;
 
   // Répartition par zone (récit Bureau) — EXHAUSTIF depuis candidate_analyses.
   // Best-effort : un échec retombe sur des zones vides, le reste du payload tient.
-  const zones = await zoneDistribution().catch(() => EMPTY_ZONE_COUNTS);
+  const zones = await zonesPromise;
 
   const kpis = {
     ...journalToGlobalKPIs(totalRows, pendingUids),

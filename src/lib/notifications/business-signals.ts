@@ -165,9 +165,13 @@ async function computePendingValidationsOverdue(
   nowMs: number,
 ): Promise<BusinessSignal | null> {
   const days = BUSINESS_NOTIFICATION_THRESHOLDS.pendingValidationAgeDays;
+  // Les deux lectures partent ensemble ; la seconde n'est ATTENDUE que s'il y
+  // a quelque chose à signaler (même résultat, même erreur remontée qu'avant).
+  const oldestPromise = oldestPendingValidationCreatedAt();
+  oldestPromise.catch(() => undefined);
   const count = await countOverduePendingValidations(cutoffIso(nowMs, days));
   if (count === 0) return null;
-  const oldest = await oldestPendingValidationCreatedAt();
+  const oldest = await oldestPromise;
   const oldestDays = oldest ? daysSinceIso(oldest, nowMs) : days;
   return {
     key: 'pending_validations_overdue',
@@ -183,10 +187,10 @@ async function computePendingValidationsOverdue(
 
 async function computeInterviewsAwaitingDecision(
   nowMs: number,
-  preloaded?: StageSignals,
+  shared: SharedLoads = createSharedLoads(),
 ): Promise<BusinessSignal | null> {
   const days = BUSINESS_NOTIFICATION_THRESHOLDS.interviewDecisionAgeDays;
-  const signals = preloaded ?? (await loadStageSignals());
+  const signals = await shared.stageSignals();
   const candidateUids = selectOverdueRealizedUids(
     signals.interviewMarks,
     signals.interviewMarkedAt,
@@ -197,8 +201,10 @@ async function computeInterviewsAwaitingDecision(
   // Analyses chargées UNIQUEMENT pour ces uids (bas volume), stage dérivé par
   // le helper CANONIQUE — décision posée ⇒ stage retenu/non_retenu ⇒ sorti.
   const awaiting: { uid: string; markedAt: string }[] = [];
-  for (const part of chunk(candidateUids, 300)) {
-    const analyses = await listAllCandidateAnalyses({ uidIn: part });
+  const parts = await Promise.all(
+    chunk(candidateUids, 300).map((part) => listAllCandidateAnalyses({ uidIn: part })),
+  );
+  for (const analyses of parts) {
     for (const analysis of analyses) {
       if (stageFor(analysis, signals) !== 'entretien_fait') continue;
       const markedAt = signals.interviewMarkedAt.get(analysis.uid);
@@ -232,17 +238,24 @@ async function computeInterviewsAwaitingDecision(
  */
 async function computeInterviewsAwaitingPointing(
   nowMs: number,
+  shared: SharedLoads = createSharedLoads(),
 ): Promise<BusinessSignal | null> {
   const hours = BUSINESS_NOTIFICATION_THRESHOLDS.interviewPointingAgeHours;
+  // Les signaux d'étape sont PARTAGÉS avec le signal 2 et partent en même
+  // temps que les briefings ; ils ne sont attendus que s'il y a des candidats.
+  const signalsPromise = shared.stageSignals();
+  signalsPromise.catch(() => undefined);
   const briefs = await listBriefsByStatus('scheduled').catch(() => []);
   const candidates = selectUnpointedBriefs(briefs, nowMs - hours * 3_600_000);
   if (candidates.length === 0) return null;
 
-  const signals = await loadStageSignals();
+  const signals = await signalsPromise;
   const uids = candidates.map((b) => b.uid as string);
   const open: { uid: string; endAt: string }[] = [];
-  for (const part of chunk(uids, 300)) {
-    const analyses = await listAllCandidateAnalyses({ uidIn: part });
+  const parts = await Promise.all(
+    chunk(uids, 300).map((part) => listAllCandidateAnalyses({ uidIn: part })),
+  );
+  for (const analyses of parts) {
     const byUid = new Map(analyses.map((a) => [a.uid, a]));
     for (const brief of candidates) {
       const analysis = byUid.get(brief.uid as string);
@@ -287,6 +300,7 @@ async function computeInterviewsAwaitingPointing(
 async function computeAvailabilityHolidaysUnblocked(
   nowMs: number,
   ctx: SignalContext,
+  shared: SharedLoads = createSharedLoads(),
 ): Promise<BusinessSignal | null> {
   // Réglage PERSONNEL : hors session, il n'y a personne à qui le dire.
   if (!ctx.recruiterId) return null;
@@ -296,13 +310,12 @@ async function computeAvailabilityHolidaysUnblocked(
   // signaler » sur une panne de configuration — le signal ne se serait jamais
   // allumé, nulle part, sans que rien ne le dise (défaut attrapé en recette).
   // On laisse donc remonter : le registre journalise et omet le signal.
-  await ensureSchedulingConfigured();
-  const resource = await getResource(ctx.recruiterId);
+  const resource = await shared.resource(ctx.recruiterId);
   // Pas de ressource, ou agenda désactivé : rien n'est proposé, rien à régler.
   if (!resource || !resource.isActive) return null;
 
   const [rules, exceptions] = await Promise.all([
-    listWeeklyRules(resource.externalRef),
+    shared.weeklyRules(resource.externalRef),
     listExceptions(resource.externalRef),
   ]);
   const unblocked = selectUnblockedHolidays({
@@ -348,17 +361,17 @@ async function computeAvailabilityHolidaysUnblocked(
 async function computeAvailabilityMeetingLocationMissing(
   _nowMs: number,
   ctx: SignalContext,
+  shared: SharedLoads = createSharedLoads(),
 ): Promise<BusinessSignal | null> {
   if (!ctx.recruiterId) return null;
 
   // Même raison qu'au signal 4 : sans les ports, `getResource` LÈVE, et un
   // `.catch(() => null)` éteindrait le signal partout sans que rien ne le dise.
-  await ensureSchedulingConfigured();
-  const resource = await getResource(ctx.recruiterId);
+  const resource = await shared.resource(ctx.recruiterId);
   if (!resource || !resource.isActive) return null;
   if (isMeetingLocationComplete(resource.meetingLocation)) return null;
 
-  const rules = await listWeeklyRules(resource.externalRef);
+  const rules = await shared.weeklyRules(resource.externalRef);
   if (rules.length === 0) return null; // agenda encore en construction
 
   return {
@@ -385,8 +398,9 @@ async function computeAvailabilityMeetingLocationMissing(
  */
 async function computeApecRepublicationWindow(
   nowMs: number,
+  shared: SharedLoads = createSharedLoads(),
 ): Promise<BusinessSignal | null> {
-  const postings = await listLiveJobPostings();
+  const postings = await shared.liveJobPostings();
   const warning = BUSINESS_NOTIFICATION_THRESHOLDS.apecRepublishWarningDays;
   const now = new Date(nowMs);
 
@@ -424,8 +438,9 @@ async function computeApecRepublicationWindow(
  */
 async function computeApecLiveOnClosedCampaign(
   nowMs: number,
+  shared: SharedLoads = createSharedLoads(),
 ): Promise<BusinessSignal | null> {
-  const postings = (await listLiveJobPostings()).filter(
+  const postings = (await shared.liveJobPostings()).filter(
     (p) => p.remoteStatus === 'PUBLIEE',
   );
   if (postings.length === 0) return null;
@@ -475,36 +490,89 @@ export type SignalContext = {
   recruiterId: string | null;
 };
 
+/**
+ * Lectures communes à plusieurs signaux, mémorisées le temps d'UN calcul :
+ * les signaux 2 et 3 lisent les mêmes signaux d'étape, 4 et 5 la même
+ * ressource et les mêmes règles, 6 et 7 les mêmes offres. Une lecture en échec
+ * fait échouer chaque signal qui la demande, exactement comme s'il l'avait
+ * faite lui-même.
+ */
+export type SharedLoads = {
+  stageSignals: () => Promise<StageSignals>;
+  resource: (recruiterId: string) => ReturnType<typeof getResource>;
+  weeklyRules: (externalRef: string) => ReturnType<typeof listWeeklyRules>;
+  liveJobPostings: () => ReturnType<typeof listLiveJobPostings>;
+};
+
+export function createSharedLoads(): SharedLoads {
+  const memo = new Map<string, Promise<unknown>>();
+  const once = <T>(key: string, load: () => Promise<T>): Promise<T> => {
+    let promise = memo.get(key) as Promise<T> | undefined;
+    if (!promise) {
+      promise = load();
+      memo.set(key, promise);
+    }
+    return promise;
+  };
+  return {
+    stageSignals: () => once('stageSignals', () => loadStageSignals()),
+    // Les ports du module sont injectés à l'exécution : sans cet appel,
+    // `getResource` LÈVE (cf. signaux 4 et 5).
+    resource: (recruiterId) =>
+      once(`resource:${recruiterId}`, async () => {
+        await ensureSchedulingConfigured();
+        return getResource(recruiterId);
+      }),
+    weeklyRules: (externalRef) =>
+      once(`rules:${externalRef}`, () => listWeeklyRules(externalRef)),
+    liveJobPostings: () => once('liveJobPostings', () => listLiveJobPostings()),
+  };
+}
+
 export type BusinessSignalDefinition = {
   key: BusinessSignal['key'];
-  compute: (nowMs: number, ctx: SignalContext) => Promise<BusinessSignal | null>;
+  /**
+   * `true` si le signal lit le `SignalContext` (réglage PERSONNEL). Les autres
+   * ne l'attendent pas : ils démarrent sans attendre la vérification de session.
+   */
+  personal?: boolean;
+  compute: (
+    nowMs: number,
+    ctx: SignalContext,
+    shared?: SharedLoads,
+  ) => Promise<BusinessSignal | null>;
 };
 
 export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
-  { key: 'pending_validations_overdue', compute: computePendingValidationsOverdue },
+  {
+    key: 'pending_validations_overdue',
+    compute: (nowMs) => computePendingValidationsOverdue(nowMs),
+  },
   {
     key: 'interviews_awaiting_decision',
-    compute: (nowMs) => computeInterviewsAwaitingDecision(nowMs),
+    compute: (nowMs, _ctx, shared) => computeInterviewsAwaitingDecision(nowMs, shared),
   },
   {
     key: 'interviews_awaiting_pointing',
-    compute: computeInterviewsAwaitingPointing,
+    compute: (nowMs, _ctx, shared) => computeInterviewsAwaitingPointing(nowMs, shared),
   },
   {
     key: 'availability_holidays_unblocked',
+    personal: true,
     compute: computeAvailabilityHolidaysUnblocked,
   },
   {
     key: 'availability_meeting_location_missing',
+    personal: true,
     compute: computeAvailabilityMeetingLocationMissing,
   },
   {
     key: 'apec_republication_window_closing',
-    compute: (nowMs) => computeApecRepublicationWindow(nowMs),
+    compute: (nowMs, _ctx, shared) => computeApecRepublicationWindow(nowMs, shared),
   },
   {
     key: 'apec_offer_live_on_closed_campaign',
-    compute: (nowMs) => computeApecLiveOnClosedCampaign(nowMs),
+    compute: (nowMs, _ctx, shared) => computeApecLiveOnClosedCampaign(nowMs, shared),
   },
 ];
 
@@ -514,10 +582,16 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
  */
 export async function computeBusinessSignals(
   nowMs = Date.now(),
-  ctx: SignalContext = { recruiterId: null },
+  ctx: SignalContext | Promise<SignalContext> = { recruiterId: null },
 ): Promise<BusinessSignal[]> {
+  const shared = createSharedLoads();
+  const ctxPromise = Promise.resolve(ctx);
   const results = await Promise.allSettled(
-    BUSINESS_SIGNALS.map((def) => def.compute(nowMs, ctx)),
+    BUSINESS_SIGNALS.map(async (def) =>
+      def.personal
+        ? def.compute(nowMs, await ctxPromise, shared)
+        : def.compute(nowMs, { recruiterId: null }, shared),
+    ),
   );
   const signals: BusinessSignal[] = [];
   results.forEach((res, i) => {

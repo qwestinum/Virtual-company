@@ -24,7 +24,7 @@ import {
   CANDIDATE_STAGES,
   type CandidateStage,
 } from '@/lib/reporting/candidate-stage';
-import { loadReferentContext } from '@/lib/referent/context';
+import { prepareReferentContext } from '@/lib/referent/context';
 import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
 import type {
   CandidateAnalysisFilters,
@@ -89,12 +89,28 @@ export async function GET(request: Request): Promise<NextResponse> {
     // Signaux scopés à la campagne (les loaders journal/entretien filtrent par
     // campagne ; pending est global, intersecté par uid). Réutilisés par toutes
     // les lignes — un seul chargement.
-    const signals = await loadStageSignals({ campaignId: campaignId ?? undefined });
+    //
+    // Les signaux, la lecture des analyses et les parties du contexte référent
+    // qui ne dépendent pas de la page partent ENSEMBLE ; ils sont consommés
+    // dans l'ordre d'origine (une erreur des signaux reste celle remontée).
+    const referentContextFor = prepareReferentContext();
+    const derived = Boolean(stageFilter || everInterviewed);
+    const signalsPromise = loadStageSignals({ campaignId: campaignId ?? undefined });
+    const allPromise = derived ? listAllCandidateAnalyses(baseFilters) : null;
+    const pagePromise = derived
+      ? null
+      : Promise.all([
+          listCandidateAnalyses({ ...baseFilters, limit, offset }),
+          countCandidateAnalyses(baseFilters),
+        ]);
+    allPromise?.catch(() => undefined);
+    pagePromise?.catch(() => undefined);
+    const signals = await signalsPromise;
 
-    if (stageFilter || everInterviewed) {
+    if (allPromise) {
       // Filtre DÉRIVÉ : dérive sur tout le périmètre (campagne+période+recherche
       // +fromVivier), filtre par étape/trajectoire, puis pagine en mémoire.
-      const all = await listAllCandidateAnalyses(baseFilters);
+      const all = await allPromise;
       const enriched: CandidateListItem[] = all.map((c) => ({
         ...c,
         stage: stageFor(c, signals),
@@ -111,15 +127,12 @@ export async function GET(request: Request): Promise<NextResponse> {
       return NextResponse.json({
         rows,
         total: filtered.length,
-        ...(await loadReferentContext(rows.map((r) => r.campaignId))),
+        ...(await referentContextFor(rows.map((r) => r.campaignId))),
       });
     }
 
     // Pas de filtre d'étape : pagination SQL exacte.
-    const [page, total] = await Promise.all([
-      listCandidateAnalyses({ ...baseFilters, limit, offset }),
-      countCandidateAnalyses(baseFilters),
-    ]);
+    const [page, total] = await (pagePromise as NonNullable<typeof pagePromise>);
     const rows: CandidateListItem[] = page.map((c) => ({
       ...c,
       stage: stageFor(c, signals),
@@ -127,7 +140,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({
       rows,
       total,
-      ...(await loadReferentContext(rows.map((r) => r.campaignId))),
+      ...(await referentContextFor(rows.map((r) => r.campaignId))),
     });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

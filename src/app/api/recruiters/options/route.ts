@@ -29,21 +29,24 @@ import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 export const runtime = 'nodejs';
 
 export async function GET(): Promise<NextResponse> {
+  // Trois lectures indépendantes, lancées ensemble.
+  // Deux requêtes au total, pas une par recruteur. Fail-soft : si le module
+  // est injoignable, on rend la liste sans l'annotation plutôt que rien.
+  const bookablePromise = (async () => {
+    try {
+      await ensureSchedulingConfigured();
+      return new Set(await listBookableResources());
+    } catch {
+      return null;
+    }
+  })();
+  // Fail-soft : une session illisible ne doit pas priver le sélecteur de sa
+  // liste — le défaut se perd, pas l'écran.
+  const mePromise = getApiUser().catch(() => null);
   try {
     const recruiters = await listActiveRecruiters();
-    // Deux requêtes au total, pas une par recruteur. Fail-soft : si le module
-    // est injoignable, on rend la liste sans l'annotation plutôt que rien.
-    const bookable = await (async () => {
-      try {
-        await ensureSchedulingConfigured();
-        return new Set(await listBookableResources());
-      } catch {
-        return null;
-      }
-    })();
-    // Fail-soft : une session illisible ne doit pas priver le sélecteur de sa
-    // liste — le défaut se perd, pas l'écran.
-    const me = await getApiUser().catch(() => null);
+    const bookable = await bookablePromise;
+    const me = await mePromise;
     return NextResponse.json({
       currentUserId: me?.id ?? null,
       options: recruiters.map((r) => ({

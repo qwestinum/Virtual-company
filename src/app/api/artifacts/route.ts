@@ -19,6 +19,7 @@ import { z } from 'zod';
 import {
   insertArtifactMeta,
   listArtifactsByCampaign,
+  listArtifactsByOwners,
   listArtifactsByTask,
 } from '@/lib/db/repos/artifacts';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -51,6 +52,27 @@ function notConfigured(): NextResponse {
 
 export async function GET(request: Request): Promise<NextResponse> {
   const url = new URL(request.url);
+  // Lecture GROUPÉE (`campaign_ids=a,b&task_ids=c`) : le montage du workspace
+  // émettait une requête par campagne et par tâche, chacune avec sa propre
+  // vérification de session.
+  const campaignIdsRaw = url.searchParams.get('campaign_ids');
+  const taskIdsRaw = url.searchParams.get('task_ids');
+  if (campaignIdsRaw !== null || taskIdsRaw !== null) {
+    const split = (raw: string | null) => (raw ?? '').split(',').filter(Boolean);
+    try {
+      const items = await listArtifactsByOwners({
+        campaignIds: split(campaignIdsRaw),
+        taskIds: split(taskIdsRaw),
+      });
+      return NextResponse.json({ artifacts: items });
+    } catch (err) {
+      if (err instanceof SupabaseNotConfiguredError) return notConfigured();
+      return NextResponse.json(
+        { error: 'db_error', message: (err as Error).message },
+        { status: 500 },
+      );
+    }
+  }
   const campaignId = url.searchParams.get('campaign_id');
   const taskId = url.searchParams.get('task_id');
   if ((campaignId && taskId) || (!campaignId && !taskId)) {

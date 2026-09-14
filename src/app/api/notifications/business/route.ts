@@ -20,10 +20,14 @@ export async function GET(): Promise<NextResponse> {
   // qui porte sur un réglage PERSONNEL (l'agenda) : réclamer à quelqu'un de
   // corriger la grille d'un autre ne mène à rien. Session absente ⇒ ce
   // signal-là se tait, les autres restent servis.
-  const user = await getApiUser().catch(() => null);
-  const signals = await computeBusinessSignals(Date.now(), {
-    recruiterId: user?.id ?? null,
-  });
+  // Seuls les signaux personnels attendent cette vérification : les signaux
+  // communs démarrent tout de suite.
+  const signals = await computeBusinessSignals(
+    Date.now(),
+    getApiUser()
+      .catch(() => null)
+      .then((user) => ({ recruiterId: user?.id ?? null })),
+  );
   const body: BusinessNotificationsResponse = {
     signals,
     generatedAt: new Date().toISOString(),

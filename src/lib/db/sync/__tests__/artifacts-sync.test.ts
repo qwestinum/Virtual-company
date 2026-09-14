@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   hydrateArtifactsForCampaign,
+  hydrateArtifactsForOwners,
   pushArtifact,
   retryFailedArtifactPushes,
 } from '@/lib/db/sync/artifacts-sync';
@@ -272,5 +273,50 @@ describe('hydrateArtifactsForCampaign', () => {
     const art = useArtifactsStore.getState().byId.art_1!;
     expect(art.name).toBe('local.md');
     expect(art.content).toBe('# local content');
+  });
+});
+
+describe('hydrateArtifactsForOwners — lecture groupée', () => {
+  const artifact = (id: string, owner: { campaignId?: string; taskId?: string }) => ({
+    id,
+    campaignId: owner.campaignId ?? null,
+    taskId: owner.taskId ?? null,
+    kind: 'fdp',
+    name: `${id}.md`,
+    mime: 'text/markdown',
+    publicUrl: null,
+    storagePath: null,
+    createdAt: '2026-05-12T00:00:00Z',
+  });
+
+  it('une seule requête pour campagnes et tâches, le store est semé', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        artifacts: [artifact('a1', { campaignId: 'CAMP-1' }), artifact('a2', { taskId: 'TASK-1' })],
+      }),
+    });
+    await hydrateArtifactsForOwners(['CAMP-1', 'CAMP-2'], ['TASK-1']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = String(fetchMock.mock.calls[0]![0]);
+    expect(url).toContain('campaign_ids=CAMP-1%2CCAMP-2');
+    expect(url).toContain('task_ids=TASK-1');
+    expect(useArtifactsStore.getState().byId.a1).toBeDefined();
+  });
+
+  it('découpe au-delà de 100 propriétaires — aucun identifiant perdu', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ artifacts: [] }) });
+    const ids = Array.from({ length: 250 }, (_, i) => `CAMP-${i}`);
+    await hydrateArtifactsForOwners(ids, []);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const sent = fetchMock.mock.calls.flatMap(([url]) =>
+      (new URL(String(url), 'http://x').searchParams.get('campaign_ids') ?? '').split(','),
+    );
+    expect(new Set(sent)).toEqual(new Set(ids));
+  });
+
+  it('aucun propriétaire ⇒ aucune requête', async () => {
+    await hydrateArtifactsForOwners([], []);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

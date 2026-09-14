@@ -8,6 +8,7 @@
  *     restent null mais l'entrée existe).
  */
 
+import { chunk, fetchAllKeyset } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { ArtifactKind, ArtifactMetaRow } from '@/lib/db/types';
 
@@ -143,6 +144,45 @@ export async function listArtifactsByCampaign(
     .order('created_at', { ascending: true });
   if (error) throw new Error(`listArtifactsByCampaign: ${error.message}`);
   return (data ?? []).map((r) => rowToMeta(r as ArtifactMetaRow));
+}
+
+/**
+ * Métadonnées d'artefacts de PLUSIEURS campagnes et tâches en une lecture —
+ * même contenu que les appels unitaires `listArtifactsByCampaign` /
+ * `listArtifactsByTask` cumulés. Pagination KEYSET sur la clé primaire : un
+ * lot de propriétaires peut dépasser le plafond PostgREST de 1000 lignes, et
+ * rien n'est tronqué. Les listes d'identifiants sont découpées pour garder
+ * des URL raisonnables.
+ */
+export async function listArtifactsByOwners(owners: {
+  campaignIds: readonly string[];
+  taskIds: readonly string[];
+}): Promise<ArtifactMeta[]> {
+  const supabase = requireServerSupabase();
+  const byColumn = (column: 'campaign_id' | 'task_id', ids: readonly string[]) =>
+    chunk([...new Set(ids)], 100).map((part) =>
+      fetchAllKeyset<ArtifactMetaRow>({
+        cursorOf: (row) => row.id,
+        fetchPage: async (afterId, limit) => {
+          let query = supabase.from(TABLE).select('*').in(column, part);
+          if (afterId !== null) query = query.gt('id', afterId);
+          const { data, error } = await query
+            .order('id', { ascending: true })
+            .limit(limit);
+          if (error) throw new Error(`listArtifactsByOwners: ${error.message}`);
+          return (data ?? []) as ArtifactMetaRow[];
+        },
+      }),
+    );
+  const pages = await Promise.all([
+    ...byColumn('campaign_id', owners.campaignIds),
+    ...byColumn('task_id', owners.taskIds),
+  ]);
+  const byId = new Map<string, ArtifactMetaRow>();
+  for (const row of pages.flat()) byId.set(row.id, row);
+  return [...byId.values()]
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((r) => rowToMeta(r));
 }
 
 export async function listArtifactsByTask(
