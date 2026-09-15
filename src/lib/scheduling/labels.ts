@@ -73,6 +73,8 @@ export type SchedulingLabels = {
   // ── États fermés ─────────────────────────────────────────────────────
   degradedTitle: string;
   degradedBody: string;
+  /** Offre suspendue : les disponibilités n'ont pas pu être vérifiées. Le lien reste valable. */
+  availabilityPausedBody: string;
   goneTitle: string;
   goneBody: string;
   alreadyBookedTitle: string;
@@ -149,6 +151,8 @@ export const FR_LABELS: SchedulingLabels = {
   degradedTitle: 'Momentanément indisponible',
   degradedBody:
     'La prise de rendez-vous n’est pas accessible pour l’instant. Nous revenons vers vous très vite.',
+  availabilityPausedBody:
+    'Les créneaux ne peuvent pas être proposés pour le moment. Réessayez un peu plus tard : votre lien reste valable.',
   goneTitle: 'Ce lien n’est plus actif',
   goneBody:
     'Si vous pensez qu’il s’agit d’une erreur, répondez au message que vous avez reçu.',

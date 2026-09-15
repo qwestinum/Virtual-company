@@ -5,10 +5,16 @@
  * Une ressource est une PERSONNE (ou un poste) qui tient des rendez-vous. Le
  * module ne sait pas laquelle : il n'en connaît que la clé opaque de l'hôte.
  */
-import { readExternalBusy, type ExternalBusyVerdict } from './external-busy';
+import {
+  readExternalBusy,
+  resolveExternalBusy,
+  widen,
+  type ExternalBusyVerdict,
+} from './external-busy';
+import { workingMinutesBetween } from './working-time';
 import { computeSlots, type SlotEngineInput } from './slots';
 import { assertOk, fetchAllKeyset, table } from './store';
-import { nowIso } from './runtime';
+import { externalBusyToleranceMinutes, nowIso } from './runtime';
 import {
   TABLES,
   toException,
@@ -263,7 +269,7 @@ export async function listExceptions(
 export type EngineAssembly = {
   input: SlotEngineInput;
   /** Ce que la source externe a permis de vérifier. `blocked` ⇒ ne rien offrir. */
-  availability: Pick<ExternalBusyVerdict, 'check' | 'blocked'>;
+  availability: Pick<ExternalBusyVerdict, 'check' | 'blocked' | 'state'>;
 };
 
 /**
@@ -284,7 +290,7 @@ export async function loadEngineInput(
   // identifiant, sans relire la ressource deux fois. La source externe part
   // en même temps : sur le chemin de confirmation, c'est la lecture la plus
   // lente, et rien ne l'oblige à attendre les autres.
-  const [rules, exceptions, busy, external] = await Promise.all([
+  const [rules, exceptions, busy, answer] = await Promise.all([
     listWeeklyRules(resource),
     listExceptions(resource, {
       // Marge d'un jour de part et d'autre : la fenêtre est en UTC, les
@@ -295,6 +301,30 @@ export async function loadEngineInput(
     listBusyIntervals(resource.id, window),
     readExternalBusy(resource, window, freshness),
   ]);
+
+  const now = nowIso();
+  // Le temps ouvré depuis la dernière lecture réussie ne se mesure QUE si la
+  // source est muette : c'est le seul cas où il décide, et il demande les
+  // exceptions de CETTE période (la fenêtre demandée est souvent dans le futur).
+  const since =
+    answer.kind === 'unavailable' && answer.lastGood
+      ? await listExceptions(resource, {
+          from: shiftIsoDate(answer.lastGood.readAt, -1),
+          to: shiftIsoDate(now, 1),
+        })
+      : null;
+  const external = resolveExternalBusy(answer, freshness, {
+    requested: coverageWindow(window, resource.horizonDays, now),
+    workingMinutesSince: (readAt) =>
+      workingMinutesBetween({
+        from: readAt,
+        to: now,
+        timezone: resource.timezone,
+        rules,
+        exceptions: since ?? [],
+      }),
+    toleranceMinutes: externalBusyToleranceMinutes(),
+  });
 
   const input: SlotEngineInput = {
     timezone: resource.timezone,
@@ -308,9 +338,32 @@ export async function loadEngineInput(
     externalBusy: external.intervals,
     from: window.from,
     to: window.to,
-    now: nowIso(),
+    now,
   };
-  return { input, availability: { check: external.check, blocked: external.blocked } };
+  return {
+    input,
+    availability: { check: external.check, blocked: external.blocked, state: external.state },
+  };
+}
+
+/**
+ * Ce qu'une copie doit avoir VU pour servir : la fenêtre élargie comme la lit
+ * le moteur, mais jamais au-delà de l'horizon — le moteur n'y offre rien, et
+ * exiger une copie qui le couvre bloquerait pour une plage jamais proposée.
+ */
+function coverageWindow(
+  window: { from: string; to: string },
+  horizonDays: number,
+  now: string,
+): { from: string; to: string } {
+  const widened = widen(window);
+  const horizonEnd = Date.parse(now) + (horizonDays + 1) * 86_400_000;
+  const to = Math.min(Date.parse(widened.to), horizonEnd);
+  const from = Date.parse(widened.from);
+  return {
+    from: widened.from,
+    to: new Date(Number.isFinite(to) && to > from ? to : from).toISOString(),
+  };
 }
 
 /** Réservations CONFIRMÉES d'une ressource, élargies pour couvrir les bords. */

@@ -103,7 +103,7 @@ Deux exceptions de forme, toutes deux justifiées au §6.3 :
 | `sourcing_approaches` | Module Sourcing : le message d'approche (prénom de la personne) et, le temps de créer la candidature, ce qu'elle a saisi. Le recruteur, les dates et l'empreinte du jeton ne désignent pas la personne. | **PSEUDONYMISER** |
 | `sourcing_searches` | Module Sourcing : la requête envoyée au moteur (elle décrit un poste), compteurs et coûts. | **CONSERVER** |
 | `sourcing_exclusions` | Module Sourcing : **empreinte salée** de l'adresse d'un profil et la raison (décliné, contacté, manifesté, opposition) — rien de lisible. Elle garantit qu'un profil décliné ne revient pas et qu'une opposition est respectée. | **CONSERVER** |
-| `campaigns`, `fdps_archived`, `scoring_sheets_archived`, `tasks_archived`, `sites`, `donneurs_ordre`, `recruiters`, `mailboxes`, `app_settings`, `demo_job_posts`, `campaign_mailboxes`, `sched_resources`, `sched_targets`, `sched_availability_rules`, `sched_availability_exceptions` | Aucune donnée de candidat. | **CONSERVER** |
+| `campaigns`, `fdps_archived`, `scoring_sheets_archived`, `tasks_archived`, `sites`, `donneurs_ordre`, `recruiters`, `mailboxes`, `app_settings`, `demo_job_posts`, `campaign_mailboxes`, `sched_resources`, `sched_targets`, `sched_availability_rules`, `sched_availability_exceptions`, `recruiter_busy_snapshots` | Aucune donnée de candidat. | **CONSERVER** |
 
 > **Aucune table sans verdict — vérifié par un test.** Ce tableau a sa
 > contrepartie dans le code, `src/lib/gdpr/table-inventory.ts`. Le test

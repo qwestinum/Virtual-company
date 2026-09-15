@@ -86,6 +86,8 @@ export {
   getConfirmedBookingByLink,
   listBookings,
   listConfirmedBookingsByLinkTokens,
+  listSlotOfferForLink,
+  listSlotOfferForManageToken,
   listSlotsForLink,
   listSlotsForManageToken,
   rescheduleBooking,
@@ -154,6 +156,19 @@ export {
   parseMeetingLocation,
   resolveMeetingLocation,
 } from './meeting-location';
+
+// Indisponibilités externes — verdict pur et temps ouvré (partagés avec l'hôte)
+export {
+  resolveExternalBusy,
+  type ExternalBusyPolicy,
+  type ExternalBusyState,
+  type ExternalBusyVerdict,
+} from './external-busy';
+export { workingMinutesBetween } from './working-time';
+export {
+  DEFAULT_EXTERNAL_BUSY_TOLERANCE_MINUTES,
+  externalBusyToleranceMinutes,
+} from './runtime';
 
 // Moteur de créneaux (pur) — exposé pour l'aperçu et les tests
 export { computeSlots, findOfferedSlot, type SlotEngineInput } from './slots';

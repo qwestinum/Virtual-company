@@ -732,6 +732,32 @@ confirmation, 6 sur 10 passent au rouge.
 - **S25.5** (`availability_check` écrit en base) rouge tant que la migration n'est pas appliquée en
   DEV — à appliquer en double application, puis relancer S25.
 
+## 13 ter. Lot B — livré (15/09/2026, `feat/agenda-externe`)
+
+| Élément | Où |
+|---|---|
+| Temps ouvré (grille + exceptions, heure MURALE les jours de changement d'heure) | `src/lib/scheduling/working-time.ts` |
+| Tolérance **2 h ouvrées incluses**, sur une copie qui **couvre** la fenêtre (jamais au-delà de ce qu'elle a vu, jamais au-delà de l'horizon) ; états `verified` / `tolerated` / `blocked` | `external-busy.ts` `resolveExternalBusy`, `resources.ts` `loadEngineInput` ; réglage `configureScheduling({ externalBusyToleranceMinutes })` |
+| Offre suspendue explicite : `listSlotOfferForLink` / `listSlotOfferForManageToken` → `{ slots, unavailable }` (les anciennes fonctions restent) | `bookings.ts`, routes `slots`, `BookingPage` (écran « Momentanément indisponible », lien valable) / `ManagePage` |
+| Copie en base, une ligne par recruteur, remplacée d'un bloc ; panne datée à sa PREMIÈRE occurrence ; déployable avant la migration (table absente ⇒ comportement du lot A) | `recruiter_busy_snapshots`, `src/lib/db/repos/busy-snapshots.ts` |
+| Offre servie par la copie si < 1 min ; en panne, **au plus une relecture par minute** ; confirmation toujours relue | `scheduling-host/busy/provider.ts` |
+| Filet `suspicious_empty` pour les hôtes à dépublication NON mesurée (`outlook.live.com` exempté sur preuve) | `providers.ts` `UNPUBLISH_MEASURED_HOSTS`, `provider.ts` |
+| Transitions `busy_calendar_state_changed` gagnées en base (une seule trace même en concurrence) ; **un** email à l'entrée en `blocked` (claim `busy_calendar_blocked`), message par cause, sans jargon ni URL ; trace `busy_calendar_blocked_email` | `scheduling-host/busy/notify.ts`, `state.ts` |
+| Signal `busy_calendar_unreadable` (personnel, > 1 h ouvrée, extinction à la première lecture réussie) | `notifications/business-signals.ts` |
+| « Agenda non vérifié » dans le briefing ET dans le mail de déplacement quand `availability_check = snapshot` | `interview-brief-mail.ts`, `deliver-brief.ts`, `consumer.ts` |
+| Changer l'URL oublie la copie | `patchRecruiter` |
+| Registre RGPD : `recruiter_busy_snapshots` CONSERVER (+ §4.1) | `gdpr/table-inventory.ts`, `docs/ops/purge-rgpd-candidat.md` |
+
+**Tests** : temps ouvré et tolérance 14 (le cas du changement d'heure sondé), adaptateur avec copie
+27, états et messages 7, briefing 2 ; régression **S26** (6 étapes : copie → tolérance → suspension +
+email unique → signal → rétablissement → changement d'URL).
+
+**Reste hors lot B** : relève périodique (route cron dédiée, lot C) — sans elle, l'état n'avance
+qu'aux lectures (page candidat, confirmation) ; le signal, lui, se calcule sur la copie et l'horloge ;
+écran de saisie de l'URL, test à la saisie, guide, étage cabinet du flag (lot D) ; reflet des RDV
+ORQA (§5.4, après la mesure d'aller-retour) ; minimisation à la grille (§12.2) ; désactivation du
+recruteur ⇒ URL effacée.
+
 ## 14. Risques et inconnues
 
 | Risque | Mitigation | Statut |

@@ -108,6 +108,8 @@ function OpenBooking({
   // c'est qu'on attend. Aucun état à poser depuis un effet, donc aucun rendu
   // en cascade — et impossible d'oublier de le remettre à zéro.
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  // Clé de la dernière semaine dont l'offre est SUSPENDUE — dérivé comme le chargement.
+  const [pausedKey, setPausedKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<Slot | null>(null);
   const [name, setName] = useState(state.display.attendeeName ?? '');
   const [email, setEmail] = useState(state.display.attendeeEmail ?? '');
@@ -146,9 +148,10 @@ function OpenBooking({
             response.status === 429 ? labels.errorRateLimited : labels.errorGeneric,
           );
         } else {
-          const payload = (await response.json()) as { slots?: Slot[] };
+          const payload = (await response.json()) as { slots?: Slot[]; unavailable?: boolean };
           if (cancelled) return;
           setSlots(slotsWithinWeek(payload.slots ?? [], days, timeZone));
+          setPausedKey(payload.unavailable ? requestKey : null);
         }
       } catch {
         if (!cancelled) {
@@ -164,6 +167,17 @@ function OpenBooking({
       cancelled = true;
     };
   }, [apiBase, token, labels, timeZone, currentDay, requestKey, loadedKey]);
+
+  // Offre suspendue : ni grille vide (« aucun créneau » ferait croire à un
+  // agenda plein), ni formulaire. Le lien reste valable, et on le dit.
+  if (!loading && requestKey !== null && pausedKey === requestKey && !confirmed) {
+    return (
+      <Shell display={state.display}>
+        <Header state={state} labels={labels} />
+        <Centered mark="🕓" title={labels.degradedTitle} body={labels.availabilityPausedBody} />
+      </Shell>
+    );
+  }
 
   if (!timeZone || !currentDay) {
     return (

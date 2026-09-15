@@ -110,7 +110,7 @@ export type BusyInterval = { startAt: string; endAt: string };
  *   - `live`     : la confirmation — la vérité au moment du clic.
  */
 export type ExternalBusyRequest = {
-  resource: Pick<Resource, 'id' | 'externalRef' | 'timezone'>;
+  resource: Pick<Resource, 'id' | 'externalRef' | 'timezone' | 'horizonDays'>;
   /** Fenêtre UTC ISO. */
   from: string;
   to: string;
@@ -124,7 +124,11 @@ export type ExternalBusyAnswer =
   | {
       /** La source existe mais n'a pas pu être lue. Jamais une disponibilité. */
       kind: 'unavailable';
-      lastGood: { intervals: BusyInterval[]; readAt: string } | null;
+      /**
+       * Dernière lecture RÉUSSIE, avec la fenêtre qu'elle couvrait : une copie
+       * ne vaut que pour ce qu'elle a vu, jamais au-delà.
+       */
+      lastGood: { intervals: BusyInterval[]; readAt: string; from: string; to: string } | null;
       failingSince: string;
     };
 
@@ -140,6 +144,14 @@ export type BusyProvider = {
  * `null` : réservation antérieure à la vérification.
  */
 export type AvailabilityCheck = 'live' | 'snapshot' | 'none';
+
+/**
+ * Créneaux offerts ET si l'offre est suspendue. `unavailable: true` ⇒ la
+ * source externe n'a pas pu être vérifiée au-delà de la tolérance : la liste
+ * est vide, et la page doit dire « momentanément indisponible », jamais
+ * « aucun créneau » (qui ferait croire à un agenda plein).
+ */
+export type SlotOffer = { slots: Slot[]; unavailable: boolean };
 
 // ─── Cibles ─────────────────────────────────────────────────────────────
 export type Target = {

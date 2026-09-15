@@ -210,3 +210,29 @@ describe('briefing — critères et candidature issue du sourcing', () => {
     expect(text).not.toContain('repêché');
   });
 });
+
+describe('mention « agenda non vérifié » (connecteur agenda externe)', () => {
+  const brief = (availabilityUnverified?: boolean) => ({
+    candidate: baseCandidate,
+    jobTitle: 'Data Engineer',
+    ownerLabel: 'CAMP-0001',
+    questions: [],
+    booking: {
+      startAt: '2026-06-23T12:00:00.000Z',
+      endAt: '2026-06-23T12:30:00.000Z',
+      location: null,
+      availabilityUnverified,
+    },
+    cvAttached: true,
+  });
+
+  it('prévient quand le créneau a été accepté sur la dernière lecture de l’agenda', () => {
+    expect(buildInterviewBriefMail(brief(true)).html).toContain('Agenda non vérifié');
+    expect(buildInterviewBriefText(brief(true))).toContain('Agenda non vérifié');
+  });
+
+  it('se tait quand l’agenda a été relu (ou qu’il n’y en a pas)', () => {
+    expect(buildInterviewBriefMail(brief(false)).html).not.toContain('Agenda non vérifié');
+    expect(buildInterviewBriefMail(brief()).html).not.toContain('Agenda non vérifié');
+  });
+});

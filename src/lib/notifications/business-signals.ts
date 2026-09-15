@@ -31,7 +31,21 @@ import {
 } from '@/lib/db/repos/pending-validations';
 import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
-import { getResource, isMeetingLocationComplete, listExceptions, listWeeklyRules } from '@/lib/scheduling';
+import { getBusySnapshot } from '@/lib/db/repos/busy-snapshots';
+import {
+  externalBusyToleranceMinutes,
+  getResource,
+  isMeetingLocationComplete,
+  listExceptions,
+  listWeeklyRules,
+  workingMinutesBetween,
+} from '@/lib/scheduling';
+import { isBusyCalendarEnabled } from '@/lib/scheduling-host/busy/flag';
+import {
+  buildBusyCalendarSignalMessage,
+  classifyBusyCalendarState,
+  isBusyCalendarSignalDue,
+} from '@/lib/scheduling-host/busy/state';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { BusinessSignal } from '@/types/notifications';
 
@@ -387,6 +401,71 @@ async function computeAvailabilityMeetingLocationMissing(
 }
 
 /**
+ * Agenda publié illisible.
+ *
+ * Même horloge que la tolérance du moteur — le temps OUVRÉ depuis la dernière
+ * lecture réussie — pour que le signal s'allume TOUJOURS avant la suspension
+ * des créneaux (1 h contre 2 h). Calculé sur la copie en base, sans relire
+ * l'agenda : un signal constate, il n'agit pas.
+ *
+ * Extinction par construction : la première lecture réussie efface la panne.
+ * Personnel : c'est l'agenda de quelqu'un.
+ */
+async function computeBusyCalendarUnreadable(
+  nowMs: number,
+  ctx: SignalContext,
+  shared: SharedLoads = createSharedLoads(),
+): Promise<BusinessSignal | null> {
+  if (!ctx.recruiterId || !isBusyCalendarEnabled()) return null;
+
+  const snapshot = await getBusySnapshot(ctx.recruiterId);
+  if (!snapshot?.failingSince) return null;
+
+  const resource = await shared.resource(ctx.recruiterId);
+  if (!resource || !resource.isActive) return null;
+
+  const now = new Date(nowMs).toISOString();
+  let minutes: number | null = null;
+  if (snapshot.readAt) {
+    const [rules, exceptions] = await Promise.all([
+      shared.weeklyRules(resource.externalRef),
+      listExceptions(resource.externalRef, {
+        from: snapshot.readAt.slice(0, 10),
+        to: localDay(nowMs, resource.timezone),
+      }),
+    ]);
+    minutes = workingMinutesBetween({
+      from: snapshot.readAt,
+      to: now,
+      timezone: resource.timezone,
+      rules,
+      exceptions,
+    });
+  }
+
+  const reading = { failing: true, readAt: snapshot.readAt, workingMinutesSinceRead: minutes };
+  if (!isBusyCalendarSignalDue(reading)) return null;
+  const state = classifyBusyCalendarState({
+    ...reading,
+    toleranceMinutes: externalBusyToleranceMinutes(),
+  });
+
+  return {
+    key: 'busy_calendar_unreadable',
+    count: 1,
+    oldestDays: daysSinceIso(snapshot.failingSince, nowMs),
+    message: buildBusyCalendarSignalMessage({
+      state,
+      readAt: snapshot.readAt,
+      failureCode: snapshot.failureCode,
+      timeZone: resource.timezone,
+    }),
+    ctaLabel: 'Ouvrir Agendas & disponibilités',
+    target: { route: '/settings' },
+  };
+}
+
+/**
  * Signaux 5 et 6 — les offres APEC encore vivantes.
  *
  * Une seule lecture pour les deux : `listLiveJobPostings` s'appuie sur l'index
@@ -565,6 +644,11 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
     key: 'availability_meeting_location_missing',
     personal: true,
     compute: computeAvailabilityMeetingLocationMissing,
+  },
+  {
+    key: 'busy_calendar_unreadable',
+    personal: true,
+    compute: computeBusyCalendarUnreadable,
   },
   {
     key: 'apec_republication_window_closing',

@@ -210,6 +210,12 @@ export async function patchRecruiter(
     .select('*')
     .maybeSingle();
   if (error) throw new Error(`patchRecruiter: ${error.message}`);
+  if (patch.busyIcsUrl !== undefined) {
+    // Nouvel agenda (ou plus d'agenda) : les plages et l'état de l'ancien ne
+    // valent rien pour lui. Import différé : ce repo reste léger.
+    const { deleteBusySnapshot } = await import('@/lib/db/repos/busy-snapshots');
+    await deleteBusySnapshot(id);
+  }
   return data ? rowToDomain(data as RecruiterRow) : null;
 }
 

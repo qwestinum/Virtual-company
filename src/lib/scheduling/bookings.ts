@@ -50,6 +50,7 @@ import type {
   RescheduleResult,
   Resource,
   Slot,
+  SlotOffer,
   Target,
 } from './types';
 
@@ -119,13 +120,27 @@ export async function listSlotsForLink(
   token: string,
   window: { from: string; to: string },
 ): Promise<Slot[]> {
+  return (await listSlotOfferForLink(token, window)).slots;
+}
+
+/**
+ * Même offre, en disant si elle est SUSPENDUE (source externe non vérifiée
+ * au-delà de la tolérance). Seul un lien actif sur une ressource active peut
+ * être suspendu : la page publique a déjà dit, à ce stade, que le lien existe.
+ */
+export async function listSlotOfferForLink(
+  token: string,
+  window: { from: string; to: string },
+): Promise<SlotOffer> {
   const chain = await getBookingLinkChain(token);
-  if (!chain || chain.link.status !== 'active') return [];
+  if (!chain || chain.link.status !== 'active') return { slots: [], unavailable: false };
   const resource = chain.target?.resourceId ? chain.resource : null;
-  if (!resource || !resource.isActive) return [];
+  if (!resource || !resource.isActive) return { slots: [], unavailable: false };
   const { input, availability } = await loadEngineInput(resource, window);
   // Source externe illisible : aucune offre plutôt qu'une offre peut-être fausse.
-  return availability.blocked ? [] : computeSlots(input);
+  return availability.blocked
+    ? { slots: [], unavailable: true }
+    : { slots: computeSlots(input), unavailable: false };
 }
 
 /**
@@ -137,18 +152,25 @@ export async function listSlotsForManageToken(
   manageToken: string,
   window: { from: string; to: string },
 ): Promise<Slot[]> {
+  return (await listSlotOfferForManageToken(manageToken, window)).slots;
+}
+
+export async function listSlotOfferForManageToken(
+  manageToken: string,
+  window: { from: string; to: string },
+): Promise<SlotOffer> {
   const found = await bookingWithResourceByManageToken(manageToken);
-  if (!found || found.booking.status !== 'confirmed') return [];
+  if (!found || found.booking.status !== 'confirmed') return { slots: [], unavailable: false };
   const { booking, resource } = found;
-  if (!resource || !resource.isActive) return [];
+  if (!resource || !resource.isActive) return { slots: [], unavailable: false };
 
   const { input: engineInput, availability } = await loadEngineInput(resource, window);
-  if (availability.blocked) return [];
+  if (availability.blocked) return { slots: [], unavailable: true };
   const slots = computeSlots({
     ...engineInput,
     busy: engineInput.busy.filter((busy) => busy.startAt !== booking.startAt),
   });
-  return slots;
+  return { slots, unavailable: false };
 }
 
 // ─── Confirmation ───────────────────────────────────────────────────────

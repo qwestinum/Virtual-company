@@ -213,6 +213,7 @@ function Reschedule({
   const [weekDay, setWeekDay] = useState(() => todayKey(timeZone));
   const [slots, setSlots] = useState<Slot[]>([]);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [pausedKey, setPausedKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<Slot | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -240,9 +241,10 @@ function Reschedule({
             response.status === 429 ? labels.errorRateLimited : labels.errorGeneric,
           );
         } else {
-          const payload = (await response.json()) as { slots?: Slot[] };
+          const payload = (await response.json()) as { slots?: Slot[]; unavailable?: boolean };
           if (cancelled) return;
           setSlots(slotsWithinWeek(payload.slots ?? [], days, timeZone));
+          setPausedKey(payload.unavailable ? requestKey : null);
         }
       } catch {
         if (!cancelled) {
@@ -305,14 +307,21 @@ function Reschedule({
         </button>
       </div>
 
-      <SlotPicker
-        slots={slots}
-        timeZone={timeZone}
-        labels={labels}
-        selectedStartAt={selected?.startAt ?? null}
-        onSelect={setSelected}
-        loading={loading}
-      />
+      {!loading && pausedKey === requestKey ? (
+        // Offre suspendue : le rendez-vous actuel est intact, on ne propose rien.
+        <p className="sched-note" role="status">
+          {labels.degradedTitle} — {labels.availabilityPausedBody}
+        </p>
+      ) : (
+        <SlotPicker
+          slots={slots}
+          timeZone={timeZone}
+          labels={labels}
+          selectedStartAt={selected?.startAt ?? null}
+          onSelect={setSelected}
+          loading={loading}
+        />
+      )}
 
       {selected ? (
         <button

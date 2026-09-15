@@ -56,7 +56,7 @@ export type SlotEngineInput = {
 };
 
 /** Plage de minutes locales depuis minuit : [start, end). */
-type MinuteRange = { start: number; end: number };
+export type MinuteRange = { start: number; end: number };
 
 const MS_PER_MINUTE = 60_000;
 
@@ -187,7 +187,7 @@ function wallClockToInstant(
   return candidate;
 }
 
-function groupRulesByWeekday(rules: WeeklyRuleInput[]): Map<number, MinuteRange[]> {
+export function groupRulesByWeekday(rules: WeeklyRuleInput[]): Map<number, MinuteRange[]> {
   const map = new Map<number, MinuteRange[]>();
   for (const rule of rules) {
     if (rule.startMinute >= rule.endMinute) continue;
@@ -198,7 +198,7 @@ function groupRulesByWeekday(rules: WeeklyRuleInput[]): Map<number, MinuteRange[
   return map;
 }
 
-function groupExceptionsByDay(
+export function groupExceptionsByDay(
   exceptions: AvailabilityException[],
 ): Map<string, AvailabilityException[]> {
   const map = new Map<string, AvailabilityException[]>();
@@ -211,7 +211,7 @@ function groupExceptionsByDay(
 }
 
 /** Règles du jour moins les exceptions. Journée entière ⇒ plus rien. */
-function availableRangesForDay(
+export function availableRangesForDay(
   rules: MinuteRange[],
   exceptions: AvailabilityException[],
 ): MinuteRange[] {

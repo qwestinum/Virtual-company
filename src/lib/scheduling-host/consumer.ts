@@ -19,6 +19,7 @@ import {
   getSynthesisAudienceForCampaign,
   type SynthesisAudience,
 } from '@/lib/campaign/synthesis-recipients';
+import { AVAILABILITY_UNVERIFIED_NOTICE } from '@/lib/agents/server/interview-brief-mail';
 import { buildInterviewIcs } from '@/lib/calendar/ics';
 import {
   claimBookingEventDelivery,
@@ -113,6 +114,7 @@ async function onBookingCreated(event: SchedEvent): Promise<void> {
     startTime: booking.startAt,
     endTime: booking.endAt,
     location: describeMeetingLocation(booking.meetingLocation),
+    availabilityUnverified: booking.availabilityCheck === 'snapshot',
     identity: context,
   });
 
@@ -293,6 +295,9 @@ async function notifySynthesis(
       : `<p>${escapeHtml(who)}${escapeHtml(label)} a déplacé son entretien.</p>` +
         `<p><strong>Nouveau créneau :</strong> ${escapeHtml(when)} (heure du candidat)</p>` +
         (where ? `<p><strong>Où :</strong> ${escapeHtml(where)}</p>` : '') +
+        (eventBooking.availabilityCheck === 'snapshot'
+          ? `<p><strong>⚠️ ${escapeHtml(AVAILABILITY_UNVERIFIED_NOTICE)}</strong></p>`
+          : '') +
         `<p>L’invitation jointe met à jour votre agenda.</p>`,
     ...(ics
       ? {

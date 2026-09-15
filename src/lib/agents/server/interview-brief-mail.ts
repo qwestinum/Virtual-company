@@ -24,6 +24,12 @@ export type InterviewBriefMailInput = {
     startAt: string | null;
     endAt: string | null;
     location: string | null;
+    /**
+     * Le créneau a été accepté sur la DERNIÈRE lecture de l'agenda du recruteur,
+     * qui n'a pas pu être relu à la réservation. Le briefing le dit : c'est la
+     * condition de la tolérance (docs/specs/agenda-externe.md §6.4).
+     */
+    availabilityUnverified?: boolean;
   };
   /** true si le CV a pu être joint, false sinon (mention de repli). */
   cvAttached: boolean;
@@ -58,6 +64,10 @@ export function formatBookingSlot(startAt: string | null): string | null {
   }
 }
 
+/** Mention « agenda non vérifié » — impersonnelle : le mail part au référent ET à la synthèse. */
+export const AVAILABILITY_UNVERIFIED_NOTICE =
+  'Agenda non vérifié : au moment de la réservation, l’agenda du recruteur n’a pas pu être relu — le créneau a été accepté sur sa dernière lecture. Vérifier qu’il est bien libre.';
+
 export function buildInterviewBriefMail(input: InterviewBriefMailInput): {
   subject: string;
   html: string;
@@ -78,6 +88,9 @@ export function buildInterviewBriefMail(input: InterviewBriefMailInput): {
 
   const bookingLines = [
     slot ? `<li>Créneau : <strong>${escapeHtml(slot)}</strong></li>` : '',
+    input.booking.availabilityUnverified
+      ? `<li><strong>⚠️ ${escapeHtml(AVAILABILITY_UNVERIFIED_NOTICE)}</strong></li>`
+      : '',
     input.booking.location
       ? `<li>Lieu / lien : ${escapeHtml(input.booking.location)}</li>`
       : '',
@@ -137,6 +150,7 @@ export function buildInterviewBriefText(input: InterviewBriefMailInput): string 
 
   const entretien: string[] = [];
   if (slot) entretien.push(`• Créneau : ${slot}`);
+  if (input.booking.availabilityUnverified) entretien.push(`• ⚠️ ${AVAILABILITY_UNVERIFIED_NOTICE}`);
   if (input.booking.location) entretien.push(`• Lieu / lien : ${input.booking.location}`);
   if (entretien.length > 0) {
     lines.push('ENTRETIEN', ...entretien, '');

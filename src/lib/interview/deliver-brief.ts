@@ -62,6 +62,8 @@ export type DeliverBriefInput = {
   startTime: string | null;
   endTime: string | null;
   location: string | null;
+  /** Réservation acceptée sur la dernière lecture de l'agenda (non relu). Chemin natif seulement. */
+  availabilityUnverified?: boolean;
   /**
    * Rapprochement par CANDIDATURE — chemin natif. La réservation transporte
    * l'identité de la candidature dans son contexte : on ne cherche plus « le
@@ -202,6 +204,7 @@ async function sendBrief(args: {
       startAt: args.input.startTime,
       endAt: args.input.endTime,
       location: args.input.location,
+      availabilityUnverified: args.input.availabilityUnverified ?? false,
     },
     cvAttached: cv !== null,
   };

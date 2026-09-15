@@ -37,6 +37,25 @@ export const CALENDAR_PROVIDERS: Record<CalendarProviderId, ProviderDefinition> 
   },
 };
 
+/**
+ * Hôtes dont le comportement À LA DÉPUBLICATION est MESURÉ et prouve qu'une
+ * URL dépubliée ne rend jamais un calendrier vide valide. Pour eux, un agenda
+ * vide est un agenda vide. Pour tous les autres, une chute brutale à zéro est
+ * traitée comme suspecte (révocation silencieuse possible).
+ *
+ * On n'ajoute un hôte ici que sur PREUVE consignée (docs/specs/agenda-externe.md
+ * §14 ter) — jamais par analogie : `outlook.office365.com` n'est pas
+ * `outlook.live.com`.
+ */
+export const UNPUBLISH_MEASURED_HOSTS: readonly string[] = [
+  // 15/09/2026 — dépubliée : 302 → /owa/auth/errorFE.aspx?httpCode=404 (même hôte), HTML.
+  'outlook.live.com',
+];
+
+export function isUnpublishMeasured(hostname: string): boolean {
+  return UNPUBLISH_MEASURED_HOSTS.includes(hostname.toLowerCase());
+}
+
 /** Fournisseur d'un hôte d'URL collée, ou `null` s'il n'est pas reconnu. */
 export function providerForHost(hostname: string): CalendarProviderId | null {
   const host = hostname.toLowerCase();

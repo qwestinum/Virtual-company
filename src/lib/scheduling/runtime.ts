@@ -104,16 +104,28 @@ export type SchedulingConfig = {
    * ses propres réservations, exactement comme avant.
    */
   busyProvider?: BusyProvider;
+  /**
+   * Temps OUVRÉ pendant lequel la dernière lecture réussie d'une source
+   * illisible reste utilisable. Au-delà, l'offre est suspendue. Défaut : 120.
+   */
+  externalBusyToleranceMinutes?: number;
 };
 
 type ResolvedConfig = Required<
   Omit<
     SchedulingConfig,
-    'mailer' | 'organizationName' | 'branding' | 'labels' | 'rateLimits' | 'busyProvider'
+    | 'mailer'
+    | 'organizationName'
+    | 'branding'
+    | 'labels'
+    | 'rateLimits'
+    | 'busyProvider'
+    | 'externalBusyToleranceMinutes'
   >
 > & {
   mailer: MailPort | null;
   busyProvider: BusyProvider | null;
+  externalBusyToleranceMinutes: number;
   organizationName: string | null;
   branding: ResolvedBranding;
   notifyOrganizer: boolean;
@@ -128,6 +140,8 @@ export function configureScheduling(input: SchedulingConfig): void {
     supabase: input.supabase,
     mailer: input.mailer ?? null,
     busyProvider: input.busyProvider ?? null,
+    externalBusyToleranceMinutes:
+      input.externalBusyToleranceMinutes ?? DEFAULT_EXTERNAL_BUSY_TOLERANCE_MINUTES,
     now: input.now ?? (() => new Date()),
     publicBaseUrl: (input.publicBaseUrl ?? '').replace(/\/+$/, ''),
     linkPathPrefix: normalizePrefix(input.linkPathPrefix ?? '/r'),
@@ -208,6 +222,13 @@ export function db(): SupabaseClient {
 /** null ⇒ pas de transport configuré : on ne notifie pas, on ne casse pas. */
 export function mailer(): MailPort | null {
   return requireConfig().mailer;
+}
+
+/** Deux heures ouvrées : décision du 15/09/2026 (docs/specs/agenda-externe.md §6.4). */
+export const DEFAULT_EXTERNAL_BUSY_TOLERANCE_MINUTES = 120;
+
+export function externalBusyToleranceMinutes(): number {
+  return requireConfig().externalBusyToleranceMinutes;
 }
 
 /** null ⇒ aucune source externe : seules les réservations du module comptent. */

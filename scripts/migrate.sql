@@ -2084,6 +2084,38 @@ alter table public.recruiters
 alter table public.recruiters
   add column if not exists busy_ics_url text;
 
+-- ── Dernière lecture de l'agenda publié (connecteur agenda, lot B) ──────
+-- UNE ligne par recruteur, réécrite d'un bloc à chaque lecture réussie :
+-- jamais un ensemble à moitié réécrit lu par une confirmation concurrente, et
+-- aucune rétention au-delà de la fenêtre lue. Ne contient QUE des bornes
+-- horaires (aucun titre, participant ou lieu — le parseur ne les lit pas).
+-- Sert : (1) l'offre de créneaux sans relire l'agenda à chaque page ; (2) la
+-- TOLÉRANCE — une source muette depuis moins de 2 h ouvrées reste servie par
+-- cette copie ; (3) l'état montré au recruteur (signal, email).
+-- `failure_code` = code CLASSÉ, jamais un message (ceux de fetch portent l'URL).
+-- `last_state` = dernier état JOURNALISÉ : on ne trace que les transitions.
+-- Spec : docs/specs/agenda-externe.md §4.3.
+create table if not exists public.recruiter_busy_snapshots (
+  recruiter_id      uuid primary key references public.recruiters(id) on delete cascade,
+  intervals         jsonb not null default '[]'::jsonb,
+  window_from       timestamptz,
+  window_to         timestamptz,
+  occurrence_count  integer not null default 0,
+  read_at           timestamptz,
+  attempted_at      timestamptz,
+  failing_since     timestamptz,
+  failure_code      text,
+  last_state        text,
+  updated_at        timestamptz not null default now()
+);
+alter table public.recruiter_busy_snapshots enable row level security;
+-- Bloc CANONIQUE unique de cette contrainte (drop + add : rejouable).
+alter table public.recruiter_busy_snapshots
+  drop constraint if exists recruiter_busy_snapshots_state_chk;
+alter table public.recruiter_busy_snapshots
+  add constraint recruiter_busy_snapshots_state_chk
+  check (last_state is null or last_state in ('healthy', 'tolerated', 'blocked'));
+
 -- ── Réglages APEC du cabinet ──────────────────────────────────────────
 -- Ce qu'ORQA ne possède pas et qui ne change JAMAIS d'une offre à l'autre :
 -- code NAF, description d'entreprise, affichage du logo, mode client

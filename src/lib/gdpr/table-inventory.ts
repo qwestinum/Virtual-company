@@ -167,6 +167,10 @@ export const TABLE_INVENTORY = {
   sched_targets: { verdict: 'CONSERVER', holds: 'Cibles re-pointables.' },
   sched_availability_rules: { verdict: 'CONSERVER', holds: 'Règles de disponibilité.' },
   sched_availability_exceptions: { verdict: 'CONSERVER', holds: 'Exceptions de disponibilité.' },
+  recruiter_busy_snapshots: {
+    verdict: 'CONSERVER',
+    holds: 'Plages occupées de l’agenda publié d’un recruteur (bornes seulement, fenêtre glissante).',
+  },
 } as const satisfies Record<string, TableInventoryEntry>;
 
 export type InventoriedTable = keyof typeof TABLE_INVENTORY;

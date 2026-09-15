@@ -48,7 +48,7 @@ export type OutreachClaimKey = {
   uid: string;
   /** `dismiss` = mail d'information « classée sans suite » (pseudo-mailbox
    * `candidature_dismissal`) — même table, même mécanique, aucun rail parallèle. */
-  mode: 'invite' | 'reject' | 'dismiss';
+  mode: 'invite' | 'reject' | 'dismiss' | 'notify';
 };
 
 export type OutreachClaimVerdict = 'won' | 'in_flight' | 'already_sent';

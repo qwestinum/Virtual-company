@@ -9,7 +9,7 @@
  */
 import { NextResponse } from 'next/server';
 
-import { listSlotsForLink } from '@/lib/scheduling';
+import { listSlotOfferForLink } from '@/lib/scheduling';
 import { publicJson, readWindow, withPublicGuards } from '@/lib/scheduling-host/public-route';
 
 export const runtime = 'nodejs';
@@ -25,7 +25,10 @@ export async function GET(
     if (!window) return publicJson({ error: 'invalid_window' }, 400);
 
     try {
-      return publicJson({ slots: await listSlotsForLink(token, window) });
+      // `unavailable` : l'offre est SUSPENDUE (disponibilités non vérifiables),
+      // ce qui n'est pas « aucun créneau » — la page le dit autrement.
+      const offer = await listSlotOfferForLink(token, window);
+      return publicJson({ slots: offer.slots, unavailable: offer.unavailable });
     } catch {
       return publicJson({ error: 'unavailable' }, 503);
     }

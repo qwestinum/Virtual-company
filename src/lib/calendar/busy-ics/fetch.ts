@@ -32,7 +32,14 @@ export type CalendarFetchFailure =
   | 'network';
 
 export type CalendarFetchResult =
-  | { ok: true; body: string; provider: CalendarProviderId; durationMs: number }
+  | {
+      ok: true;
+      body: string;
+      provider: CalendarProviderId;
+      /** Hôte de l'URL collée (pas le secret) — sert à savoir si sa dépublication est mesurée. */
+      host: string;
+      durationMs: number;
+    }
   | { ok: false; code: CalendarFetchFailure; durationMs: number };
 
 export type CalendarFetchOptions = {
@@ -127,7 +134,7 @@ export async function fetchBusyCalendar(
         body,
       });
       if (!verdict.ok) return fail(verdict.code);
-      return { ok: true, body, provider, durationMs: elapsed() };
+      return { ok: true, body, provider, host: normalized.url.hostname, durationMs: elapsed() };
     }
   } catch {
     // Jamais le message : il porte l'URL.

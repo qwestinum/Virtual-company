@@ -22,6 +22,11 @@
  *     n'est pas un échec) et le drain la livre dans la minute.
  */
 import { getAppSettings } from '@/lib/db/repos/app-settings';
+import {
+  getBusySnapshot,
+  recordBusyReadFailure,
+  recordBusyReadSuccess,
+} from '@/lib/db/repos/busy-snapshots';
 import { loadRecruiterCalendarUrl } from '@/lib/db/repos/recruiters';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
@@ -38,6 +43,7 @@ import {
 } from '@/types/branding';
 
 import { isBusyCalendarEnabled } from './busy/flag';
+import { createBusyCalendarObserver } from './busy/notify';
 import { createIcsBusyProvider } from './busy/provider';
 
 /**
@@ -163,9 +169,22 @@ export async function ensureSchedulingConfigured(): Promise<void> {
     notifyOrganizer: false,
     labels: { privacyNotice: CANDIDATE_PRIVACY_NOTICE },
     // Agenda publié du recruteur : soustrait aux créneaux, relu à la
-    // confirmation. Flag éteint ⇒ aucune source, moteur inchangé.
+    // confirmation, copie en base pour l'offre et la tolérance. Flag éteint ⇒
+    // aucune source, moteur inchangé.
     ...(isBusyCalendarEnabled()
-      ? { busyProvider: createIcsBusyProvider({ loadCalendarUrl: loadRecruiterCalendarUrl }) }
+      ? {
+          busyProvider: createIcsBusyProvider({
+            loadCalendarUrl: loadRecruiterCalendarUrl,
+            store: {
+              get: getBusySnapshot,
+              recordSuccess: recordBusyReadSuccess,
+              recordFailure: recordBusyReadFailure,
+            },
+            observe: createBusyCalendarObserver({
+              settingsUrl: () => `${schedulingBaseUrl()}/settings`,
+            }),
+          }),
+        }
       : {}),
     mailer: {
       async send(message) {
