@@ -153,20 +153,19 @@ Le parseur est écrit en **liste blanche**, sur le modèle de `keepAllowedSectio
 ### 2.4 Validation du document
 
 **Règle d'acceptation (arrêtée le 15/09 sur mesure Outlook réelle, §14 ter)** — une lecture est
-ACCEPTÉE seulement si les trois conditions sont réunies :
+ACCEPTÉE seulement si les quatre conditions sont réunies :
 
 1. statut **200** après redirections — suivies **uniquement vers les domaines connus du
    fournisseur** de l'URL (Microsoft pour une URL Outlook, Google pour une URL Google). Un
    `Location:` vers un domaine arbitraire est **refusé, pas suivi**, et forme un **cas à part**
    (`redirect_refused`, signalé comme anomalie de sécurité) — décision 15/09 ;
 2. `Content-Type` **`text/calendar`** (paramètres `; charset=…` admis) ;
-3. le corps **contient** `BEGIN:VCALENDAR`.
+3. le corps **contient** `BEGIN:VCALENDAR` ;
+4. le corps contient `END:VCALENDAR` — intégrité contre un téléchargement coupé (décision 15/09).
 
 **Tout le reste est un échec de lecture** : 302 non résolu, 404, `text/html`, corps sans
-`BEGIN:VCALENDAR` — et, en plus, corps > **5 Mo**, erreur de parsing, plafond RRULE atteint.
-4. **et** le corps contient `END:VCALENDAR` — intégrité contre un téléchargement coupé (décision
-   15/09).
- Pas de tolérance « on prend ce qu'on a pu lire » : un agenda lu à moitié est
+`BEGIN:VCALENDAR` ou sans `END:VCALENDAR` — et, en plus, corps > **5 Mo**, erreur de parsing,
+plafond RRULE atteint. Pas de tolérance « on prend ce qu'on a pu lire » : un agenda lu à moitié est
 un agenda qui ment.
 
 **Agenda légitimement vide** (200, `text/calendar`, `BEGIN:VCALENDAR`, **zéro** `VEVENT`) : cas
