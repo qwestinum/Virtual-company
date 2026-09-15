@@ -34,7 +34,9 @@ export async function POST(
       if (!result.ok) {
         const opaque = ['booking_not_found', 'booking_cancelled'];
         const reason = opaque.includes(result.reason) ? 'link_gone' : result.reason;
-        return publicJson({ reason }, 409);
+        // Disponibilité non vérifiable : ni une course ni un lien mort — un
+        // état passager, rendu comme tel (le navigateur garde la sélection).
+        return publicJson({ reason }, reason === 'availability_unverified' ? 503 : 409);
       }
       return publicJson({
         booking: {

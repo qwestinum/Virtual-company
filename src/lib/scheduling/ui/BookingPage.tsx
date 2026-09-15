@@ -244,6 +244,11 @@ function OpenBooking({
         setLoadedKey(null); // invalide la grille → rechargement, saisie conservée
         return;
       }
+      if (payload.reason === 'availability_unverified') {
+        // Pas une course : rien n'a changé dans la grille, on garde la sélection.
+        setBanner(labels.errorAvailabilityUnverified);
+        return;
+      }
       if (payload.reason === 'target_changed') {
         setBanner(labels.errorTargetChanged);
         setSelected(null);

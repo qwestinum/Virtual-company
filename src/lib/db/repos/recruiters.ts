@@ -25,6 +25,8 @@ export type RecruiterRow = {
   created_at: string;
   /** Identifiant Apec du recruteur, CHIFFRÉ (AES-256-GCM). */
   adep_numero_dossier: string | null;
+  /** URL de l'agenda publié, CHIFFRÉE. Absente tant que la migration n'est pas appliquée. */
+  busy_ics_url?: string | null;
 };
 
 function rowToDomain(row: RecruiterRow): Recruiter {
@@ -175,6 +177,11 @@ export type RecruiterPatch = {
    * ressort jamais de ce module autrement que par `getAdepNumeroDossier`.
    */
   adepNumeroDossier?: string | null;
+  /**
+   * URL de l'agenda publié, EN CLAIR — chiffrée ici avant écriture. `null`
+   * efface. Ne ressort jamais de ce module que par `loadRecruiterCalendarUrl`.
+   */
+  busyIcsUrl?: string | null;
 };
 
 export async function patchRecruiter(
@@ -190,6 +197,10 @@ export async function patchRecruiter(
   if (patch.adepNumeroDossier !== undefined) {
     const value = patch.adepNumeroDossier?.trim();
     row.adep_numero_dossier = value ? encryptCredential(value) : null;
+  }
+  if (patch.busyIcsUrl !== undefined) {
+    const value = patch.busyIcsUrl?.trim();
+    row.busy_ics_url = value ? encryptCredential(value) : null;
   }
   if (Object.keys(row).length === 0) return null;
   const { data, error } = await supabase
@@ -235,4 +246,51 @@ export async function getAdepNumeroDossier(id: string): Promise<string | null> {
     if (err instanceof SupabaseNotConfiguredError) return null;
     throw err;
   }
+}
+
+export type RecruiterCalendarUrl =
+  | { kind: 'none' }
+  | { kind: 'url'; url: string }
+  /** Une URL est enregistrée mais ne se déchiffre pas : ce n'est PAS « aucun agenda ». */
+  | { kind: 'unreadable' };
+
+/**
+ * URL de l'agenda publié d'un recruteur, EN CLAIR. Server-only, appelée juste
+ * avant la lecture — jamais gardée en mémoire, jamais renvoyée au navigateur.
+ *
+ * Distingue soigneusement « aucun agenda » (comportement historique) de
+ * « agenda déclaré mais illisible » : confondre les deux ouvrirait des
+ * créneaux sur un agenda qu'on a simplement échoué à consulter. Seules
+ * l'absence de ligne, de valeur, ou de COLONNE (migration pas encore
+ * appliquée — personne n'a donc pu en déclarer une) valent `none`.
+ */
+export async function loadRecruiterCalendarUrl(id: string): Promise<RecruiterCalendarUrl> {
+  // Une ressource dont la clé n'est pas un identifiant de compte n'est pas un
+  // recruteur : elle n'a pas d'agenda externe (et la requête échouerait sur le
+  // type de la colonne, ce qui passerait à tort pour « illisible »).
+  if (!UUID_PATTERN.test(id)) return { kind: 'none' };
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('busy_ics_url')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) {
+    if (isTableMissing(error) || isColumnMissing(error)) return { kind: 'none' };
+    return { kind: 'unreadable' };
+  }
+  const blob = (data as { busy_ics_url: string | null } | null)?.busy_ics_url;
+  if (!blob) return { kind: 'none' };
+  try {
+    return { kind: 'url', url: decryptCredential(blob) };
+  } catch {
+    return { kind: 'unreadable' };
+  }
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isColumnMissing(err: { code?: string; message?: string }): boolean {
+  if (err.code === '42703' || err.code === 'PGRST204') return true;
+  return (err.message ?? '').includes('busy_ics_url');
 }

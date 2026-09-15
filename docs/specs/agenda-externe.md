@@ -140,7 +140,7 @@ Le parseur est écrit en **liste blanche**, sur le modèle de `keepAllowedSectio
 | Heure **flottante** (ni `Z` ni `TZID`) | Fuseau de la ressource | RFC 5545 : heure locale de l'observateur |
 | Toute la journée (`VALUE=DATE`) | `[jour 00:00, jour+N 00:00)` **dans le fuseau de la ressource** | Un congé bloque la journée du recruteur, pas une journée UTC décalée d'1-2 h |
 | Sans `DTEND` ni `DURATION` | Date seule ⇒ 1 jour ; date-heure ⇒ **durée nulle ⇒ ignoré** (RFC) | — |
-| `RRULE` | Expansion **bornée à la fenêtre** `[from, to]`, plafond **2 000 occurrences / événement** (au-delà : compteur `truncated`, relève marquée **en échec** — jamais un agenda à moitié lu considéré comme sain) | Un `RRULE` sans `UNTIL` est infini |
+| `RRULE` | Expansion **bornée à la fenêtre** `[from, to]`, plafonds : **2 000 occurrences dans la fenêtre** et **100 000 itérations depuis l'origine** par événement ; au-delà, `recurrence_overflow` ⇒ lecture **en échec** (jamais un agenda à moitié lu) | Un `RRULE` sans `UNTIL` est infini. Le plafond d'itérations compte depuis l'ORIGINE : une réunion quotidienne posée il y a dix ans en consomme ~3 650 — un plafond de 2 000 total l'aurait rendue illisible (révisé au lot A) |
 | `EXDATE` | Occurrence retirée | — |
 | `RECURRENCE-ID` (occurrence déplacée) | L'occurrence d'origine est retirée, la surcharge ajoutée | Sinon on bloque l'ancien ET le nouvel horaire (le premier à tort) |
 | `STATUS:CANCELLED` (événement ou surcharge) | Ignoré | — |
@@ -694,6 +694,43 @@ strict nécessaire pour l'exercer de bout en bout, plutôt que d'attendre le lot
 | **D — Surfaces** | Section réglages, test d'URL, guide, états, signal 5, email « bloqué », mention briefing/Entretiens | Garde structurelle ; nouvelle régression **S25** (routes réelles, flux ICS servi par un faux serveur local : sain → toléré → bloqué → rétabli ; confirmation qui trouve le créneau devenu occupé ⇒ 409) |
 
 ---
+
+## 13 bis. Lot A — livré (15/09/2026, `feat/agenda-externe`)
+
+| Élément | Où |
+|---|---|
+| Port `BusyProvider`, `ExternalBusyAnswer`, `AvailabilityCheck` | `src/lib/scheduling/types.ts`, `runtime.ts` (`configureScheduling({ busyProvider })`) |
+| Verdict pur + lecture par le port (une source qui lève = illisible, jamais vide) | `src/lib/scheduling/external-busy.ts` |
+| `externalBusy` dans le moteur, même buffer | `src/lib/scheduling/slots.ts` |
+| Point d'ajout unique, `freshness` | `loadEngineInput` (`resources.ts`) |
+| **Relecture `live` en 1ter de `confirmBooking` et de `rescheduleBooking`** ; créneau devenu occupé ⇒ `invalid_slot` (409) ; source illisible ⇒ `availability_unverified` (**503**, la page garde la sélection) | `bookings.ts`, routes `book` / `reschedule`, `BookingPage` / `ManagePage`, libellé `errorAvailabilityUnverified` |
+| `availability_check` écrit **à part, en best-effort** (déployable avant la migration — vérifié : S25 réserve sans la colonne) | `bookings.ts` `recordAvailabilityCheck` |
+| Parseur en liste blanche (ical.js) | `src/lib/calendar/busy-ics/parse.ts` |
+| Règle d'acceptation 200 + `text/calendar` + `BEGIN` + `END` | `src/lib/calendar/busy-ics/response.ts` |
+| Lecture HTTP : https, hôtes par fournisseur, redirections suivies à la main vers les seuls domaines du fournisseur (`redirect_refused` sinon), 5 s, 5 Mo, aucun message d'erreur rendu | `src/lib/calendar/busy-ics/fetch.ts`, `providers.ts` (Google `accepted: false`) |
+| URL chiffrée + lecture qui distingue `none` / `url` / `unreadable` | `recruiters.busy_ics_url`, `loadRecruiterCalendarUrl` |
+| Adaptateur | `src/lib/scheduling-host/busy/provider.ts` |
+| Flag déploiement fail-closed (`BUSY_CALENDAR_ENABLED=1` + clé valide) | `src/lib/scheduling-host/busy/flag.ts`, `configure.ts` |
+| Migration (colonne + CHECK canonique) | `scripts/migrate.sql` |
+
+**Tests** : parseur 32, lecture HTTP 17, adaptateur + flag 17, module 6 (tous sondés : une règle cassée
+les fait échouer) ; régression **S25** 10 scénarios sur routes réelles — sonde : sans relecture à la
+confirmation, 6 sur 10 passent au rouge.
+
+**Comportement propre au lot A (provisoire, assumé)** :
+- pas d'instantané en base ⇒ **toute lecture est fraîche**, y compris pour l'offre, et un échec
+  **bloque sans tolérance** (pas de « dernière copie » à proposer). La tolérance de 2 h ouvrées
+  arrive au lot B, l'instantané et la relève périodique au lot C ;
+- une offre bloquée rend une **liste vide** : le motif « momentanément indisponible » sur la page
+  de créneaux est au lot B (la confirmation, elle, le dit déjà) ;
+- étage **cabinet** du flag reporté au lot D (sans écran de saisie, aucune URL ne peut exister) ;
+- `redirect_refused` est produit mais pas encore **journalisé** comme anomalie (lot C).
+
+**Non fait au lot A** :
+- **latence depuis `cdg1`** : non mesurable en local. `fetchBusyCalendar` rend `durationMs` ; la
+  mesure demande un déploiement de prévisualisation (Vercel) avec le flag allumé ;
+- **S25.5** (`availability_check` écrit en base) rouge tant que la migration n'est pas appliquée en
+  DEV — à appliquer en double application, puis relancer S25.
 
 ## 14. Risques et inconnues
 

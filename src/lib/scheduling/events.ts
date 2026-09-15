@@ -235,6 +235,7 @@ function toEventBooking(booking: Booking, extras: EmitExtras): SchedEventBooking
     meetingLocation: booking.meetingLocation,
     // Restitué TEL QUEL : le module n'a jamais regardé dedans.
     context: booking.context,
+    availabilityCheck: booking.availabilityCheck,
     ...(booking.cancelledBy ? { cancelledBy: booking.cancelledBy } : {}),
     ...(extras.cancelReason !== undefined ? { cancelReason: extras.cancelReason } : {}),
     ...(extras.rescheduledFrom ? { rescheduledFrom: extras.rescheduledFrom } : {}),

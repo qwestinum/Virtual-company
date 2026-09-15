@@ -5,6 +5,7 @@
  * Une ressource est une PERSONNE (ou un poste) qui tient des rendez-vous. Le
  * module ne sait pas laquelle : il n'en connaît que la clé opaque de l'hôte.
  */
+import { readExternalBusy, type ExternalBusyVerdict } from './external-busy';
 import { computeSlots, type SlotEngineInput } from './slots';
 import { assertOk, fetchAllKeyset, table } from './store';
 import { nowIso } from './runtime';
@@ -259,18 +260,31 @@ export async function listExceptions(
 
 // ─── Créneaux ───────────────────────────────────────────────────────────
 
+export type EngineAssembly = {
+  input: SlotEngineInput;
+  /** Ce que la source externe a permis de vérifier. `blocked` ⇒ ne rien offrir. */
+  availability: Pick<ExternalBusyVerdict, 'check' | 'blocked'>;
+};
+
 /**
  * Assemble tout ce dont le moteur a besoin pour une ressource et une fenêtre.
  * Point de passage unique : la page publique, l'aperçu de réglage et la
- * revalidation de confirmation voient EXACTEMENT la même disponibilité.
+ * revalidation de confirmation voient EXACTEMENT la même disponibilité — y
+ * compris les indisponibilités externes, lues au même endroit.
+ *
+ * `freshness` : l'offre se contente d'une lecture récente (`snapshot`) ; la
+ * confirmation exige la vérité du moment (`live`).
  */
 export async function loadEngineInput(
   resource: Resource,
   window: { from: string; to: string },
-): Promise<SlotEngineInput> {
+  freshness: 'snapshot' | 'live' = 'snapshot',
+): Promise<EngineAssembly> {
   // La ressource est déjà lue : règles et exceptions partent sur son
-  // identifiant, sans relire la ressource deux fois.
-  const [rules, exceptions, busy] = await Promise.all([
+  // identifiant, sans relire la ressource deux fois. La source externe part
+  // en même temps : sur le chemin de confirmation, c'est la lecture la plus
+  // lente, et rien ne l'oblige à attendre les autres.
+  const [rules, exceptions, busy, external] = await Promise.all([
     listWeeklyRules(resource),
     listExceptions(resource, {
       // Marge d'un jour de part et d'autre : la fenêtre est en UTC, les
@@ -279,9 +293,10 @@ export async function loadEngineInput(
       to: shiftIsoDate(window.to, 1),
     }),
     listBusyIntervals(resource.id, window),
+    readExternalBusy(resource, window, freshness),
   ]);
 
-  return {
+  const input: SlotEngineInput = {
     timezone: resource.timezone,
     slotDurationMinutes: resource.slotDurationMinutes,
     bufferMinutes: resource.bufferMinutes,
@@ -290,10 +305,12 @@ export async function loadEngineInput(
     rules,
     exceptions,
     busy,
+    externalBusy: external.intervals,
     from: window.from,
     to: window.to,
     now: nowIso(),
   };
+  return { input, availability: { check: external.check, blocked: external.blocked } };
 }
 
 /** Réservations CONFIRMÉES d'une ressource, élargies pour couvrir les bords. */
@@ -326,7 +343,9 @@ export async function previewSlots(
   const resource =
     typeof resourceOrRef === 'string' ? await getResource(resourceOrRef) : resourceOrRef;
   if (!resource || !resource.isActive) return [];
-  return computeSlots(await loadEngineInput(resource, window));
+  const { input, availability } = await loadEngineInput(resource, window);
+  // Source illisible : l'aperçu ne montre pas une offre qui ne serait pas tenue.
+  return availability.blocked ? [] : computeSlots(input);
 }
 
 // ─── Internes ───────────────────────────────────────────────────────────

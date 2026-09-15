@@ -1704,6 +1704,20 @@ create unique index if not exists sched_bookings_manage_token_confirmed_idx
 create index if not exists sched_bookings_manage_lookup_idx
   on public.sched_bookings (manage_token, created_at desc);
 
+-- Ce que la réservation a VÉRIFIÉ au moment d'être prise (connecteur agenda
+-- externe, 15/09/2026) : 'live' = source externe relue à la confirmation,
+-- 'snapshot' = dernière lecture connue, 'none' = aucune source. NULL =
+-- réservation antérieure. Écrite séparément et en best-effort par le module :
+-- le code est déployable avant cette migration.
+alter table public.sched_bookings
+  add column if not exists availability_check text;
+-- Bloc CANONIQUE unique de cette contrainte (drop + add : rejouable).
+alter table public.sched_bookings
+  drop constraint if exists sched_bookings_availability_check_chk;
+alter table public.sched_bookings
+  add constraint sched_bookings_availability_check_chk
+  check (availability_check is null or availability_check in ('live', 'snapshot', 'none'));
+
 create index if not exists sched_bookings_target_idx
   on public.sched_bookings (target_id, start_at desc);
 
@@ -2059,6 +2073,16 @@ create index if not exists job_postings_live_idx
 -- et l'écran le dit AVANT de proposer le bouton.
 alter table public.recruiters
   add column if not exists adep_numero_dossier text;
+
+-- ── Agenda externe publié du recruteur (connecteur agenda, 15/09/2026) ──
+-- URL ICS « disponibilités » collée par le recruteur. C'est un SECRET (elle
+-- donne accès à ses disponibilités) : CHIFFRÉE AES-256-GCM avec
+-- MAILBOX_ENCRYPTION_KEY, jamais renvoyée par une API, jamais journalisée.
+-- Nullable : un recruteur sans agenda externe garde le comportement
+-- historique (seules les réservations ORQA sont soustraites).
+-- Spec : docs/specs/agenda-externe.md §4.
+alter table public.recruiters
+  add column if not exists busy_ics_url text;
 
 -- ── Réglages APEC du cabinet ──────────────────────────────────────────
 -- Ce qu'ORQA ne possède pas et qui ne change JAMAIS d'une offre à l'autre :

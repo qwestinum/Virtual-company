@@ -98,6 +98,49 @@ export type Slot = { startAt: string; endAt: string };
 /** Intervalle occupé (réservation confirmée), UTC ISO. */
 export type BusyInterval = { startAt: string; endAt: string };
 
+// ─── Indisponibilités externes ──────────────────────────────────────────
+/**
+ * Le module ne sait pas D'OÙ viennent ces intervalles, ni comment on les lit :
+ * il pose une question — « quand cette ressource est-elle prise ailleurs, sur
+ * cette fenêtre ? » — et reçoit des bornes. Aucun titre, aucune notion de
+ * fournisseur ne franchit ce port.
+ *
+ * `freshness` dit ce que l'appelant exige :
+ *   - `snapshot` : l'offre de créneaux — une lecture récente suffit ;
+ *   - `live`     : la confirmation — la vérité au moment du clic.
+ */
+export type ExternalBusyRequest = {
+  resource: Pick<Resource, 'id' | 'externalRef' | 'timezone'>;
+  /** Fenêtre UTC ISO. */
+  from: string;
+  to: string;
+  freshness: 'snapshot' | 'live';
+};
+
+export type ExternalBusyAnswer =
+  /** Aucune source déclarée pour cette ressource : comportement historique. */
+  | { kind: 'not_configured' }
+  | { kind: 'ok'; intervals: BusyInterval[]; readAt: string }
+  | {
+      /** La source existe mais n'a pas pu être lue. Jamais une disponibilité. */
+      kind: 'unavailable';
+      lastGood: { intervals: BusyInterval[]; readAt: string } | null;
+      failingSince: string;
+    };
+
+export type BusyProvider = {
+  read(request: ExternalBusyRequest): Promise<ExternalBusyAnswer>;
+};
+
+/**
+ * Ce que la réservation a VÉRIFIÉ au moment d'être prise :
+ *   - `live`     : source externe relue à la confirmation ;
+ *   - `snapshot` : dernière lecture connue (source momentanément illisible) ;
+ *   - `none`     : aucune source externe pour cette ressource.
+ * `null` : réservation antérieure à la vérification.
+ */
+export type AvailabilityCheck = 'live' | 'snapshot' | 'none';
+
 // ─── Cibles ─────────────────────────────────────────────────────────────
 export type Target = {
   id: string;
@@ -211,6 +254,7 @@ export type Booking = {
   meetingLocation: MeetingLocation | null;
   manageToken: string;
   createdAt: string;
+  availabilityCheck: AvailabilityCheck | null;
 };
 
 export type ConfirmBookingInput = {
@@ -233,7 +277,9 @@ export type ConfirmFailureReason =
   | 'target_changed'
   | 'resource_unavailable'
   | 'invalid_slot'
-  | 'slot_taken';
+  | 'slot_taken'
+  /** La source d'indisponibilités externe n'a pas pu être relue : on ne confirme pas à l'aveugle. */
+  | 'availability_unverified';
 
 export type ConfirmBookingResult =
   | { ok: true; booking: Booking; manageToken: string; replay: boolean }
@@ -284,6 +330,7 @@ export type SchedEventBooking = {
   meetingLocation: MeetingLocation | null;
   /** Restitué TEL QUEL — le module ne l'interprète jamais. */
   context: unknown;
+  availabilityCheck: AvailabilityCheck | null;
   cancelledBy?: CancelledBy;
   cancelReason?: string | null;
   rescheduledFrom?: string;

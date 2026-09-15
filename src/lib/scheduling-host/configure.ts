@@ -22,6 +22,7 @@
  *     n'est pas un échec) et le drain la livre dans la minute.
  */
 import { getAppSettings } from '@/lib/db/repos/app-settings';
+import { loadRecruiterCalendarUrl } from '@/lib/db/repos/recruiters';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
 import {
@@ -35,6 +36,9 @@ import {
   resolveOrganizationName,
   type BrandingConfig,
 } from '@/types/branding';
+
+import { isBusyCalendarEnabled } from './busy/flag';
+import { createIcsBusyProvider } from './busy/provider';
 
 /**
  * Première valeur réellement renseignée. Une variable DÉFINIE MAIS VIDE ne
@@ -158,6 +162,11 @@ export async function ensureSchedulingConfigured(): Promise<void> {
     // L'invité, lui, reste notifié par le module.
     notifyOrganizer: false,
     labels: { privacyNotice: CANDIDATE_PRIVACY_NOTICE },
+    // Agenda publié du recruteur : soustrait aux créneaux, relu à la
+    // confirmation. Flag éteint ⇒ aucune source, moteur inchangé.
+    ...(isBusyCalendarEnabled()
+      ? { busyProvider: createIcsBusyProvider({ loadCalendarUrl: loadRecruiterCalendarUrl }) }
+      : {}),
     mailer: {
       async send(message) {
         const result = await sendEmail({

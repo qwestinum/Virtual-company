@@ -61,7 +61,9 @@ export async function POST(
         // Tout ce qui concerne le jeton reçoit la MÊME réponse.
         const opaque = ['link_not_found', 'link_expired', 'link_gone'];
         const reason = opaque.includes(result.reason) ? 'link_gone' : result.reason;
-        return publicJson({ reason }, 409);
+        // Disponibilité non vérifiable : ni une course ni un lien mort — un
+        // état passager, rendu comme tel (le navigateur garde la sélection).
+        return publicJson({ reason }, reason === 'availability_unverified' ? 503 : 409);
       }
 
       return publicJson({

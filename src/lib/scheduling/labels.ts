@@ -96,6 +96,8 @@ export type SchedulingLabels = {
   // ── Messages d'erreur ────────────────────────────────────────────────
   errorSlotTaken: string;
   errorTargetChanged: string;
+  /** Disponibilité impossible à vérifier au moment de confirmer. */
+  errorAvailabilityUnverified: string;
   errorLinkGone: string;
   errorRateLimited: string;
   errorGeneric: string;
@@ -170,6 +172,8 @@ export const FR_LABELS: SchedulingLabels = {
 
   errorSlotTaken: 'Ce créneau vient d’être réservé. Voici les disponibilités à jour.',
   errorTargetChanged: 'Les disponibilités ont changé. Voici les créneaux à jour.',
+  errorAvailabilityUnverified:
+    'Nous ne pouvons pas confirmer ce créneau pour le moment. Réessayez dans quelques minutes.',
   errorLinkGone: 'Ce lien n’est plus actif.',
   errorRateLimited: 'Trop de tentatives. Patientez un instant avant de réessayer.',
   errorGeneric: 'Une erreur est survenue. Réessayez dans un instant.',

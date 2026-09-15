@@ -4,6 +4,7 @@
  * Règles hebdomadaires (heure LOCALE de la ressource)
  *   − exceptions datées
  *   − réservations confirmées (élargies du buffer)
+ *   − indisponibilités externes (élargies du même buffer)
  *   − préavis minimum
  *   − horizon
  *   = créneaux offerts, en UTC.
@@ -41,6 +42,12 @@ export type SlotEngineInput = {
   exceptions: AvailabilityException[];
   /** Réservations confirmées à éviter (UTC ISO). */
   busy: BusyInterval[];
+  /**
+   * Indisponibilités lues hors du module (UTC ISO). DISTINCTES de `busy` :
+   * ce qui ne vaut que pour les réservations (retirer le rendez-vous qu'on
+   * déplace) ne doit pas toucher à celles-ci. Absent ⇒ aucune.
+   */
+  externalBusy?: BusyInterval[];
   /** Fenêtre demandée (UTC ISO). */
   from: string;
   to: string;
@@ -74,7 +81,9 @@ export function computeSlots(input: SlotEngineInput): Slot[] {
 
   const rulesByWeekday = groupRulesByWeekday(input.rules);
   const exceptionsByDay = groupExceptionsByDay(input.exceptions);
-  const busy = normalizeBusy(input.busy);
+  // Même buffer autour des deux : on n'est pas plus disponible à la sortie
+  // d'une réunion qu'à la sortie d'un rendez-vous pris ici.
+  const busy = normalizeBusy([...input.busy, ...(input.externalBusy ?? [])]);
 
   const step = input.slotDurationMinutes + input.bufferMinutes;
   const bufferMs = input.bufferMinutes * MS_PER_MINUTE;

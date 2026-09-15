@@ -346,6 +346,11 @@ function Reschedule({
                 const payload = (await response.json().catch(() => ({}))) as {
                   reason?: string;
                 };
+                if (payload.reason === 'availability_unverified') {
+                  // Le rendez-vous actuel est intact ; la sélection est gardée.
+                  setBanner(labels.errorAvailabilityUnverified);
+                  return;
+                }
                 setBanner(
                   payload.reason === 'slot_taken' || payload.reason === 'invalid_slot'
                     ? labels.errorSlotTaken

@@ -4,6 +4,7 @@
  */
 import { parseMeetingLocation } from './meeting-location';
 import type {
+  AvailabilityCheck,
   AvailabilityException,
   Booking,
   BookingLink,
@@ -120,6 +121,8 @@ export type BookingRow = {
   meeting_location: unknown;
   manage_token: string;
   created_at: string;
+  /** Absente tant que la migration n'est pas appliquée : lue comme `null`. */
+  availability_check?: string | null;
 };
 
 export type EventRow = {
@@ -226,7 +229,12 @@ export function toBooking(
     meetingLocation: parseMeetingLocation(row.meeting_location),
     manageToken: row.manage_token,
     createdAt: isoUtc(row.created_at),
+    availabilityCheck: toAvailabilityCheck(row.availability_check),
   };
+}
+
+function toAvailabilityCheck(value: string | null | undefined): AvailabilityCheck | null {
+  return value === 'live' || value === 'snapshot' || value === 'none' ? value : null;
 }
 
 /** `display` vient de l'hôte : on ne garde que les champs connus, en texte. */

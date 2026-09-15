@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { SchedulingNotConfiguredError } from './errors';
 import { FR_LABELS, type SchedulingLabels } from './labels';
 import { DEFAULT_RATE_LIMITS, type RateLimitPolicy } from './rate-limit';
+import type { BusyProvider } from './types';
 
 /** Transport d'email. Le module COMPOSE, l'hôte ACHEMINE. */
 export type MailAttachment = {
@@ -98,15 +99,21 @@ export type SchedulingConfig = {
   labels?: Partial<SchedulingLabels>;
   /** Budgets de débit des surfaces publiques. */
   rateLimits?: Partial<RateLimitPolicy>;
+  /**
+   * Source d'indisponibilités externes. Absente ⇒ le moteur ne soustrait que
+   * ses propres réservations, exactement comme avant.
+   */
+  busyProvider?: BusyProvider;
 };
 
 type ResolvedConfig = Required<
   Omit<
     SchedulingConfig,
-    'mailer' | 'organizationName' | 'branding' | 'labels' | 'rateLimits'
+    'mailer' | 'organizationName' | 'branding' | 'labels' | 'rateLimits' | 'busyProvider'
   >
 > & {
   mailer: MailPort | null;
+  busyProvider: BusyProvider | null;
   organizationName: string | null;
   branding: ResolvedBranding;
   notifyOrganizer: boolean;
@@ -120,6 +127,7 @@ export function configureScheduling(input: SchedulingConfig): void {
   config = {
     supabase: input.supabase,
     mailer: input.mailer ?? null,
+    busyProvider: input.busyProvider ?? null,
     now: input.now ?? (() => new Date()),
     publicBaseUrl: (input.publicBaseUrl ?? '').replace(/\/+$/, ''),
     linkPathPrefix: normalizePrefix(input.linkPathPrefix ?? '/r'),
@@ -200,6 +208,11 @@ export function db(): SupabaseClient {
 /** null ⇒ pas de transport configuré : on ne notifie pas, on ne casse pas. */
 export function mailer(): MailPort | null {
   return requireConfig().mailer;
+}
+
+/** null ⇒ aucune source externe : seules les réservations du module comptent. */
+export function busyProvider(): BusyProvider | null {
+  return requireConfig().busyProvider;
 }
 
 export function now(): Date {

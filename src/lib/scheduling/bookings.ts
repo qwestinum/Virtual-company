@@ -41,6 +41,7 @@ import { assertOk, chunk, fetchAllKeyset, table } from './store';
 import { generateToken, isTokenShaped } from './tokens';
 import { getTargetById } from './targets';
 import type {
+  AvailabilityCheck,
   Booking,
   BookingPageState,
   CancelVerdict,
@@ -122,7 +123,9 @@ export async function listSlotsForLink(
   if (!chain || chain.link.status !== 'active') return [];
   const resource = chain.target?.resourceId ? chain.resource : null;
   if (!resource || !resource.isActive) return [];
-  return computeSlots(await loadEngineInput(resource, window));
+  const { input, availability } = await loadEngineInput(resource, window);
+  // Source externe illisible : aucune offre plutôt qu'une offre peut-être fausse.
+  return availability.blocked ? [] : computeSlots(input);
 }
 
 /**
@@ -139,7 +142,8 @@ export async function listSlotsForManageToken(
   const { booking, resource } = found;
   if (!resource || !resource.isActive) return [];
 
-  const engineInput = await loadEngineInput(resource, window);
+  const { input: engineInput, availability } = await loadEngineInput(resource, window);
+  if (availability.blocked) return [];
   const slots = computeSlots({
     ...engineInput,
     busy: engineInput.busy.filter((busy) => busy.startAt !== booking.startAt),
@@ -178,11 +182,16 @@ export async function confirmBooking(
     return { ok: false, reason: 'resource_unavailable' };
   }
 
-  // ── 1ter. Revalidation du créneau ────────────────────────────────────
-  const engineInput = await loadEngineInput(resource, {
-    from: input.startAt,
-    to: input.startAt,
-  });
+  // ── 1ter. Revalidation du créneau — source externe RELUE ─────────────
+  // `live` : l'offre affichée a pu être calculée sur une lecture d'il y a une
+  // minute. Au moment du clic, on relit. Un créneau devenu occupé entre-temps
+  // tombe ici, exactement comme un créneau pris par un autre invité.
+  const { input: engineInput, availability } = await loadEngineInput(
+    resource,
+    { from: input.startAt, to: input.startAt },
+    'live',
+  );
+  if (availability.blocked) return { ok: false, reason: 'availability_unverified' };
   const slot = findOfferedSlot(engineInput, input.startAt);
   if (!slot) return { ok: false, reason: 'invalid_slot' };
 
@@ -212,10 +221,16 @@ export async function confirmBooking(
   if (isSlotClaimConflict(error)) return { ok: false, reason: 'slot_taken' };
   assertOk('confirmBooking.claim', error);
 
-  const booking = toBooking(data as BookingRow, {
-    targetExternalRef: target.externalRef,
-    resourceExternalRef: resource.externalRef,
-  });
+  const booking = {
+    ...toBooking(data as BookingRow, {
+      targetExternalRef: target.externalRef,
+      resourceExternalRef: resource.externalRef,
+    }),
+    availabilityCheck: await recordAvailabilityCheck(
+      (data as BookingRow).id,
+      availability.check,
+    ),
+  };
 
   // ── 3. Consommer le lien ─────────────────────────────────────────────
   if (!(await markLinkUsed(link.token))) {
@@ -347,10 +362,13 @@ export async function rescheduleBooking(
     return { ok: false, reason: 'resource_unavailable' };
   }
 
-  const engineInput = await loadEngineInput(resource, {
-    from: input.startAt,
-    to: input.startAt,
-  });
+  // Même relecture qu'à la confirmation : un déplacement est une confirmation.
+  const { input: engineInput, availability } = await loadEngineInput(
+    resource,
+    { from: input.startAt, to: input.startAt },
+    'live',
+  );
+  if (availability.blocked) return { ok: false, reason: 'availability_unverified' };
   const slot = findOfferedSlot(engineInput, input.startAt);
   if (!slot) return { ok: false, reason: 'invalid_slot' };
 
@@ -402,10 +420,13 @@ export async function rescheduleBooking(
     .select(BOOKING_COLUMNS)
     .maybeSingle<BookingRow>();
 
-  const next = toBooking(renamed ?? claimed, {
-    targetExternalRef: previous.targetExternalRef,
-    resourceExternalRef: previous.resourceExternalRef,
-  });
+  const next = {
+    ...toBooking(renamed ?? claimed, {
+      targetExternalRef: previous.targetExternalRef,
+      resourceExternalRef: previous.resourceExternalRef,
+    }),
+    availabilityCheck: await recordAvailabilityCheck(claimed.id, availability.check),
+  };
 
   // UN SEUL événement : un déplacement est un fait, pas une annulation suivie
   // d'une création (l'hôte ne doit pas voir passer un état « sans RDV »).
@@ -539,6 +560,28 @@ export async function listBookings(filter?: {
 }
 
 // ─── Internes ───────────────────────────────────────────────────────────
+
+/**
+ * Trace de la vérification faite à la réservation. Écriture SÉPARÉE et
+ * best-effort, jamais dans l'insertion qui tranche la concurrence : le code
+ * doit rester déployable avant la migration qui crée la colonne, et une trace
+ * manquée ne doit pas défaire un rendez-vous valablement pris.
+ *
+ * Rend la valeur réellement portée par la ligne (`null` si non écrite).
+ */
+async function recordAvailabilityCheck(
+  bookingId: string,
+  check: AvailabilityCheck,
+): Promise<AvailabilityCheck | null> {
+  try {
+    const { error } = await table(TABLES.bookings)
+      .update({ availability_check: check })
+      .eq('id', bookingId);
+    return error ? null : check;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * CONTRAT DE COMPENSATION — la seule suppression de réservation du module.
