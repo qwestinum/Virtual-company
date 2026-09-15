@@ -38,6 +38,10 @@ import { DEFAULT_BRANDING_CONFIG, type BrandingConfig } from '@/types/branding';
 import { DEFAULT_ADEP_CONFIG, type AdepConfig } from '@/types/adep-settings';
 import { DEFAULT_SOURCING_CONFIG, type SourcingConfig } from '@/types/sourcing-settings';
 import {
+  DEFAULT_BUSY_CALENDAR_CONFIG,
+  type BusyCalendarConfig,
+} from '@/types/busy-calendar-settings';
+import {
   brandingSummary,
   channelsSummary,
   countWarnings,
@@ -59,6 +63,7 @@ import { IntegrationCard } from './IntegrationCard';
 import { AgendaSettings } from './AgendaSettings';
 import { ApecConfigManager } from './ApecConfigManager';
 import { SourcingConfigManager } from './SourcingConfigManager';
+import { BusyCalendarConfigManager } from './BusyCalendarConfigManager';
 import { BrandingManager } from './BrandingManager';
 import { InterviewConfigManager } from './InterviewConfigManager';
 import { MailboxesManager } from './MailboxesManager';
@@ -94,6 +99,8 @@ type Settings = {
   adepConfig: AdepConfig;
   /** Recherche de profils — second étage du flag (admin). */
   sourcingConfig: SourcingConfig;
+  /** Agenda externe des recruteurs — second étage du flag (admin). */
+  busyCalendarConfig: BusyCalendarConfig;
   /** Clé Resend : statut seulement (la valeur n'est jamais renvoyée). */
   resendApiKeyConfigured: boolean;
   updatedAt: string;
@@ -205,7 +212,7 @@ const SECTION_IDS = (isAdmin: boolean): string[] => [
   'entretiens',
   'identite',
   'agendas',
-  ...(isAdmin ? ['recruteurs', 'sourcing'] : []),
+  ...(isAdmin ? ['recruteurs', 'agenda-externe', 'sourcing'] : []),
   'donneurs',
   'sites',
   'boites',
@@ -246,6 +253,7 @@ export function SettingsHub({
                 json.settings.brandingConfig ?? DEFAULT_BRANDING_CONFIG,
               adepConfig: json.settings.adepConfig ?? DEFAULT_ADEP_CONFIG,
               sourcingConfig: json.settings.sourcingConfig ?? DEFAULT_SOURCING_CONFIG,
+              busyCalendarConfig: json.settings.busyCalendarConfig ?? DEFAULT_BUSY_CALENDAR_CONFIG,
               resendApiKeyConfigured:
                 json.settings.resendApiKeyConfigured ?? false,
             },
@@ -490,6 +498,22 @@ export function SettingsHub({
           description="Les utilisateurs de l'espace (multi-utilisateur) : nom, lien Cal.com personnel, rôle et désactivation. Les disponibilités se règlent dans « Agendas & disponibilités ». Section réservée aux administrateurs."
         >
           <RecruitersManager />
+        </SettingsSection>
+      ) : null}
+
+      {isAdmin ? (
+        <SettingsSection
+          {...sectionProps('agenda-externe')}
+          icon="📆"
+          title="Agenda externe des recruteurs"
+          description="Retirer des créneaux d'entretien les plages où chaque recruteur est déjà pris dans son agenda Outlook. Section réservée aux administrateurs."
+        >
+          <BusyCalendarConfigManager
+            config={settings.busyCalendarConfig ?? DEFAULT_BUSY_CALENDAR_CONFIG}
+            onSave={(next) =>
+              patchAndSave({ busyCalendarConfig: next }, 'Agenda externe des recruteurs mis à jour.')
+            }
+          />
         </SettingsSection>
       ) : null}
 

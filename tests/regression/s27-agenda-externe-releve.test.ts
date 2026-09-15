@@ -49,6 +49,7 @@ import { createIcsBusyProvider } from '@/lib/scheduling-host/busy/provider';
 
 import { GET as cronRoute } from '@/app/api/cron/busy-calendars/route';
 
+import { setBusyCalendarCabinet } from './helpers/busy-calendar';
 import { db } from './helpers/db';
 import { resetSentEmails, sentEmails } from './helpers/mocks';
 
@@ -171,8 +172,12 @@ async function clean(): Promise<void> {
 
 const previousCron = process.env.CRON_SECRET;
 
+let restoreCabinet: () => Promise<void> = async () => {};
+
 beforeAll(async () => {
   process.env.BUSY_CALENDAR_ENABLED = '1';
+  // Second étage du flag (lot D) : sans l'accord du cabinet, ni relève ni signal.
+  restoreCabinet = await setBusyCalendarCabinet(true);
   process.env.CRON_SECRET = CRON;
   useConnector();
   registerEventConsumer(async () => {});
@@ -212,6 +217,7 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
+  await restoreCabinet();
   await clean();
   delete process.env.BUSY_CALENDAR_ENABLED;
   if (previousCron === undefined) delete process.env.CRON_SECRET;

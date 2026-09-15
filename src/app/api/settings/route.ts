@@ -24,6 +24,11 @@ import { DEFAULT_VIVIER_CONFIG, VivierConfigSchema } from '@/types/vivier-settin
 import { BrandingConfigSchema, DEFAULT_BRANDING_CONFIG } from '@/types/branding';
 import { AdepConfigSchema, DEFAULT_ADEP_CONFIG } from '@/types/adep-settings';
 import { DEFAULT_SOURCING_CONFIG, SourcingConfigSchema } from '@/types/sourcing-settings';
+import {
+  BusyCalendarConfigSchema,
+  DEFAULT_BUSY_CALENDAR_CONFIG,
+} from '@/types/busy-calendar-settings';
+import { invalidateBusyCalendarActive } from '@/lib/scheduling-host/busy/active';
 import { invalidateSchedulingConfig } from '@/lib/scheduling-host/configure';
 import { requireAdminApiUser } from '@/lib/auth/require-api-user';
 
@@ -50,6 +55,8 @@ const PatchSchema = z.object({
   adepConfig: AdepConfigSchema.optional(),
   // Second étage du flag Sourcing — ADMIN seulement (garde dans le PUT).
   sourcingConfig: SourcingConfigSchema.optional(),
+  // Second étage du connecteur d'agenda externe — ADMIN seulement (garde dans le PUT).
+  busyCalendarConfig: BusyCalendarConfigSchema.optional(),
   // Write-only : `''` efface la clé, une valeur non vide la pose. Jamais
   // renvoyée par le GET (seul `resendApiKeyConfigured` l'est).
   resendApiKey: z.string().max(2048).optional(),
@@ -87,6 +94,7 @@ function emptyPayload() {
       brandingConfig: DEFAULT_BRANDING_CONFIG,
       adepConfig: DEFAULT_ADEP_CONFIG,
       sourcingConfig: DEFAULT_SOURCING_CONFIG,
+      busyCalendarConfig: DEFAULT_BUSY_CALENDAR_CONFIG,
       resendApiKeyConfigured: false,
       updatedAt: new Date(0).toISOString(),
     },
@@ -127,7 +135,9 @@ export async function PUT(request: Request): Promise<NextResponse> {
   // Allumer la recherche de profils fait collecter des données personnelles
   // de tiers : c'est une décision d'administrateur, pas un réglage courant.
   // La garde ne vise QUE ce champ — le reste de la route garde son régime.
-  if (parsed.sourcingConfig !== undefined) {
+  // Même régime pour le connecteur d'agenda : l'allumer fait lire les agendas
+  // personnels des recruteurs et peut suspendre leurs créneaux.
+  if (parsed.sourcingConfig !== undefined || parsed.busyCalendarConfig !== undefined) {
     const denied = await requireAdminApiUser();
     if (denied) return denied;
   }
@@ -139,6 +149,7 @@ export async function PUT(request: Request): Promise<NextResponse> {
     // Idem pour l'identité servie aux surfaces candidat : un logo qu'on vient
     // de poser doit être visible tout de suite, pas au bout d'une minute.
     invalidateSchedulingConfig();
+    invalidateBusyCalendarActive();
     return NextResponse.json({ settings: next });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {

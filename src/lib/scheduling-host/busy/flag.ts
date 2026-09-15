@@ -7,8 +7,9 @@
  * Éteint : la source n'est pas injectée, le moteur est strictement celui
  * d'avant.
  *
- * L'étage CABINET (`app_settings`) arrive avec l'écran de réglage (lot D) :
- * tant qu'aucune URL ne peut être saisie, il n'aurait rien à gouverner.
+ * L'étage CABINET (`app_settings.busy_calendar_config`) s'y ajoute dans
+ * `active.ts` : c'est `isBusyCalendarActive` qui dit si le connecteur est
+ * réellement allumé. Celui-ci ne dit que s'il PEUT l'être.
  */
 export function isBusyCalendarEnabled(env: Record<string, string | undefined> = process.env): boolean {
   if ((env.BUSY_CALENDAR_ENABLED ?? '').trim() !== '1') return false;

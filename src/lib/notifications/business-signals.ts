@@ -33,19 +33,14 @@ import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
 import { getBusySnapshot } from '@/lib/db/repos/busy-snapshots';
 import {
-  externalBusyToleranceMinutes,
   getResource,
   isMeetingLocationComplete,
   listExceptions,
   listWeeklyRules,
-  workingMinutesBetween,
 } from '@/lib/scheduling';
-import { isBusyCalendarEnabled } from '@/lib/scheduling-host/busy/flag';
-import {
-  buildBusyCalendarSignalMessage,
-  classifyBusyCalendarState,
-  isBusyCalendarSignalDue,
-} from '@/lib/scheduling-host/busy/state';
+import { isBusyCalendarActive } from '@/lib/scheduling-host/busy/active';
+import { evaluateStoredBusyState } from '@/lib/scheduling-host/busy/evaluate';
+import { buildBusyCalendarSignalMessage } from '@/lib/scheduling-host/busy/state';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { BusinessSignal } from '@/types/notifications';
 
@@ -416,7 +411,7 @@ async function computeBusyCalendarUnreadable(
   ctx: SignalContext,
   shared: SharedLoads = createSharedLoads(),
 ): Promise<BusinessSignal | null> {
-  if (!ctx.recruiterId || !isBusyCalendarEnabled()) return null;
+  if (!ctx.recruiterId || !(await isBusyCalendarActive())) return null;
 
   const snapshot = await getBusySnapshot(ctx.recruiterId);
   if (!snapshot?.failingSince) return null;
@@ -424,38 +419,15 @@ async function computeBusyCalendarUnreadable(
   const resource = await shared.resource(ctx.recruiterId);
   if (!resource || !resource.isActive) return null;
 
-  const now = new Date(nowMs).toISOString();
-  let minutes: number | null = null;
-  if (snapshot.readAt) {
-    const [rules, exceptions] = await Promise.all([
-      shared.weeklyRules(resource.externalRef),
-      listExceptions(resource.externalRef, {
-        from: snapshot.readAt.slice(0, 10),
-        to: localDay(nowMs, resource.timezone),
-      }),
-    ]);
-    minutes = workingMinutesBetween({
-      from: snapshot.readAt,
-      to: now,
-      timezone: resource.timezone,
-      rules,
-      exceptions,
-    });
-  }
-
-  const reading = { failing: true, readAt: snapshot.readAt, workingMinutesSinceRead: minutes };
-  if (!isBusyCalendarSignalDue(reading)) return null;
-  const state = classifyBusyCalendarState({
-    ...reading,
-    toleranceMinutes: externalBusyToleranceMinutes(),
-  });
+  const evaluated = await evaluateStoredBusyState(snapshot, resource, nowMs);
+  if (!evaluated.signalDue) return null;
 
   return {
     key: 'busy_calendar_unreadable',
     count: 1,
     oldestDays: daysSinceIso(snapshot.failingSince, nowMs),
     message: buildBusyCalendarSignalMessage({
-      state,
+      state: evaluated.state,
       readAt: snapshot.readAt,
       failureCode: snapshot.failureCode,
       timeZone: resource.timezone,

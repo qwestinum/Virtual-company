@@ -788,6 +788,28 @@ est accordée et la passe LIT quand même — prouvé par `busy-refresh-claim.te
 d'erreur réelles, PostgREST et Postgres, sondées), et une autre panne de base n'est pas confondue
 avec une colonne absente.
 
+## 13 quinquies. Lot D — livré (16/09/2026, `feat/agenda-externe`)
+
+| Élément | Où |
+|---|---|
+| **Étage cabinet** du flag : `app_settings.busy_calendar_config.enabled` (colonne absente ⇒ éteint), relu au plus toutes les 30 s par instance, invalidé à l'enregistrement ; appliqué à la source (cabinet éteint ⇒ `not_configured`, aucun agenda lu), à la relève, au signal, aux routes | `src/types/busy-calendar-settings.ts`, `scheduling-host/busy/active.ts` |
+| Interrupteur (administrateurs) : Paramètres → « Agenda externe des recruteurs » ; garde admin dans `PUT /api/settings` | `BusyCalendarConfigManager.tsx`, `SettingsHub.tsx` |
+| Routes : `GET/PUT/DELETE /api/recruiters/[id]/busy-calendar`, `POST …/test` — soi-même ou admin ; déploiement sans connecteur ⇒ 404 ; cabinet éteint ⇒ GET répond (lien **ignoré**, dit), PUT/test 404, DELETE toujours permis | `src/app/api/recruiters/[id]/busy-calendar/**`, `busy/declaration-server.ts` |
+| **Tester ne stocke rien ; un lien ne s'enregistre qu'après une lecture réussie**, faite côté serveur à l'enregistrement (on ne croit pas le navigateur) ; l'enregistrement amorce la copie ; journal `busy_calendar_url_set` / `_cleared` (fournisseur, auteur — jamais l'URL) | `busy/declaration.ts`, route |
+| Débit : **10 essais / 10 min par recruteur** (tester + enregistrer), en base, fail-closed — 5 aurait laissé deux tentatives et demie (chaque tentative = tester puis enregistrer) | `consumeBusyCalendarQuota` |
+| État affiché = même évaluation que le signal (point unique) | `busy/evaluate.ts`, `busy/status.ts`, `busy-calendar-view.ts` |
+| Écran : bloc « Agenda externe » dans « Agendas & disponibilités » (tester → enregistrer, remplacer, retirer avec confirmation, avertissement « détail publié », guide Outlook.com / Microsoft 365, Google annoncé non pris en charge) | `src/components/settings/availability/busy-calendar/` (4 fichiers, < 200 lignes chacun) |
+| Cartographie du Manager (libellés exacts) | `manager-cartography.ts` |
+| Runbook : l'interrupteur cabinet s'ajoute APRÈS la variable, en dernier | `docs/ops/configuration-client.md` §5 |
+
+**Tests** : lecture d'essai, messages, état, deux étages du flag, source éteinte par le cabinet 19 ;
+libellés de l'écran 5 ; régression **S28** (9 étapes par les routes réelles) ; S26/S27 allument
+désormais l'interrupteur cabinet (et le restaurent).
+
+**Restent** : reflet des RDV ORQA (mesure aller-retour §5.5, possible maintenant qu'on peut
+enregistrer un agenda et réserver) ; re-mesure `outlook.office365.com` ; Google ; désactivation
+d'un recruteur ⇒ lien effacé (§12.2) ; minimisation à la grille (§12.2).
+
 ## 14. Risques et inconnues
 
 | Risque | Mitigation | Statut |

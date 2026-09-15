@@ -81,7 +81,8 @@ Champs techniques tenus par le poller (non saisis) : `last_polled_at`, `last_uid
 
 ## 5. Activer le connecteur d'agenda externe — ORDRE IMPÉRATIF
 
-> ⚠️ **Le flag `BUSY_CALENDAR_ENABLED=1` se pose EN DERNIER.** Posé avant que la
+> ⚠️ **L'activation se fait EN DERNIER** — la variable `BUSY_CALENDAR_ENABLED=1`,
+> puis l'interrupteur du cabinet. Posée avant que la
 > relève tourne, le connecteur est actif sans que personne ne surveille les
 > agendas : un agenda dépublié **sans visite de candidat** ne fait avancer aucun
 > état, ne déclenche ni signal ni email, et le recruteur perd ses rendez-vous
@@ -104,14 +105,23 @@ Dans cet ordre, sans en sauter ni en inverser :
    et **s'authentifie** (un 401 = mauvais secret, un 500 `cron_not_configured` =
    `CRON_SECRET` absent côté Vercel).
 4. **Seulement maintenant : `BUSY_CALENDAR_ENABLED=1`** côté Vercel, redéployer.
-5. **Contrôle final** : à l'exécution suivante du job, la réponse doit porter
-   `"enabled": true` (et `"recruiters"` = nombre d'agendas déclarés). Si elle reste
-   à `false`, le flag n'est pas pris en compte (valeur autre que `1` exact, ou
-   `MAILBOX_ENCRYPTION_KEY` absente/mal formée) — le connecteur est alors ÉTEINT,
-   jamais à moitié allumé.
+   Rien ne s'allume encore : c'est l'autorisation du déploiement.
+5. **Interrupteur du cabinet** : Paramètres → « Agenda externe des recruteurs »
+   (administrateur) → cocher « Tenir compte des agendas Outlook des recruteurs »
+   → Enregistrer. C'est ce geste qui allume le connecteur ; la section « Agenda
+   externe » apparaît alors dans « Agendas & disponibilités ».
+6. **Contrôle final** : à l'exécution suivante du job (au plus une minute, plus
+   30 s de mémoire du réglage), la réponse doit porter `"enabled": true` (et
+   `"recruiters"` = nombre d'agendas déclarés — 0 tant qu'aucun recruteur n'a
+   collé de lien). Si elle reste à `false` : variable autre que `1` exact,
+   `MAILBOX_ENCRYPTION_KEY` absente/mal formée, ou interrupteur non enregistré —
+   le connecteur est alors ÉTEINT, jamais à moitié allumé.
 
-Désactiver : retirer le flag d'abord, le job peut rester (il répond
-`enabled: false` sans rien lire).
+Désactiver : décocher l'interrupteur du cabinet (effet sous 30 s, sans
+redéploiement) ; retirer la variable pour faire disparaître la surface. Le job
+peut rester (il répond `enabled: false` sans rien lire). Les liens déjà
+enregistrés sont conservés — l'écran de chaque recruteur dit qu'ils sont
+ignorés, et ils restent retirables.
 
 ---
 
@@ -124,6 +134,6 @@ Désactiver : retirer le flag d'abord, le job peut rester (il répond
 - [ ] `CAL_COM_EVENT_URL` = lien de réservation du client (repli global).
 - [ ] `CAL_COM_WEBHOOK_SECRET` posé + webhook enregistré sur CHAQUE compte Cal.com recruteur (même URL, même secret — docs/ops/multi-utilisateur.md §4).
 - [ ] `CRON_SECRET` posé côté Vercel ET cron-job.org (fail-closed).
-- [ ] Agenda externe (si activé) : **§5, dans l'ordre** — migration → job cron-job.org dédié → réponse du job vérifiée → **`BUSY_CALENDAR_ENABLED=1` EN DERNIER** → `enabled: true` constaté à l'exécution suivante.
+- [ ] Agenda externe (si activé) : **§5, dans l'ordre** — migration → job cron-job.org dédié → réponse du job vérifiée → **`BUSY_CALENDAR_ENABLED=1` puis interrupteur du cabinet, EN DERNIER** → `enabled: true` constaté à l'exécution suivante.
 - [ ] Compte du client créé dans Supabase Auth (inscription publique désactivée).
 - [ ] Smoke test : login → campagne → upload CV → mail de refus reçu en boîte.

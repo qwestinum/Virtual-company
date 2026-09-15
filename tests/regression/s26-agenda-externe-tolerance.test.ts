@@ -55,6 +55,7 @@ import { createIcsBusyProvider } from '@/lib/scheduling-host/busy/provider';
 import { GET as slotsRoute } from '@/app/api/sched/links/[token]/slots/route';
 import { POST as bookRoute } from '@/app/api/sched/links/[token]/book/route';
 
+import { setBusyCalendarCabinet } from './helpers/busy-calendar';
 import { db } from './helpers/db';
 import { resetSentEmails, sentEmails } from './helpers/mocks';
 
@@ -217,8 +218,12 @@ async function clean(): Promise<void> {
   if (ids.length > 0) await supabase.from('recruiters').delete().in('id', ids);
 }
 
+let restoreCabinet: () => Promise<void> = async () => {};
+
 beforeAll(async () => {
   process.env.BUSY_CALENDAR_ENABLED = '1';
+  // Second étage du flag (lot D) : sans l'accord du cabinet, ni relève ni signal.
+  restoreCabinet = await setBusyCalendarCabinet(true);
   useConnector();
   registerEventConsumer(async () => {});
   await clean();
@@ -260,6 +265,7 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
+  await restoreCabinet();
   await clean();
   delete process.env.BUSY_CALENDAR_ENABLED;
   registerEventConsumer(null);

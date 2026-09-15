@@ -24,6 +24,10 @@ import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-setting
 import { DEFAULT_BRANDING_CONFIG, type BrandingConfig } from '@/types/branding';
 import { DEFAULT_ADEP_CONFIG, type AdepConfig } from '@/types/adep-settings';
 import { DEFAULT_SOURCING_CONFIG, type SourcingConfig } from '@/types/sourcing-settings';
+import {
+  DEFAULT_BUSY_CALENDAR_CONFIG,
+  type BusyCalendarConfig,
+} from '@/types/busy-calendar-settings';
 
 const TABLE = 'app_settings';
 
@@ -57,6 +61,8 @@ export type AppSettings = {
   adepConfig: AdepConfig;
   /** Module Sourcing — second étage du flag (le premier est en env). */
   sourcingConfig: SourcingConfig;
+  /** Connecteur d'agenda externe — second étage du flag (le premier est en env). */
+  busyCalendarConfig: BusyCalendarConfig;
   /**
    * Clé API Resend : write-only. On n'expose JAMAIS la valeur en clair (ni au
    * client, ni dans cet objet de domaine) — seulement un booléen « configurée ».
@@ -89,6 +95,8 @@ type AppSettingsRow = {
   branding_config: BrandingConfig | null;
   adep_config: AdepConfig | null;
   sourcing_config: SourcingConfig | null;
+  /** Absente tant que la migration n'est pas appliquée : lue comme éteinte. */
+  busy_calendar_config?: BusyCalendarConfig | null;
   resend_api_key: string | null;
   updated_at: string;
 };
@@ -156,6 +164,8 @@ function rowToDomain(row: AppSettingsRow): AppSettings {
     adepConfig: { ...DEFAULT_ADEP_CONFIG, ...(row.adep_config ?? {}) },
     // Colonne absente (base en retard) ⇒ défauts ⇒ ÉTEINT : fail-closed.
     sourcingConfig: { ...DEFAULT_SOURCING_CONFIG, ...(row.sourcing_config ?? {}) },
+    // Même règle : colonne absente ⇒ ÉTEINT.
+    busyCalendarConfig: { ...DEFAULT_BUSY_CALENDAR_CONFIG, ...(row.busy_calendar_config ?? {}) },
     // Jamais la valeur : seulement la présence (write-only côté UI).
     resendApiKeyConfigured: (row.resend_api_key ?? '').length > 0,
     updatedAt: row.updated_at,
@@ -226,6 +236,7 @@ export type AppSettingsPatch = {
   brandingConfig?: BrandingConfig;
   adepConfig?: AdepConfig;
   sourcingConfig?: SourcingConfig;
+  busyCalendarConfig?: BusyCalendarConfig;
   /** Write-only : `''` (ou null) efface la clé, une valeur non vide la pose. */
   resendApiKey?: string | null;
 };
@@ -255,6 +266,7 @@ export async function patchAppSettings(
     row.branding_config = patch.brandingConfig;
   if (patch.adepConfig !== undefined) row.adep_config = patch.adepConfig;
   if (patch.sourcingConfig !== undefined) row.sourcing_config = patch.sourcingConfig;
+  if (patch.busyCalendarConfig !== undefined) row.busy_calendar_config = patch.busyCalendarConfig;
   // Write-only : `''` efface (null), valeur non vide pose la clé.
   if (patch.resendApiKey !== undefined)
     row.resend_api_key = patch.resendApiKey ? patch.resendApiKey : null;

@@ -75,6 +75,11 @@ const ACTION: Record<BusyFailureCause, string> = {
   link: 'Le lien enregistré pour ton agenda n’est plus utilisable. Republie ton agenda et colle le nouveau lien.',
 };
 
+/** Ce que le recruteur doit faire pour une panne donnée (écran, signal, email). */
+export function busyFailureAction(code: string | null): string {
+  return ACTION[causeOfFailure(code)];
+}
+
 /** « 14h05 » dans le fuseau de la ressource. */
 export function formatClock(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone })

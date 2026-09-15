@@ -35,7 +35,7 @@ import {
 } from '@/lib/scheduling';
 
 import { ensureSchedulingConfigured } from '../configure';
-import { isBusyCalendarEnabled } from './flag';
+import { isBusyCalendarActive } from './active';
 
 export type BusyRefreshReport = {
   enabled: boolean;
@@ -155,7 +155,8 @@ export async function refreshBusyCalendarsWith(deps: BusyRefreshDeps): Promise<B
  */
 export async function refreshBusyCalendars(): Promise<BusyRefreshReport> {
   const empty: BusyRefreshReport = {
-    enabled: isBusyCalendarEnabled(),
+    // Les DEUX étages : sans l'accord du cabinet, aucun agenda n'est relu.
+    enabled: await isBusyCalendarActive(),
     recruiters: 0,
     ok: 0,
     failed: 0,

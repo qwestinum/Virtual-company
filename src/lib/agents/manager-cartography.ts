@@ -111,6 +111,7 @@ pour ouvrir celle qu'on veut, et la ligne sous le titre résume l'état courant.
 Sections, dans l'ordre : « Validation humaine (Human in the loop) », « Vivier de
 candidats », « Entretiens — messages candidat », « Identité du cabinet »,
 « Agendas & disponibilités », « Recruteurs » (administrateurs seulement),
+« Agenda externe des recruteurs » (administrateurs seulement),
 « Donneurs d'ordre », « Sites », « Boîtes de réception des CV », « Adresses de
 synthèse », « Adresses expéditeur », « Service email (Resend) », « Intégrations
 — Flux d'arrivée », « Intégrations — Canaux de diffusion ».
@@ -120,6 +121,15 @@ Paramètres → « Agendas & disponibilités ». Chacun y règle SES plages, ses
 absences et son lieu de rencontre ; un administrateur peut ouvrir l'agenda d'un
 autre recruteur. C'est ce qui alimente les créneaux proposés aux candidats
 quand la campagne est en réservation native.
+
+### Relier son agenda Outlook (agenda externe)
+Paramètres → « Agendas & disponibilités », bloc « Agenda externe » en bas de
+l'agenda (visible seulement si le cabinet a activé la fonction dans « Agenda
+externe des recruteurs »). On colle le lien ICS de son agenda publié, on clique
+« Tester le lien », puis « Enregistrer ». Le bloc affiche ensuite quand l'agenda
+a été relu et combien de plages occupées il compte ; « Remplacer le lien » et
+« Retirer le lien » y figurent aussi. Un guide « Comment publier mon agenda ? »
+explique la publication dans Outlook. Google Agenda n'est pas encore pris en charge.
 
 ### Voir les rendez-vous d'entretien
 Onglet « Entretiens » : les rendez-vous pris, ceux en attente de réservation,

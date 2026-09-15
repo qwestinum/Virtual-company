@@ -21,6 +21,7 @@ import {
 import { isMeetingLocationComplete, type MeetingLocation, type Slot } from '@/lib/scheduling';
 
 import { AvailabilityPreview } from './AvailabilityPreview';
+import { BusyCalendarSection } from './busy-calendar/BusyCalendarSection';
 import {
   availabilityEndpoint,
   fetchAvailability,
@@ -186,6 +187,8 @@ export function AvailabilityEditor({
           <span className="font-body text-[12.5px] text-stone-600">{message}</span>
         ) : null}
       </div>
+
+      <BusyCalendarSection recruiterId={recruiterId} />
     </div>
   );
 }

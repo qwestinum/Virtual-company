@@ -68,6 +68,11 @@ export type BusyReadObservation = {
 export type IcsBusyProviderDeps = {
   /** URL en clair de la ressource (clé externe = identifiant du recruteur). */
   loadCalendarUrl(resourceExternalRef: string): Promise<RecruiterCalendarUrl>;
+  /**
+   * Le connecteur est-il ALLUMÉ (déploiement ET cabinet) ? Éteint ⇒ aucun agenda
+   * n'est lu, le moteur fait comme avant. Absent ⇒ allumé (tests, hôte simple).
+   */
+  isActive?: () => Promise<boolean>;
   fetchCalendar?: (url: string) => Promise<CalendarFetchResult>;
   /** Copie en base. Absente ⇒ aucune copie : chaque lecture est fraîche, sans tolérance. */
   store?: BusySnapshotStore;
@@ -95,6 +100,11 @@ export function createIcsBusyProvider(deps: IcsBusyProviderDeps): BusyProvider {
       const recruiterId = request.resource.externalRef;
       const at = now();
       const atIso = at.toISOString();
+
+      // Éteint par le cabinet : comme si aucun agenda n'était déclaré.
+      if (deps.isActive && !(await deps.isActive().catch(() => false))) {
+        return { kind: 'not_configured' };
+      }
 
       let source: RecruiterCalendarUrl;
       try {

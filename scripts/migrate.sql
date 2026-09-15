@@ -2449,3 +2449,14 @@ alter table public.app_settings
 alter table public.app_settings drop constraint if exists app_settings_sourcing_config_chk;
 alter table public.app_settings add constraint app_settings_sourcing_config_chk
   check (sourcing_config is null or jsonb_typeof(sourcing_config) = 'object');
+
+-- ── Connecteur d'agenda externe : réglage du cabinet (lot D, 15/09/2026) ──
+-- { enabled }. Second étage du flag : le premier (BUSY_CALENDAR_ENABLED +
+-- MAILBOX_ENCRYPTION_KEY) est en variables d'environnement. Les deux sont
+-- requis. NULL ⇒ éteint. Spec : docs/specs/agenda-externe.md §10.
+alter table public.app_settings
+  add column if not exists busy_calendar_config jsonb;
+
+alter table public.app_settings drop constraint if exists app_settings_busy_calendar_config_chk;
+alter table public.app_settings add constraint app_settings_busy_calendar_config_chk
+  check (busy_calendar_config is null or jsonb_typeof(busy_calendar_config) = 'object');

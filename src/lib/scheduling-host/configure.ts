@@ -42,6 +42,7 @@ import {
   type BrandingConfig,
 } from '@/types/branding';
 
+import { isBusyCalendarActive } from './busy/active';
 import { isBusyCalendarEnabled } from './busy/flag';
 import { createBusyCalendarObserver } from './busy/notify';
 import { createIcsBusyProvider } from './busy/provider';
@@ -175,6 +176,8 @@ export async function ensureSchedulingConfigured(): Promise<void> {
       ? {
           busyProvider: createIcsBusyProvider({
             loadCalendarUrl: loadRecruiterCalendarUrl,
+            // Second étage (cabinet), relu à chaque lecture — mémoire de 30 s.
+            isActive: () => isBusyCalendarActive(),
             store: {
               get: getBusySnapshot,
               recordSuccess: recordBusyReadSuccess,
