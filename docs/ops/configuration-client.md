@@ -21,7 +21,8 @@ par client), l'ensemble vit dans l'instance et la base Supabase de ce client.
 | `EMAIL_DRH` | **Adresse du donneur d'ordre / recruteur** | Reçoit bilans & briefs d'entretien |
 | `CAL_COM_EVENT_URL` | Lien de réservation d'entretien du client (repli global — les référents de campagne ont leur lien perso, cf. docs/ops/multi-utilisateur.md) | `https://cal.com/<user>/<event>` |
 | `CAL_COM_WEBHOOK_SECRET` | Secret HMAC du webhook Cal.com (Settings → Developer → Webhooks — LE MÊME sur chaque compte recruteur) | chaîne aléatoire |
-| `CRON_SECRET` | Bearer du cron imap-poll — OBLIGATOIRE (fail-closed : sans lui, la relève mail s'arrête) | chaîne aléatoire |
+| `CRON_SECRET` | Bearer des crons `imap-poll` ET `busy-calendars` — OBLIGATOIRE (fail-closed : sans lui, la relève mail et la relève des agendas s'arrêtent) | chaîne aléatoire |
+| `BUSY_CALENDAR_ENABLED` | Connecteur d'agenda externe des recruteurs (`docs/specs/agenda-externe.md`). `1` EXACT pour l'allumer, et **seulement si** le job cron `busy-calendars` est en place — sans relève, un agenda dépublié sans visite ne prévient personne | vide = éteint |
 | `MAILBOX_ENCRYPTION_KEY` | Clé de chiffrement des mots de passe IMAP | `openssl rand -hex 32`, **unique par projet, jamais changée** (la roter invalide toutes les boîtes) |
 
 > `.env.local` est **gitignored** — ne jamais le committer. Le sauvegarder hors serveur.
@@ -87,5 +88,6 @@ Champs techniques tenus par le poller (non saisis) : `last_polled_at`, `last_uid
 - [ ] `CAL_COM_EVENT_URL` = lien de réservation du client (repli global).
 - [ ] `CAL_COM_WEBHOOK_SECRET` posé + webhook enregistré sur CHAQUE compte Cal.com recruteur (même URL, même secret — docs/ops/multi-utilisateur.md §4).
 - [ ] `CRON_SECRET` posé côté Vercel ET cron-job.org (fail-closed).
+- [ ] Agenda externe (si activé) : migration appliquée, job cron-job.org **distinct** à la minute sur `GET /api/cron/busy-calendars` (en-tête `Authorization: Bearer <CRON_SECRET>`), vérifié (réponse `calendars.enabled: true`), **puis seulement** `BUSY_CALENDAR_ENABLED=1`.
 - [ ] Compte du client créé dans Supabase Auth (inscription publique désactivée).
 - [ ] Smoke test : login → campagne → upload CV → mail de refus reçu en boîte.

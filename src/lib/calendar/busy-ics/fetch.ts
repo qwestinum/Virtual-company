@@ -40,7 +40,16 @@ export type CalendarFetchResult =
       host: string;
       durationMs: number;
     }
-  | { ok: false; code: CalendarFetchFailure; durationMs: number };
+  | {
+      ok: false;
+      code: CalendarFetchFailure;
+      durationMs: number;
+      /**
+       * `redirect_refused` seulement : l'HÔTE vers lequel on voulait nous
+       * envoyer. Jamais le chemin ni la requête — ils peuvent porter un jeton.
+       */
+      redirectHost?: string;
+    };
 
 export type CalendarFetchOptions = {
   fetchImpl?: typeof fetch;
@@ -117,10 +126,16 @@ export async function fetchBusyCalendar(
         } catch {
           return fail('redirect_refused');
         }
+        const refused = (): CalendarFetchResult => ({
+          ok: false,
+          code: 'redirect_refused',
+          durationMs: elapsed(),
+          redirectHost: next.hostname.toLowerCase(),
+        });
         if (next.protocol !== 'https:' || next.username || next.password || next.port) {
-          return fail('redirect_refused');
+          return refused();
         }
-        if (!isProviderDomain(provider, next.hostname)) return fail('redirect_refused');
+        if (!isProviderDomain(provider, next.hostname)) return refused();
         if (hop + 1 > maxRedirects) return fail('too_many_redirects');
         url = next;
         continue;

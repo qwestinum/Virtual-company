@@ -2109,6 +2109,12 @@ create table if not exists public.recruiter_busy_snapshots (
   updated_at        timestamptz not null default now()
 );
 alter table public.recruiter_busy_snapshots enable row level security;
+-- Relève périodique (lot C) : réservation d'une lecture par recruteur, pour
+-- que deux passes qui se chevauchent (cron lent, tick de dev) ne lisent pas
+-- le même agenda en même temps. Colonne ajoutée à part : rejouable sur une
+-- table créée par le lot B.
+alter table public.recruiter_busy_snapshots
+  add column if not exists refresh_claimed_at timestamptz;
 -- Bloc CANONIQUE unique de cette contrainte (drop + add : rejouable).
 alter table public.recruiter_busy_snapshots
   drop constraint if exists recruiter_busy_snapshots_state_chk;

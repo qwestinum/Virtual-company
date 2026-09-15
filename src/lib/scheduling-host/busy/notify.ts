@@ -38,6 +38,7 @@ import { buildBusyCalendarBlockedEmail, classifyBusyCalendarState } from './stat
 
 export const BUSY_CALENDAR_STATE_ACTION = 'busy_calendar_state_changed';
 export const BUSY_CALENDAR_CLAIM_SCOPE = 'busy_calendar_blocked';
+export const BUSY_CALENDAR_REDIRECT_REFUSED_ACTION = 'busy_calendar_redirect_refused';
 
 export type BusyNotifyDeps = {
   /** URL absolue des disponibilités du recruteur (lien de l'email). */
@@ -47,6 +48,8 @@ export type BusyNotifyDeps = {
 export function createBusyCalendarObserver(deps: BusyNotifyDeps) {
   return async function observe(observation: BusyReadObservation): Promise<void> {
     try {
+      await journalRedirectRefused(observation);
+
       const state = observation.ok
         ? 'healthy'
         : classifyBusyCalendarState({
@@ -82,6 +85,26 @@ export function createBusyCalendarObserver(deps: BusyNotifyDeps) {
       // L'observation est un effet de bord : jamais une raison d'échouer.
     }
   };
+}
+
+/**
+ * Redirection refusée = ANOMALIE, pas une panne ordinaire : l'URL déclarée a
+ * tenté de nous envoyer hors des domaines du fournisseur. Tracée à part, une
+ * fois par série (tant que le code ne change pas), avec l'hôte de destination
+ * seulement. La décision, elle, reste celle de toute lecture en échec.
+ */
+async function journalRedirectRefused(observation: BusyReadObservation): Promise<void> {
+  if (observation.ok || observation.code !== 'redirect_refused') return;
+  if (observation.previous?.failureCode === 'redirect_refused') return;
+  await appendJournalEntry({
+    action: BUSY_CALENDAR_REDIRECT_REFUSED_ACTION,
+    actor: 'system',
+    payload: {
+      recruiterId: observation.recruiterId,
+      redirectHost: observation.redirectHost ?? null,
+      security: true,
+    },
+  }).catch(() => undefined);
 }
 
 async function workingMinutesSinceRead(observation: BusyReadObservation): Promise<number | null> {

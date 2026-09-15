@@ -40,6 +40,8 @@ const PROTECTED_PREFIXES = ['/app', '/rh', '/settings', '/validations', '/admin'
 const API_SELF_AUTHENTICATED = [
   '/api/webhooks/calcom',
   '/api/cron/imap-poll',
+  // Relève des agendas publiés : même Bearer CRON_SECRET, route à part.
+  '/api/cron/busy-calendars',
   // Réservation : l'appelant est un invité sans compte, son authentification
   // est le jeton nominatif de l'URL, vérifié par le module.
   '/api/sched',

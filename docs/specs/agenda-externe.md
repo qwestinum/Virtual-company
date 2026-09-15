@@ -758,6 +758,30 @@ qu'aux lectures (page candidat, confirmation) ; le signal, lui, se calcule sur l
 ORQA (§5.4, après la mesure d'aller-retour) ; minimisation à la grille (§12.2) ; désactivation du
 recruteur ⇒ URL effacée.
 
+## 13 quater. Lot C — livré (15/09/2026, `feat/agenda-externe`)
+
+**Prérequis d'activation client** : sans relève périodique, une URL morte sans visite ne
+prévenait personne (limite du lot B).
+
+| Élément | Où |
+|---|---|
+| Route **dédiée** `GET /api/cron/busy-calendars` (Bearer `CRON_SECRET` fail-closed ; connecteur éteint ⇒ 200 `enabled: false`, rien lu ; passe en échec ⇒ 500 `refresh_failed`, sans détail) | `src/app/api/cron/busy-calendars/route.ts` ; exemption proxy (correspondance exacte) |
+| Authentification cron mutualisée (la route IMAP l'utilise aussi — une seule règle fail-closed) | `src/lib/auth/cron-auth.ts` |
+| Relève : tous les recruteurs actifs avec agenda, ressource active ; les moins récemment tentés d'abord ; parallélisme 5 ; budget 40 s (le reste à la passe suivante) ; lecture `live` par la MÊME source que la confirmation ⇒ même copie, mêmes transitions, même email | `src/lib/scheduling-host/busy/refresh.ts` |
+| Réservation par recruteur (`refresh_claimed_at`, 50 s) : deux passes simultanées ne lisent pas deux fois ; colonne absente ⇒ jamais « ne pas relire » | `claimBusyRefresh` |
+| Liste des agendas exhaustive (pagination par clé), sans déchiffrer | `listRecruiterIdsWithCalendar` |
+| **`redirect_refused` journalisé À PART** (`busy_calendar_redirect_refused`, `security: true`), une fois par série, **hôte de destination seulement** (jamais le chemin : il peut porter un jeton) | `fetch.ts` (`redirectHost`), `notify.ts` |
+| Tick du scheduler en dev/VPS | `src/lib/imap/scheduler.ts` |
+| Runbook : variable + job cron-job.org distinct, activation APRÈS le job | `docs/ops/configuration-client.md` |
+
+**Tests** : relève 9 (ordre, budget, borne de parallélisme, isolement des pannes, rapport en
+compteurs), route 4, proxy 4, redirection 2 ; régression **S27** (7 étapes par la route réelle,
+**sans aucune visite** : lecture → toléré → suspendu + un email + signal sur plusieurs passes →
+redirection refusée journalisée une fois → rétablissement → passes simultanées → connecteur éteint).
+
+**Mise en service** : migration (colonne `refresh_claimed_at`) → job cron-job.org → vérification
+de la réponse → `BUSY_CALENDAR_ENABLED=1`. Dans cet ordre.
+
 ## 14. Risques et inconnues
 
 | Risque | Mitigation | Statut |

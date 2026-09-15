@@ -166,6 +166,7 @@ export {
 } from './external-busy';
 export { workingMinutesBetween } from './working-time';
 export {
+  busyProvider as getBusyProvider,
   DEFAULT_EXTERNAL_BUSY_TOLERANCE_MINUTES,
   externalBusyToleranceMinutes,
 } from './runtime';

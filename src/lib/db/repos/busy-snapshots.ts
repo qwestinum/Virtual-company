@@ -9,6 +9,7 @@
  *
  * Spec : docs/specs/agenda-externe.md §4.
  */
+import { chunk } from '@/lib/db/paginate';
 import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
@@ -86,6 +87,10 @@ function isTableMissing(err: { code?: string; message?: string }): boolean {
   return (err.message ?? '').includes(TABLE);
 }
 
+function isClaimColumnMissing(err: { code?: string; message?: string }): boolean {
+  return err.code === '42703' || err.code === 'PGRST204' || (err.message ?? '').includes('refresh_claimed_at');
+}
+
 /** La copie d'un recruteur, ou `null` (aucune, ou table absente). Lève sur une vraie panne. */
 export async function getBusySnapshot(recruiterId: string): Promise<BusySnapshot | null> {
   const supabase = requireServerSupabase();
@@ -101,16 +106,20 @@ export async function getBusySnapshot(recruiterId: string): Promise<BusySnapshot
   return data ? toSnapshot(data as Row) : null;
 }
 
-/** Copies de plusieurs recruteurs en une lecture (signal). */
+/** Copies de plusieurs recruteurs, par tranches (jamais sous le plafond silencieux de 1000 lignes). */
 export async function listBusySnapshots(recruiterIds: readonly string[]): Promise<BusySnapshot[]> {
   if (recruiterIds.length === 0) return [];
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase.from(TABLE).select('*').in('recruiter_id', [...recruiterIds]);
-  if (error) {
-    if (isTableMissing(error)) return [];
-    throw new Error(`listBusySnapshots: ${error.code ?? 'db_error'}`);
+  const out: BusySnapshot[] = [];
+  for (const slice of chunk([...recruiterIds], 500)) {
+    const { data, error } = await supabase.from(TABLE).select('*').in('recruiter_id', slice);
+    if (error) {
+      if (isTableMissing(error)) return [];
+      throw new Error(`listBusySnapshots: ${error.code ?? 'db_error'}`);
+    }
+    out.push(...((data ?? []) as Row[]).map(toSnapshot));
   }
-  return ((data ?? []) as Row[]).map(toSnapshot);
+  return out;
 }
 
 /** Lecture réussie : la copie est REMPLACÉE d'un bloc, et la panne effacée. */
@@ -200,6 +209,43 @@ export async function claimBusyStateTransition(
     return ((data ?? []) as unknown[]).length > 0;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Réserve la relève d'un recruteur pour `ttlMs`. `true` ⇒ cette passe lit ;
+ * `false` ⇒ une autre passe s'en charge déjà. Crée la ligne au besoin (un
+ * agenda jamais lu n'en a pas encore).
+ *
+ * Table absente ⇒ `true` : sans elle il n'y a rien à protéger, et refuser
+ * reviendrait à ne jamais relire.
+ */
+export async function claimBusyRefresh(recruiterId: string, nowIso: string, ttlMs: number): Promise<boolean> {
+  try {
+    const supabase = requireServerSupabase();
+    const staleBefore = new Date(Date.parse(nowIso) - ttlMs).toISOString();
+    const updated = await supabase
+      .from(TABLE)
+      .update({ refresh_claimed_at: nowIso })
+      .eq('recruiter_id', recruiterId)
+      .or(`refresh_claimed_at.is.null,refresh_claimed_at.lt.${staleBefore}`)
+      .select('recruiter_id');
+    // Table OU colonne absente (code du lot C déployé avant sa migration) : pas
+    // de réservation possible, mais jamais « ne pas relire ».
+    if (updated.error) return isTableMissing(updated.error) || isClaimColumnMissing(updated.error);
+    if (((updated.data ?? []) as unknown[]).length > 0) return true;
+
+    const inserted = await supabase
+      .from(TABLE)
+      .upsert(
+        { recruiter_id: recruiterId, refresh_claimed_at: nowIso },
+        { onConflict: 'recruiter_id', ignoreDuplicates: true },
+      )
+      .select('recruiter_id');
+    if (inserted.error) return isTableMissing(inserted.error) || isClaimColumnMissing(inserted.error);
+    return ((inserted.data ?? []) as unknown[]).length > 0;
+  } catch (err) {
+    return err instanceof SupabaseNotConfiguredError;
   }
 }
 

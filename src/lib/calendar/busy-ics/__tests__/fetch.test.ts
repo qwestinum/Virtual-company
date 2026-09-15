@@ -178,3 +178,22 @@ describe('fetchBusyCalendar', () => {
     expect(JSON.stringify(refused)).not.toContain(SECRET);
   });
 });
+
+describe('fetchBusyCalendar — redirection refusée', () => {
+  it('rend l’HÔTE de destination, jamais le chemin ni la requête', async () => {
+    const { impl } = scripted({
+      status: 302,
+      headers: { location: `https://Collecte.Attaquant.test/piege/${SECRET}?t=${SECRET}` },
+    });
+    const r = await fetchBusyCalendar(LIVE_URL, { fetchImpl: impl });
+    expect(r).toMatchObject({ ok: false, code: 'redirect_refused', redirectHost: 'collecte.attaquant.test' });
+    expect(JSON.stringify(r)).not.toContain(SECRET);
+    expect(JSON.stringify(r)).not.toContain('piege');
+  });
+
+  it('ne pose pas d’hôte sur les autres échecs', async () => {
+    const { impl } = scripted(ok('<!DOCTYPE html>', 'text/html'));
+    const r = await fetchBusyCalendar(LIVE_URL, { fetchImpl: impl });
+    expect(r).not.toHaveProperty('redirectHost');
+  });
+});

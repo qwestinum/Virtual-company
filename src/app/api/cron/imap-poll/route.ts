@@ -15,10 +15,9 @@
  *     déployer ce code, sinon la relève s'arrête — runbook multi-utilisateur) ;
  *   - comparaison en temps constant (timingSafeEqual).
  */
-import { timingSafeEqual } from 'node:crypto';
-
 import { NextResponse } from 'next/server';
 
+import { rejectUnauthorizedCron } from '@/lib/auth/cron-auth';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { pollAllMailboxes } from '@/lib/imap/poller';
 import { runQueuedClosureDismissals } from '@/lib/candidatures/dismissal-batch';
@@ -28,23 +27,9 @@ import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-/** Égalité en temps constant, tolérante aux longueurs différentes. */
-function safeEquals(a: string, b: string): boolean {
-  const ba = Buffer.from(a, 'utf8');
-  const bb = Buffer.from(b, 'utf8');
-  if (ba.length !== bb.length) return false;
-  return timingSafeEqual(ba, bb);
-}
-
 export async function GET(request: Request): Promise<NextResponse> {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: 'cron_not_configured' }, { status: 500 });
-  }
-  const auth = request.headers.get('authorization') ?? '';
-  if (!safeEquals(auth, `Bearer ${secret}`)) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
+  const rejected = rejectUnauthorizedCron(request);
+  if (rejected) return rejected;
 
   try {
     const outcomes = await pollAllMailboxes();

@@ -31,6 +31,7 @@
 
 import { pollAllMailboxes } from '@/lib/imap/poller';
 import { runQueuedClosureDismissals } from '@/lib/candidatures/dismissal-batch';
+import { refreshBusyCalendars } from '@/lib/scheduling-host/busy/refresh';
 import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 
@@ -101,6 +102,9 @@ async function runTick(): Promise<void> {
     await drainSchedulingEvents();
     await runSourcingMaintenance();
     await runQueuedClosureDismissals();
+    // Agendas publiés des recruteurs (connecteur éteint ⇒ sans effet). En
+    // production c'est le cron `/api/cron/busy-calendars` qui s'en charge.
+    await refreshBusyCalendars();
   } catch (err) {
     // Le poll capture déjà les erreurs par mailbox. Ce catch
     // protège contre un crash en dehors (Supabase down, etc.). On

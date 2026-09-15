@@ -54,7 +54,16 @@ export type BusyReadObservation = {
   resource: ExternalBusyRequest['resource'];
   previous: BusySnapshot | null;
   at: string;
-} & ({ ok: true } | { ok: false; code: string; failingSince: string });
+} & (
+  | { ok: true }
+  | {
+      ok: false;
+      code: string;
+      failingSince: string;
+      /** Redirection refusée : hôte de destination (jamais le chemin). */
+      redirectHost?: string;
+    }
+);
 
 export type IcsBusyProviderDeps = {
   /** URL en clair de la ressource (clé externe = identifiant du recruteur). */
@@ -114,7 +123,7 @@ export function createIcsBusyProvider(deps: IcsBusyProviderDeps): BusyProvider {
       const window = readWindow(request, at);
       const outcome =
         source.kind === 'unreadable'
-          ? ({ ok: false, code: 'decrypt_failed' } as const)
+          ? ({ ok: false, code: 'decrypt_failed' } satisfies FreshOutcome as FreshOutcome)
           : await readFresh(source.url, window, request, previous, fetchCalendar);
 
       if (outcome.ok) {
@@ -143,6 +152,7 @@ export function createIcsBusyProvider(deps: IcsBusyProviderDeps): BusyProvider {
         ok: false,
         code: outcome.code,
         failingSince,
+        ...(outcome.redirectHost ? { redirectHost: outcome.redirectHost } : {}),
       });
       return { kind: 'unavailable', lastGood, failingSince };
     },
@@ -151,7 +161,7 @@ export function createIcsBusyProvider(deps: IcsBusyProviderDeps): BusyProvider {
 
 type FreshOutcome =
   | { ok: true; intervals: BusyInterval[]; occurrenceCount: number }
-  | { ok: false; code: string };
+  | { ok: false; code: string; redirectHost?: string };
 
 async function readFresh(
   url: string,
@@ -166,7 +176,11 @@ async function readFresh(
   } catch {
     return { ok: false, code: 'network' };
   }
-  if (!fetched.ok) return { ok: false, code: fetched.code };
+  if (!fetched.ok) {
+    return fetched.redirectHost
+      ? { ok: false, code: fetched.code, redirectHost: fetched.redirectHost }
+      : { ok: false, code: fetched.code };
+  }
 
   const parsed = parseBusyIcs(fetched.body, { ...window, fallbackZone: request.resource.timezone });
   if (!parsed.ok) return { ok: false, code: parsed.code };

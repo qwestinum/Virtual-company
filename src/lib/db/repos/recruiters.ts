@@ -11,6 +11,7 @@ import {
   SupabaseNotConfiguredError,
 } from '@/lib/db/supabase-server';
 import { decryptCredential, encryptCredential } from '@/lib/crypto/mailbox-credentials';
+import { fetchAllKeyset } from '@/lib/db/paginate';
 import type { Recruiter, RecruiterRole } from '@/types/recruiter';
 
 const TABLE = 'recruiters';
@@ -299,4 +300,37 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 function isColumnMissing(err: { code?: string; message?: string }): boolean {
   if (err.code === '42703' || err.code === 'PGRST204') return true;
   return (err.message ?? '').includes('busy_ics_url');
+}
+
+/**
+ * Identifiants des recruteurs ACTIFS qui ont déclaré un agenda publié — le
+ * périmètre de la relève périodique. Ne déchiffre RIEN : la relève ouvre les
+ * URL une par une, au moment de les lire.
+ *
+ * Exhaustif (pagination par clé). Colonne ou table absente ⇒ `[]`.
+ */
+export async function listRecruiterIdsWithCalendar(): Promise<string[]> {
+  try {
+    const supabase = requireServerSupabase();
+    const rows = await fetchAllKeyset<{ id: string }>({
+      fetchPage: async (after, limit) => {
+        let query = supabase
+          .from(TABLE)
+          .select('id')
+          .not('busy_ics_url', 'is', null)
+          .eq('is_active', true);
+        if (after !== null) query = query.gt('id', after);
+        const { data, error } = await query.order('id', { ascending: true }).limit(limit);
+        if (error) throw new Error(`listRecruiterIdsWithCalendar: ${error.message}`);
+        return (data ?? []) as { id: string }[];
+      },
+      cursorOf: (row) => row.id,
+    });
+    return rows.map((row) => row.id);
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return [];
+    const message = err instanceof Error ? err.message : '';
+    if (/busy_ics_url|recruiters|schema cache|does not exist/i.test(message)) return [];
+    throw err;
+  }
 }
