@@ -779,8 +779,14 @@ compteurs), route 4, proxy 4, redirection 2 ; régression **S27** (7 étapes par
 **sans aucune visite** : lecture → toléré → suspendu + un email + signal sur plusieurs passes →
 redirection refusée journalisée une fois → rétablissement → passes simultanées → connecteur éteint).
 
-**Mise en service** : migration (colonne `refresh_claimed_at`) → job cron-job.org → vérification
-de la réponse → `BUSY_CALENDAR_ENABLED=1`. Dans cet ordre.
+**Mise en service** (`docs/ops/configuration-client.md` §5) : migration → job cron-job.org dédié →
+réponse du job vérifiée → **`BUSY_CALENDAR_ENABLED=1` EN DERNIER** → `enabled: true` constaté.
+Le flag posé avant la relève activerait le connecteur sans surveillance des agendas.
+
+**Déployé avant la migration** (colonne `refresh_claimed_at` absente) : la réservation de relève
+est accordée et la passe LIT quand même — prouvé par `busy-refresh-claim.test.ts` (les deux formes
+d'erreur réelles, PostgREST et Postgres, sondées), et une autre panne de base n'est pas confondue
+avec une colonne absente.
 
 ## 14. Risques et inconnues
 

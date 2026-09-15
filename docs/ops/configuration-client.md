@@ -22,7 +22,7 @@ par client), l'ensemble vit dans l'instance et la base Supabase de ce client.
 | `CAL_COM_EVENT_URL` | Lien de réservation d'entretien du client (repli global — les référents de campagne ont leur lien perso, cf. docs/ops/multi-utilisateur.md) | `https://cal.com/<user>/<event>` |
 | `CAL_COM_WEBHOOK_SECRET` | Secret HMAC du webhook Cal.com (Settings → Developer → Webhooks — LE MÊME sur chaque compte recruteur) | chaîne aléatoire |
 | `CRON_SECRET` | Bearer des crons `imap-poll` ET `busy-calendars` — OBLIGATOIRE (fail-closed : sans lui, la relève mail et la relève des agendas s'arrêtent) | chaîne aléatoire |
-| `BUSY_CALENDAR_ENABLED` | Connecteur d'agenda externe des recruteurs (`docs/specs/agenda-externe.md`). `1` EXACT pour l'allumer, et **seulement si** le job cron `busy-calendars` est en place — sans relève, un agenda dépublié sans visite ne prévient personne | vide = éteint |
+| `BUSY_CALENDAR_ENABLED` | Connecteur d'agenda externe des recruteurs (`docs/specs/agenda-externe.md`). `1` EXACT pour l'allumer — **À POSER EN DERNIER**, cf. §5 | vide = éteint |
 | `MAILBOX_ENCRYPTION_KEY` | Clé de chiffrement des mots de passe IMAP | `openssl rand -hex 32`, **unique par projet, jamais changée** (la roter invalide toutes les boîtes) |
 
 > `.env.local` est **gitignored** — ne jamais le committer. Le sauvegarder hors serveur.
@@ -79,6 +79,42 @@ Champs techniques tenus par le poller (non saisis) : `last_polled_at`, `last_uid
 
 ---
 
+## 5. Activer le connecteur d'agenda externe — ORDRE IMPÉRATIF
+
+> ⚠️ **Le flag `BUSY_CALENDAR_ENABLED=1` se pose EN DERNIER.** Posé avant que la
+> relève tourne, le connecteur est actif sans que personne ne surveille les
+> agendas : un agenda dépublié **sans visite de candidat** ne fait avancer aucun
+> état, ne déclenche ni signal ni email, et le recruteur perd ses rendez-vous
+> sans savoir pourquoi. La relève est ce qui rend l'alerte fiable.
+
+Dans cet ordre, sans en sauter ni en inverser :
+
+1. **Migration.** `scripts/migrate.sql` appliqué en entier (colonnes
+   `recruiters.busy_ics_url`, `sched_bookings.availability_check`, table
+   `recruiter_busy_snapshots` et sa colonne `refresh_claimed_at`), puis **reload
+   du cache de schéma**. Le code tolère une migration en retard (il retombe sur
+   un comportement plus prudent, et la relève lit quand même — testé), mais on
+   n'active pas un client sur un schéma incomplet.
+2. **Job cron-job.org DÉDIÉ**, distinct de celui de la relève mail :
+   `GET https://<domaine>/api/cron/busy-calendars`, **toutes les minutes**,
+   en-tête `Authorization: Bearer <CRON_SECRET>`.
+3. **Vérifier la réponse du job** dans l'historique cron-job.org : statut 200 et
+   `"calendars": { "enabled": … }`. À ce stade (flag encore absent) on lit
+   `enabled: false` — c'est attendu : on vérifie que le job **atteint** la route
+   et **s'authentifie** (un 401 = mauvais secret, un 500 `cron_not_configured` =
+   `CRON_SECRET` absent côté Vercel).
+4. **Seulement maintenant : `BUSY_CALENDAR_ENABLED=1`** côté Vercel, redéployer.
+5. **Contrôle final** : à l'exécution suivante du job, la réponse doit porter
+   `"enabled": true` (et `"recruiters"` = nombre d'agendas déclarés). Si elle reste
+   à `false`, le flag n'est pas pris en compte (valeur autre que `1` exact, ou
+   `MAILBOX_ENCRYPTION_KEY` absente/mal formée) — le connecteur est alors ÉTEINT,
+   jamais à moitié allumé.
+
+Désactiver : retirer le flag d'abord, le job peut rester (il répond
+`enabled: false` sans rien lire).
+
+---
+
 ## Checklist d'onboarding d'un nouveau client
 
 - [ ] `.env.local` complété (couche 1), `MAILBOX_ENCRYPTION_KEY` générée une fois.
@@ -88,6 +124,6 @@ Champs techniques tenus par le poller (non saisis) : `last_polled_at`, `last_uid
 - [ ] `CAL_COM_EVENT_URL` = lien de réservation du client (repli global).
 - [ ] `CAL_COM_WEBHOOK_SECRET` posé + webhook enregistré sur CHAQUE compte Cal.com recruteur (même URL, même secret — docs/ops/multi-utilisateur.md §4).
 - [ ] `CRON_SECRET` posé côté Vercel ET cron-job.org (fail-closed).
-- [ ] Agenda externe (si activé) : migration appliquée, job cron-job.org **distinct** à la minute sur `GET /api/cron/busy-calendars` (en-tête `Authorization: Bearer <CRON_SECRET>`), vérifié (réponse `calendars.enabled: true`), **puis seulement** `BUSY_CALENDAR_ENABLED=1`.
+- [ ] Agenda externe (si activé) : **§5, dans l'ordre** — migration → job cron-job.org dédié → réponse du job vérifiée → **`BUSY_CALENDAR_ENABLED=1` EN DERNIER** → `enabled: true` constaté à l'exécution suivante.
 - [ ] Compte du client créé dans Supabase Auth (inscription publique désactivée).
 - [ ] Smoke test : login → campagne → upload CV → mail de refus reçu en boîte.
