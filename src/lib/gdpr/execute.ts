@@ -79,6 +79,11 @@ const STEPS: Step[] = [
   { name: 'liens de réservation', run: stepBookingLinks },
   { name: 'briefings d’entretien', run: stepInterviewBriefs },
   { name: 'file de validation', run: stepValidations },
+  // AVANT les analyses : la cascade depuis `candidate_analyses` les emporterait
+  // avec `--purge-analyses`, mais par défaut l'analyse est VIDÉE, pas
+  // supprimée — sans ces étapes, ils lui survivraient.
+  { name: 'comptes rendus d’entretien', run: stepInterviewReports },
+  { name: 'commentaires de décision', run: stepVerdictComments },
   // Profils AVANT approches : la clé étrangère `profile_id` passe à NULL d'elle-même.
   { name: 'profils sourcés', run: stepSourcingProfiles },
   { name: 'approches de sourcing', run: stepSourcingApproaches },
@@ -137,6 +142,33 @@ async function stepInterviewBriefs(ctx: Ctx): Promise<void> {
     'interview_briefs',
     'id',
     ctx.identity.briefIds,
+  );
+}
+
+/**
+ * Comptes rendus d'entretien et commentaires du recruteur : EFFACER, par
+ * RATTACHEMENT à la candidature (`analysis_id`), jamais par recherche du nom.
+ * Un commentaire qui ne cite pas le candidat (« solide sur la recette,
+ * réserves sur la mobilité ») part donc avec son dossier — c'est précisément
+ * le cas qu'une recherche textuelle manquerait. L'inverse (le candidat CITÉ
+ * dans le dossier d'un autre) n'est pas effacé : c'est une ligne de tiers, le
+ * contrôle final la SIGNALE (`probeHomonyms`).
+ */
+async function stepInterviewReports(ctx: Ctx): Promise<void> {
+  ctx.counts.interviewReports = await deleteByIds(
+    ctx,
+    'interview_reports',
+    'analysis_id',
+    ctx.identity.analysisIds,
+  );
+}
+
+async function stepVerdictComments(ctx: Ctx): Promise<void> {
+  ctx.counts.verdictComments = await deleteByIds(
+    ctx,
+    'verdict_comments',
+    'analysis_id',
+    ctx.identity.analysisIds,
   );
 }
 

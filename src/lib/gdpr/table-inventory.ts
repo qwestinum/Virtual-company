@@ -61,6 +61,21 @@ export const TABLE_INVENTORY = {
     treatment: { kind: 'step' },
     holds: 'Trame d’entretien, identité, instantané de candidature.',
   },
+  // Compte rendu d'entretien et commentaire du recruteur (18/09/2026,
+  // docs/specs/compte-rendu-entretien.md). `step` et non `cascade` : leur
+  // parent `candidate_analyses` est PSEUDONYMISÉ (la ligne reste), la cascade
+  // ne jouerait qu'avec `--purge-analyses`. Effacés PAR RATTACHEMENT
+  // (`analysis_id`), jamais par détection du nom.
+  interview_reports: {
+    verdict: 'EFFACER',
+    treatment: { kind: 'step' },
+    holds: 'Compte rendu d’entretien : rubriques, citations courtes, auteur de la vérification. Aucune transcription.',
+  },
+  verdict_comments: {
+    verdict: 'EFFACER',
+    treatment: { kind: 'step' },
+    holds: 'Commentaire du recruteur qui motive un verdict final.',
+  },
   vivier_candidates: {
     verdict: 'EFFACER',
     treatment: { kind: 'step' },

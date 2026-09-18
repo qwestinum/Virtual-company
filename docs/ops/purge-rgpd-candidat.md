@@ -85,6 +85,8 @@ Deux exceptions de forme, toutes deux justifiées au §6.3 :
 | `candidate_analyses` | Nom, adresse électronique, téléphone, nom du fichier de CV, et l'analyse complète : langue détectée, localisation, synthèse rédigée, points forts et points d'attention, **citations littérales du CV** critère par critère. | **PSEUDONYMISER** (§6.1) — `--purge-analyses` pour effacer |
 | `pending_validations` | File d'attente de décision humaine : nom, adresse, téléphone, synthèse. | **EFFACER** |
 | `interview_briefs` | Trame d'entretien générée à partir de son CV, nom, adresse, instantané de candidature. | **EFFACER** |
+| `interview_reports` | Compte rendu d'entretien : rubriques (sujets abordés, réponses aux critères, réserves…), **citations courtes** de l'entretien, auteur et date de la vérification par le recruteur. **Aucune transcription** : ORQA n'en conserve jamais, même en cas d'échec de génération. | **EFFACER** — par rattachement à la candidature, jamais par recherche du nom |
+| `verdict_comments` | Commentaire du recruteur qui motive un verdict final (retenu / non retenu). Peut ne PAS contenir le nom du candidat — c'est pourquoi il est effacé par rattachement. | **EFFACER** — par rattachement à la candidature |
 | `vivier_candidates` | Le dossier de vivier : nom, prénom, téléphone, adresse, **texte intégral du CV**, titre, compétences, intitulés de postes. | **EFFACER** |
 | `vivier_embeddings`, `vivier_entities`, `vivier_skill_embeddings`, `vivier_anchor_embeddings`, `vivier_preselections` | Vecteurs et entités **dérivés du texte du CV**. | **EFFACER** (cascade) — un vecteur dérivé d'un CV se supprime, il ne se « nettoie » pas |
 | `imap_unmatched_cvs` | Expéditeur, objet du message, nom du fichier joint, chemin du CV stocké. | **PSEUDONYMISER**, ligne conservée (§6.3) |
@@ -413,9 +415,11 @@ travaille dans les deux sens :
    résidu — on sait déjà que cette ligne concerne la personne.
 2. **Ré-identification** — l'outil **part des identifiants techniques
    conservés** (`uid`, identifiant d'analyse) et tente de remonter à un nom par
-   chaque chemin interne : file d'attente, entretiens, métadonnées de fichiers,
-   liens de réservation, file de résilience, stockage. **Aucun chemin ne doit
-   aboutir.**
+   chaque chemin interne : file d'attente, entretiens, comptes rendus et
+   commentaires de décision, métadonnées de fichiers, liens de réservation,
+   file de résilience, stockage. **Aucun chemin ne doit aboutir.** Pour un
+   compte rendu ou un commentaire, la simple SURVIE d'une ligne rattachée à la
+   candidature est un échec, qu'elle cite un nom ou non.
 
 Le second contrôle est le vrai. Le premier vérifie qu'on a bien effacé les
 chaînes de caractères ; le second vérifie qu'on ne peut plus reconstituer la
@@ -455,6 +459,16 @@ de son périmètre. Ce sont, très probablement, les dossiers de **tiers**. Ils 
 sont ni effacés, ni audités, et **aucune de leurs valeurs n'est recopiée** :
 seul l'emplacement s'affiche sur la console de l'opérateur, pour qu'un humain
 aille voir. La liste est bornée, et le dit quand elle l'est.
+
+**La personne citée dans le dossier d'un autre candidat.** Un commentaire de
+décision ou un compte rendu d'entretien peut nommer la personne alors qu'il
+appartient à **un autre** candidat (« moins solide que Jean Dupont sur la
+recette »). L'effacement ne l'atteint pas, et c'est voulu : il procède par
+rattachement à la candidature, et cette ligne est celle d'un tiers. Le contrôle
+la **signale** dans la même branche que les homonymes (« cite le nom du sujet
+dans le commentaire de décision d'un autre candidat »), avec l'emplacement
+seul. C'est au responsable de traitement de décider s'il faut reformuler ce
+commentaire — l'outil ne réécrit jamais le texte d'un tiers.
 
 #### Le rapport ne peut pas nommer un tiers
 

@@ -555,6 +555,8 @@ function printCounts(title: string, c: ErasureCounts): void {
     analyses: 'analyses de candidature',
     validations: 'dossiers en attente de décision',
     interviewBriefs: "briefings d'entretien",
+    interviewReports: "comptes rendus d'entretien",
+    verdictComments: 'commentaires de décision',
     vivierDossiers: 'dossiers de vivier',
     bookingLinks: 'liens de réservation',
     bookings: 'rendez-vous',

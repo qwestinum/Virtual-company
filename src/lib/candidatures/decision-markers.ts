@@ -140,6 +140,42 @@ export function foldValidationMark(
   return fold(state, readValidationMark(payload), at, validationMarkEffect);
 }
 
+// ─── Commentaire qui motive le verdict ─────────────────────────────────────
+
+export function readValidationCommentId(
+  payload: Record<string, unknown> | null | undefined,
+): string | null {
+  const raw = payload?.commentId;
+  return typeof raw === 'string' && raw.trim() !== '' ? raw : null;
+}
+
+/**
+ * Verdict courant ET le commentaire qui le motive, pliés ENSEMBLE — même
+ * dernier-gagne que `foldValidationMark`, dont il n'est qu'un enrichissement.
+ * Le commentaire qui compte est celui du marqueur GAGNANT : un verdict corrigé
+ * ensuite (marqueur sans `commentId`) rend `commentId: null`, et c'est vrai —
+ * aucun commentaire n'a été écrit pour ce nouveau verdict. Le lecteur retrouve
+ * alors l'ancien commentaire par la candidature, avec le verdict POUR LEQUEL
+ * il avait été écrit ; il ne le présente jamais comme justifiant le nouveau.
+ */
+export type ValidationDecisionState = MarkerState<ValidationMarkEffect> & {
+  commentId: string | null;
+};
+
+export function emptyValidationDecisionState(): ValidationDecisionState {
+  return { effect: null, at: null, commentId: null };
+}
+
+export function foldValidationDecision(
+  state: ValidationDecisionState,
+  payload: Record<string, unknown> | null | undefined,
+  at: string,
+): ValidationDecisionState {
+  const next = foldValidationMark(state, payload, at);
+  if (next === state) return state; // illisible ou plus ancien : rien ne bouge
+  return { ...next, commentId: readValidationCommentId(payload) };
+}
+
 // ─── Écriture (le MÊME payload pour l'action normale et pour la correction) ─
 
 export type JournalMarkerEntry = {
@@ -174,6 +210,14 @@ export function buildValidationMarkerEntry(args: {
   campaignId: string | null;
   value: ValidationMarkValue;
   corrected?: boolean;
+  /**
+   * Identifiant du commentaire (`verdict_comments.id`) qui motive ce verdict.
+   * L'IDENTIFIANT seulement, JAMAIS le texte : le journal est pseudonymisé à
+   * la purge, pas supprimé, et un commentaire qui ne nomme pas le candidat y
+   * survivrait. Absent des verdicts antérieurs au commentaire obligatoire, des
+   * corrections et de la gomme.
+   */
+  commentId?: string;
 }): JournalMarkerEntry {
   return {
     action: VALIDATION_MARKER_ACTION,
@@ -183,6 +227,7 @@ export function buildValidationMarkerEntry(args: {
       candidate: args.candidateName,
       status: args.value,
       ...(args.corrected ? { corrected: true } : {}),
+      ...(args.commentId ? { commentId: args.commentId } : {}),
     },
   };
 }

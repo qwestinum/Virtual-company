@@ -324,6 +324,8 @@ function erasedLines(
   add('Références de documents', c.artifactRows);
   add('Dossiers en attente de décision', c.validations);
   add('Briefings d’entretien', c.interviewBriefs);
+  add('Comptes rendus d’entretien', c.interviewReports);
+  add('Commentaires de décision du recruteur', c.verdictComments);
   add('Dossiers de vivier (CV, index de recherche, propositions)', c.vivierDossiers);
   add('Liens de réservation', c.bookingLinks);
   add('Rendez-vous et leurs événements', c.bookings);

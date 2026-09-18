@@ -19,6 +19,10 @@
  *   8. le journal a GARDÉ ses évènements, pseudonymisés ;
  *   9. REJEU SUR PÉRIMÈTRE VIDE : aucune recherche, aucun résidu, et surtout
  *      aucune ligne d'un autre candidat (incident de production du 02/09).
+ *  10. COMPTE RENDU ET COMMENTAIRE DE DÉCISION (18/09) : effacés PAR
+ *      RATTACHEMENT — y compris un commentaire qui ne nomme pas le sujet —
+ *      tandis que le sujet CITÉ dans le dossier d'un tiers est signalé, jamais
+ *      touché.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -74,6 +78,14 @@ const UNMATCHED_UID = '918273';
 const subjectTaskId = `treg_s18_sujet_${Math.random().toString(36).slice(2, 8)}`;
 const neighbourTaskId = `treg_s18_voisin_${Math.random().toString(36).slice(2, 8)}`;
 let homonymAnalysisId = '';
+/** Commentaire du SUJET qui ne le nomme pas : seul le rattachement l'atteint. */
+const SUBJECT_COMMENT =
+  'Solide sur la recette et le pilotage du lot, réserves sur la mobilité géographique à confirmer avec le client.';
+/** Commentaire d'un TIERS (le voisin) qui cite le sujet. */
+const NEIGHBOUR_COMMENT =
+  'Moins solide que Victor Fort sur la recette, mais une bonne posture et une disponibilité immédiate pour démarrer.';
+let neighbourCommentId = '';
+let neighbourReportId = '';
 let groupedReportContent = '';
 let identity: ErasureIdentity;
 
@@ -208,6 +220,50 @@ beforeAll(async () => {
       application: homonymApplication,
       decision_zone: 'gray',
     });
+
+  // 3 bis. Compte rendu d'entretien et commentaire de décision — écrits en
+  //    direct (les routes arrivent au lot 2) : ce qu'on teste ici, c'est la
+  //    purge, pas l'écriture.
+  const recruiter = '00000000-0000-4000-8000-000000000018';
+  const seeded = await db()
+    .from('interview_reports')
+    .insert([
+      {
+        analysis_id: subjectTaskId,
+        uid: subjectTaskId,
+        campaign_id: camp,
+        source: 'manual',
+        status: 'verified',
+        sections: { topics: `Entretien avec ${SUBJECT_NAME} : parcours et motivations.` },
+        verified_by_user_id: recruiter,
+        verified_at: new Date().toISOString(),
+      },
+      {
+        analysis_id: neighbourTaskId,
+        uid: neighbourTaskId,
+        campaign_id: camp,
+        source: 'manual',
+        status: 'draft',
+        sections: { topics: `Comparé à ${SUBJECT_NAME}, parcours plus court.` },
+      },
+    ])
+    .select('id, analysis_id');
+  expect(seeded.error).toBeNull();
+  neighbourReportId = String(
+    (seeded.data ?? []).find((r) => r.analysis_id === neighbourTaskId)?.id ?? '',
+  );
+  const comments = await db()
+    .from('verdict_comments')
+    .insert([
+      { analysis_id: subjectTaskId, uid: subjectTaskId, campaign_id: camp, verdict: 'validated', body: SUBJECT_COMMENT },
+      { analysis_id: neighbourTaskId, uid: neighbourTaskId, campaign_id: camp, verdict: 'rejected', body: NEIGHBOUR_COMMENT },
+    ])
+    .select('id, analysis_id');
+  expect(comments.error).toBeNull();
+  neighbourCommentId = String(
+    (comments.data ?? []).find((r) => r.analysis_id === neighbourTaskId)?.id ?? '',
+  );
+  expect(SUBJECT_COMMENT).not.toContain('Fort');
 
   // 4. File de validation humaine (route réelle).
   const validation = await call(postValidation, {
@@ -439,6 +495,8 @@ describe('S18.3 — le constat n’écrit RIEN', () => {
     expect(result.stoppedAt).toBeNull();
     expect(result.counts.analyses).toBeGreaterThan(0);
     expect(result.counts.journalEntries).toBeGreaterThan(0);
+    expect(result.counts.interviewReports).toBe(1);
+    expect(result.counts.verdictComments).toBe(1);
     expect(plan.targets.some((t) => t.action === 'rewrite')).toBe(true);
 
     expect(await snapshot()).toEqual(before);
@@ -552,6 +610,22 @@ describe('S18.4 — l’exécution efface et pseudonymise', () => {
     expect(data ?? []).toHaveLength(0);
   });
 
+  it('efface compte rendu et commentaire du sujet PAR RATTACHEMENT — même sans son nom', async () => {
+    expect(await readRows('interview_reports', { analysis_id: subjectTaskId })).toHaveLength(0);
+    // Le commentaire ne nommait pas le sujet : une recherche textuelle l'aurait
+    // manqué. Il est parti avec la candidature.
+    expect(await readRows('verdict_comments', { analysis_id: subjectTaskId })).toHaveLength(0);
+  });
+
+  it('ne touche PAS au dossier du tiers qui cite le sujet', async () => {
+    const [comment] = await readRows<{ body: string }>('verdict_comments', { id: neighbourCommentId });
+    expect(comment?.body).toBe(NEIGHBOUR_COMMENT); // INTACT, nom compris
+    const [report] = await readRows<{ sections: { topics: string } }>('interview_reports', {
+      id: neighbourReportId,
+    });
+    expect(report?.sections.topics).toContain(SUBJECT_NAME);
+  });
+
   it('vide les satellites', async () => {
     expect(await readRows('pending_validations', { campaign_id: camp })).toHaveLength(0);
     expect(
@@ -606,6 +680,16 @@ describe('S18.5 — le contrôle rend zéro', () => {
     for (const w of outcome.homonymWarnings) {
       expect(Object.keys(w).sort()).toEqual(['field', 'location', 'trigger']);
     }
+
+    // Le sujet CITÉ dans le commentaire et le compte rendu du voisin : signalé,
+    // à l'emplacement, sans une ligne du texte.
+    const mention = outcome.homonymWarnings.find(
+      (w) => w.location === `verdict_comments#${neighbourCommentId}`,
+    );
+    expect(mention?.field).toBe('body');
+    expect(mention?.trigger).toContain('commentaire de décision d’un autre candidat');
+    expect(locations).toContain(`interview_reports#${neighbourReportId}`);
+    expect(JSON.stringify(outcome.homonymWarnings)).not.toContain('Moins solide');
 
     const [homonym] = await readRows<{ candidate_name: string; candidate_email: string }>(
       'candidate_analyses',

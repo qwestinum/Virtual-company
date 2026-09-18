@@ -101,6 +101,11 @@ const byId =
   (row: Record<string, unknown>, id: ErasureIdentity): boolean =>
     pick(id).includes(String(row[col] ?? ''));
 
+/** Lignes rattachées à une analyse du périmètre. Aucune analyse ⇒ aucun filtre
+ *  (et donc aucune requête) : jamais un `in ()` vide qui rendrait la table. */
+const byAnalysis = (i: ErasureIdentity): Filter[][] =>
+  i.analysisIds.length > 0 ? [[{ op: 'in', col: 'analysis_id', values: i.analysisIds }]] : [];
+
 const SWEEP: SweepTarget[] = [
   {
     table: 'candidate_analyses',
@@ -125,6 +130,26 @@ const SWEEP: SweepTarget[] = [
     searchable: ['candidate_email'],
     ids: (i) => i.briefIds,
     matches: byId('id', (i) => i.briefIds),
+  },
+  {
+    // Compte rendu et commentaire : rattachés à la CANDIDATURE. Le texte libre
+    // n'est pas une porte d'entrée (il peut citer un tiers) — seule l'est
+    // l'appartenance par `analysis_id`, ou l'adresse du sujet (`search_text`
+    // et `body` sont des colonnes texte, interrogeables en `ilike`).
+    table: 'interview_reports',
+    cursor: 'id',
+    columns: 'id, analysis_id, search_text',
+    searchable: ['search_text'],
+    pairs: byAnalysis,
+    matches: byId('analysis_id', (i) => i.analysisIds),
+  },
+  {
+    table: 'verdict_comments',
+    cursor: 'id',
+    columns: 'id, analysis_id, body',
+    searchable: ['body'],
+    pairs: byAnalysis,
+    matches: byId('analysis_id', (i) => i.analysisIds),
   },
   {
     table: 'vivier_candidates',
@@ -373,11 +398,38 @@ export async function probeHomonyms(
   const patterns = weakSearchPatterns(fp, escapeLike);
   if (patterns.length === 0) return { warnings: [], truncated: false };
 
-  const targets: { table: string; cursor: string; cols: string[] }[] = [
-    { table: 'candidate_analyses', cursor: 'id', cols: ['candidate_name'] },
-    { table: 'pending_validations', cursor: 'id', cols: ['candidate_name'] },
-    { table: 'interview_briefs', cursor: 'id', cols: ['candidate_name'] },
-    { table: 'vivier_candidates', cursor: 'id', cols: ['nom', 'prenom'] },
+  const targets: {
+    table: string;
+    cursor: string;
+    cols: string[];
+    /**
+     * Colonne de RATTACHEMENT quand elle n'est pas le curseur : une ligne qui
+     * appartient au sujet par elle n'est pas un tiers.
+     */
+    owner?: { col: string; ids: (i: ErasureIdentity) => string[] };
+    trigger: string;
+  }[] = [
+    { table: 'candidate_analyses', cursor: 'id', cols: ['candidate_name'], trigger: 'porte le nom du sujet' },
+    { table: 'pending_validations', cursor: 'id', cols: ['candidate_name'], trigger: 'porte le nom du sujet' },
+    { table: 'interview_briefs', cursor: 'id', cols: ['candidate_name'], trigger: 'porte le nom du sujet' },
+    { table: 'vivier_candidates', cursor: 'id', cols: ['nom', 'prenom'], trigger: 'porte le nom du sujet' },
+    // Le sujet CITÉ dans le dossier d'un autre candidat (« moins solide que
+    // Dupont »). Le rattachement ne l'atteint pas et ne doit pas l'atteindre :
+    // la ligne appartient à un tiers. Un humain tranche, sur l'emplacement seul.
+    {
+      table: 'interview_reports',
+      cursor: 'id',
+      cols: ['search_text'],
+      owner: { col: 'analysis_id', ids: (i) => i.analysisIds },
+      trigger: 'cite le nom du sujet dans le compte rendu d’un autre candidat',
+    },
+    {
+      table: 'verdict_comments',
+      cursor: 'id',
+      cols: ['body'],
+      owner: { col: 'analysis_id', ids: (i) => i.analysisIds },
+      trigger: 'cite le nom du sujet dans le commentaire de décision d’un autre candidat',
+    },
   ];
 
   const warnings: HomonymWarning[] = [];
@@ -390,7 +442,7 @@ export async function probeHomonyms(
         const rows = await pageAllByText<Record<string, unknown>>(
           db,
           t.table,
-          `${t.cursor}, ${col}`,
+          t.owner ? `${t.cursor}, ${t.owner.col}, ${col}` : `${t.cursor}, ${col}`,
           t.cursor,
           [{ op: 'ilike', col, value: pattern }],
           HOMONYM_CAP + 1,
@@ -401,6 +453,7 @@ export async function probeHomonyms(
           // Une ligne DU périmètre n'est pas un homonyme : c'est le sujet,
           // et ses résidus éventuels sont déjà remontés comme tels.
           if (idsOf(identity, t.table).includes(String(row[t.cursor] ?? ''))) continue;
+          if (t.owner?.ids(identity).includes(String(row[t.owner.col] ?? ''))) continue;
           if (carriesStrongIdentifier(row, strong)) continue;
           // Une valeur déjà caviardée n'apprend rien à personne.
           if (containsErasureMarker(String(row[col] ?? ''))) continue;
@@ -409,7 +462,7 @@ export async function probeHomonyms(
           warnings.push({
             location: key,
             field: col,
-            trigger: `porte le nom du sujet (${pattern.replace(/%/gu, '')})`,
+            trigger: `${t.trigger} (${pattern.replace(/%/gu, '')})`,
           });
         }
       }
@@ -468,6 +521,19 @@ export async function probeReidentification(
   // uid → briefing d'entretien
   for (const row of await byIn(db, 'interview_briefs', 'id, candidate_name', 'id', identity.briefIds)) {
     note('uid → briefing d’entretien', `interview_briefs#${str(row.id)}`, str(row.candidate_name));
+  }
+
+  // identifiant d'analyse → compte rendu / commentaire. Verdict EFFACER : une
+  // ligne qui SURVIT est un échec en soi, qu'elle cite ou non un nom — c'est
+  // tout l'intérêt du rattachement. La preuve ne porte que l'identifiant de
+  // ligne, jamais le texte (qui est une donnée du sujet).
+  for (const [table, path] of [
+    ['interview_reports', 'identifiant d’analyse → compte rendu d’entretien'],
+    ['verdict_comments', 'identifiant d’analyse → commentaire de décision'],
+  ] as const) {
+    for (const row of await byAnalysisIds(db, table, identity.analysisIds)) {
+      note(path, `${table}#${str(row.id)}`, `${table}#${str(row.id)} toujours présent`);
+    }
   }
 
   // uid → métadonnées d'artefact
@@ -597,6 +663,17 @@ async function byIn(
   if (ids.length === 0) return [];
   return pageAllByText<Record<string, unknown>>(db, table, columns, cursor, [
     { op: 'in', col: cursor, values: ids },
+  ]);
+}
+
+async function byAnalysisIds(
+  db: SupabaseClient,
+  table: string,
+  analysisIds: string[],
+): Promise<Record<string, unknown>[]> {
+  if (analysisIds.length === 0) return [];
+  return pageAllByText<Record<string, unknown>>(db, table, 'id, analysis_id', 'id', [
+    { op: 'in', col: 'analysis_id', values: analysisIds },
   ]);
 }
 

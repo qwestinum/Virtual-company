@@ -51,6 +51,10 @@ export type ErasureCounts = {
   analyses: number;
   validations: number;
   interviewBriefs: number;
+  /** Comptes rendus d'entretien — supprimés par rattachement à l'analyse. */
+  interviewReports: number;
+  /** Commentaires de décision du recruteur — supprimés par rattachement. */
+  verdictComments: number;
   vivierDossiers: number;
   bookingLinks: number;
   bookings: number;
@@ -72,6 +76,8 @@ export const EMPTY_ERASURE_COUNTS: ErasureCounts = {
   analyses: 0,
   validations: 0,
   interviewBriefs: 0,
+  interviewReports: 0,
+  verdictComments: 0,
   vivierDossiers: 0,
   bookingLinks: 0,
   bookings: 0,

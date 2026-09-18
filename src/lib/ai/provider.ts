@@ -106,7 +106,46 @@ export type ChatCompleteParams = {
    * Les appels déterministes (extraction/scoring — C4) passent `seed` explicite.
    */
   seed?: number;
+} & TransportOptions;
+
+/**
+ * Budget de transport PAR APPEL. Les clients restent partagés (délai 30 s,
+ * 4 réessais) ; un appel qui a d'autres contraintes les passe ici, et le SDK
+ * les applique à cette requête seulement.
+ *
+ * Pourquoi : un appel long (structuration d'une transcription d'entretien,
+ * 20 à 40 s) sous une route bornée à 60 s par Vercel ne tient PAS dans le
+ * défaut — 30 s × (1 + 4 réessais) dépasse l'enveloppe, et l'invocation est
+ * tuée sans réponse lisible. L'appelant fixe donc son propre budget.
+ *
+ * Omis ⇒ comportement inchangé : aucun second argument n'est passé au SDK.
+ */
+export type TransportOptions = {
+  /** Délai d'une tentative, en millisecondes. */
+  timeoutMs?: number;
+  /** Réessais de TRANSPORT du SDK (429, 5xx, coupure) — pas la validation JSON. */
+  maxTransportRetries?: number;
 };
+
+type SdkRequestOptions = { timeout?: number; maxRetries?: number };
+
+/** Options de requête du SDK, ou `undefined` si l'appelant n'a rien fixé. */
+export function sdkRequestOptions(t: TransportOptions): SdkRequestOptions | undefined {
+  const out: SdkRequestOptions = {};
+  if (t.timeoutMs !== undefined) {
+    if (!Number.isFinite(t.timeoutMs) || t.timeoutMs <= 0) {
+      throw new RangeError(`timeoutMs invalide : ${t.timeoutMs}`);
+    }
+    out.timeout = t.timeoutMs;
+  }
+  if (t.maxTransportRetries !== undefined) {
+    if (!Number.isInteger(t.maxTransportRetries) || t.maxTransportRetries < 0) {
+      throw new RangeError(`maxTransportRetries invalide : ${t.maxTransportRetries}`);
+    }
+    out.maxRetries = t.maxTransportRetries;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 export type ChatCompleteResult = {
   content: string;
@@ -136,9 +175,12 @@ export async function chatComplete(
     response_format: params.jsonMode ? { type: 'json_object' } : undefined,
   };
 
+  const requestOptions = sdkRequestOptions(params);
   let response;
   try {
-    response = await client.chat.completions.create(body);
+    response = requestOptions
+      ? await client.chat.completions.create(body, requestOptions)
+      : await client.chat.completions.create(body);
   } catch (err) {
     throw mapOpenAIError(err);
   }
@@ -181,7 +223,7 @@ export type ChatCompleteJsonOptions = {
   seed?: number;
   /** Nombre maximal de tentatives (1 initiale + reprises). Défaut 3. */
   maxAttempts?: number;
-};
+} & TransportOptions;
 
 export type ChatCompleteJsonResult<T> = {
   data: T;
@@ -243,6 +285,8 @@ export async function chatCompleteJson<T>(
       temperature,
       seed,
       jsonMode: true,
+      timeoutMs: options.timeoutMs,
+      maxTransportRetries: options.maxTransportRetries,
     });
 
     let parsed: unknown;
@@ -335,6 +379,7 @@ async function anthropicCompleteJson<T>(
   const inputSchema = zodToAnthropicToolSchema(schema);
   const { system, messages: baseMessages } = splitMessagesForAnthropic(messages);
   const client = getAnthropicClient();
+  const requestOptions = sdkRequestOptions(options);
 
   const convo: AnthropicMessage[] = [...baseMessages];
   let lastError: unknown;
@@ -343,7 +388,7 @@ async function anthropicCompleteJson<T>(
     const startedAt = Date.now();
     let response: Anthropic.Message;
     try {
-      response = await client.messages.create({
+      const body: Anthropic.MessageCreateParamsNonStreaming = {
         model,
         max_tokens: maxTokens,
         temperature,
@@ -358,7 +403,10 @@ async function anthropicCompleteJson<T>(
           },
         ],
         tool_choice: { type: 'tool', name: ANTHROPIC_JSON_TOOL_NAME },
-      });
+      };
+      response = requestOptions
+        ? await client.messages.create(body, requestOptions)
+        : await client.messages.create(body);
     } catch (err) {
       throw mapAnthropicError(err);
     }

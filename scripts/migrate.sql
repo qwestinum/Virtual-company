@@ -2387,3 +2387,168 @@ alter table public.app_settings
 alter table public.app_settings drop constraint if exists app_settings_sourcing_config_chk;
 alter table public.app_settings add constraint app_settings_sourcing_config_chk
   check (sourcing_config is null or jsonb_typeof(sourcing_config) = 'object');
+
+-- ══════════════════════════════════════════════════════════════════════
+-- COMPTE RENDU D'ENTRETIEN + COMMENTAIRE DU RECRUTEUR — lot 1 (18/09/2026)
+-- Spec : docs/specs/compte-rendu-entretien.md (§2.3, arbitrages §14)
+-- Contrôle : scripts/checks/interview-report-schema.sql
+-- ══════════════════════════════════════════════════════════════════════
+-- Deux objets distincts, deux cycles de vie, deux tables :
+--   - `interview_reports`  ce qui s'est passé pendant l'entretien. Facultatif.
+--                          Rédigé par le recruteur, ou proposé à partir d'une
+--                          transcription puis VÉRIFIÉ par lui. Brouillon →
+--                          vérifié ; modifiable ensuite.
+--   - `verdict_comments`   pourquoi le recruteur décide. Obligatoire pour tout
+--                          NOUVEAU verdict. 100 % humain. AJOUT SEUL : une
+--                          correction pose un nouveau commentaire, elle ne
+--                          réécrit jamais l'ancien (déclencheur ci-dessous).
+--
+-- Rattachement à la CANDIDATURE (`analysis_id`), jamais au briefing : un
+-- entretien peut avoir lieu sans ligne `interview_briefs`, et le verdict est
+-- indexé par l'analyse. C'est aussi ce qui fait que la purge RGPD les efface
+-- PAR RATTACHEMENT, sans avoir à y reconnaître un nom (§14.5).
+--
+-- ⚠️ AUCUNE TRANSCRIPTION n'est stockée ici ni ailleurs : aucune colonne ne
+-- peut la recevoir. Le compte rendu n'en garde que des citations courtes,
+-- vérifiées mot pour mot au moment de la génération.
+--
+-- ⚠️ Le TEXTE du commentaire n'entre jamais dans le journal (seul son `id`,
+-- dans le marqueur de verdict) : le journal est pseudonymisé à la purge, pas
+-- supprimé, et un commentaire qui ne nomme pas le candidat y survivrait.
+--
+-- Après application : recharger le cache PostgREST (Dashboard → Settings →
+-- API → Reload schema cache).
+
+create table if not exists public.interview_reports (
+  id                   uuid        primary key default gen_random_uuid(),
+  analysis_id          text        not null references public.candidate_analyses(id) on delete cascade,
+  -- Clé des marqueurs de journal (candidate_*_marked, payload.uid).
+  uid                  text        not null,
+  campaign_id          text,
+  -- L'entretien concerné quand il a une ligne de briefing. SET NULL : la
+  -- purge et le classement sans suite vivent leur vie sur le briefing, le
+  -- compte rendu ne la suit pas.
+  brief_id             uuid        references public.interview_briefs(id) on delete set null,
+  -- Numéro de tour. Un seul tour existe aujourd'hui ; la clé est prête.
+  round                smallint    not null default 1,
+  source               text        not null,  -- 'manual' | 'transcript'
+  status               text        not null default 'draft',  -- 'draft' | 'verified'
+  -- Même forme qu'il soit rédigé ou proposé : rubriques, citations attribuées.
+  sections             jsonb       not null default '{}'::jsonb,
+  -- Traçabilité d'une proposition à partir d'une transcription. JAMAIS le
+  -- texte source : le modèle employé et le NOMBRE de passages hors cadre
+  -- professionnel écartés, rien de leur contenu.
+  generated_model      text,
+  omitted_count        smallint,
+  created_by_user_id   uuid,
+  created_by_email     text,
+  verified_by_user_id  uuid,
+  verified_by_email    text,
+  verified_at          timestamptz,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+alter table public.interview_reports enable row level security;
+
+-- Texte interrogeable des rubriques. Sert UNIQUEMENT au contrôle de purge :
+-- signaler qu'un candidat effacé est CITÉ dans le compte rendu d'un tiers
+-- (emplacement seulement). PostgREST ne cherche pas une sous-chaîne dans un
+-- `jsonb` ; une recherche qui échouerait en silence rendrait un contrôle vert
+-- sans avoir rien lu.
+alter table public.interview_reports
+  add column if not exists search_text text generated always as (sections::text) stored;
+
+alter table public.interview_reports drop constraint if exists interview_reports_source_chk;
+alter table public.interview_reports add constraint interview_reports_source_chk
+  check (source in ('manual', 'transcript'));
+
+alter table public.interview_reports drop constraint if exists interview_reports_status_chk;
+alter table public.interview_reports add constraint interview_reports_status_chk
+  check (status in ('draft', 'verified'));
+
+-- « Vérifié » porte son auteur et sa date, et seulement lui : la mention
+-- « vérifié par X le JJ/MM » se RENDRA de ces colonnes, jamais d'un texte.
+alter table public.interview_reports drop constraint if exists interview_reports_verified_chk;
+alter table public.interview_reports add constraint interview_reports_verified_chk
+  check (
+    (status = 'verified') = (verified_at is not null)
+    and (verified_at is null or verified_by_user_id is not null)
+  );
+
+alter table public.interview_reports drop constraint if exists interview_reports_round_chk;
+alter table public.interview_reports add constraint interview_reports_round_chk
+  check (round >= 1);
+
+alter table public.interview_reports drop constraint if exists interview_reports_sections_chk;
+alter table public.interview_reports add constraint interview_reports_sections_chk
+  check (jsonb_typeof(sections) = 'object');
+
+-- Les traces de génération n'existent que pour une proposition issue d'une
+-- transcription : un compte rendu rédigé à la main n'a ni modèle ni omission.
+alter table public.interview_reports drop constraint if exists interview_reports_generation_chk;
+alter table public.interview_reports add constraint interview_reports_generation_chk
+  check (
+    (source = 'transcript' or (generated_model is null and omitted_count is null))
+    and (omitted_count is null or omitted_count >= 0)
+  );
+
+create unique index if not exists interview_reports_analysis_round_idx
+  on public.interview_reports (analysis_id, round);
+
+create index if not exists interview_reports_campaign_idx
+  on public.interview_reports (campaign_id);
+
+drop trigger if exists interview_reports_touch_updated_at on public.interview_reports;
+create trigger interview_reports_touch_updated_at
+  before update on public.interview_reports
+  for each row execute function public.touch_updated_at();
+
+create table if not exists public.verdict_comments (
+  id              uuid        primary key default gen_random_uuid(),
+  analysis_id     text        not null references public.candidate_analyses(id) on delete cascade,
+  uid             text        not null,
+  campaign_id     text,
+  -- Le verdict POUR LEQUEL le commentaire a été écrit. Un verdict corrigé
+  -- ensuite laisse ce commentaire tel quel : les lecteurs l'affichent avec son
+  -- verdict d'origine, jamais comme s'il justifiait le nouveau.
+  verdict         text        not null,
+  body            text        not null,
+  -- Identité de SESSION serveur (le recruteur), jamais un champ du client.
+  author_user_id  uuid,
+  author_email    text,
+  created_at      timestamptz not null default now()
+);
+alter table public.verdict_comments enable row level security;
+
+alter table public.verdict_comments drop constraint if exists verdict_comments_verdict_chk;
+alter table public.verdict_comments add constraint verdict_comments_verdict_chk
+  check (verdict in ('validated', 'rejected'));
+
+-- PLANCHER en base, pas la règle. La règle (15 mots dont 10 distincts) vit
+-- dans `assessCommentSubstance`, appliquée par la route. Ce plancher DOIT
+-- rester sous le minimum que la règle peut produire (15 mots de 2 lettres +
+-- 14 espaces = 44 caractères) : plus haut, la base refuserait un commentaire
+-- que la route a accepté — un 500 à la place d'un 400 lisible. Un test tient
+-- cette inégalité (`comment-substance.test.ts`).
+alter table public.verdict_comments drop constraint if exists verdict_comments_body_chk;
+alter table public.verdict_comments add constraint verdict_comments_body_chk
+  check (char_length(btrim(body)) >= 40);
+
+create index if not exists verdict_comments_analysis_idx
+  on public.verdict_comments (analysis_id, created_at desc);
+
+-- AJOUT SEUL, tenu par la base : aucune route ne réécrit un commentaire, et
+-- aucune ne le pourra. Seule la suppression reste possible — c'est le geste
+-- de la purge (et de la cascade depuis l'analyse).
+create or replace function public.verdict_comments_append_only() returns trigger
+  language plpgsql as $$
+begin
+  raise exception 'verdict_comments est en ajout seul : un commentaire ne se modifie pas'
+    using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists verdict_comments_no_update on public.verdict_comments;
+create trigger verdict_comments_no_update
+  before update on public.verdict_comments
+  for each row execute function public.verdict_comments_append_only();
