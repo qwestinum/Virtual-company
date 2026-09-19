@@ -109,7 +109,8 @@ Onglet « Bureau ».
 Bandeau → « Paramètres ». Les sections sont REPLIÉES : on clique sur le titre
 pour ouvrir celle qu'on veut, et la ligne sous le titre résume l'état courant.
 Sections, dans l'ordre : « Validation humaine (Human in the loop) », « Vivier de
-candidats », « Entretiens — messages candidat », « Identité du cabinet »,
+candidats », « Entretiens — messages candidat », « Comptes rendus d'entretien »
+(administrateurs seulement), « Identité du cabinet »,
 « Agendas & disponibilités », « Recruteurs » (administrateurs seulement),
 « Donneurs d'ordre », « Sites », « Boîtes de réception des CV », « Adresses de
 synthèse », « Adresses expéditeur », « Service email (Resend) », « Intégrations
@@ -140,5 +141,8 @@ Même endroit que le verdict (onglet « Entretiens » → « En attente de verdi
 « Rédiger ». Cinq rubriques, toutes facultatives (sujets abordés, réponses aux
 critères de la campagne, points forts, réserves, à vérifier). « Enregistrer le
 brouillon » le garde hors du dossier ; « Valider le compte rendu » le verse au
-dossier, avec le nom de celui qui l'a validé. Après le verdict, il reste
+dossier, avec le nom de celui qui l'a validé. Si l'installation l'autorise
+(Paramètres → « Comptes rendus d'entretien »), « Importer une transcription »
+(.vtt, .srt, .txt, .docx, .pdf) propose un compte rendu à vérifier ; la
+transcription n'est pas conservée. Après le verdict, il reste
 consultable et modifiable sur la fiche candidature.`;

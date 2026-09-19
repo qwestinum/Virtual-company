@@ -21,6 +21,8 @@ import {
   LETTER_MARKER,
   NARRATION_FIXTURE,
   TITLE_VARIANTS_FIXTURE,
+  TRANSCRIPT_FAILURE_MARKER,
+  TRANSCRIPT_STRUCTURING_FIXTURE,
   candidateExtractionFixture,
   profileFromText,
   verdictsFixture,
@@ -153,6 +155,14 @@ function routeChatCompleteJson(messages: ChatMessage[]): unknown {
   }
   if (system.includes('INTITULÉS DE POSTE équivalents')) {
     return TITLE_VARIANTS_FIXTURE;
+  }
+  if (system.includes("Tu structures le compte rendu d'un entretien de recrutement")) {
+    // Panne SIMULÉE au pire : un message d'erreur qui CITE le texte en cours de
+    // traitement (ce que font `JSON.parse` et Zod). Il ne doit sortir nulle part.
+    if (user.includes(TRANSCRIPT_FAILURE_MARKER)) {
+      throw new SyntaxError(`Unexpected token in JSON near: ${user.slice(-400)}`);
+    }
+    return TRANSCRIPT_STRUCTURING_FIXTURE;
   }
   throw new Error(
     `LLM mock (régression) : appel chatCompleteJson NON ROUTÉ — système: « ${system.slice(0, 120)}… »`,

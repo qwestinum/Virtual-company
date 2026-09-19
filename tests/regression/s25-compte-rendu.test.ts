@@ -26,6 +26,18 @@
  *      mention ; le journal ne porte aucune rubrique ;
  *  11. un compte rendu validé ne redevient pas brouillon (409), il se modifie
  *      en étant validé de nouveau.
+ *
+ * LOT 4 — l'import de transcription (modèle simulé) :
+ *  12. plusieurs locuteurs : le serveur demande qui est le candidat (422) SANS
+ *      rien envoyer au modèle ni écrire ;
+ *  13. proposition : brouillon « établi à partir d'une transcription »,
+ *      citation inventée RETIRÉE, passages hors cadre comptés ;
+ *  14. LA PREUVE : après la génération, le témoin de la transcription n'est
+ *      NULLE PART — aucune table du schéma, journal compris, ni console, ni
+ *      réponse ;
+ *  15. échec de génération (le modèle lève en CITANT le texte) : rien écrit,
+ *      message générique, et toujours aucun témoin nulle part ;
+ *  16. réglage éteint : 403, le bouton disparaît de la vue.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -49,7 +61,17 @@ import {
   GET as getInterviewReport,
   PUT as putInterviewReport,
 } from '@/app/api/candidatures/[id]/interview-report/route';
+import { POST as importTranscriptRoute } from '@/app/api/candidatures/[id]/interview-report/transcript/route';
 import { GET as getAudit } from '@/app/api/reporting/audit/candidates/[id]/route';
+import { getAppSettings, patchAppSettings } from '@/lib/db/repos/app-settings';
+import { DEFAULT_INTERVIEW_CONFIG } from '@/types/interview-settings';
+
+import {
+  TRANSCRIPT_CANARY,
+  TRANSCRIPT_FAILURE_MARKER,
+  TRANSCRIPT_FIXTURE_VTT,
+} from './fixtures/llm-fixtures';
+import { scanDatabaseFor } from './helpers/trace-scan';
 import type { DecisionCorrectionContext } from '@/types/decision-correction';
 
 import {
@@ -68,6 +90,31 @@ const motivatedUid = `treg_s25_motive_${Date.now().toString(36)}`;
 const legacyUid = `treg_s25_legacy_${Date.now().toString(36)}`;
 const bareUid = `treg_s25_sans_${Date.now().toString(36)}`;
 const reportUid = `treg_s25_cr_${Date.now().toString(36)}`;
+const importUid = `treg_s25_import_${Date.now().toString(36)}`;
+const failUid = `treg_s25_echec_${Date.now().toString(36)}`;
+
+function transcriptForm(content: string, candidateSpeaker?: string): FormData {
+  const form = new FormData();
+  form.append('file', new File([content], 'entretien.vtt', { type: 'text/vtt' }));
+  if (candidateSpeaker) form.append('candidateSpeaker', candidateSpeaker);
+  return form;
+}
+
+/** Appelle la route en capturant TOUT ce qui part en console. */
+async function importWithConsole(uid: string, form: FormData) {
+  const lines: string[] = [];
+  const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
+    vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+      lines.push(args.map((a) => (a instanceof Error ? `${a.name} ${a.message}` : String(a))).join(' '));
+    }),
+  );
+  try {
+    const res = await callWithId(importTranscriptRoute, await analysisIdOf(uid), { method: 'POST', form });
+    return { res, console: lines.join('\n') };
+  } finally {
+    for (const spy of spies) spy.mockRestore();
+  }
+}
 
 const REPORT_TOPICS = 'Parcours en recette bancaire, souhait de rejoindre une équipe produit.';
 
@@ -142,6 +189,8 @@ beforeAll(async () => {
   await analyze(legacyUid);
   await analyze(bareUid);
   await analyze(reportUid);
+  await analyze(importUid);
+  await analyze(failUid);
 });
 
 afterAll(async () => {
@@ -369,5 +418,100 @@ describe('S25.11 — un compte rendu validé se modifie en étant RE-validé', (
       analysis_id: await analysisIdOf(reportUid),
     });
     expect(row!.sections.topics).toBe(`${REPORT_TOPICS} Ajout.`);
+  });
+});
+
+describe('S25.12 — plusieurs locuteurs : l’humain désigne le candidat', () => {
+  beforeAll(async () => {
+    await markInterview(importUid);
+    await markInterview(failUid);
+  });
+
+  it('422 avec les locuteurs, rien écrit', async () => {
+    const { res } = await importWithConsole(importUid, transcriptForm(TRANSCRIPT_FIXTURE_VTT));
+    expect(res.status).toBe(422);
+    expect(res.json.speakers).toEqual(['Sami Recruteur', 'Victor Candidat']);
+    expect(await readRows('interview_reports', { analysis_id: await analysisIdOf(importUid) })).toHaveLength(0);
+  });
+});
+
+describe('S25.13–14 — proposition, et AUCUNE trace de la transcription', () => {
+  const since = new Date(Date.now() - 60_000).toISOString();
+  let consoleOut = '';
+  let responseBody = '';
+
+  it('brouillon proposé : source transcription, citation inventée retirée, hors cadre compté', async () => {
+    const { res, console: out } = await importWithConsole(
+      importUid,
+      transcriptForm(TRANSCRIPT_FIXTURE_VTT, 'Victor Candidat'),
+    );
+    consoleOut = out;
+    responseBody = JSON.stringify(res.json);
+    expect(res.status).toBe(200);
+    expect(res.json.stats).toEqual({ kept: 3, removedUnproven: 1, flagged: 0, omittedCount: 1 });
+    const report = res.json.report as { status: string; source: string; sections: { highlights: string } };
+    expect(report).toMatchObject({ status: 'draft', source: 'transcript' });
+    expect(report.sections.highlights).toContain('« J’ai piloté la recette de bout en bout »');
+    expect(report.sections.highlights).not.toContain('SQL');
+  });
+
+  it('le témoin n’est dans AUCUNE table du schéma — journal compris', async () => {
+    const scan = await scanDatabaseFor(TRANSCRIPT_CANARY, since);
+    expect(scan.scanned).toEqual(expect.arrayContaining(['interview_reports', 'journal', 'verdict_comments']));
+    expect(scan.hits).toEqual([]);
+  }, 180_000);
+
+  it('ni dans la console, ni dans la réponse', () => {
+    expect(consoleOut).not.toContain(TRANSCRIPT_CANARY);
+    expect(responseBody).not.toContain(TRANSCRIPT_CANARY);
+  });
+
+  it('le journal ne porte que des compteurs', async () => {
+    const [entry] = (
+      await readRows<{ payload: Record<string, unknown> }>('journal', {
+        action: 'interview_report_generated',
+        campaign_id: camp,
+      })
+    ).filter((e) => e.payload.uid === importUid);
+    expect(entry?.payload).toMatchObject({ quotesKept: 3, quotesRemoved: 1, omittedCount: 1, model: 'mock-regression' });
+    expect(JSON.stringify(entry)).not.toMatch(/recette|paiements/u);
+  });
+});
+
+describe('S25.15 — échec de génération : rien écrit, rien qui fuite', () => {
+  const since = new Date(Date.now() - 60_000).toISOString();
+
+  it('502 générique, aucun compte rendu, aucun témoin en console ni en réponse', async () => {
+    const failing = TRANSCRIPT_FIXTURE_VTT.replace('Parlez-moi', `${TRANSCRIPT_FAILURE_MARKER} Parlez-moi`);
+    const { res, console: out } = await importWithConsole(failUid, transcriptForm(failing, 'Victor Candidat'));
+    expect(res.status).toBe(502);
+    expect(res.json.message).toBe(
+      'La génération n’a pas abouti. Rien n’a été enregistré. Réimportez la transcription.',
+    );
+    expect(JSON.stringify(res.json)).not.toContain(TRANSCRIPT_CANARY);
+    // Le modèle simulé a levé en CITANT la transcription : rien n'en sort.
+    expect(out).not.toContain(TRANSCRIPT_CANARY);
+    expect(out).not.toContain('paiements instantanés');
+    expect(await readRows('interview_reports', { analysis_id: await analysisIdOf(failUid) })).toHaveLength(0);
+  });
+
+  it('toujours aucun témoin dans la base', async () => {
+    expect((await scanDatabaseFor(TRANSCRIPT_CANARY, since)).hits).toEqual([]);
+  }, 180_000);
+});
+
+describe('S25.16 — réglage éteint', () => {
+  it('403, et la vue retire le bouton ; le réglage est restauré', async () => {
+    const before = await getAppSettings();
+    const config = before?.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG;
+    await patchAppSettings({ interviewConfig: { ...config, transcriptImportEnabled: false } });
+    try {
+      const view = await callWithId(getInterviewReport, await analysisIdOf(failUid));
+      expect(view.json.transcriptImportEnabled).toBe(false);
+      const { res } = await importWithConsole(failUid, transcriptForm(TRANSCRIPT_FIXTURE_VTT, 'Victor Candidat'));
+      expect(res.status).toBe(403);
+    } finally {
+      await patchAppSettings({ interviewConfig: config });
+    }
   });
 });

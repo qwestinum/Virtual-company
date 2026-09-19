@@ -77,6 +77,8 @@ export type InterviewReportView = {
    * rendre compte : l'écran n'offre pas la rédaction.
    */
   writable: boolean;
+  /** Import de transcription activé pour l'installation (réglage, §14.4). */
+  transcriptImportEnabled: boolean;
 };
 
 /** Corps de `PUT /api/candidatures/[id]/interview-report`. */

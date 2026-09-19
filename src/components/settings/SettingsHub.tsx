@@ -59,6 +59,7 @@ import { IntegrationCard } from './IntegrationCard';
 import { AgendaSettings } from './AgendaSettings';
 import { ApecConfigManager } from './ApecConfigManager';
 import { SourcingConfigManager } from './SourcingConfigManager';
+import { TranscriptImportSettings } from './TranscriptImportSettings';
 import { BrandingManager } from './BrandingManager';
 import { InterviewConfigManager } from './InterviewConfigManager';
 import { MailboxesManager } from './MailboxesManager';
@@ -203,6 +204,7 @@ const SECTION_IDS = (isAdmin: boolean): string[] => [
   'hitl',
   'vivier',
   'entretiens',
+  ...(isAdmin ? ['comptes-rendus'] : []),
   'identite',
   'agendas',
   ...(isAdmin ? ['recruteurs', 'sourcing'] : []),
@@ -452,6 +454,22 @@ export function SettingsHub({
           }
         />
       </SettingsSection>
+
+      {isAdmin ? (
+        <SettingsSection
+          {...sectionProps('comptes-rendus')}
+          icon="📝"
+          title="Comptes rendus d'entretien"
+          description="Import de transcription d'entretien pour proposer un compte rendu (administrateurs). Le texte transite par le fournisseur de modèle : à valider avec le DPO."
+        >
+          <TranscriptImportSettings
+            config={settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG}
+            onSave={(next) =>
+              patchAndSave({ interviewConfig: next }, 'Réglage des comptes rendus mis à jour.')
+            }
+          />
+        </SettingsSection>
+      ) : null}
 
       <SettingsGroup label="Identité & équipe" />
 

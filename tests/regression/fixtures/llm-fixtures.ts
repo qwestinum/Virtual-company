@@ -154,3 +154,71 @@ export const INTERVIEW_GUIDE_FIXTURE = {
     question: `Question fixe de test numero ${i + 1} pour la trame d'entretien.`,
   })),
 };
+
+// ─── Compte rendu d'entretien à partir d'une transcription (S25, lot 4) ────
+//
+// La transcription de test porte un TÉMOIN unique, dit par le candidat, que la
+// proposition ne cite JAMAIS : s'il survit quelque part (base, journal,
+// console, réponse), c'est que la transcription a été conservée.
+
+export const TRANSCRIPT_CANARY = 'CANARI_TRANSCRIPTION_TREG_7F3A';
+/** Présent dans la transcription ⇒ le modèle simulé ÉCHOUE, en citant le texte. */
+export const TRANSCRIPT_FAILURE_MARKER = 'ECHEC_STRUCTURATION_TREG';
+
+export const TRANSCRIPT_FIXTURE_VTT = [
+  'WEBVTT',
+  '',
+  '1',
+  '00:00:03.000 --> 00:00:07.000',
+  '<v Sami Recruteur>Parlez-moi de votre dernier poste et de la recette.</v>',
+  '',
+  '2',
+  '00:00:08.000 --> 00:00:15.000',
+  '<v Victor Candidat>J’ai piloté la recette de bout en bout sur un projet de paiements instantanés.</v>',
+  '',
+  '3',
+  '00:00:16.000 --> 00:00:22.000',
+  `<v Victor Candidat>Un détail sans rapport avec le poste : ${TRANSCRIPT_CANARY}.</v>`,
+  '',
+  '4',
+  '00:00:23.000 --> 00:00:28.000',
+  '<v Sami Recruteur>Nous verrons la question des références lors du second échange.</v>',
+].join('\n');
+
+/** Ce que rend le modèle simulé : des citations EXACTES, et une inventée. */
+export const TRANSCRIPT_STRUCTURING_FIXTURE = {
+  topics: [
+    {
+      text: 'Le recruteur interroge le candidat sur son dernier poste et la recette.',
+      quote: 'Parlez-moi de votre dernier poste et de la recette',
+      speaker: 'Sami Recruteur',
+      at: '00:00:03',
+    },
+  ],
+  criteria: [],
+  highlights: [
+    {
+      text: 'Le candidat indique avoir piloté une recette complète.',
+      quote: 'J’ai piloté la recette de bout en bout',
+      speaker: 'Victor Candidat',
+      at: '00:00:08',
+    },
+    {
+      // Citation INVENTÉE : doit être retirée par le contrôle mot pour mot.
+      text: 'Le candidat indique maîtriser SQL.',
+      quote: 'je pratique SQL tous les jours depuis dix ans',
+      speaker: 'Victor Candidat',
+      at: '00:00:10',
+    },
+  ],
+  reservations: [],
+  followUps: [
+    {
+      text: 'Les références seront abordées lors d’un second échange.',
+      quote: 'la question des références lors du second échange',
+      speaker: 'Sami Recruteur',
+      at: '00:00:23',
+    },
+  ],
+  omittedCount: 1,
+};

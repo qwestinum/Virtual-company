@@ -17,6 +17,7 @@
  *   5. **Aucun envoi.**
  */
 
+import { getAppSettings } from '@/lib/db/repos/app-settings';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { getInterviewReport, saveInterviewReport } from '@/lib/db/repos/interview-reports';
@@ -61,12 +62,16 @@ export async function loadCriterionPrompts(
 export async function loadInterviewReportView(
   analysis: Analysis,
 ): Promise<InterviewReportView> {
-  const [report, criteria, writable] = await Promise.all([
+  const [report, criteria, writable, settings] = await Promise.all([
     getInterviewReport(analysis.id),
     loadCriterionPrompts(analysis.campaignId),
     interviewHappened(analysis),
+    // Réglage illisible ⇒ import ÉTEINT (fail-closed : c'est un choix DPO).
+    getAppSettings().catch(() => undefined),
   ]);
-  return { report, criteria, writable };
+  const transcriptImportEnabled =
+    settings === undefined ? false : (settings?.interviewConfig.transcriptImportEnabled ?? true);
+  return { report, criteria, writable, transcriptImportEnabled };
 }
 
 export type ReportSaveOutcome =

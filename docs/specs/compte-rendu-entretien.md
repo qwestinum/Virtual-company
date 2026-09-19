@@ -1,8 +1,8 @@
 # Compte rendu d'entretien + commentaire du recruteur — Phase 1 (étude)
 
 > **Statut au 18/09/2026 : ÉTUDE VALIDÉE, arbitrages consignés au §14 (ils
-> priment sur le corps de l'étude là où ils le modifient). Phase 2 : lots 1
-> et 2 livrés, POINT D'ARRÊT avant le lot 3 — avancement au §15.**
+> priment sur le corps de l'étude là où ils le modifient ; le §16 rend le
+> commentaire FACULTATIF). Phase 2 : lots 1 à 4 livrés — avancement au §15.**
 > Ce document établit où vivent les deux objets, où le verdict est bloqué dans le
 > chemin existant (fichier:ligne), comment la transcription est traitée sans
 > jamais être conservée, et ce que chaque lecteur (fiche, frise, PDF d'audit,
@@ -900,3 +900,44 @@ change, et ce qui NE change PAS :
 - **Non fait, consigné** : le briefing d'un tour suivant (§7.3) — aucun second
   tour n'existe encore.
 - **Régression** : S25.8 à S25.11.
+
+### 15.4 Lot 4 — import de transcription (19/09/2026)
+
+- **Normaliseur** pur `src/lib/transcript/normalize.ts` : WebVTT (balises `<v>`,
+  identifiants de repère), SubRip, texte (Otter / Teams .docx « Nom  0:03 »,
+  tl;dv « [00:03] Nom : »), étiquette « Nom : » reconnue seulement si elle
+  revient ou ouvre un repère ; tours fusionnés ; aucune attribution inventée.
+  `.docx`/`.pdf` extraits en mémoire par `extractCVText`.
+- **Choix du candidat** : plusieurs locuteurs ⇒ 422 avec les noms, AVANT tout
+  appel au modèle et toute écriture ; l'écran renvoie le même fichier avec le
+  choix.
+- **Un appel** (`src/lib/agents/interview-report-structuring.ts`) : même routage
+  de fournisseur que les CV, `maxAttempts: 2`, `timeoutMs: 25 000`, aucun réessai
+  de transport, route `maxDuration = 60`. Prompt : restituer, organiser, citer,
+  ne jamais juger, exclure les passages hors cadre (compter seulement).
+- **Contrôles** `src/lib/transcript/structure.ts` : schéma de sortie strict
+  (aucun champ de score), citations retrouvées mot pour mot (12 à 200
+  caractères, sinon élément retiré et compté), formulations évaluatives
+  signalées « [formulation à vérifier] », plafond de citations (15 % du texte,
+  plancher 600 caractères) ⇒ refus. Critères de la campagne : « non abordé »,
+  jamais « non satisfait ».
+- **Persistance** : le brouillon est créé CÔTÉ SERVEUR (`source = transcript`,
+  modèle, nombre de passages écartés) — le client ne peut jamais se déclarer
+  « transcription » ; une proposition ne recouvre jamais un compte rendu
+  existant. Journal `interview_report_generated` : compteurs seulement.
+- **Transcription jamais conservée** : variables locales uniquement, aucune
+  écriture avant la fin des contrôles, messages d'erreur génériques (jamais
+  `err.message`), console = classe d'erreur seule.
+- **Réglage** `interview_config.transcriptImportEnabled` (défaut activé, sans
+  migration), section « Comptes rendus d'entretien » (administrateurs), texte
+  DPO à l'écran ET dans `docs/ops/configuration-client.md` §2.1 et
+  `docs/ops/purge-rgpd-candidat.md` §8 (fournisseur de modèle, outil de visio).
+  Lecture du réglage illisible ⇒ import éteint (fail-closed).
+- **LA PREUVE (S25.12 à S25.16)** : une transcription porte un témoin que la
+  proposition ne cite pas ; après génération, puis après un échec où le modèle
+  simulé lève en CITANT le texte, le témoin n'est dans AUCUNE table du schéma
+  (balayage de toutes les tables de `migrate.sql`, `tests/regression/helpers/
+  trace-scan.ts`), ni en console, ni dans la réponse. **Sondée** : un extrait
+  glissé dans le journal ou un `err.message` en console fait échouer 4 tests.
+  Doublée par une garde structurelle unitaire (aucun import de stockage ni de
+  système de fichiers, aucun message d'erreur recopié — sondée).

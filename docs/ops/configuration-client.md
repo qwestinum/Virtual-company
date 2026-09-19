@@ -44,6 +44,29 @@ instance, cohérent avec « une instance par client ».
 > L'**adresse recruteur** apparaît à deux endroits : `EMAIL_DRH` (env, défaut) et
 > `synthesis_email` (réglage in-app). Les aligner pour éviter toute divergence.
 
+### 2.1 Comptes rendus d'entretien — import de transcription
+
+Réglage `interview_config.transcriptImportEnabled` (jsonb, **activé par
+défaut**), section « Comptes rendus d'entretien » de `/settings`
+(administrateurs). Éteint : le bouton « Importer une transcription » disparaît,
+le compte rendu reste rédigeable à la main. Aucune migration : le champ vit dans
+`interview_config` (défaut appliqué aux configurations existantes).
+
+> **Import de transcription d'entretien — à lire par le DPO avant activation.**
+> ORQA ne conserve aucune transcription : le texte est lu en mémoire, sert à
+> proposer un compte rendu, puis est abandonné, y compris en cas d'échec. En
+> revanche, **le texte intégral transite par le fournisseur de modèle de langage**
+> configuré pour l'analyse des CV. Ce fournisseur peut le conserver **jusqu'à
+> 30 jours** (détection d'abus), **comme les CV** — même fournisseur, même
+> contrat de sous-traitance ; zéro avec un accord de non-conservation. Une
+> transcription d'entretien est plus riche qu'un CV et plus exposée aux données
+> sensibles. L'information et le consentement du candidat à l'enregistrement et
+> à la transcription relèvent du client. Réglage : `/settings`, désactivable à
+> tout moment ; désactivé, le compte rendu reste saisissable à la main.
+
+À l'onboarding : **faire lire ce paragraphe au DPO du client, et désactiver
+l'import s'il le refuse**, avant le premier entretien.
+
 ---
 
 ## 3. Boîtes mail IMAP surveillées — page `/settings/mailboxes` (table `mailboxes`, **N par client**)

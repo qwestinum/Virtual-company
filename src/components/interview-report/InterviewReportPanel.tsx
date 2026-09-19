@@ -9,11 +9,10 @@
  * validé se modifie en étant validé de nouveau — il ne redevient pas
  * brouillon, il ne disparaît donc jamais du dossier en silence.
  *
- * `renderStartActions` : les autres façons de commencer un compte rendu
- * (import de transcription, lot 4), à côté de « Rédiger ». Elles reçoivent
- * `onCreated` : le brouillon est créé CÔTÉ SERVEUR (c'est le serveur, jamais le
- * client, qui peut dire « établi à partir d'une transcription ») et le panneau
- * l'ouvre dans l'éditeur.
+ * « Importer une transcription » (si le réglage de l'installation l'autorise) :
+ * le brouillon est créé CÔTÉ SERVEUR — c'est le serveur, jamais le client, qui
+ * peut dire « établi à partir d'une transcription » — et le panneau l'ouvre
+ * dans l'éditeur, avec ce que les contrôles ont retiré ou signalé.
  */
 
 import { useState } from 'react';
@@ -26,20 +25,17 @@ import {
 
 import { InterviewReportEditor } from './InterviewReportEditor';
 import { InterviewReportReadOnly } from './InterviewReportReadOnly';
+import { TranscriptImportButton } from './TranscriptImportButton';
 import { useInterviewReport } from './useInterviewReport';
 
-export function InterviewReportPanel({
-  analysisId,
-  renderStartActions,
-}: {
-  analysisId: string;
-  renderStartActions?: (onCreated: (report: InterviewReport) => void) => React.ReactNode;
-}) {
+export function InterviewReportPanel({ analysisId }: { analysisId: string }) {
   const { view, error, save, setView } = useInterviewReport(analysisId);
   const [draft, setDraft] = useState<InterviewReportSections | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const onCreated = (report: InterviewReport) => {
+  const onCreated = (report: InterviewReport, message: string) => {
     setView((v) => (v ? { ...v, report } : v));
+    setNotice(message);
     setDraft(report.sections);
   };
 
@@ -54,7 +50,10 @@ export function InterviewReportPanel({
     setBusy(true);
     const saved = await save(draft, action);
     setBusy(false);
-    if (saved) setDraft(null);
+    if (saved) {
+      setDraft(null);
+      setNotice(null);
+    }
   }
 
   const verified = report?.status === 'verified';
@@ -66,6 +65,11 @@ export function InterviewReportPanel({
 
       {draft ? (
         <>
+          {notice ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12px] text-amber-900">
+              {notice}
+            </p>
+          ) : null}
           <InterviewReportEditor
             sections={draft}
             source={report?.source ?? 'manual'}
@@ -101,9 +105,13 @@ export function InterviewReportPanel({
           </div>
         </>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setDraft(emptySections(criteria))}>Rédiger</Button>
-          {renderStartActions?.(onCreated)}
+        <div className="flex flex-col gap-2">
+          <div>
+            <Button onClick={() => setDraft(emptySections(criteria))}>Rédiger</Button>
+          </div>
+          {view.transcriptImportEnabled ? (
+            <TranscriptImportButton analysisId={analysisId} onCreated={onCreated} />
+          ) : null}
         </div>
       )}
     </section>

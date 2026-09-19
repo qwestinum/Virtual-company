@@ -47,6 +47,15 @@ export const InterviewConfigSchema = z.object({
   organisationName: z.string().max(200),
   /** Nom du recruteur signataire, injecté dans [nom du recruteur]. Vide ⇒ repli. */
   recruiterName: z.string().max(200),
+  /**
+   * Import de transcription d'entretien pour proposer un compte rendu
+   * (docs/specs/compte-rendu-entretien.md §9, §14.4). Activé par défaut ;
+   * un DPO client peut refuser que ses entretiens transitent par le
+   * fournisseur de modèle — éteint, le bouton d'import disparaît et le compte
+   * rendu reste rédigeable à la main. `.default` : une configuration
+   * enregistrée avant ce champ reste valide.
+   */
+  transcriptImportEnabled: z.boolean().default(true),
 });
 
 export type InterviewConfig = z.infer<typeof InterviewConfigSchema>;
@@ -115,4 +124,5 @@ export const DEFAULT_INTERVIEW_CONFIG: InterviewConfig = {
   agendaLink: '',
   organisationName: '',
   recruiterName: '',
+  transcriptImportEnabled: true,
 };

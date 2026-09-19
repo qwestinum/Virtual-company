@@ -531,6 +531,8 @@ rapport de confirmation, avec l'indication de qui doit agir.
 | **Les boîtes des recruteurs** et adresses de synthèse | La trame d'entretien reçue **avec le CV joint**, les copies de bilans | Le responsable de traitement |
 | **Le prestataire d'envoi de courriels** | Journaux d'envoi, corps des messages, pièces jointes | Demande au sous-traitant |
 | **Le fournisseur de modèles de langage** | Le **texte intégral du CV** lui a été transmis à chaque analyse | Selon la politique de rétention contractuelle |
+| **Le fournisseur de modèles de langage** (import de transcription) | Le **texte intégral d'une transcription d'entretien**, si un recruteur en a importé une pour proposer un compte rendu. ORQA ne la conserve pas ; le fournisseur peut la conserver jusqu'à 30 jours (détection d'abus), comme les CV — zéro avec un accord de non-conservation | Selon la politique de rétention contractuelle |
+| **L'outil de visio du client** (Teams, Meet, Zoom…) | L'enregistrement et la transcription d'origine de l'entretien | Le responsable de traitement |
 | **L'hébergeur applicatif** | Journaux d'exécution | Rotation de la plateforme |
 | **Les sauvegardes de la base** | Copies antérieures à l'effacement | **Rotation — durée à vérifier sur le contrat de l'environnement concerné avant d'annoncer un délai au candidat** |
 | **Le poste de l'opérateur** | Journal d'import de vivier (adresses, chemins de fichiers) et **dossier des CV source** | L'opérateur, manuellement |
