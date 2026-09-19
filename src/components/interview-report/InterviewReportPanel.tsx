@@ -2,9 +2,9 @@
 
 /**
  * Zone « Compte rendu d'entretien » — FACULTATIVE, OUVERTE D'EMBLÉE.
- * Spec : docs/specs/compte-rendu-entretien.md §3, §5.7, §15, §17.
+ * Spec : docs/specs/compte-rendu-entretien.md §3, §5.7, §15, §17, §18.
  *
- * On arrive devant des rubriques prêtes à écrire, pas devant un bouton
+ * On arrive devant UN champ prêt à écrire, pas devant un bouton
  * « Rédiger » : rédiger ou importer se décide en écrivant — ou en cliquant
  * « Importer une transcription », en bas à droite de la zone. L'import n'est
  * offert que tant que rien n'est écrit : une proposition ne remplace jamais un
@@ -50,11 +50,11 @@ export function InterviewReportPanel({
   const { report, criteria, writable } = view;
   if (!report && !writable) return null;
 
-  // Ce qui est dans l'éditeur : la saisie en cours, sinon un gabarit vide
+  // Ce qui est dans l'éditeur : la saisie en cours, sinon un champ vide
   // (aucun compte rendu), sinon le brouillon enregistré. Un compte rendu
   // VALIDÉ s'affiche en lecture tant qu'on ne clique pas « Modifier ».
   const editing =
-    draft ?? (report === null ? emptySections(criteria) : report.status === 'draft' ? report.sections : null);
+    draft ?? (report === null ? emptySections() : report.status === 'draft' ? report.sections : null);
   const verified = report?.status === 'verified';
   const canImport = view.transcriptImportEnabled && report === null;
 
@@ -78,8 +78,8 @@ export function InterviewReportPanel({
   const hint =
     report === null
       ? view.transcriptImportEnabled
-        ? 'Rédigez directement dans les rubriques ci-dessous, ou importez la transcription de l’entretien (bouton en bas à droite).'
-        : 'Rédigez directement dans les rubriques ci-dessous.'
+        ? 'Rédigez directement ci-dessous, ou importez la transcription de l’entretien (bouton en bas à droite).'
+        : 'Rédigez directement ci-dessous.'
       : report.status === 'draft'
         ? 'Brouillon enregistré — il n’apparaît pas au dossier tant qu’il n’est pas validé.'
         : undefined;
@@ -95,7 +95,7 @@ export function InterviewReportPanel({
           ) : null}
           <InterviewReportEditor
             sections={editing}
-            source={report?.source ?? 'manual'}
+            criteria={criteria}
             disabled={busy}
             onChange={setDraft}
           />

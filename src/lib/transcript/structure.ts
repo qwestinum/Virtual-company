@@ -18,9 +18,10 @@
 import { z } from 'zod';
 
 import type { NormalizedTranscript } from '@/lib/transcript/normalize';
-import type {
-  InterviewReportSections,
-  ReportCriterionPrompt,
+import {
+  sectionLabels,
+  type InterviewReportSections,
+  type ReportCriterionPrompt,
 } from '@/types/interview-report';
 
 /** Longueur maximale d'une citation (caractères). */
@@ -148,27 +149,32 @@ export function checkAndRender(
     return lines;
   };
 
+  // UN seul texte (spec §18), organisé par intertitres — ceux d'un compte
+  // rendu PROPOSÉ, qui restitue sans juger. Une rubrique vide n'apparaît pas,
+  // sauf les critères de la campagne, tous listés (« non abordé » est une
+  // information, jamais « non satisfait »).
+  const labels = sectionLabels('transcript');
+  const blocks: string[] = [];
+  const add = (title: string, lines: string[]) => {
+    if (lines.length > 0) blocks.push([title, ...lines].join('\n'));
+  };
+  add(labels.topics, keep(output.topics));
   const byId = new Map(output.criteria.map((c) => [c.criterionId, c]));
-  const sections: InterviewReportSections = {
-    version: 1,
-    topics: keep(output.topics).join('\n'),
+  if (criteria.length > 0) {
     // Les critères de la CAMPAGNE, dans leur ordre ; un identifiant inventé par
     // le modèle ne crée pas de rubrique.
-    criteria: criteria.map((c) => {
+    const lines = criteria.flatMap((c) => {
       const found = byId.get(c.criterionId);
-      if (!found || !found.addressed) {
-        return { ...c, text: 'Non abordé pendant l’entretien.' };
-      }
-      const lines = keep(found.items);
-      return {
-        ...c,
-        text: lines.length > 0 ? lines.join('\n') : 'Abordé, sans citation vérifiable retenue.',
-      };
-    }),
-    highlights: keep(output.highlights).join('\n'),
-    reservations: keep(output.reservations).join('\n'),
-    followUps: keep(output.followUps).join('\n'),
-  };
+      if (!found || !found.addressed) return [`• ${c.label}`, 'Non abordé pendant l’entretien.'];
+      const kept = keep(found.items);
+      return [`• ${c.label}`, ...(kept.length > 0 ? kept : ['Abordé, sans citation vérifiable retenue.'])];
+    });
+    add(labels.criteria, lines);
+  }
+  add(labels.highlights, keep(output.highlights));
+  add(labels.reservations, keep(output.reservations));
+  add(labels.followUps, keep(output.followUps));
+  const sections: InterviewReportSections = { version: 2, body: blocks.join('\n\n') };
 
   const budget = Math.max(MIN_QUOTE_BUDGET, Math.floor(haystack.length * MAX_QUOTED_SHARE));
   if (quoted > budget) return { ok: false, reason: 'too_much_quoted' };

@@ -118,8 +118,8 @@ async function importWithConsole(uid: string, form: FormData) {
 
 const REPORT_TOPICS = 'Parcours en recette bancaire, souhait de rejoindre une équipe produit.';
 
-function reportSections(topics: string) {
-  return { version: 1, topics, criteria: [], highlights: '', reservations: '', followUps: '' };
+function reportSections(body: string) {
+  return { version: 2, body };
 }
 
 async function putReport(uid: string, topics: string, action: 'draft' | 'verify') {
@@ -414,10 +414,10 @@ describe('S25.11 — un compte rendu validé se modifie en étant RE-validé', (
   it('modifier et valider de nouveau : 200, le texte suit', async () => {
     const res = await putReport(reportUid, `${REPORT_TOPICS} Ajout.`, 'verify');
     expect(res.status).toBe(200);
-    const [row] = await readRows<{ sections: { topics: string } }>('interview_reports', {
+    const [row] = await readRows<{ sections: { version: number; body: string } }>('interview_reports', {
       analysis_id: await analysisIdOf(reportUid),
     });
-    expect(row!.sections.topics).toBe(`${REPORT_TOPICS} Ajout.`);
+    expect(row!.sections).toEqual({ version: 2, body: `${REPORT_TOPICS} Ajout.` });
   });
 });
 
@@ -449,10 +449,14 @@ describe('S25.13–14 — proposition, et AUCUNE trace de la transcription', () 
     responseBody = JSON.stringify(res.json);
     expect(res.status).toBe(200);
     expect(res.json.stats).toEqual({ kept: 3, removedUnproven: 1, flagged: 0, omittedCount: 1 });
-    const report = res.json.report as { status: string; source: string; sections: { highlights: string } };
+    const report = res.json.report as { status: string; source: string; sections: { body: string } };
     expect(report).toMatchObject({ status: 'draft', source: 'transcript' });
-    expect(report.sections.highlights).toContain('« J’ai piloté la recette de bout en bout »');
-    expect(report.sections.highlights).not.toContain('SQL');
+    // UN seul texte, organisé par intertitres (spec §18).
+    expect(report.sections.body).toContain('Ce que le candidat a mis en avant\n- ');
+    expect(report.sections.body).toContain('« J’ai piloté la recette de bout en bout »');
+    // La citation INVENTÉE a été retirée (le libellé d'un critère de la fiche
+    // de test peut, lui, parler de SQL : on vise la citation, pas le mot).
+    expect(report.sections.body).not.toContain('je pratique SQL tous les jours');
   });
 
   it('le témoin n’est dans AUCUNE table du schéma — journal compris', async () => {

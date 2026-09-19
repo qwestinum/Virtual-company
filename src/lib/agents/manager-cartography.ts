@@ -137,12 +137,14 @@ par « Corriger la décision »).
 
 ### Rédiger le compte rendu d'un entretien
 Même endroit que le verdict (onglet « Entretiens » → « En attente de verdict » →
-« Décider », ou la fiche candidature), bloc « Compte rendu d'entretien » :
-« Rédiger ». Cinq rubriques, toutes facultatives (sujets abordés, réponses aux
-critères de la campagne, points forts, réserves, à vérifier). « Enregistrer le
-brouillon » le garde hors du dossier ; « Valider le compte rendu » le verse au
-dossier, avec le nom de celui qui l'a validé. Si l'installation l'autorise
-(Paramètres → « Comptes rendus d'entretien »), « Importer une transcription »
-(.vtt, .srt, .txt, .docx, .pdf) propose un compte rendu à vérifier ; la
-transcription n'est pas conservée. Après le verdict, il reste
+« Décider », ou la fiche candidature). Deux zones : d'abord « Pourquoi cette
+décision ? », puis « Compte rendu d'entretien » — un seul champ libre, prêt à
+écrire (le texte d'aide rappelle les repères : sujets abordés, critères de la
+campagne, points forts, réserves, à vérifier). Les deux sont facultatifs.
+« Enregistrer le brouillon » garde le compte rendu hors du dossier ; « Valider
+le compte rendu » le verse au dossier, avec le nom de celui qui l'a validé. Si
+l'installation l'autorise (Paramètres → « Comptes rendus d'entretien »),
+« Importer une transcription » (en bas à droite de la zone ; .vtt, .srt, .txt,
+.docx, .pdf) propose un compte rendu à vérifier, tant que le champ est vide ;
+la transcription n'est pas conservée. Après le verdict, il reste
 consultable et modifiable sur la fiche candidature.`;

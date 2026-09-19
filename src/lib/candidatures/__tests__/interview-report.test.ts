@@ -8,6 +8,8 @@ import { interviewReportMention } from '@/lib/candidatures/interview-report-ment
 import {
   emptySections,
   hasReportContent,
+  InterviewReportSectionsSchema,
+  reportPlaceholder,
   sectionLabels,
   type InterviewReportSections,
 } from '@/types/interview-report';
@@ -43,8 +45,8 @@ const { saveReportFor } = await import('@/lib/candidatures/interview-report');
 const analysis = { id: 'can_1', uid: 'uid-1', campaignId: 'CAMP-2026-001' };
 const actor = { userId: 'u-sarah', email: 'sarah@cabinet.fr' };
 const filled: InterviewReportSections = {
-  ...emptySections([{ criterionId: 'c1', label: 'Pilotage MOA' }]),
-  topics: 'Parcours en recette bancaire, souhait de mobilité interne.',
+  version: 2,
+  body: 'Parcours en recette bancaire, souhait de mobilité interne.',
 };
 
 beforeEach(() => {
@@ -66,8 +68,8 @@ describe('saveReportFor — garde-fous', () => {
     expect(saveInterviewReport).not.toHaveBeenCalled();
   });
 
-  it('un gabarit vide ne se valide pas… mais s’enregistre en brouillon', async () => {
-    const empty = emptySections([]);
+  it('un champ vide ne se valide pas… mais s’enregistre en brouillon', async () => {
+    const empty = emptySections();
     expect(await saveReportFor({ analysis, sections: empty, action: 'verify', actor })).toEqual({
       status: 'empty_report',
     });
@@ -88,23 +90,40 @@ describe('saveReportFor — garde-fous', () => {
   });
 });
 
-describe('gabarit et libellés', () => {
-  it('les critères de la campagne sont des REPÈRES vides, jamais un « non »', () => {
-    expect(emptySections([{ criterionId: 'c1', label: 'Anglais' }]).criteria).toEqual([
-      { criterionId: 'c1', label: 'Anglais', text: '' },
-    ]);
+describe('champ unique, repères et ancienne forme', () => {
+  it('les critères de la campagne sont des REPÈRES dans le texte d’aide, jamais une case', () => {
+    const hint = reportPlaceholder([{ criterionId: 'c1', label: 'Anglais' }, { criterionId: 'c2', label: 'Recette' }]);
+    expect(hint).toContain('Anglais · Recette');
+    expect(hint).toContain('lien direct avec le poste');
   });
 
-  it('hasReportContent : une seule rubrique suffit, des espaces ne comptent pas', () => {
-    expect(hasReportContent(emptySections([]))).toBe(false);
-    expect(hasReportContent({ ...emptySections([]), followUps: '   ' })).toBe(false);
-    expect(hasReportContent({ ...emptySections([]), followUps: 'Références' })).toBe(true);
+  it('hasReportContent : des espaces ne comptent pas', () => {
+    expect(hasReportContent(emptySections())).toBe(false);
+    expect(hasReportContent({ version: 2, body: '   ' })).toBe(false);
+    expect(hasReportContent({ version: 2, body: 'Références à demander' })).toBe(true);
+  });
+
+  it('un compte rendu à RUBRIQUES (première forme) reste lisible, converti en texte', () => {
+    const legacy = {
+      version: 1,
+      topics: 'Parcours bancaire.',
+      criteria: [
+        { criterionId: 'c1', label: 'Anglais', text: '' },
+        { criterionId: 'c2', label: 'Recette', text: 'Pilotée de bout en bout.' },
+      ],
+      highlights: '',
+      reservations: 'Mobilité à confirmer.',
+      followUps: '',
+    };
+    expect(InterviewReportSectionsSchema.parse(legacy)).toEqual({
+      version: 2,
+      body: 'Sujets abordés\nParcours bancaire.\n\nRéponses aux critères de la campagne\n• Recette\nPilotée de bout en bout.\n\nRéserves\nMobilité à confirmer.',
+    });
   });
 
   it('un compte rendu PROPOSÉ ne juge pas : pas de « points forts »', () => {
     const labels = Object.values(sectionLabels('transcript')).join(' ');
     expect(labels).not.toMatch(/points forts/i);
-    expect(sectionLabels('manual').highlights).toBe('Points forts');
   });
 });
 

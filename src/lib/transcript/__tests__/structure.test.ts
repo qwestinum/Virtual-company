@@ -56,8 +56,8 @@ describe('citations vérifiées mot pour mot', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.stats).toMatchObject({ kept: 1, removedUnproven: 0 });
-    expect(r.sections.highlights).toBe(
-      '- A piloté une recette complète. — « j\'ai piloté la recette de bout en bout » (Jean Dupont, 00:00:10)',
+    expect(r.sections.body).toBe(
+      'Ce que le candidat a mis en avant\n- A piloté une recette complète. — « j\'ai piloté la recette de bout en bout » (Jean Dupont, 00:00:10)',
     );
   });
 
@@ -68,7 +68,7 @@ describe('citations vérifiées mot pour mot', () => {
       [],
     );
     expect(r.ok && r.stats.removedUnproven).toBe(1);
-    expect(r.ok && r.sections.highlights).toBe('');
+    expect(r.ok && r.sections.body).toBe('');
   });
 
   it('trop courte pour prouver (« oui ») : retirée', () => {
@@ -91,7 +91,7 @@ describe('le compte rendu ne juge pas', () => {
       [],
     );
     expect(r.ok && r.stats.flagged).toBe(1);
-    expect(r.ok && r.sections.highlights).toMatch(/^- \[formulation à vérifier\] /u);
+    expect(r.ok && r.sections.body).toMatch(/\n- \[formulation à vérifier\] /u);
   });
 
   it('une restitution neutre n’est pas signalée', () => {
@@ -118,9 +118,16 @@ describe('critères de la campagne', () => {
     );
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.sections.criteria.map((c) => c.criterionId)).toEqual(['c1', 'c2']);
-    expect(r.sections.criteria[1]!.text).toBe('Non abordé pendant l’entretien.');
-    expect(JSON.stringify(r.sections)).not.toMatch(/non satisfait|insuffisant/iu);
+    expect(r.sections.body).toBe(
+      [
+        'Réponses aux critères de la campagne',
+        '• Pilotage de recette',
+        '- Recette pilotée. — « piloté la recette de bout en bout » (Jean Dupont, 00:00:10)',
+        '• Anglais courant',
+        'Non abordé pendant l’entretien.',
+      ].join('\n'),
+    );
+    expect(r.sections.body).not.toMatch(/inventé|non satisfait|insuffisant/iu);
   });
 });
 

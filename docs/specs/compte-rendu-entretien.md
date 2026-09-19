@@ -965,3 +965,28 @@ visibles d'emblée, nettement séparées**, puis la décision.
 Cadre commun `src/components/verdict/ZoneCard.tsx` (liseré de couleur à gauche,
 fond teinté, titre en gras, numéro d'étape). Sur la fiche d'un dossier déjà
 décidé, la zone « Compte rendu » garde le même cadre, sans numéro.
+
+---
+
+## 18. Arbitrage du 19/09/2026 — un seul champ, le commentaire d'abord
+
+Décision du donneur d'ordre après la revue §17 :
+
+- **Le compte rendu est UN SEUL champ libre.** Les cinq rubriques (§3, §17)
+  disparaissent de l'écran : les repères (sujets abordés, critères de la
+  campagne — libellés —, points forts, réserves, à vérifier, « lien direct avec
+  le poste ») passent dans le TEXTE D'AIDE du champ. Modèle :
+  `sections = { version: 2, body }`. La première forme à rubriques
+  (`version: 1`) n'est jamais réécrite en base : elle est RELUE et convertie en
+  texte (intertitres), pour qu'aucun compte rendu déjà saisi ne devienne
+  illisible. Lecteurs (fiche, frise, PDF d'audit) : le texte tel quel.
+- **Un compte rendu proposé à partir d'une transcription** arrive dans ce même
+  champ, organisé par intertitres (« Sujets abordés », « Réponses aux critères
+  de la campagne » avec « • critère » puis « Non abordé pendant l'entretien. »
+  ou les citations, « Ce que le candidat a mis en avant », « Réserves exprimées
+  pendant l'entretien », « À vérifier… ») ; les contrôles (§5.4) sont
+  inchangés. Il se corrige comme un texte.
+- **Ordre du bloc de décision** : 1. « Pourquoi cette décision ? » (ambre),
+  2. « Compte rendu d'entretien » (bleu, import en bas à droite), puis
+  « Votre décision : ».
+- **Supersède** : §3 (rubriques à l'écran) et l'ordre du §17.

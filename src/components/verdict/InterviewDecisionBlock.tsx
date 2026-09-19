@@ -9,9 +9,9 @@
  * pourquoi, puis on choisit. Le commentaire est FACULTATIF (arbitrage du
  * 19/09/2026) : les boutons ne dépendent pas de lui.
  *
- * Deux zones DISTINCTES, dans l'ordre de lecture (§17) : 1. le compte rendu
- * (bleu) — ce qui s'est passé —, 2. le commentaire (ambre) — pourquoi on
- * décide —, puis la décision, séparée par un filet.
+ * Deux zones DISTINCTES, dans l'ordre demandé (§18) : 1. le commentaire
+ * (ambre) — pourquoi on décide —, 2. le compte rendu (bleu) — ce qui s'est
+ * passé —, puis la décision, séparée par un filet.
  */
 
 import { useId, useState } from 'react';
@@ -62,14 +62,14 @@ export function InterviewDecisionBlock({
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-3">
-      <InterviewReportPanel analysisId={analysisId} step={1} />
       <VerdictCommentField
         id={fieldId}
         value={comment}
         onChange={setComment}
         disabled={busy !== null}
-        step={2}
+        step={1}
       />
+      <InterviewReportPanel analysisId={analysisId} step={2} />
       {error ? (
         <p role="alert" className="font-body text-[12.5px] text-rose-700">
           {error}
