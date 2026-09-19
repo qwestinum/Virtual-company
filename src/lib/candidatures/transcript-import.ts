@@ -27,7 +27,7 @@ import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { normalizeTranscript } from '@/lib/transcript/normalize';
 import { checkAndRender, type StructuringStats } from '@/lib/transcript/structure';
 import type { HumanDecider } from '@/types/hitl';
-import type { InterviewReport } from '@/types/interview-report';
+import { importStillPossible, type InterviewReport } from '@/types/interview-report';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
 export const INTERVIEW_REPORT_GENERATED_ACTION = 'interview_report_generated';
@@ -82,9 +82,12 @@ export async function importTranscript(args: {
   if (!(await importEnabled())) return { status: 'disabled' };
   if (file.size > MAX_TRANSCRIPT_BYTES) return { status: 'too_large' };
   if (!(await interviewHappened(analysis))) return { status: 'interview_not_realized' };
-  // Une proposition ne recouvre jamais un compte rendu existant (brouillon
-  // compris) : on ne jette pas le travail de quelqu'un.
-  if (await getInterviewReport(analysis.id)) return { status: 'report_exists' };
+  // Une proposition ne recouvre jamais un texte écrit ni un compte rendu
+  // validé : on ne jette pas le travail de quelqu'un. Un brouillon VIDE, lui,
+  // ne contient rien à perdre (« Enregistrer le brouillon » cliqué à vide).
+  if (!importStillPossible(await getInterviewReport(analysis.id))) {
+    return { status: 'report_exists' };
+  }
 
   let raw: string | null;
   try {

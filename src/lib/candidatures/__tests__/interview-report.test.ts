@@ -8,6 +8,7 @@ import { interviewReportMention } from '@/lib/candidatures/interview-report-ment
 import {
   emptySections,
   hasReportContent,
+  importStillPossible,
   InterviewReportSectionsSchema,
   reportPlaceholder,
   sectionLabels,
@@ -119,6 +120,13 @@ describe('champ unique, repères et ancienne forme', () => {
       version: 2,
       body: 'Sujets abordés\nParcours bancaire.\n\nRéponses aux critères de la campagne\n• Recette\nPilotée de bout en bout.\n\nRéserves\nMobilité à confirmer.',
     });
+  });
+
+  it('importStillPossible : tant que le compte rendu est VIDE', () => {
+    expect(importStillPossible(null)).toBe(true);
+    expect(importStillPossible({ status: 'draft', sections: { version: 2, body: ' ' } })).toBe(true);
+    expect(importStillPossible({ status: 'draft', sections: { version: 2, body: 'Texte' } })).toBe(false);
+    expect(importStillPossible({ status: 'verified', sections: { version: 2, body: 'Texte' } })).toBe(false);
   });
 
   it('un compte rendu PROPOSÉ ne juge pas : pas de « points forts »', () => {

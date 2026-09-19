@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const CANARY = 'CANARI_UNITAIRE_42';
 const structureTranscript = vi.fn();
 const saveInterviewReport = vi.fn(async () => ({ status: 'saved', report: { id: 'ir-1' } }));
+let existing: unknown = null;
 const appendJournalEntry = vi.fn(async () => undefined);
 let enabled = true;
 
@@ -28,7 +29,7 @@ vi.mock('@/lib/db/repos/app-settings', () => ({
   getAppSettings: vi.fn(async () => ({ interviewConfig: { transcriptImportEnabled: enabled } })),
 }));
 vi.mock('@/lib/db/repos/interview-reports', () => ({
-  getInterviewReport: vi.fn(async () => null),
+  getInterviewReport: vi.fn(async () => existing),
   saveInterviewReport: () => saveInterviewReport(),
 }));
 vi.mock('@/lib/db/repos/journal', () => ({ appendJournalEntry: () => appendJournalEntry() }));
@@ -42,6 +43,7 @@ const file = (content: string, name = 'entretien.vtt', type = 'text/vtt') => new
 beforeEach(() => {
   vi.clearAllMocks();
   enabled = true;
+  existing = null;
 });
 
 describe('importTranscript', () => {
@@ -62,6 +64,22 @@ describe('importTranscript', () => {
   it('un locuteur inconnu ne vaut pas choix', async () => {
     const out = await importTranscript({ analysis, file: file(twoSpeakers), candidateSpeaker: 'Paul', actor: null });
     expect(out.status).toBe('choose_speaker');
+  });
+
+  it('brouillon VIDE existant (« Enregistrer » cliqué à vide) : l’import reste possible', async () => {
+    existing = { status: 'draft', sections: { version: 2, body: '   ' } };
+    const out = await importTranscript({ analysis, file: file(twoSpeakers), candidateSpeaker: null, actor: null });
+    expect(out.status).toBe('choose_speaker');
+  });
+
+  it.each([
+    ['brouillon écrit', { status: 'draft', sections: { version: 2, body: 'Déjà rédigé.' } }],
+    ['compte rendu validé', { status: 'verified', sections: { version: 2, body: 'Validé.' } }],
+  ])('%s : refusé, rien envoyé au modèle', async (_label, report) => {
+    existing = report;
+    const out = await importTranscript({ analysis, file: file(twoSpeakers), candidateSpeaker: 'Jean', actor: null });
+    expect(out).toEqual({ status: 'report_exists' });
+    expect(structureTranscript).not.toHaveBeenCalled();
   });
 
   it('format inconnu : refusé sans lecture', async () => {

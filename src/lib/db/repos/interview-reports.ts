@@ -100,8 +100,10 @@ export type SaveReportOutcome =
 /**
  * Enregistre (crée ou met à jour) le compte rendu d'un tour.
  *
- * `source`/`generatedModel`/`omittedCount` ne sont posés qu'à la CRÉATION :
- * un compte rendu proposé à partir d'une transcription puis corrigé reste
+ * `source`/`generatedModel`/`omittedCount` ne sont posés qu'à la CRÉATION —
+ * ou quand une proposition issue d'une transcription remplit un brouillon
+ * VIDE (seul cas où l'import écrit sur une ligne existante). Une correction à
+ * la main ne les touche jamais : un compte rendu proposé puis corrigé reste
  * « établi à partir d'une transcription » — c'est ce que dit sa mention.
  */
 export async function saveInterviewReport(input: {
@@ -138,7 +140,18 @@ export async function saveInterviewReport(input: {
   if (existing) {
     const { data, error } = await supabase
       .from(TABLE)
-      .update({ sections: input.sections, status, ...verification })
+      .update({
+        sections: input.sections,
+        status,
+        ...verification,
+        ...(input.source === 'transcript'
+          ? {
+              source: 'transcript',
+              generated_model: input.generatedModel ?? null,
+              omitted_count: input.omittedCount ?? null,
+            }
+          : {}),
+      })
       .eq('id', existing.id)
       .select(COLUMNS)
       .single();

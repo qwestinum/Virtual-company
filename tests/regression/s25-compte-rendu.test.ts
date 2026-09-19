@@ -440,6 +440,13 @@ describe('S25.13–14 — proposition, et AUCUNE trace de la transcription', () 
   let consoleOut = '';
   let responseBody = '';
 
+  it('un brouillon VIDE déjà enregistré n’empêche pas l’import (cas vu en recette)', async () => {
+    const saved = await putReport(importUid, '', 'draft');
+    expect(saved.status).toBe(200);
+    const view = await callWithId(getInterviewReport, await analysisIdOf(importUid));
+    expect((view.json.report as { status: string }).status).toBe('draft');
+  });
+
   it('brouillon proposé : source transcription, citation inventée retirée, hors cadre compté', async () => {
     const { res, console: out } = await importWithConsole(
       importUid,
@@ -450,7 +457,9 @@ describe('S25.13–14 — proposition, et AUCUNE trace de la transcription', () 
     expect(res.status).toBe(200);
     expect(res.json.stats).toEqual({ kept: 3, removedUnproven: 1, flagged: 0, omittedCount: 1 });
     const report = res.json.report as { status: string; source: string; sections: { body: string } };
+    // Le brouillon vide a été REMPLI : même ligne, désormais « transcription ».
     expect(report).toMatchObject({ status: 'draft', source: 'transcript' });
+    expect(await readRows('interview_reports', { analysis_id: await analysisIdOf(importUid) })).toHaveLength(1);
     // UN seul texte, organisé par intertitres (spec §18).
     expect(report.sections.body).toContain('Ce que le candidat a mis en avant\n- ');
     expect(report.sections.body).toContain('« J’ai piloté la recette de bout en bout »');

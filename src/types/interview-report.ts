@@ -125,6 +125,19 @@ export function hasReportContent(s: InterviewReportSections): boolean {
 }
 
 /**
+ * L'import d'une transcription est-il encore possible ? Tant que le compte
+ * rendu est VIDE : aucun, ou un brouillon sans texte (« Enregistrer le
+ * brouillon » cliqué sans rien écrire). Une proposition ne remplace jamais un
+ * texte écrit ni un compte rendu validé. Règle UNIQUE, lue par l'écran ET par
+ * le serveur.
+ */
+export function importStillPossible(
+  report: Pick<InterviewReport, 'status' | 'sections'> | null,
+): boolean {
+  return report === null || (report.status === 'draft' && !hasReportContent(report.sections));
+}
+
+/**
  * Texte d'aide du champ : les repères du compte rendu, dont les critères de la
  * campagne (libellés seuls). Un repère, pas une case à remplir.
  */

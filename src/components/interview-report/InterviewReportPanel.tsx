@@ -22,6 +22,7 @@ import { ZoneCard } from '@/components/verdict/ZoneCard';
 import {
   emptySections,
   hasReportContent,
+  importStillPossible,
   type InterviewReport,
   type InterviewReportSections,
 } from '@/types/interview-report';
@@ -56,7 +57,9 @@ export function InterviewReportPanel({
   const editing =
     draft ?? (report === null ? emptySections() : report.status === 'draft' ? report.sections : null);
   const verified = report?.status === 'verified';
-  const canImport = view.transcriptImportEnabled && report === null;
+  // Même règle que le serveur : tant que le compte rendu est vide (aucun, ou
+  // brouillon enregistré sans texte).
+  const canImport = view.transcriptImportEnabled && importStillPossible(report);
 
   const onCreated = (created: InterviewReport, message: string) => {
     setView((v) => (v ? { ...v, report: created } : v));
@@ -76,7 +79,7 @@ export function InterviewReportPanel({
   }
 
   const hint =
-    report === null
+    report === null || canImport
       ? view.transcriptImportEnabled
         ? 'Rédigez directement ci-dessous, ou importez la transcription de l’entretien (bouton en bas à droite).'
         : 'Rédigez directement ci-dessous.'
