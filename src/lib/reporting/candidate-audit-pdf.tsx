@@ -34,6 +34,8 @@ import {
 } from '@/lib/reporting/candidate-journey';
 import type { FinalDecisionView } from '@/lib/candidatures/final-decision';
 import { FinalDecisionSection } from '@/lib/reporting/candidate-audit-decision-pdf';
+import { InterviewReportPdfSection } from '@/lib/reporting/candidate-audit-report-pdf';
+import type { InterviewReport } from '@/types/interview-report';
 import type { DecisionZone } from '@/types/hitl';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
@@ -170,6 +172,11 @@ type AuditPdfProps = {
    * on le DIT, un audit muet sur la décision se lirait « pas de décision ».
    */
   finalDecision?: FinalDecisionView | null | 'unavailable';
+  /**
+   * Compte rendu d'entretien VALIDÉ. `null`/absent : aucun (facultatif) — la
+   * section n'est pas rendue. `'unavailable'` : lecture en échec — dit.
+   */
+  interviewReport?: InterviewReport | null | 'unavailable';
 };
 
 function AuditDocument({
@@ -177,6 +184,7 @@ function AuditDocument({
   generatedAtIso,
   campaignLabel,
   finalDecision = null,
+  interviewReport = null,
 }: AuditPdfProps) {
   const { application } = detail;
   const { candidate, scoringResult, narration } = application;
@@ -263,6 +271,21 @@ function AuditDocument({
                 : ' — hors zone grise (acceptation ou refus automatique).'}
             </Text>
           </>
+        ) : null}
+
+        {interviewReport === 'unavailable' ? (
+          <>
+            <Text style={styles.sectionTitle}>Compte rendu d&apos;entretien</Text>
+            <Text style={[styles.paragraph, { color: MUTED }]}>
+              Lecture indisponible au moment de la génération de ce document.
+              Régénérez l&apos;audit.
+            </Text>
+          </>
+        ) : interviewReport && interviewReport.status === 'verified' ? (
+          <InterviewReportPdfSection
+            report={interviewReport}
+            title={<Text style={styles.sectionTitle}>Compte rendu d&apos;entretien</Text>}
+          />
         ) : null}
 
         {finalDecision === 'unavailable' ? (

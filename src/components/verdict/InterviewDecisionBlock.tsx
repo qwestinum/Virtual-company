@@ -9,12 +9,13 @@
  * pourquoi, puis on choisit. Le commentaire est FACULTATIF (arbitrage du
  * 19/09/2026) : les boutons ne dépendent pas de lui.
  *
- * `children` : l'emplacement du compte rendu d'entretien (lot 3), AU-DESSUS du
- * commentaire — ce qui s'est passé, puis pourquoi on décide.
+ * Le compte rendu d'entretien (facultatif) est AU-DESSUS du commentaire : ce
+ * qui s'est passé, puis pourquoi on décide.
  */
 
 import { useId, useState } from 'react';
 
+import { InterviewReportPanel } from '@/components/interview-report/InterviewReportPanel';
 import { postCandidateVerdict } from '@/lib/dashboard/candidate-actions';
 import type { FinalVerdict } from '@/types/verdict-comment';
 
@@ -25,14 +26,12 @@ export function InterviewDecisionBlock({
   candidateName,
   onDecided,
   onStale,
-  children,
 }: {
   analysisId: string;
   candidateName: string;
   onDecided: (verdict: FinalVerdict) => void;
   /** Le dossier a bougé ailleurs (409) : l'hôte recharge. */
   onStale: () => void;
-  children?: React.ReactNode;
 }) {
   const fieldId = useId();
   const [comment, setComment] = useState('');
@@ -62,7 +61,7 @@ export function InterviewDecisionBlock({
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-stone-200 bg-stone-50/60 p-3">
-      {children}
+      <InterviewReportPanel analysisId={analysisId} />
       <VerdictCommentField
         id={fieldId}
         value={comment}

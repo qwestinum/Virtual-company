@@ -14,6 +14,7 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
 import { auditCandidatFileName } from '@/lib/reporting/audit-display';
 import { loadFinalDecision } from '@/lib/candidatures/verdict';
+import { getInterviewReport } from '@/lib/db/repos/interview-reports';
 import { renderCandidateAuditPdf } from '@/lib/reporting/candidate-audit-pdf';
 import {
   journeyFromSignals,
@@ -76,13 +77,18 @@ export async function POST(
     // Verdict final et commentaire. Une lecture qui échoue n'empêche pas
     // l'audit, mais le document le DIT (jamais une section silencieusement
     // absente, qui se lirait « aucune décision »).
-    const finalDecision = await loadFinalDecision(detail).catch(
-      () => 'unavailable' as const,
-    );
+    const [finalDecision, interviewReport] = await Promise.all([
+      loadFinalDecision(detail).catch(() => 'unavailable' as const),
+      // Seul un compte rendu VALIDÉ est une pièce du dossier.
+      getInterviewReport(detail.id)
+        .then((r) => (r && r.status === 'verified' ? r : null))
+        .catch(() => 'unavailable' as const),
+    ]);
     const generatedAtIso = new Date().toISOString();
     const pdf = await renderCandidateAuditPdf({
       detail: { ...detail, journey },
       finalDecision,
+      interviewReport,
       generatedAtIso,
       campaignLabel: detail.campaignId
         ? `Campagne ${detail.campaignId}`

@@ -180,6 +180,32 @@ export type InterviewBriefRow = {
 };
 
 /**
+ * Compte rendu d'entretien (`interview_reports`, 18/09/2026). AUCUNE colonne
+ * ne reçoit une transcription. `search_text` (générée) n'est lue que par le
+ * contrôle de purge ; le code applicatif ne la sélectionne pas.
+ */
+export type InterviewReportRow = {
+  id: string;
+  analysis_id: string;
+  uid: string;
+  campaign_id: string | null;
+  brief_id: string | null;
+  round: number;
+  source: 'manual' | 'transcript';
+  status: 'draft' | 'verified';
+  sections: unknown;
+  generated_model: string | null;
+  omitted_count: number | null;
+  created_by_user_id: string | null;
+  created_by_email: string | null;
+  verified_by_user_id: string | null;
+  verified_by_email: string | null;
+  verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/**
  * Commentaire du recruteur qui motive un verdict final (`verdict_comments`,
  * 18/09/2026). AJOUT SEUL (déclencheur en base) ; supprimé par la purge RGPD
  * par rattachement à l'analyse. Le texte n'entre jamais dans le journal.

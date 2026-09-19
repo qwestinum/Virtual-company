@@ -872,3 +872,31 @@ change, et ce qui NE change PAS :
   susciter des objections. Le retirer est une ligne.
 - **Supersède** : §4 (commentaire obligatoire), §14.1 (D1), et les mentions
   « obligatoire » des maquettes §10.
+
+### 15.3 Lot 3 — compte rendu rédigé à la main (19/09/2026)
+
+- **Contrat** `src/types/interview-report.ts` : une forme unique (rubriques
+  `topics`, `criteria[]` — repères tirés de la fiche de scoring, libellé seul,
+  jamais un « non » —, `highlights`, `reservations`, `followUps`), toutes
+  facultatives, bornées (6 000 caractères par rubrique), aucun champ de score.
+  Libellés selon la source : un compte rendu proposé dit « ce que le candidat a
+  mis en avant », jamais « points forts ».
+- **Serveur** `GET/PUT /api/candidatures/[id]/interview-report` (cœur
+  `src/lib/candidatures/interview-report.ts`) : il faut un entretien marqué
+  « réalisé » (409 sinon, rien écrit) ; valider = signer (session requise,
+  auteur + date posés) ; un gabarit vide ne se valide pas ; un compte rendu
+  validé ne redevient pas brouillon (409), il se modifie en étant RE-validé ;
+  source toujours `manual` par cette route — seul le serveur d'import (lot 4)
+  peut créer un compte rendu « établi à partir d'une transcription » ; trace
+  `interview_report_saved` sans aucune rubrique.
+- **Écrans** : `InterviewReportPanel` au-dessus du commentaire dans le bloc de
+  décision (Entretiens + fiche), et sur la fiche d'un dossier retenu / non
+  retenu (on rédige souvent après avoir décidé ; se tait sans entretien).
+  Brouillon annoncé comme « hors dossier ».
+- **Lecteurs** (validé seulement) : frise (« Compte rendu d'entretien », après
+  l'entretien, avant le verdict, avec la mention) ; PDF d'audit (section
+  dédiée, mention rendue des colonnes, lecture KO écrite). Mention unique
+  `interviewReportMention` (écran, frise, PDF).
+- **Non fait, consigné** : le briefing d'un tour suivant (§7.3) — aucun second
+  tour n'existe encore.
+- **Régression** : S25.8 à S25.11.

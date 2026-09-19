@@ -22,6 +22,7 @@
 import { useState } from 'react';
 
 import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
+import { InterviewReportPanel } from '@/components/interview-report/InterviewReportPanel';
 import { InterviewDecisionBlock } from '@/components/verdict/InterviewDecisionBlock';
 import { markCandidateInterview } from '@/lib/dashboard/candidate-actions';
 import type { CandidateListItem } from '@/types/reporting';
@@ -66,6 +67,12 @@ export function CandidatureActions({
         <p className="font-body text-[12px] italic text-stone-400">
           Dossier clôturé — consultation seule.
         </p>
+        {/* Le compte rendu se lit (et s'écrit encore) après le verdict : on
+            rédige souvent après avoir décidé. Le panneau se tait s'il n'y a
+            eu aucun entretien. */}
+        {item.stage === 'retenu' || item.stage === 'non_retenu' ? (
+          <InterviewReportPanel analysisId={item.id} />
+        ) : null}
         <div>
           <CorrectionButton item={item} onActed={onActed} />
         </div>

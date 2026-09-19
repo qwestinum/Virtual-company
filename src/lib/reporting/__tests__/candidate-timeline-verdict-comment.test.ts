@@ -103,3 +103,22 @@ describe('frise — commentaire du verdict final', () => {
     expect(d).toBe('« Motif. » — auteur non enregistré');
   });
 });
+
+describe('frise — compte rendu d’entretien', () => {
+  it('un compte rendu VALIDÉ apparaît après l’entretien, avec sa mention', () => {
+    const t = buildCandidateTimeline({
+      ...BASE,
+      interviewReport: { verifiedAt: '2026-09-10T15:00:00.000Z', mention: 'Rédigé et validé par sarah@cabinet.fr le 10/09/2026' },
+    });
+    const keys = t.map((e) => e.key);
+    expect(keys.indexOf('interview_report')).toBeGreaterThan(keys.indexOf('interview_realized'));
+    expect(keys.indexOf('interview_report')).toBeLessThan(keys.indexOf('final_validated'));
+    expect(t.find((e) => e.key === 'interview_report')?.detail).toBe(
+      'Rédigé et validé par sarah@cabinet.fr le 10/09/2026',
+    );
+  });
+
+  it('aucun compte rendu (ou brouillon) : aucun événement', () => {
+    expect(buildCandidateTimeline({ ...BASE, interviewReport: null }).some((e) => e.key === 'interview_report')).toBe(false);
+  });
+});

@@ -18,6 +18,14 @@
  *      commentaire n'avait été enregistré ;
  *   7. le dialog de correction d'un dossier MOTIVÉ montre le commentaire et
  *      son auteur ; la frise du dossier le porte.
+ *
+ * LOT 3 — le compte rendu rédigé à la main :
+ *   8. pas d'entretien réalisé ⇒ rien à rendre compte (409, rien écrit) ;
+ *   9. un BROUILLON n'est pas au dossier (absent de la frise) ;
+ *  10. valider pose l'auteur de la session et la date ; la frise porte la
+ *      mention ; le journal ne porte aucune rubrique ;
+ *  11. un compte rendu validé ne redevient pas brouillon (409), il se modifie
+ *      en étant validé de nouveau.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -37,6 +45,10 @@ import { PUT as putCampaign } from '@/app/api/campaigns/route';
 import { GET as getCorrectionContext } from '@/app/api/candidatures/[id]/correction-context/route';
 import { POST as correctDecision } from '@/app/api/candidatures/[id]/correct-decision/route';
 import { POST as postJournal } from '@/app/api/journal/route';
+import {
+  GET as getInterviewReport,
+  PUT as putInterviewReport,
+} from '@/app/api/candidatures/[id]/interview-report/route';
 import { GET as getAudit } from '@/app/api/reporting/audit/candidates/[id]/route';
 import type { DecisionCorrectionContext } from '@/types/decision-correction';
 
@@ -55,6 +67,26 @@ const SARAH = { id: '00000000-0000-4000-8000-0000000025ab', email: 'sarah@treg.l
 const motivatedUid = `treg_s25_motive_${Date.now().toString(36)}`;
 const legacyUid = `treg_s25_legacy_${Date.now().toString(36)}`;
 const bareUid = `treg_s25_sans_${Date.now().toString(36)}`;
+const reportUid = `treg_s25_cr_${Date.now().toString(36)}`;
+
+const REPORT_TOPICS = 'Parcours en recette bancaire, souhait de rejoindre une équipe produit.';
+
+function reportSections(topics: string) {
+  return { version: 1, topics, criteria: [], highlights: '', reservations: '', followUps: '' };
+}
+
+async function putReport(uid: string, topics: string, action: 'draft' | 'verify') {
+  return callWithId(putInterviewReport, await analysisIdOf(uid), {
+    method: 'PUT',
+    body: { sections: reportSections(topics), action },
+  });
+}
+
+async function timelineOf(uid: string) {
+  const res = await callWithId(getAudit, await analysisIdOf(uid));
+  expect(res.status).toBe(200);
+  return res.json.timeline as { key: string; detail: string | null }[];
+}
 
 async function analyze(taskId: string): Promise<void> {
   const res = await call(analyzeCv, {
@@ -109,6 +141,7 @@ beforeAll(async () => {
   await analyze(motivatedUid);
   await analyze(legacyUid);
   await analyze(bareUid);
+  await analyze(reportUid);
 });
 
 afterAll(async () => {
@@ -263,5 +296,78 @@ describe('S25.7 — le dossier raconte la décision', () => {
     const timeline = res.json.timeline as { key: string; detail: string | null }[];
     const final = timeline.find((e) => e.key === 'final_validated');
     expect(final?.detail).toBe(`« ${REGRESSION_VERDICT_COMMENT} » — ${SARAH.email}`);
+  });
+});
+
+describe('S25.8 — le compte rendu suppose un entretien réalisé', () => {
+  it('avant l’entretien : la vue dit « non rédigeable » et l’écriture est refusée', async () => {
+    const view = await callWithId(getInterviewReport, await analysisIdOf(reportUid));
+    expect(view.status).toBe(200);
+    expect(view.json).toMatchObject({ report: null, writable: false });
+    const res = await putReport(reportUid, REPORT_TOPICS, 'draft');
+    expect(res.status).toBe(409);
+    expect(res.json.error).toBe('interview_not_realized');
+    expect(await readRows('interview_reports', { analysis_id: await analysisIdOf(reportUid) })).toHaveLength(0);
+  });
+});
+
+describe('S25.9 — un brouillon n’est pas au dossier', () => {
+  beforeAll(async () => {
+    await markInterview(reportUid);
+  });
+
+  it('brouillon enregistré, absent de la frise', async () => {
+    const res = await putReport(reportUid, REPORT_TOPICS, 'draft');
+    expect(res.status).toBe(200);
+    expect((res.json.report as { status: string }).status).toBe('draft');
+    expect((await timelineOf(reportUid)).some((e) => e.key === 'interview_report')).toBe(false);
+  });
+});
+
+describe('S25.10 — valider, c’est signer', () => {
+  it('auteur de la session, date, mention dans la frise', async () => {
+    const res = await putReport(reportUid, REPORT_TOPICS, 'verify');
+    expect(res.status).toBe(200);
+    const [row] = await readRows<{
+      status: string;
+      source: string;
+      verified_by_user_id: string | null;
+      verified_by_email: string | null;
+      verified_at: string | null;
+    }>('interview_reports', { analysis_id: await analysisIdOf(reportUid) });
+    expect(row).toMatchObject({
+      status: 'verified',
+      source: 'manual',
+      verified_by_user_id: SARAH.id,
+      verified_by_email: SARAH.email,
+    });
+    expect(row!.verified_at).not.toBeNull();
+    const event = (await timelineOf(reportUid)).find((e) => e.key === 'interview_report');
+    expect(event?.detail).toMatch(/^Rédigé et validé par sarah@treg\.local le /);
+  });
+
+  it('le journal ne porte aucune rubrique', async () => {
+    const all = await readRows<{ action: string; payload: Record<string, unknown> }>('journal', {
+      campaign_id: camp,
+    });
+    expect(all.some((e) => e.action === 'interview_report_saved')).toBe(true);
+    expect(JSON.stringify(all)).not.toContain('recette bancaire');
+  });
+});
+
+describe('S25.11 — un compte rendu validé se modifie en étant RE-validé', () => {
+  it('repasser en brouillon : 409', async () => {
+    const res = await putReport(reportUid, `${REPORT_TOPICS} Ajout.`, 'draft');
+    expect(res.status).toBe(409);
+    expect(res.json.error).toBe('already_verified');
+  });
+
+  it('modifier et valider de nouveau : 200, le texte suit', async () => {
+    const res = await putReport(reportUid, `${REPORT_TOPICS} Ajout.`, 'verify');
+    expect(res.status).toBe(200);
+    const [row] = await readRows<{ sections: { topics: string } }>('interview_reports', {
+      analysis_id: await analysisIdOf(reportUid),
+    });
+    expect(row!.sections.topics).toBe(`${REPORT_TOPICS} Ajout.`);
   });
 });

@@ -68,6 +68,11 @@ export type CandidateTimelineFacts = {
    * (`verdict_comments`). `null` = lecture indisponible : la frise ne dit
    * alors RIEN du commentaire plutôt que d'affirmer qu'il n'y en a pas.
    */
+  /**
+   * Compte rendu d'entretien VALIDÉ (un brouillon n'est pas au dossier) : date
+   * de validation et mention déjà formulée (`interviewReportMention`).
+   */
+  interviewReport?: { verifiedAt: string; mention: string } | null;
   verdictComments: {
     at: string;
     verdict: 'validated' | 'rejected';
@@ -116,6 +121,8 @@ const STEP_RANK: Record<string, number> = {
   scheduled: 6,
   interview_realized: 7,
   interview_missed: 7,
+  // Même rang que l'entretien : le compte rendu le suit, par la date.
+  interview_report: 7,
   final_validated: 8,
   final_rejected: 8,
   dismissed: 9,
@@ -245,6 +252,13 @@ export function buildCandidateTimeline(
     'Entretien non réalisé',
     null,
     'negative',
+  );
+  push(
+    'interview_report',
+    facts.interviewReport?.verifiedAt ?? null,
+    'Compte rendu d’entretien',
+    facts.interviewReport?.mention ?? null,
+    'neutral',
   );
   push(
     'final_validated',
