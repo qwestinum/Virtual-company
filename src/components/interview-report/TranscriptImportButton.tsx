@@ -28,9 +28,12 @@ export function describeProposal(stats: Stats): string {
 
 export function TranscriptImportButton({
   analysisId,
+  disabled = false,
   onCreated,
 }: {
   analysisId: string;
+  /** Vrai dès que le recruteur a commencé à écrire : l'import ne remplace pas un texte. */
+  disabled?: boolean;
   onCreated: (report: InterviewReport, notice: string) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
@@ -75,36 +78,35 @@ export function TranscriptImportButton({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => input.current?.click()}
-          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-body text-[12.5px] font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40"
-        >
-          {busy ? 'Lecture de la transcription… (jusqu’à une minute)' : 'Importer une transcription'}
-        </button>
-        <input
-          ref={input}
-          type="file"
-          accept={TRANSCRIPT_ACCEPT}
-          className="hidden"
-          onChange={(e) => {
-            const chosen = e.target.files?.[0] ?? null;
-            e.target.value = '';
-            setSpeakers(null);
-            setCandidate(null);
-            if (chosen) void send(chosen, null);
-          }}
-        />
-      </div>
-      <p className="font-body text-[11.5px] text-stone-500">
-        .vtt .srt .txt .docx .pdf — 2 Mo au plus. La transcription n’est pas conservée : elle sert à proposer un
-        compte rendu, que vous vérifiez avant de le valider.
+    <div className="flex max-w-[22rem] flex-col items-end gap-1 text-right">
+      <button
+        type="button"
+        disabled={busy || disabled}
+        onClick={() => input.current?.click()}
+        className="rounded-lg border border-sky-700 bg-white px-3 py-1.5 font-body text-[12.5px] font-semibold text-sky-800 hover:bg-sky-50 disabled:opacity-40"
+      >
+        {busy ? 'Lecture de la transcription… (jusqu’à une minute)' : '⬆ Importer une transcription'}
+      </button>
+      <input
+        ref={input}
+        type="file"
+        accept={TRANSCRIPT_ACCEPT}
+        className="hidden"
+        onChange={(e) => {
+          const chosen = e.target.files?.[0] ?? null;
+          e.target.value = '';
+          setSpeakers(null);
+          setCandidate(null);
+          if (chosen) void send(chosen, null);
+        }}
+      />
+      <p className="font-body text-[11px] text-stone-500">
+        {disabled && !busy
+          ? 'Import possible tant que le compte rendu est vide.'
+          : '.vtt .srt .txt .docx .pdf — 2 Mo. Non conservée : elle sert à proposer un compte rendu, que vous vérifiez.'}
       </p>
       {speakers && file ? (
-        <fieldset className="flex flex-col gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2">
+        <fieldset className="flex w-full flex-col items-start gap-1 rounded-lg border border-sky-200 bg-white px-3 py-2 text-left">
           <legend className="px-1 font-body text-[12.5px] font-semibold text-stone-700">Lequel est le candidat ?</legend>
           {speakers.map((s) => (
             <label key={s} className="flex items-center gap-2 font-body text-[12.5px] text-stone-700">
@@ -112,16 +114,14 @@ export function TranscriptImportButton({
               {s}
             </label>
           ))}
-          <div className="mt-1">
-            <button
-              type="button"
-              disabled={busy || candidate === null}
-              onClick={() => void send(file, candidate)}
-              className="rounded-lg border border-stone-800 bg-stone-800 px-3 py-1.5 font-body text-[12.5px] font-semibold text-white hover:bg-stone-700 disabled:opacity-40"
-            >
-              Proposer un compte rendu
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={busy || candidate === null}
+            onClick={() => void send(file, candidate)}
+            className="mt-1 rounded-lg border border-sky-700 bg-sky-700 px-3 py-1.5 font-body text-[12.5px] font-semibold text-white hover:bg-sky-800 disabled:opacity-40"
+          >
+            Proposer un compte rendu
+          </button>
         </fieldset>
       ) : null}
       {error ? <p role="alert" className="font-body text-[12.5px] text-rose-700">{error}</p> : null}

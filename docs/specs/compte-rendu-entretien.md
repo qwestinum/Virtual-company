@@ -941,3 +941,27 @@ change, et ce qui NE change PAS :
   glissé dans le journal ou un `err.message` en console fait échouer 4 tests.
   Doublée par une garde structurelle unitaire (aucun import de stockage ni de
   système de fichiers, aucun message d'erreur recopié — sondée).
+
+---
+
+## 17. Revue de l'écran de décision (19/09/2026)
+
+Demande du donneur d'ordre après le lot 4 : « Décider » ouvre **deux zones
+visibles d'emblée, nettement séparées**, puis la décision.
+
+1. **Compte rendu d'entretien** (zone BLEUE, pastille « 1 », titre en gras,
+   « facultatif ») — les rubriques sont OUVERTES, prêtes à écrire (plus de
+   bouton « Rédiger »). Une phrase dit qu'on peut rédiger directement ou
+   importer la transcription ; « ⬆ Importer une transcription » est en BAS À
+   DROITE de la zone, les boutons « Valider le compte rendu » / « Enregistrer
+   le brouillon » en bas à gauche. L'import n'est offert que tant que rien
+   n'est écrit (« Import possible tant que le compte rendu est vide ») : une
+   proposition ne remplace jamais un texte en cours.
+2. **Pourquoi cette décision ?** (zone AMBRE, pastille « 2 », titre en gras,
+   « facultatif ») — le commentaire, inchangé sur le fond.
+3. **« Votre décision : »** GO définitif / Non retenu, séparés des deux zones
+   par un filet.
+
+Cadre commun `src/components/verdict/ZoneCard.tsx` (liseré de couleur à gauche,
+fond teinté, titre en gras, numéro d'étape). Sur la fiche d'un dossier déjà
+décidé, la zone « Compte rendu » garde le même cadre, sans numéro.

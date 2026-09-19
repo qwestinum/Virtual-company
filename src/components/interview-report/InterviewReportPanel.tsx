@@ -1,24 +1,27 @@
 'use client';
 
 /**
- * Compte rendu d'entretien d'une candidature — FACULTATIF.
- * Spec : docs/specs/compte-rendu-entretien.md §3, §5.7, §15.
+ * Zone « Compte rendu d'entretien » — FACULTATIVE, OUVERTE D'EMBLÉE.
+ * Spec : docs/specs/compte-rendu-entretien.md §3, §5.7, §15, §17.
+ *
+ * On arrive devant des rubriques prêtes à écrire, pas devant un bouton
+ * « Rédiger » : rédiger ou importer se décide en écrivant — ou en cliquant
+ * « Importer une transcription », en bas à droite de la zone. L'import n'est
+ * offert que tant que rien n'est écrit : une proposition ne remplace jamais un
+ * texte en cours.
  *
  * Un brouillon n'apparaît dans AUCUN lecteur (frise, PDF d'audit) : seul un
  * compte rendu validé fait partie du dossier, avec sa mention. Un compte rendu
  * validé se modifie en étant validé de nouveau — il ne redevient pas
  * brouillon, il ne disparaît donc jamais du dossier en silence.
- *
- * « Importer une transcription » (si le réglage de l'installation l'autorise) :
- * le brouillon est créé CÔTÉ SERVEUR — c'est le serveur, jamais le client, qui
- * peut dire « établi à partir d'une transcription » — et le panneau l'ouvre
- * dans l'éditeur, avec ce que les contrôles ont retiré ou signalé.
  */
 
 import { useState } from 'react';
 
+import { ZoneCard } from '@/components/verdict/ZoneCard';
 import {
   emptySections,
+  hasReportContent,
   type InterviewReport,
   type InterviewReportSections,
 } from '@/types/interview-report';
@@ -28,16 +31,18 @@ import { InterviewReportReadOnly } from './InterviewReportReadOnly';
 import { TranscriptImportButton } from './TranscriptImportButton';
 import { useInterviewReport } from './useInterviewReport';
 
-export function InterviewReportPanel({ analysisId }: { analysisId: string }) {
+export function InterviewReportPanel({
+  analysisId,
+  step,
+}: {
+  analysisId: string;
+  /** Numéro d'étape dans le bloc de décision (absent hors de ce bloc). */
+  step?: number;
+}) {
   const { view, error, save, setView } = useInterviewReport(analysisId);
   const [draft, setDraft] = useState<InterviewReportSections | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const onCreated = (report: InterviewReport, message: string) => {
-    setView((v) => (v ? { ...v, report } : v));
-    setNotice(message);
-    setDraft(report.sections);
-  };
 
   if (!view) {
     return <p className="font-body text-[12px] text-stone-400">Chargement du compte rendu…</p>;
@@ -45,10 +50,24 @@ export function InterviewReportPanel({ analysisId }: { analysisId: string }) {
   const { report, criteria, writable } = view;
   if (!report && !writable) return null;
 
+  // Ce qui est dans l'éditeur : la saisie en cours, sinon un gabarit vide
+  // (aucun compte rendu), sinon le brouillon enregistré. Un compte rendu
+  // VALIDÉ s'affiche en lecture tant qu'on ne clique pas « Modifier ».
+  const editing =
+    draft ?? (report === null ? emptySections(criteria) : report.status === 'draft' ? report.sections : null);
+  const verified = report?.status === 'verified';
+  const canImport = view.transcriptImportEnabled && report === null;
+
+  const onCreated = (created: InterviewReport, message: string) => {
+    setView((v) => (v ? { ...v, report: created } : v));
+    setNotice(message);
+    setDraft(created.sections);
+  };
+
   async function submit(action: 'draft' | 'verify') {
-    if (!draft) return;
+    if (!editing) return;
     setBusy(true);
-    const saved = await save(draft, action);
+    const saved = await save(editing, action);
     setBusy(false);
     if (saved) {
       setDraft(null);
@@ -56,65 +75,62 @@ export function InterviewReportPanel({ analysisId }: { analysisId: string }) {
     }
   }
 
-  const verified = report?.status === 'verified';
-  return (
-    <section className="flex flex-col gap-2">
-      <p className="font-body text-[12.5px] font-semibold text-stone-700">
-        Compte rendu d’entretien <span className="font-normal text-stone-500">(facultatif)</span>
-      </p>
+  const hint =
+    report === null
+      ? view.transcriptImportEnabled
+        ? 'Rédigez directement dans les rubriques ci-dessous, ou importez la transcription de l’entretien (bouton en bas à droite).'
+        : 'Rédigez directement dans les rubriques ci-dessous.'
+      : report.status === 'draft'
+        ? 'Brouillon enregistré — il n’apparaît pas au dossier tant qu’il n’est pas validé.'
+        : undefined;
 
-      {draft ? (
+  return (
+    <ZoneCard tone="report" step={step} title="Compte rendu d’entretien" hint={hint}>
+      {editing ? (
         <>
           {notice ? (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12px] text-amber-900">
+            <p className="rounded-lg border border-sky-300 bg-white px-3 py-2 font-body text-[12px] text-sky-900">
               {notice}
             </p>
           ) : null}
           <InterviewReportEditor
-            sections={draft}
+            sections={editing}
             source={report?.source ?? 'manual'}
             disabled={busy}
             onChange={setDraft}
           />
           {error ? <p role="alert" className="font-body text-[12.5px] text-rose-700">{error}</p> : null}
-          <div className="flex flex-wrap gap-2">
-            <Button primary disabled={busy} onClick={() => void submit('verify')}>
-              {verified ? 'Valider les modifications' : 'Valider le compte rendu'}
-            </Button>
-            {!verified ? (
-              <Button disabled={busy} onClick={() => void submit('draft')}>
-                Enregistrer le brouillon
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Button primary disabled={busy} onClick={() => void submit('verify')}>
+                {verified ? 'Valider les modifications' : 'Valider le compte rendu'}
               </Button>
+              {!verified ? (
+                <Button disabled={busy} onClick={() => void submit('draft')}>
+                  Enregistrer le brouillon
+                </Button>
+              ) : (
+                <Button disabled={busy} onClick={() => setDraft(null)}>Annuler</Button>
+              )}
+            </div>
+            {canImport ? (
+              <TranscriptImportButton
+                analysisId={analysisId}
+                disabled={busy || hasReportContent(editing)}
+                onCreated={onCreated}
+              />
             ) : null}
-            <Button disabled={busy} onClick={() => setDraft(null)}>Annuler</Button>
           </div>
         </>
       ) : report ? (
         <>
-          {verified ? (
-            <InterviewReportReadOnly report={report} />
-          ) : (
-            <p className="font-body text-[12px] italic text-stone-500">
-              Brouillon enregistré — il n’apparaît pas au dossier tant qu’il n’est pas validé.
-            </p>
-          )}
+          <InterviewReportReadOnly report={report} />
           <div>
-            <Button onClick={() => setDraft(report.sections)}>
-              {verified ? 'Modifier' : 'Reprendre le brouillon'}
-            </Button>
+            <Button onClick={() => setDraft(report.sections)}>Modifier</Button>
           </div>
         </>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div>
-            <Button onClick={() => setDraft(emptySections(criteria))}>Rédiger</Button>
-          </div>
-          {view.transcriptImportEnabled ? (
-            <TranscriptImportButton analysisId={analysisId} onCreated={onCreated} />
-          ) : null}
-        </div>
-      )}
-    </section>
+      ) : null}
+    </ZoneCard>
   );
 }
 
@@ -136,8 +152,8 @@ function Button({
       onClick={onClick}
       className={`rounded-lg border px-3 py-1.5 font-body text-[12.5px] font-semibold transition disabled:opacity-40 ${
         primary
-          ? 'border-stone-800 bg-stone-800 text-white hover:bg-stone-700'
-          : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-50'
+          ? 'border-sky-700 bg-sky-700 text-white hover:bg-sky-800'
+          : 'border-sky-300 bg-white text-sky-900 hover:bg-sky-50'
       }`}
     >
       {children}

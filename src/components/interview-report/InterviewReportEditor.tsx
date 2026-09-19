@@ -105,7 +105,7 @@ function Area({
         rows={compact ? 2 : 3}
         maxLength={6000}
         placeholder={hint}
-        className="w-full resize-y rounded-lg border border-stone-300 bg-white px-3 py-2 font-body text-[13px] text-stone-800 placeholder:text-stone-400 focus:border-stone-500 focus:outline-none disabled:opacity-60"
+        className="w-full resize-y rounded-lg border border-sky-200 bg-white px-3 py-2 font-body text-[13px] text-stone-800 placeholder:text-stone-400 focus:border-sky-500 focus:outline-none disabled:opacity-60"
       />
     </label>
   );

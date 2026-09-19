@@ -9,8 +9,9 @@
  * pourquoi, puis on choisit. Le commentaire est FACULTATIF (arbitrage du
  * 19/09/2026) : les boutons ne dépendent pas de lui.
  *
- * Le compte rendu d'entretien (facultatif) est AU-DESSUS du commentaire : ce
- * qui s'est passé, puis pourquoi on décide.
+ * Deux zones DISTINCTES, dans l'ordre de lecture (§17) : 1. le compte rendu
+ * (bleu) — ce qui s'est passé —, 2. le commentaire (ambre) — pourquoi on
+ * décide —, puis la décision, séparée par un filet.
  */
 
 import { useId, useState } from 'react';
@@ -60,20 +61,23 @@ export function InterviewDecisionBlock({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-stone-200 bg-stone-50/60 p-3">
-      <InterviewReportPanel analysisId={analysisId} />
+    <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-3">
+      <InterviewReportPanel analysisId={analysisId} step={1} />
       <VerdictCommentField
         id={fieldId}
         value={comment}
         onChange={setComment}
         disabled={busy !== null}
+        step={2}
       />
       {error ? (
         <p role="alert" className="font-body text-[12.5px] text-rose-700">
           {error}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* La décision, séparée des deux zones de saisie. */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 pt-3">
+        <span className="font-display text-[13px] font-bold text-stone-800">Votre décision :</span>
         <DecisionButton
           tone="positive"
           disabled={busy !== null}
