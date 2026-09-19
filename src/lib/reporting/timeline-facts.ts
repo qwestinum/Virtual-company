@@ -14,6 +14,7 @@ import {
   VALIDATION_MARKER_ACTION,
 } from '@/lib/candidatures/decision-markers';
 import { getScheduledInterviewByUid } from '@/lib/db/repos/interview-briefs';
+import { listVerdictCommentsByAnalyses } from '@/lib/db/repos/verdict-comments';
 import {
   listJournalEntriesByActions,
   type JournalEntry,
@@ -71,7 +72,7 @@ export async function extractCandidateTimelineFacts(
 
   // Faits PAR-UID (cohérent avec le parcours). Le RDV vient d'interview_briefs
   // rattaché PAR UID (fiable, ≠ email) ; le reste, du journal filtré par uid.
-  const [origin, entries, rdv] = await Promise.all([
+  const [origin, entries, rdv, comments] = await Promise.all([
     vivierOrigin,
     (preloaded.journal
       ? preloaded.journal.then((all) => pickActions(all, TIMELINE_JOURNAL_ACTIONS))
@@ -80,6 +81,9 @@ export async function extractCandidateTimelineFacts(
         })
     ).catch(() => []),
     getScheduledInterviewByUid(uid).catch(() => null),
+    // `null` si la lecture échoue : la frise se tait sur le commentaire plutôt
+    // que d'affirmer qu'il n'y en a pas.
+    listVerdictCommentsByAnalyses([detail.id]).catch(() => null),
   ]);
 
   // Journal trié created_at DESC → la 1ʳᵉ occurrence par fait est la plus
@@ -181,6 +185,14 @@ export async function extractCandidateTimelineFacts(
     interviewMissedAt,
     finalValidatedAt,
     finalRejectedAt,
+    verdictComments: comments
+      ? comments.map((c) => ({
+          at: c.createdAt,
+          verdict: c.verdict,
+          body: c.body,
+          by: c.authorEmail,
+        }))
+      : null,
     // Ordre d'apparition : la plus ANCIENNE d'abord (le journal arrive DESC).
     corrections: [...corrections].reverse(),
     dismissedAt: detail.dismissedAt,

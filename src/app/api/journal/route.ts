@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getApiUser } from '@/lib/auth/require-api-user';
+import { VALIDATION_MARKER_ACTION } from '@/lib/candidatures/decision-markers';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 
@@ -55,6 +56,20 @@ export async function POST(request: Request): Promise<NextResponse> {
         message: err instanceof Error ? err.message : 'Invalid request body.',
       },
       { status: 400 },
+    );
+  }
+
+  // Le verdict final a SON chemin, qui exige le commentaire qui le motive
+  // (`POST /api/candidatures/[id]/verdict`). Sans ce refus, la règle « pas de
+  // décision sans commentaire » ne serait qu'une convention d'écran.
+  if (parsed.action === VALIDATION_MARKER_ACTION) {
+    return NextResponse.json(
+      {
+        error: 'use_verdict_route',
+        message:
+          'Un verdict final se pose par POST /api/candidatures/[id]/verdict, avec son commentaire.',
+      },
+      { status: 409 },
     );
   }
 

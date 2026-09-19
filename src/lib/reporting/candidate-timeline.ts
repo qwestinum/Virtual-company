@@ -64,6 +64,18 @@ export type CandidateTimelineFacts = {
   /** Journal candidate_validation_marked = rejected. */
   finalRejectedAt: string | null;
   /**
+   * Commentaires du recruteur qui motivent les verdicts finaux
+   * (`verdict_comments`). `null` = lecture indisponible : la frise ne dit
+   * alors RIEN du commentaire plutôt que d'affirmer qu'il n'y en a pas.
+   */
+  verdictComments: {
+    at: string;
+    verdict: 'validated' | 'rejected';
+    body: string;
+    /** `null` = auteur non enregistré. */
+    by: string | null;
+  }[] | null;
+  /**
    * Corrections de décision (`decision_corrected`), de la plus ancienne à la
    * plus récente. Une LISTE, pas un fait daté unique : un dossier peut être
    * corrigé deux fois, et masquer la première réécrirait l'histoire.
@@ -116,6 +128,26 @@ const STEP_RANK: Record<string, number> = {
 function rankOf(key: string): number {
   if (key.startsWith('correction_')) return STEP_RANK.correction;
   return STEP_RANK[key] ?? 99;
+}
+
+/**
+ * Le commentaire qui motive un verdict final : le plus RÉCENT écrit pour ce
+ * verdict. Aucun ⇒ on l'écrit (verdict antérieur au commentaire obligatoire,
+ * ou posé par une correction) ; lecture indisponible ⇒ on se tait plutôt que
+ * d'affirmer une absence qu'on n'a pas vérifiée.
+ */
+function verdictCommentDetail(
+  comments: CandidateTimelineFacts['verdictComments'],
+  verdict: 'validated' | 'rejected',
+): string | null {
+  if (comments === null) return null;
+  const mine = comments.filter((c) => c.verdict === verdict);
+  const last = mine.reduce<(typeof mine)[number] | null>(
+    (best, c) => (best === null || c.at > best.at ? c : best),
+    null,
+  );
+  if (!last) return 'Aucun commentaire enregistré pour ce verdict';
+  return `« ${last.body} »${last.by ? ` — ${last.by}` : ' — auteur non enregistré'}`;
 }
 
 /**
@@ -218,10 +250,16 @@ export function buildCandidateTimeline(
     'final_validated',
     facts.finalValidatedAt,
     'Retenu définitivement',
-    null,
+    verdictCommentDetail(facts.verdictComments, 'validated'),
     'positive',
   );
-  push('final_rejected', facts.finalRejectedAt, 'Non retenu', null, 'negative');
+  push(
+    'final_rejected',
+    facts.finalRejectedAt,
+    'Non retenu',
+    verdictCommentDetail(facts.verdictComments, 'rejected'),
+    'negative',
+  );
   // Classement sans suite : terminal NEUTRE (jamais un refus).
   push(
     'dismissed',

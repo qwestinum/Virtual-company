@@ -6,8 +6,9 @@
  * mécanique sous-jacente — aucune divergence :
  *   - zone grise        → `ValidationCard` (→ `decideGrayValidation`)
  *   - invité / RDV pris → `markCandidateInterview`
- *   - entretien réalisé → `markCandidateValidation` (+ flux « poste pourvu »
- *     après un GO : proposer de classer les candidatures restantes)
+ *   - entretien réalisé → `InterviewDecisionBlock` : commentaire OBLIGATOIRE
+ *     puis verdict, par la route dédiée (+ flux « poste pourvu » après un GO :
+ *     proposer de classer les candidatures restantes)
  *   - toute étape OUVERTE → « Classer sans suite » (dialog motif)
  *   - sans suite         → mention terminale + « Rouvrir »
  *   - terminal           → « Corriger la décision » (le dossier est clos, mais
@@ -21,10 +22,8 @@
 import { useState } from 'react';
 
 import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
-import {
-  markCandidateInterview,
-  markCandidateValidation,
-} from '@/lib/dashboard/candidate-actions';
+import { InterviewDecisionBlock } from '@/components/verdict/InterviewDecisionBlock';
+import { markCandidateInterview } from '@/lib/dashboard/candidate-actions';
 import type { CandidateListItem } from '@/types/reporting';
 
 import { ActionButton, CorrectionButton } from './CandidatureActionButtons';
@@ -120,42 +119,30 @@ function FinalDecisionAction({
   item: CandidateListItem;
   onActed: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
   // Flux « poste pourvu » (cas B validé) : après un GO, proposer de classer
   // les candidatures restantes de la campagne — NON bloquant (le GO est déjà
   // acté si l'utilisateur décline).
   const [goFollowUp, setGoFollowUp] = useState(false);
 
-  const decide = async (status: 'validated' | 'rejected') => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await markCandidateValidation({
-        uid: item.uid,
-        candidateName: item.candidateName,
-        campaignId: item.campaignId,
-        status,
-      });
-      if (status === 'validated' && item.campaignId) {
-        setGoFollowUp(true);
-      } else {
-        onActed();
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
+  // Le verdict exige le commentaire qui le motive : même bloc que l'onglet
+  // Entretiens, même route serveur — aucun écran de décision n'est un
+  // cul-de-sac, aucun ne contourne la règle.
   return (
     <>
-      <div className="flex flex-wrap gap-2">
-        <ActionButton tone="positive" disabled={busy} onClick={() => decide('validated')}>
-          GO définitif
-        </ActionButton>
-        <ActionButton tone="negative" disabled={busy} onClick={() => decide('rejected')}>
-          Non retenu
-        </ActionButton>
-        <DismissActionButton item={item} onActed={onActed} />
-        <CorrectionButton item={item} onActed={onActed} />
+      <div className="flex flex-col gap-2">
+        <InterviewDecisionBlock
+          analysisId={item.id}
+          candidateName={item.candidateName}
+          onDecided={(verdict) => {
+            if (verdict === 'validated' && item.campaignId) setGoFollowUp(true);
+            else onActed();
+          }}
+          onStale={onActed}
+        />
+        <div className="flex flex-wrap gap-2">
+          <DismissActionButton item={item} onActed={onActed} />
+          <CorrectionButton item={item} onActed={onActed} />
+        </div>
       </div>
       {goFollowUp && item.campaignId ? (
         <CampaignDismissFlowDialog

@@ -8,17 +8,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/db/repos/campaigns', () => ({ getCampaign: vi.fn() }));
 vi.mock('@/lib/db/repos/candidate-analyses', () => ({ listAllCandidateAnalyses: vi.fn() }));
 vi.mock('@/lib/db/repos/donneurs-ordre', () => ({ getDonneurOrdre: vi.fn() }));
-vi.mock('@/lib/db/repos/journal', () => ({ listJournalEntries: vi.fn() }));
+vi.mock('@/lib/db/repos/journal', () => ({
+  listJournalEntries: vi.fn(),
+  listJournalEntriesByActions: vi.fn(),
+  appendJournalEntry: vi.fn(),
+}));
 vi.mock('@/lib/db/repos/sites', () => ({ getSite: vi.fn() }));
 vi.mock('@/lib/db/repos/vivier-preselection', () => ({
   countVivierMetricsForCampaign: vi.fn(),
 }));
-vi.mock('@/lib/reporting/journey-lookup', () => ({ loadJourneySignals: vi.fn() }));
+vi.mock('@/lib/reporting/journey-lookup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/reporting/journey-lookup')>()),
+  loadJourneySignals: vi.fn(),
+}));
 
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import { getDonneurOrdre } from '@/lib/db/repos/donneurs-ordre';
-import { listJournalEntries } from '@/lib/db/repos/journal';
+import { listJournalEntries, listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import { getSite } from '@/lib/db/repos/sites';
 import { countVivierMetricsForCampaign } from '@/lib/db/repos/vivier-preselection';
 import { loadJourneySignals } from '@/lib/reporting/journey-lookup';
@@ -51,6 +58,7 @@ beforeEach(() => {
     pendingUids: new Set(),
   });
   vi.mocked(listJournalEntries).mockResolvedValue([]);
+  vi.mocked(listJournalEntriesByActions).mockResolvedValue([]);
   vi.mocked(countVivierMetricsForCampaign).mockResolvedValue({ contacted: 0 } as never);
   vi.mocked(getDonneurOrdre).mockResolvedValue({
     firstName: 'Jane',
@@ -96,5 +104,62 @@ describe('précédence des erreurs', () => {
     vi.mocked(getDonneurOrdre).mockRejectedValue(new Error('donneur KO'));
     vi.mocked(getSite).mockRejectedValue(new Error('site KO'));
     await expect(assembleCampaignReport(CAMPAIGN.id)).rejects.toThrow('donneur KO');
+  });
+});
+
+describe('indicateur « décisions finales motivées » (indicateur seul, jamais le contenu)', () => {
+  const analysis = (uid: string) =>
+    ({
+      id: `can_${uid}`,
+      uid,
+      status: 'accepted',
+      totalScore: 80,
+      source: 'email',
+      decisionZone: 'auto_accept',
+      decidedBy: 'auto',
+      dismissedAt: null,
+    }) as never;
+  const marker = (uid: string, status: string, at: string, commentId?: string) => ({
+    id: `j_${uid}_${at}`,
+    campaignId: CAMPAIGN.id,
+    actor: 'user',
+    action: 'candidate_validation_marked',
+    payload: { uid, status, ...(commentId ? { commentId } : {}) },
+    createdAt: at,
+  });
+
+  it('compte les verdicts COURANTS et ceux qui portent leur commentaire', async () => {
+    vi.mocked(listAllCandidateAnalyses).mockResolvedValue([
+      analysis('u1'),
+      analysis('u2'),
+      analysis('u3'),
+    ]);
+    vi.mocked(listJournalEntriesByActions).mockResolvedValue([
+      marker('u1', 'validated', '2026-07-10T10:00:00.000Z', 'c1'),
+      marker('u2', 'rejected', '2026-07-11T10:00:00.000Z', 'c2'),
+      // u3 : GO motivé PUIS corrigé sans commentaire ⇒ verdict non motivé.
+      marker('u3', 'validated', '2026-07-12T10:00:00.000Z', 'c3'),
+      marker('u3', 'rejected', '2026-07-13T10:00:00.000Z'),
+      // Marqueur d'une candidature hors campagne : ignoré.
+      marker('autre', 'validated', '2026-07-12T10:00:00.000Z', 'c9'),
+    ] as never);
+    const report = await assembleCampaignReport(CAMPAIGN.id);
+    expect(report?.data.motivatedDecisions).toEqual({ total: 3, motivated: 2 });
+  });
+
+  it('campagne antérieure à la règle (aucun verdict motivé) : pas d’indicateur', async () => {
+    vi.mocked(listAllCandidateAnalyses).mockResolvedValue([analysis('u1')]);
+    vi.mocked(listJournalEntriesByActions).mockResolvedValue([
+      marker('u1', 'validated', '2026-07-10T10:00:00.000Z'),
+    ] as never);
+    const report = await assembleCampaignReport(CAMPAIGN.id);
+    expect(report?.data.motivatedDecisions).toBeNull();
+  });
+
+  it('journal illisible : la ligne disparaît, le rapport reste', async () => {
+    vi.mocked(listJournalEntriesByActions).mockRejectedValue(new Error('journal KO'));
+    const report = await assembleCampaignReport(CAMPAIGN.id);
+    expect(report).not.toBeNull();
+    expect(report?.data.motivatedDecisions).toBeNull();
   });
 });

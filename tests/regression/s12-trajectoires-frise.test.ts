@@ -36,6 +36,7 @@ import {
 } from './helpers/api';
 import { cleanAll, newTestCampaignId } from './helpers/db';
 import { resetSentEmails, sentEmails } from './helpers/mocks';
+import { postVerdict } from './helpers/verdict';
 
 const camp = newTestCampaignId('s12');
 const LOW = 30;
@@ -140,7 +141,8 @@ describe('S12 — trajectoires quadrants + frise', () => {
   it('retenu APRÈS entretien : les trajectoires le gardent, les chips de stade courant non', async () => {
     // Le DRH marque l'entretien réalisé PUIS la validation définitive (GO).
     await mark('candidate_interview_marked', uidFort, 'realized');
-    await mark('candidate_validation_marked', uidFort, 'validated');
+    // Le verdict final passe par SA route, avec son commentaire.
+    expect((await postVerdict(uidFort, 'validated')).status).toBe(200);
 
     // Stade courant = retenu → le chip « Entretien fait » ne le montre plus…
     const stageInterview = await listWith('stage=entretien_fait');

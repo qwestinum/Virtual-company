@@ -26,6 +26,7 @@ import type { CVApplication } from '@/types/cv-analysis';
 import { call, callWithId, cvAnalyzerForm, testCampaignPayload, testScoringSheet, TEST_JOB_TITLE } from './helpers/api';
 import { cleanAll, db, newTestCampaignId } from './helpers/db';
 import { resetSentEmails } from './helpers/mocks';
+import { postVerdict } from './helpers/verdict';
 
 const camp = newTestCampaignId('s8');
 const DAY = 86_400_000;
@@ -147,17 +148,10 @@ describe('S8 — notifications métier', () => {
     const before = ofKey(await signalsNow(), 'interviews_awaiting_decision');
     expect(before).not.toBeNull();
 
-    // Le DRH clique « Validation définitive » (même route que l'UI).
-    const decided = await call(postJournal, {
-      method: 'POST',
-      body: {
-        action: 'candidate_validation_marked',
-        campaignId: camp,
-        actor: 'user',
-        payload: { uid: interviewTaskId, candidate: 'Victor Fort', status: 'validated' },
-      },
-    });
-    expect(decided.status).toBe(204);
+    // Le DRH pose le verdict MOTIVÉ (même route que l'UI — la seule depuis
+    // le commentaire obligatoire).
+    const decided = await postVerdict(interviewTaskId, 'validated');
+    expect(decided.status).toBe(200);
 
     // Par construction (deriveCandidateStage), le candidat passe « retenu »
     // et SORT du signal — sans aucune logique de notification dédiée.

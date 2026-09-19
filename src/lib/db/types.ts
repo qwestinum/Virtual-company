@@ -180,6 +180,23 @@ export type InterviewBriefRow = {
 };
 
 /**
+ * Commentaire du recruteur qui motive un verdict final (`verdict_comments`,
+ * 18/09/2026). AJOUT SEUL (déclencheur en base) ; supprimé par la purge RGPD
+ * par rattachement à l'analyse. Le texte n'entre jamais dans le journal.
+ */
+export type VerdictCommentRow = {
+  id: string;
+  analysis_id: string;
+  uid: string;
+  campaign_id: string | null;
+  verdict: 'validated' | 'rejected';
+  body: string;
+  author_user_id: string | null;
+  author_email: string | null;
+  created_at: string;
+};
+
+/**
  * Idempotence du webhook Cal.com (table `calcom_webhook_events`). Clé = uid
  * du booking. Sa présence = booking déjà traité → un rejeu ne renvoie rien.
  */

@@ -248,6 +248,15 @@ export type CampaignReportData = {
    * rapprochées par email. null si la campagne n'a pas mobilisé le vivier.
    */
   vivier: VivierConversion | null;
+  /**
+   * Décisions finales MOTIVÉES par écrit (verdict posé avec le commentaire du
+   * recruteur, docs/specs/compte-rendu-entretien.md §7.2) — un INDICATEUR,
+   * jamais le contenu : le commentaire justifie la décision devant le cabinet
+   * et une autorité, pas devant le client final. `null` quand la campagne n'a
+   * vécu aucun verdict sous la règle (campagnes antérieures) : afficher « 0/14 »
+   * reprocherait une règle qui n'existait pas.
+   */
+  motivatedDecisions: { total: number; motivated: number } | null;
 };
 
 /** Métrique de valeur du vivier : contactés vs candidatures rapprochées. */

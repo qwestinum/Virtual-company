@@ -37,6 +37,42 @@ export function CurrentDecisionBlock({
   );
 }
 
+/**
+ * Le commentaire qui motivait le verdict corrigé — montré TEL QUEL, avec le
+ * verdict pour lequel il a été écrit. Corriger ne le réécrit pas (ajout seul) :
+ * on le lit avant de choisir.
+ */
+export function VerdictCommentBlock({
+  context,
+}: {
+  context: DecisionCorrectionContext;
+}) {
+  const c = context.verdictComment;
+  if (c === undefined) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+      <BlockLabel tone="neutral">Commentaire du recruteur</BlockLabel>
+      {c === null ? (
+        <p className="mt-1 font-body text-[12px] italic text-stone-500">
+          Aucun commentaire enregistré pour ce verdict.
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 whitespace-pre-line font-body text-[12.5px] text-stone-800">
+            « {c.body} »
+          </p>
+          <p className="mt-0.5 font-body text-[11.5px] text-stone-500">
+            {c.authorEmail ?? 'Auteur non enregistré'}, le {formatWhen(c.createdAt)}
+            {c.matchesCurrent
+              ? ''
+              : ` — écrit pour « ${c.writtenFor === 'validated' ? 'Retenu' : 'Non retenu'} », corrigé depuis`}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SideEffectsBlock({
   context,
 }: {

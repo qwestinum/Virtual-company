@@ -95,6 +95,22 @@ export type DecisionCorrectionContext = {
   options: CorrectionOption[];
   /** Rappels affichés sous les options (ce que la correction NE fait pas). */
   notices: string[];
+  /**
+   * Commentaire du recruteur qui motive le verdict final — présent SEULEMENT
+   * quand la décision corrigée est un verdict final. `null` : aucun commentaire
+   * (verdict antérieur à la règle, ou posé par une correction) — le dialog le
+   * dit. Absent (`undefined`) : sans objet, ou lecture indisponible (on ne
+   * prétend alors rien).
+   */
+  verdictComment?: {
+    body: string;
+    authorEmail: string | null;
+    createdAt: string;
+    /** Le verdict pour lequel il a été écrit. */
+    writtenFor: 'validated' | 'rejected';
+    /** `false` : écrit pour un autre verdict, corrigé depuis. */
+    matchesCurrent: boolean;
+  } | null;
 };
 
 /** Corps de `POST /api/candidatures/[id]/correct-decision`. */

@@ -15,9 +15,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import {
   markCandidateInterview,
-  markCandidateValidation,
   type InterviewMark,
-  type ValidationMark,
 } from '@/lib/dashboard/candidate-actions';
 import type { CandidateRow } from '@/lib/dashboard/derive-metrics';
 import { formatDateTimeFr } from '@/lib/format/datetime';
@@ -301,15 +299,7 @@ function CandidateLine({
     });
     onAction?.();
   };
-  const onValidation = async (status: ValidationMark) => {
-    await markCandidateValidation({
-      uid: candidate.id,
-      candidateName: candidate.name,
-      campaignId: candidate.campaignId,
-      status,
-    });
-    onAction?.();
-  };
+
 
   return (
     <div
@@ -360,34 +350,35 @@ function CandidateLine({
       </div>
       {isShortlisted ? (
         <ActionPair
-          variant="interview"
           onConfirm={() => onInterview('realized')}
           onReject={() => onInterview('missed')}
         />
       ) : isAwaitingValidation ? (
-        <ActionPair
-          variant="validation"
-          onConfirm={() => onValidation('validated')}
-          onReject={() => onValidation('rejected')}
-        />
+        // Plus de verdict en un clic ici : un verdict final exige le
+        // commentaire qui le motive, et se pose là où il se lit — l'onglet
+        // Entretiens ou la fiche candidature. On DIT où, on ne retire pas
+        // l'information en silence.
+        <p
+          className="font-body"
+          style={{ paddingLeft: 50, fontSize: 11.5, color: 'var(--dash-text-secondary)' }}
+        >
+          Entretien réalisé — verdict à poser, avec son commentaire, dans
+          l’onglet Entretiens ou la fiche candidature.
+        </p>
       ) : null}
     </div>
   );
 }
 
+/** Pointage d'entretien. Le verdict final n'a plus de bouton ici (D5). */
 function ActionPair({
-  variant,
   onConfirm,
   onReject,
 }: {
-  variant: 'interview' | 'validation';
   onConfirm: () => void;
   onReject: () => void;
 }) {
-  const labels =
-    variant === 'interview'
-      ? { confirm: 'Entretien réalisé', reject: 'Non réalisé' }
-      : { confirm: 'Validation définitive', reject: 'Non validé' };
+  const labels = { confirm: 'Entretien réalisé', reject: 'Non réalisé' };
   return (
     <div
       style={{

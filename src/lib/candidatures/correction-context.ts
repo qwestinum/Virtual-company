@@ -30,6 +30,7 @@ import {
 import { pickActions, unionActions } from '@/lib/reporting/journal-preload';
 import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
 import { bookingLinkStateForAnalysis } from '@/lib/scheduling-host/campaign-booking';
+import { loadFinalDecision } from '@/lib/candidatures/verdict';
 import type {
   CorrectionSideEffect,
   CurrentDecision,
@@ -244,11 +245,28 @@ export async function loadDecisionCorrectionContext(
     };
   }
 
-  const [facts, linkState, scheduled] = await Promise.all([
+  const [facts, linkState, scheduled, finalDecision] = await Promise.all([
     factsP,
     linkStateP,
     scheduledP,
+    // Le commentaire qui motivait le verdict corrigé. Lecture indisponible ⇒
+    // `undefined` : le dialog ne prétend alors ni qu'il existe, ni qu'il manque.
+    current.kind === 'final_verdict'
+      ? loadFinalDecision(analysis, { journal: journalP }).catch(() => undefined)
+      : Promise.resolve(undefined),
   ]);
+  const verdictComment =
+    finalDecision === undefined
+      ? undefined
+      : finalDecision?.comment
+        ? {
+            body: finalDecision.comment.body,
+            authorEmail: finalDecision.comment.authorEmail,
+            createdAt: finalDecision.comment.createdAt,
+            writtenFor: finalDecision.comment.verdict,
+            matchesCurrent: finalDecision.commentMatches,
+          }
+        : null;
 
   const sideEffects = mailSideEffects(
     current,
@@ -296,7 +314,12 @@ export async function loadDecisionCorrectionContext(
         ? (analysis.dismissedByUser?.email ?? null)
         : current.kind === 'screening_decision'
           ? (analysis.decidedByUser?.email ?? null)
-          : null,
+          : // Un verdict motivé porte l'auteur de SON commentaire — celui qui
+            // a posé ce verdict. Sinon : non enregistré, jamais inventé.
+            current.kind === 'final_verdict' && verdictComment?.matchesCurrent
+            ? verdictComment.authorEmail
+            : null,
+    ...(verdictComment !== undefined ? { verdictComment } : {}),
     sideEffects,
     options: correctionOptionsFor(current),
     notices: correctionNoticesFor(current),

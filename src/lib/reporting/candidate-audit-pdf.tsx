@@ -32,6 +32,8 @@ import {
   JOURNEY_TONE_COLORS,
   journeyColumns,
 } from '@/lib/reporting/candidate-journey';
+import type { FinalDecisionView } from '@/lib/candidatures/final-decision';
+import { FinalDecisionSection } from '@/lib/reporting/candidate-audit-decision-pdf';
 import type { DecisionZone } from '@/types/hitl';
 import type { CandidateAnalysisDetail } from '@/types/reporting';
 import {
@@ -162,9 +164,20 @@ type AuditPdfProps = {
   detail: CandidateAnalysisDetail;
   generatedAtIso: string;
   campaignLabel: string;
+  /**
+   * Verdict final et commentaire qui le motive. `null`/absent : aucun verdict
+   * final (la section n'a pas d'objet). `'unavailable'` : la lecture a échoué —
+   * on le DIT, un audit muet sur la décision se lirait « pas de décision ».
+   */
+  finalDecision?: FinalDecisionView | null | 'unavailable';
 };
 
-function AuditDocument({ detail, generatedAtIso, campaignLabel }: AuditPdfProps) {
+function AuditDocument({
+  detail,
+  generatedAtIso,
+  campaignLabel,
+  finalDecision = null,
+}: AuditPdfProps) {
   const { application } = detail;
   const { candidate, scoringResult, narration } = application;
   const ordered = sortByCriticality(scoringResult.breakdown);
@@ -250,6 +263,21 @@ function AuditDocument({ detail, generatedAtIso, campaignLabel }: AuditPdfProps)
                 : ' — hors zone grise (acceptation ou refus automatique).'}
             </Text>
           </>
+        ) : null}
+
+        {finalDecision === 'unavailable' ? (
+          <>
+            <Text style={styles.sectionTitle}>Décision finale</Text>
+            <Text style={[styles.paragraph, { color: MUTED }]}>
+              Décision finale et commentaire du recruteur : lecture indisponible
+              au moment de la génération de ce document. Régénérez l&apos;audit.
+            </Text>
+          </>
+        ) : finalDecision ? (
+          <FinalDecisionSection
+            decision={finalDecision}
+            title={<Text style={styles.sectionTitle}>Décision finale</Text>}
+          />
         ) : null}
 
         <Text style={styles.sectionTitle}>Profil du candidat</Text>

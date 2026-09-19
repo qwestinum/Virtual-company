@@ -20,6 +20,10 @@ import {
 import { analysisToDatum } from '@/lib/reporting/analysis-datum';
 import { campaignReportFileName } from '@/lib/reporting/campaign-report-display';
 import { loadJourneySignals } from '@/lib/reporting/journey-lookup';
+import { VALIDATION_MARKER_ACTION } from '@/lib/candidatures/decision-markers';
+import { countMotivatedDecisions } from '@/lib/candidatures/final-decision';
+import { foldDecisionsByUid } from '@/lib/candidatures/verdict';
+import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type {
   CampaignAnalysisDatum,
@@ -90,7 +94,7 @@ export async function assembleCampaignReport(
   void donneurP.catch(() => undefined);
   void siteP.catch(() => undefined);
 
-  const [analyses, signals, sentJournal, vivierCounts] = await Promise.all([
+  const [analyses, signals, sentJournal, vivierCounts, verdictMarkers] = await Promise.all([
     // EXHAUSTIF (audit C8/A10) : un rapport de campagne à > 1000 candidatures
     // était tronqué et présenté comme définitif au client.
     listAllCandidateAnalyses({ campaignId }),
@@ -101,6 +105,11 @@ export async function assembleCampaignReport(
       limit: 500,
     }),
     countVivierMetricsForCampaign(campaignId),
+    // Indicateur « décisions motivées » : best-effort, un journal illisible
+    // retire la ligne du rapport, il n'empêche pas le rapport.
+    listJournalEntriesByActions([VALIDATION_MARKER_ACTION], { campaignId }).catch(
+      () => null,
+    ),
   ]);
 
   const data: CampaignAnalysisDatum[] = analyses.map((a) =>
@@ -146,8 +155,22 @@ export async function assembleCampaignReport(
   // Mobilisation vivier : on n'expose la métrique que si au moins un candidat a
   // été contacté (sinon la campagne n'a pas utilisé le vivier).
   const vivier = vivierCounts.contacted > 0 ? vivierCounts : null;
+  // Verdicts COURANTS des candidatures de la campagne, et combien portent le
+  // commentaire écrit pour eux. Montré seulement si la campagne a vécu sous la
+  // règle (au moins un verdict motivé) : sinon « 0/14 » reprocherait au
+  // recruteur une règle qui n'existait pas encore.
+  const decisions = verdictMarkers ? foldDecisionsByUid(verdictMarkers) : null;
+  const motivated = decisions
+    ? countMotivatedDecisions(
+        analyses.flatMap((a) => {
+          const state = decisions.get(a.uid);
+          return state ? [state] : [];
+        }),
+      )
+    : null;
+  const motivatedDecisions = motivated && motivated.motivated > 0 ? motivated : null;
   return {
-    data: buildCampaignReportData(summary, data, { vivier }),
+    data: buildCampaignReportData(summary, data, { vivier, motivatedDecisions }),
     fileName: campaignReportFileName(jobTitle, closedAt),
     jobTitle,
     closedAt,

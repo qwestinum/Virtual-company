@@ -14,38 +14,27 @@
  * absence est un jugement, pas une conséquence de l'horloge.
  */
 
-import { CorrectDecisionAction } from '@/components/candidatures/CorrectDecisionAction';
+import { useState } from 'react';
+
 import { ReferentMention } from '@/components/referent/ReferentMention';
 import type { ScheduledRow } from '@/lib/interviews/pipeline-rows';
 import type { RowReferent } from '@/lib/interviews/referent-resolution';
+import type { FinalVerdict } from '@/types/verdict-comment';
+
+import { Action, formatSlot, SECTIONS } from './interview-row-ui';
+import { VerdictExpansion, VerdictRowActions } from './VerdictRow';
 
 export type ScheduledItem = ScheduledRow & {
   campaignName: string | null;
 } & RowReferent;
-
-const SECTIONS: {
-  key: ScheduledRow['section'];
-  title: string;
-  hint?: string;
-}[] = [
-  {
-    key: 'a_pointer',
-    title: 'À pointer',
-    hint: 'Entretiens passés : dites ce qui s’est produit.',
-  },
-  { key: 'a_venir', title: 'À venir' },
-  {
-    key: 'verdict_attendu',
-    title: 'Entretien fait — en attente de verdict',
-  },
-];
 
 export function ScheduledList({
   rows,
   busyId,
   onRealized,
   onMissed,
-  onVerdict,
+  onDecided,
+  onStale,
   onDismiss,
   onReschedule,
   onCancel,
@@ -55,13 +44,18 @@ export function ScheduledList({
   busyId: string | null;
   onRealized: (row: ScheduledItem) => void;
   onMissed: (row: ScheduledItem) => void;
-  onVerdict: (row: ScheduledItem, decision: 'validated' | 'rejected') => void;
+  /** Verdict posé (commentaire compris) par le bloc de décision. */
+  onDecided: (row: ScheduledItem, verdict: FinalVerdict) => void;
+  /** Le dossier a bougé ailleurs : la page recharge. */
+  onStale: () => void;
   onDismiss: (row: ScheduledItem) => void;
   onReschedule: (row: ScheduledItem) => void;
   onCancel: (row: ScheduledItem) => void;
   /** Une décision corrigée change l'étape : la page se recharge. */
   onCorrected: () => void;
 }) {
+  // Une seule ligne dépliée à la fois : on motive UNE décision à la fois.
+  const [openId, setOpenId] = useState<string | null>(null);
   if (rows.length === 0) {
     return (
       <p className="font-body text-[13px] italic text-stone-400">
@@ -161,38 +155,28 @@ export function ScheduledList({
                   ) : null}
 
                   {section.key === 'verdict_attendu' ? (
-                    <>
-                      <Action
-                        disabled={busyId === row.briefId}
-                        tone="positive"
-                        onClick={() => onVerdict(row, 'validated')}
-                      >
-                        GO définitif
-                      </Action>
-                      <Action
-                        disabled={busyId === row.briefId}
-                        tone="negative"
-                        onClick={() => onVerdict(row, 'rejected')}
-                      >
-                        Non retenu
-                      </Action>
-                      {/* Le pointage « entretien réalisé » EST une décision, et
-                          c'est ici qu'on la voit : elle se corrige donc ici. */}
-                      {row.analysisId && row.stage === 'entretien_fait' ? (
-                        <CorrectDecisionAction
-                          analysisId={row.analysisId}
-                          candidateName={row.candidateName}
-                          stage="entretien_fait"
-                          variant="link"
-                          onActed={onCorrected}
-                        />
-                      ) : null}
-                    </>
+                    <VerdictRowActions
+                      row={row}
+                      open={openId === row.briefId}
+                      onToggle={() => setOpenId(openId === row.briefId ? null : row.briefId)}
+                      onCorrected={onCorrected}
+                    />
                   ) : null}
 
                   <Action disabled={!row.analysisId} onClick={() => onDismiss(row)}>
                     Classer sans suite
                   </Action>
+
+                  {section.key === 'verdict_attendu' && openId === row.briefId ? (
+                    <VerdictExpansion
+                      row={row}
+                      onDecided={(verdict) => {
+                        setOpenId(null);
+                        onDecided(row, verdict);
+                      }}
+                      onStale={onStale}
+                    />
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -201,44 +185,4 @@ export function ScheduledList({
       })}
     </div>
   );
-}
-
-function Action({
-  tone = 'neutral',
-  disabled,
-  onClick,
-  children,
-}: {
-  tone?: 'positive' | 'negative' | 'neutral';
-  disabled: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  const cls =
-    tone === 'positive'
-      ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
-      : tone === 'negative'
-        ? 'border-rose-300 text-rose-700 hover:bg-rose-50'
-        : 'border-stone-300 text-stone-600 hover:bg-stone-50';
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded-md border px-2.5 py-1 font-body text-[12px] font-semibold disabled:opacity-40 ${cls}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function formatSlot(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('fr-FR', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }

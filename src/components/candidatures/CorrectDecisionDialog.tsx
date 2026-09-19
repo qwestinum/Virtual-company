@@ -22,6 +22,7 @@ import type {
 import {
   CurrentDecisionBlock,
   SideEffectsBlock,
+  VerdictCommentBlock,
   TargetChoices,
 } from './CorrectDecisionBlocks';
 
@@ -131,6 +132,7 @@ export function CorrectDecisionDialog({
         ) : (
           <>
             <CurrentDecisionBlock context={context} />
+            <VerdictCommentBlock context={context} />
             <SideEffectsBlock context={context} />
             <TargetChoices
               options={context.options}

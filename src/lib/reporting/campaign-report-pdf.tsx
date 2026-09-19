@@ -169,6 +169,14 @@ function CampaignReportDocument({
             label="Tranché par un humain"
           />
         </View>
+        {data.motivatedDecisions ? (
+          <Text style={[pdfBaseStyles.paragraph, { marginTop: 8 }]}>
+            Décisions finales motivées par écrit :{' '}
+            {data.motivatedDecisions.motivated}/{data.motivatedDecisions.total}{' '}
+            — chaque verdict après entretien porte le commentaire du recruteur
+            qui l’a posé, consultable dans le dossier d’audit du candidat.
+          </Text>
+        ) : null}
         <Text style={[pdfBaseStyles.paragraph, { marginTop: 8 }]}>
           {summary.issue === 'recruited'
             ? `${summary.recruitedCount} recrutement(s) finalisé(s).`

@@ -25,10 +25,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { CandidatureDismissDialog } from '@/components/candidatures/CandidatureDismissDialog';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
-import {
-  markCandidateInterview,
-  markCandidateValidation,
-} from '@/lib/dashboard/candidate-actions';
+import { markCandidateInterview } from '@/lib/dashboard/candidate-actions';
 import type { InterviewPipeline } from '@/lib/interviews/pipeline';
 import type { RowReferent } from '@/lib/interviews/referent-resolution';
 import {
@@ -38,6 +35,7 @@ import {
   myReferentCountBy,
   type ReferentSelection,
 } from '@/lib/referent/filter';
+import type { FinalVerdict } from '@/types/verdict-comment';
 
 import { AwaitingList, type AwaitingItem } from './AwaitingList';
 import { InterviewSignals } from './InterviewSignals';
@@ -163,25 +161,17 @@ export function InterviewsWorkspace({
     else await reinvite(row, 'reinvite');
   }
 
-  async function verdict(row: ScheduledItem, status: 'validated' | 'rejected') {
-    if (!row.uid) return;
-    setBusyId(row.briefId);
-    try {
-      await markCandidateValidation({
-        uid: row.uid,
-        candidateName: row.candidateName,
-        campaignId: row.campaignId,
-        status,
-      });
-      setNotice(
-        status === 'validated'
-          ? `${row.candidateName} est retenu.`
-          : `${row.candidateName} n’est pas retenu.`,
-      );
-      await load();
-    } finally {
-      setBusyId(null);
-    }
+  /**
+   * Le verdict est posé PAR le bloc de décision (commentaire compris, route
+   * dédiée) : ici on ne fait que prendre acte et recharger.
+   */
+  function onVerdictDecided(row: ScheduledItem, verdict: FinalVerdict) {
+    setNotice(
+      verdict === 'validated'
+        ? `${row.candidateName} est retenu. Votre commentaire est au dossier.`
+        : `${row.candidateName} n’est pas retenu. Votre commentaire est au dossier.`,
+    );
+    void load();
   }
 
   async function cancelBooking(row: ScheduledItem) {
@@ -316,7 +306,8 @@ export function InterviewsWorkspace({
             busyId={busyId}
             onRealized={(row) => void mark(row, 'realized')}
             onMissed={setNoShow}
-            onVerdict={(row, decision) => void verdict(row, decision)}
+            onDecided={onVerdictDecided}
+            onStale={() => void load()}
             onDismiss={setDismissing}
             onReschedule={(row) => void reinvite(row, 'reschedule')}
             onCancel={(row) => void cancelBooking(row)}

@@ -50,6 +50,7 @@ import {
 } from './helpers/api';
 import { cleanAll, db, newTestCampaignId, readRow, readRows } from './helpers/db';
 import { resetSentEmails, sentEmails } from './helpers/mocks';
+import { postVerdict } from './helpers/verdict';
 
 const camp = newTestCampaignId('s9');
 const DAY = 86_400_000;
@@ -368,16 +369,19 @@ describe('S9 — flux GO (poste pourvu) et gris en cours d’envoi', () => {
     // 1 recruté (GO posé) + 2 candidatures OUVERTES (invité + gris en file).
     const goTask = `treg_s9go_a_${Date.now().toString(36)}`;
     await analyze('fort', goTask, campGo);
-    const marked = await call(postJournal, {
+    // Un GO se pose APRÈS l'entretien, et avec son commentaire (route dédiée).
+    const interviewed = await call(postJournal, {
       method: 'POST',
       body: {
-        action: 'candidate_validation_marked',
+        action: 'candidate_interview_marked',
         campaignId: campGo,
         actor: 'user',
-        payload: { uid: goTask, candidate: 'Recruté Treg', status: 'validated' },
+        payload: { uid: goTask, candidate: 'Recruté Treg', status: 'realized' },
       },
     });
-    expect(marked.status).toBe(204);
+    expect(interviewed.status).toBe(204);
+    const marked = await postVerdict(goTask, 'validated');
+    expect(marked.status).toBe(200);
     await analyze('fort', `treg_s9go_b_${Date.now().toString(36)}`, campGo);
     const grayTask = `treg_s9go_c_${Date.now().toString(36)}`;
     await enqueueGray(campGo, grayTask, await analyze('moyen', grayTask, campGo));

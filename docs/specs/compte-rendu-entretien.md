@@ -1,8 +1,8 @@
 # Compte rendu d'entretien + commentaire du recruteur — Phase 1 (étude)
 
 > **Statut au 18/09/2026 : ÉTUDE VALIDÉE, arbitrages consignés au §14 (ils
-> priment sur le corps de l'étude là où ils le modifient). Phase 2 : lot 1
-> livré, POINT D'ARRÊT avant le lot 2 — avancement au §15.**
+> priment sur le corps de l'étude là où ils le modifient). Phase 2 : lots 1
+> et 2 livrés, POINT D'ARRÊT avant le lot 3 — avancement au §15.**
 > Ce document établit où vivent les deux objets, où le verdict est bloqué dans le
 > chemin existant (fichier:ligne), comment la transcription est traitée sans
 > jamais être conservée, et ce que chaque lecteur (fiche, frise, PDF d'audit,
@@ -803,3 +803,42 @@ des données :
   qui SURVIT est un échec) et branche « mentions » : le sujet cité dans le
   dossier d'un tiers est signalé, emplacement seul. Régression **S18** étendue
   (point 10) — **à lancer après application de la migration en dev**.
+
+### 15.2 Lot 2 — verdict motivé (19/09/2026)
+
+Livré — **à partir d'ici, aucun verdict final ne se pose sans commentaire**.
+POINT D'ARRÊT avant le lot 3 (vérification de la rétro-compatibilité et recette).
+
+- **Route unique** `POST /api/candidatures/[id]/verdict` (cœur
+  `src/lib/candidatures/verdict.ts`) : règle du commentaire (400
+  `comment_too_thin`, avant toute lecture), étape RELUE (`entretien_fait`, sinon
+  409 `not_awaiting_verdict`), commentaire PUIS marqueur portant `commentId`,
+  auteur de la session serveur, aucun envoi (tenu au runtime et
+  structurellement). `/api/journal` refuse `candidate_validation_marked` (409
+  `use_verdict_route`, garde sondée).
+- **Écrans** : bloc partagé `InterviewDecisionBlock` (champ + compteur de mots +
+  mention droit d'accès, boutons inactifs tant que le commentaire manque, texte
+  CONSERVÉ en cas d'échec) — onglet Entretiens (« Motiver et décider » déplie la
+  ligne) et fiche candidature (remplace `FinalDecisionAction`, flux « poste
+  pourvu » conservé). Dashboard résiduel : boutons de verdict retirés, une
+  phrase dit où décider.
+- **Lecteurs** : frise (« Retenu définitivement » porte le commentaire et son
+  auteur, ou « aucun commentaire enregistré » ; lecture KO ⇒ silence, jamais
+  une absence affirmée) ; PDF d'audit (section « Décision finale », trois cas
+  dits, lecture KO ⇒ écrit) ; rapport de campagne (indicateur « décisions
+  finales motivées N/M », montré seulement si la campagne a vécu sous la règle ;
+  aucun contenu) ; dialog de correction (commentaire existant + verdict pour
+  lequel il a été écrit ; auteur du verdict = auteur de son commentaire).
+- **Rétro-compatibilité** : la règle porte sur l'ACTE. Un verdict antérieur
+  (marqueur sans `commentId`) n'est ni requalifié ni bloqué ; « Corriger la
+  décision » reste possible sans commentaire. Un dossier en `entretien_fait` au
+  déploiement demandera un commentaire à son verdict — voulu.
+- **Non fait, consigné** : proposer d'ajouter un commentaire DANS le dialog de
+  correction (§4.3, « sans l'imposer ») — la correction garde son motif
+  facultatif ; à trancher.
+- **Régression** : S8, S9, S12 recâblées sur la route (helper
+  `tests/regression/helpers/verdict.ts`) ; **S25** (lot 2) : 409 hors attente,
+  400 sans commentaire / « ok pour moi » / répétition (rien écrit), 409 par
+  `/api/journal`, commentaire + auteur de session + `commentId` sans texte au
+  journal, ajout seul refusé par la base, second verdict 409, dossier HISTORIQUE
+  corrigeable sans commentaire, dialog et frise.
