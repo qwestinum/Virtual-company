@@ -171,10 +171,9 @@ function CampaignReportDocument({
         </View>
         {data.motivatedDecisions ? (
           <Text style={[pdfBaseStyles.paragraph, { marginTop: 8 }]}>
-            Décisions finales motivées par écrit :{' '}
+            Décisions finales accompagnées d’un commentaire du recruteur :{' '}
             {data.motivatedDecisions.motivated}/{data.motivatedDecisions.total}{' '}
-            — chaque verdict après entretien porte le commentaire du recruteur
-            qui l’a posé, consultable dans le dossier d’audit du candidat.
+            — consultables dans le dossier d’audit de chaque candidat.
           </Text>
         ) : null}
         <Text style={[pdfBaseStyles.paragraph, { marginTop: 8 }]}>

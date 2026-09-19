@@ -3,13 +3,13 @@
  * Spec : docs/specs/compte-rendu-entretien.md §4.2, §14.
  *
  * Le SEUL chemin d'un verdict final : `/api/journal` refuse l'action
- * `candidate_validation_marked`. Le commentaire est exigé ICI, pas à l'écran
- * — un écran n'est qu'un reflet de la règle.
+ * `candidate_validation_marked`. Le commentaire qui motive le verdict est
+ * FACULTATIF (19/09/2026) ; s'il est écrit, il est enregistré avec lui.
  *
  * L'AUTEUR vient de la session serveur (`getApiUser`), jamais du corps.
  *
- *   200 { status: 'decided', verdict, commentId }
- *   400 { error: 'comment_too_thin', message }   — la phrase à montrer
+ *   200 { status: 'decided', verdict, commentId }   — commentId null sans commentaire
+ *   400 { error: 'invalid_request', message }
  *   404 { error: 'not_found' }
  *   409 { error: 'not_awaiting_verdict', stage } — l'état a bougé : recharger
  */
@@ -28,7 +28,7 @@ const MAX_COMMENT = 4000;
 
 const BodySchema = z.object({
   status: z.enum(['validated', 'rejected']),
-  comment: z.string().max(MAX_COMMENT),
+  comment: z.string().max(MAX_COMMENT).nullable().optional(),
 });
 
 export async function POST(
@@ -41,12 +41,10 @@ export async function POST(
   try {
     body = BodySchema.parse(await request.json());
   } catch {
-    // Un commentaire absent n'est pas une requête « mal formée » pour
-    // l'humain : c'est un commentaire manquant, et on le lui dit comme tel.
     return NextResponse.json(
       {
         error: 'invalid_request',
-        message: 'Choisissez un verdict et motivez-le (4 000 caractères au plus).',
+        message: 'Choisissez un verdict ; le commentaire fait 4 000 caractères au plus.',
       },
       { status: 400 },
     );
@@ -74,11 +72,6 @@ export async function POST(
           verdict: outcome.verdict,
           commentId: outcome.commentId,
         });
-      case 'comment_too_thin':
-        return NextResponse.json(
-          { error: 'comment_too_thin', message: outcome.message },
-          { status: 400 },
-        );
       case 'not_awaiting_verdict':
         return NextResponse.json(
           { error: 'not_awaiting_verdict', stage: outcome.stage },

@@ -6,8 +6,8 @@
  * mécanique sous-jacente — aucune divergence :
  *   - zone grise        → `ValidationCard` (→ `decideGrayValidation`)
  *   - invité / RDV pris → `markCandidateInterview`
- *   - entretien réalisé → `InterviewDecisionBlock` : commentaire OBLIGATOIRE
- *     puis verdict, par la route dédiée (+ flux « poste pourvu » après un GO :
+ *   - entretien réalisé → `InterviewDecisionBlock` : commentaire FACULTATIF
+ *     et verdict, par la route dédiée (+ flux « poste pourvu » après un GO :
  *     proposer de classer les candidatures restantes)
  *   - toute étape OUVERTE → « Classer sans suite » (dialog motif)
  *   - sans suite         → mention terminale + « Rouvrir »
@@ -124,9 +124,8 @@ function FinalDecisionAction({
   // acté si l'utilisateur décline).
   const [goFollowUp, setGoFollowUp] = useState(false);
 
-  // Le verdict exige le commentaire qui le motive : même bloc que l'onglet
-  // Entretiens, même route serveur — aucun écran de décision n'est un
-  // cul-de-sac, aucun ne contourne la règle.
+  // Même bloc que l'onglet Entretiens, même route serveur : le verdict et son
+  // commentaire (facultatif) s'écrivent ensemble, quel que soit l'écran.
   return (
     <>
       <div className="flex flex-col gap-2">

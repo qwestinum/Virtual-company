@@ -4,7 +4,7 @@
  * Helpers d'actions DRH sur un candidat (Session 6 v2).
  *
  * Le pointage d'entretien POST le journal Supabase ; le verdict final passe
- * par sa route dédiée, qui exige le commentaire. Chacun déclenche une prise
+ * par sa route dédiée, avec son commentaire facultatif. Chacun déclenche une prise
  * d'acte du Manager dans le chat. La résolution finale du KPI dépend du
  * derive-metrics qui regarde la dernière action wins.
  *
@@ -45,8 +45,8 @@ export async function markCandidateInterview(args: {
 }
 
 /**
- * Verdict final MOTIVÉ. Passe par la route dédiée, qui exige le commentaire
- * (le journal générique refuse désormais ce marqueur). Contrairement aux
+ * Verdict final, avec son commentaire FACULTATIF. Passe par la route dédiée
+ * (le journal générique refuse ce marqueur). Contrairement aux
  * marquages best-effort ci-dessus, l'issue est RENDUE : un verdict refusé
  * doit rester à l'écran avec sa raison, jamais disparaître en silence.
  */
@@ -80,10 +80,11 @@ export async function postCandidateVerdict(args: {
     };
   }
   if (res.ok) {
+    const noted = args.comment.trim() !== '' ? ' Votre commentaire est au dossier.' : '';
     pushChatLine(
       args.status === 'validated'
-        ? `${args.candidateName} est validé définitivement, avec votre commentaire au dossier.`
-        : `${args.candidateName} n'est pas retenu sur cette campagne. Votre commentaire est au dossier.`,
+        ? `${args.candidateName} est validé définitivement.${noted}`
+        : `${args.candidateName} n'est pas retenu sur cette campagne.${noted}`,
     );
     return { ok: true };
   }

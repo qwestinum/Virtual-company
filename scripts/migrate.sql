@@ -2398,8 +2398,8 @@ alter table public.app_settings add constraint app_settings_sourcing_config_chk
 --                          Rédigé par le recruteur, ou proposé à partir d'une
 --                          transcription puis VÉRIFIÉ par lui. Brouillon →
 --                          vérifié ; modifiable ensuite.
---   - `verdict_comments`   pourquoi le recruteur décide. Obligatoire pour tout
---                          NOUVEAU verdict. 100 % humain. AJOUT SEUL : une
+--   - `verdict_comments`   pourquoi le recruteur décide. FACULTATIF (19/09/2026).
+--                          100 % humain. AJOUT SEUL : une
 --                          correction pose un nouveau commentaire, elle ne
 --                          réécrit jamais l'ancien (déclencheur ci-dessous).
 --
@@ -2524,15 +2524,13 @@ alter table public.verdict_comments drop constraint if exists verdict_comments_v
 alter table public.verdict_comments add constraint verdict_comments_verdict_chk
   check (verdict in ('validated', 'rejected'));
 
--- PLANCHER en base, pas la règle. La règle (15 mots dont 10 distincts) vit
--- dans `assessCommentSubstance`, appliquée par la route. Ce plancher DOIT
--- rester sous le minimum que la règle peut produire (15 mots de 2 lettres +
--- 14 espaces = 44 caractères) : plus haut, la base refuserait un commentaire
--- que la route a accepté — un 500 à la place d'un 400 lisible. Un test tient
--- cette inégalité (`comment-substance.test.ts`).
+-- Commentaire FACULTATIF (arbitrage du 19/09/2026 — l'obligation pouvait
+-- susciter des objections) : un verdict sans commentaire n'écrit AUCUNE ligne
+-- ici. Une ligne présente porte donc toujours un texte — jamais une chaîne
+-- vide ou d'espaces qui se lirait « motivé » sans rien dire.
 alter table public.verdict_comments drop constraint if exists verdict_comments_body_chk;
 alter table public.verdict_comments add constraint verdict_comments_body_chk
-  check (char_length(btrim(body)) >= 40);
+  check (char_length(btrim(body)) >= 1);
 
 create index if not exists verdict_comments_analysis_idx
   on public.verdict_comments (analysis_id, created_at desc);

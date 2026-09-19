@@ -128,9 +128,8 @@ annuler, replanifier, renvoyer un lien.
 
 ### Poser le verdict après un entretien (GO définitif / non retenu)
 Onglet « Entretiens » → sous-onglet « En attente de verdict » → sur la ligne du
-candidat, « Motiver et décider ». Le même bloc est aussi sur la fiche
-candidature (Candidatures → le candidat, section « Action »). Le commentaire
-« Pourquoi cette décision ? » est OBLIGATOIRE (une quinzaine de mots) : les
-boutons « GO définitif » et « Non retenu » restent inactifs tant qu'il manque.
-Le commentaire est au dossier du candidat et dans son audit ; il ne se modifie
-pas ensuite (une erreur se répare par « Corriger la décision »).`;
+candidat, « Décider ». Le même bloc est aussi sur la fiche candidature
+(Candidatures → le candidat, section « Action »). Le champ « Pourquoi cette
+décision ? » est FACULTATIF. S'il est rédigé, le commentaire est au dossier du
+candidat et dans son audit ; il ne se modifie pas ensuite (une erreur se répare
+par « Corriger la décision »).`;

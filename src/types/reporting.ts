@@ -249,12 +249,12 @@ export type CampaignReportData = {
    */
   vivier: VivierConversion | null;
   /**
-   * Décisions finales MOTIVÉES par écrit (verdict posé avec le commentaire du
-   * recruteur, docs/specs/compte-rendu-entretien.md §7.2) — un INDICATEUR,
-   * jamais le contenu : le commentaire justifie la décision devant le cabinet
-   * et une autorité, pas devant le client final. `null` quand la campagne n'a
-   * vécu aucun verdict sous la règle (campagnes antérieures) : afficher « 0/14 »
-   * reprocherait une règle qui n'existait pas.
+   * Décisions finales accompagnées d'un commentaire du recruteur
+   * (docs/specs/compte-rendu-entretien.md §7.2, §16) — un INDICATEUR, jamais le
+   * contenu : le commentaire justifie la décision devant le cabinet et une
+   * autorité, pas devant le client final. Le commentaire étant FACULTATIF,
+   * `null` quand aucun verdict de la campagne n'en porte : « 0/14 » ne dirait
+   * rien d'utile au client.
    */
   motivatedDecisions: { total: number; motivated: number } | null;
 };

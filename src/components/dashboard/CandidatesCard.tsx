@@ -354,16 +354,15 @@ function CandidateLine({
           onReject={() => onInterview('missed')}
         />
       ) : isAwaitingValidation ? (
-        // Plus de verdict en un clic ici : un verdict final exige le
-        // commentaire qui le motive, et se pose là où il se lit — l'onglet
-        // Entretiens ou la fiche candidature. On DIT où, on ne retire pas
-        // l'information en silence.
+        // Plus de verdict ici (un seul chemin de décision, D5) : il se pose
+        // là où il se lit, avec son commentaire éventuel — l'onglet Entretiens
+        // ou la fiche candidature. On DIT où, on ne retire pas en silence.
         <p
           className="font-body"
           style={{ paddingLeft: 50, fontSize: 11.5, color: 'var(--dash-text-secondary)' }}
         >
-          Entretien réalisé — verdict à poser, avec son commentaire, dans
-          l’onglet Entretiens ou la fiche candidature.
+          Entretien réalisé — verdict à poser dans l’onglet Entretiens ou la
+          fiche candidature.
         </p>
       ) : null}
     </div>

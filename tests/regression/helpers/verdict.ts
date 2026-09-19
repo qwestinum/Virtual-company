@@ -1,6 +1,6 @@
 /**
- * Verdict final par la route RÉELLE — la seule qui le pose depuis le
- * commentaire obligatoire (docs/specs/compte-rendu-entretien.md §4.2).
+ * Verdict final par la route RÉELLE — la seule qui le pose
+ * (docs/specs/compte-rendu-entretien.md §4.2, §16).
  * `/api/journal` refuse désormais `candidate_validation_marked` : les séries
  * qui posaient ce marqueur « à la main » passent par ici.
  */
@@ -9,7 +9,7 @@ import { POST as postVerdictRoute } from '@/app/api/candidatures/[id]/verdict/ro
 import { callWithId, type ApiResult } from './api';
 import { readRows } from './db';
 
-/** Un motif qui passe la règle (15 mots, 10 distincts) — neutre, sans nom. */
+/** Un motif neutre, sans nom — le commentaire est facultatif (§16). */
 export const REGRESSION_VERDICT_COMMENT =
   'Entretien concluant sur la recette et le pilotage, attentes du poste confirmées, réserve sur la disponibilité à préciser.';
 

@@ -7,8 +7,8 @@
  *   - le commentaire écrit pour ce verdict ;
  *   - un commentaire écrit pour un AUTRE verdict, corrigé depuis — dit comme
  *     tel, jamais présenté comme la justification du verdict courant ;
- *   - aucun commentaire (verdict antérieur à la règle, ou correction) — écrit,
- *     parce qu'un blanc se lirait « pas vérifié ».
+ *   - aucun commentaire (il est facultatif) — écrit, parce qu'un blanc se
+ *     lirait « pas vérifié ».
  */
 
 import { StyleSheet, Text, View } from '@react-pdf/renderer';
@@ -65,8 +65,7 @@ export function FinalDecisionSection({
         </View>
       ) : (
         <Text style={s.meta}>
-          Aucun commentaire enregistré pour ce verdict (verdict antérieur au
-          commentaire obligatoire, ou posé par une correction).
+          Aucun commentaire n’a été rédigé pour ce verdict.
         </Text>
       )}
     </View>

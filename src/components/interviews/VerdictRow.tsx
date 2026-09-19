@@ -5,8 +5,8 @@
  * `ScheduledList` (limite de 200 lignes). Spec :
  * docs/specs/compte-rendu-entretien.md §14.2.
  *
- * Le verdict exige le commentaire qui le motive : la ligne se DÉPLIE, et les
- * champs sont devant la décision — plus de « GO définitif » en un clic.
+ * La ligne se DÉPLIE : le champ du commentaire (facultatif) est devant la
+ * décision, pour qu'on puisse dire pourquoi au moment où l'on décide.
  */
 
 import { CorrectDecisionAction } from '@/components/candidatures/CorrectDecisionAction';
@@ -30,7 +30,7 @@ export function VerdictRowActions({
   return (
     <>
       <Action disabled={!row.analysisId} tone="positive" onClick={onToggle}>
-        {open ? 'Replier' : 'Motiver et décider'}
+        {open ? 'Replier' : 'Décider'}
       </Action>
       {/* Le pointage « entretien réalisé » EST une décision, et c'est ici
           qu'on la voit : elle se corrige donc ici. */}

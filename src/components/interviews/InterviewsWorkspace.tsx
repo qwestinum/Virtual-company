@@ -168,8 +168,8 @@ export function InterviewsWorkspace({
   function onVerdictDecided(row: ScheduledItem, verdict: FinalVerdict) {
     setNotice(
       verdict === 'validated'
-        ? `${row.candidateName} est retenu. Votre commentaire est au dossier.`
-        : `${row.candidateName} n’est pas retenu. Votre commentaire est au dossier.`,
+        ? `${row.candidateName} est retenu.`
+        : `${row.candidateName} n’est pas retenu.`,
     );
     void load();
   }

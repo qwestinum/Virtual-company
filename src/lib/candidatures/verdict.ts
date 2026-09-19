@@ -3,13 +3,17 @@
  * §4.2 et §14.
  *
  * C'est le SEUL chemin qui pose un verdict final (GO définitif / non retenu)
- * après un entretien. `/api/journal` refuse désormais l'action
- * `candidate_validation_marked` : un blocage posé dans l'interface seule serait
- * contournable, et devrait être recopié sur chaque écran qui décide.
+ * après un entretien. `/api/journal` refuse l'action
+ * `candidate_validation_marked` : le verdict et le commentaire qui le motive
+ * s'écrivent ENSEMBLE, par un seul chemin, sur tous les écrans.
+ *
+ * Le commentaire est FACULTATIF (arbitrage du 19/09/2026 — l'obligation
+ * pouvait susciter des objections). Vide ⇒ aucune ligne de commentaire, et un
+ * marqueur sans `commentId` : les lecteurs disent « aucun commentaire », ils
+ * n'inventent rien.
  *
  * Invariants, dans l'ordre où ils sont vérifiés :
- *   1. **Pas de décision sans commentaire.** Même règle que l'écran
- *      (`assessCommentSubstance`) — l'écran n'en est qu'un reflet.
+ *   1. (retiré le 19/09 — le commentaire n'est plus exigé)
  *   2. **Seulement en attente de verdict.** L'étape est RELUE ici
  *      (`stageFor`), jamais crue du client : un verdict déjà posé ailleurs, un
  *      entretien dé-pointé rendent 409 et l'écran recharge. C'est aussi ce qui
@@ -29,10 +33,6 @@
  * writer du journal ; on préfère un orphelin inoffensif.
  */
 
-import {
-  assessCommentSubstance,
-  describeCommentShortfall,
-} from '@/lib/candidatures/comment-substance';
 import {
   buildValidationMarkerEntry,
   emptyValidationDecisionState,
@@ -63,49 +63,49 @@ import type { FinalVerdict } from '@/types/verdict-comment';
 export const VERDICT_STAGE: CandidateStage = 'entretien_fait';
 
 export type VerdictOutcome =
-  | { status: 'decided'; verdict: FinalVerdict; commentId: string; nextStage: CandidateStage }
-  | { status: 'comment_too_thin'; message: string }
+  | {
+      status: 'decided';
+      verdict: FinalVerdict;
+      /** `null` : verdict posé sans commentaire (facultatif). */
+      commentId: string | null;
+      nextStage: CandidateStage;
+    }
   | { status: 'not_awaiting_verdict'; stage: CandidateStage };
 
 export async function postFinalVerdict(args: {
   analysis: CandidateAnalysisSummary;
   verdict: FinalVerdict;
-  comment: string;
+  /** Facultatif : absent ou vide ⇒ verdict sans commentaire. */
+  comment?: string | null;
   actor: HumanDecider | null;
 }): Promise<VerdictOutcome> {
   const { analysis, verdict, actor } = args;
-  const body = args.comment.trim();
-
-  // 1. Le sens, avant toute lecture : un refus ne doit rien coûter.
-  const substance = assessCommentSubstance(body);
-  if (!substance.ok) {
-    return {
-      status: 'comment_too_thin',
-      message: describeCommentShortfall(substance) ?? 'Commentaire insuffisant.',
-    };
-  }
+  const body = (args.comment ?? '').trim();
 
   // 2. L'étape, relue.
   const perimeter = analysis.campaignId ? { campaignId: analysis.campaignId } : {};
   const stage = stageFor(analysis, await loadStageSignals(perimeter));
   if (stage !== VERDICT_STAGE) return { status: 'not_awaiting_verdict', stage };
 
-  // 3. Le commentaire, puis le marqueur qui le désigne.
-  const comment = await insertVerdictComment({
-    analysisId: analysis.id,
-    uid: analysis.uid,
-    campaignId: analysis.campaignId,
-    verdict,
-    body,
-    authorUserId: actor?.userId ?? null,
-    authorEmail: actor?.email ?? null,
-  });
+  // 3. Le commentaire s'il y en a un, puis le marqueur qui le désigne.
+  const comment =
+    body === ''
+      ? null
+      : await insertVerdictComment({
+          analysisId: analysis.id,
+          uid: analysis.uid,
+          campaignId: analysis.campaignId,
+          verdict,
+          body,
+          authorUserId: actor?.userId ?? null,
+          authorEmail: actor?.email ?? null,
+        });
   const marker = buildValidationMarkerEntry({
     uid: analysis.uid,
     candidateName: analysis.candidateName,
     campaignId: analysis.campaignId,
     value: verdict,
-    commentId: comment.id,
+    ...(comment ? { commentId: comment.id } : {}),
   });
   await appendJournalEntry({
     ...marker,
@@ -120,7 +120,7 @@ export async function postFinalVerdict(args: {
   });
 
   const nextStage = stageFor(analysis, await loadStageSignals(perimeter));
-  return { status: 'decided', verdict, commentId: comment.id, nextStage };
+  return { status: 'decided', verdict, commentId: comment?.id ?? null, nextStage };
 }
 
 // ─── Lecture ───────────────────────────────────────────────────────────────

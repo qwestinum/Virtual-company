@@ -4,8 +4,9 @@
  *
  * LOT 2 — le verdict MOTIVÉ, sur routes réelles :
  *   1. un verdict ne se pose QU'EN attente de verdict (409 ailleurs) ;
- *   2. sans commentaire, ou avec une case cochée déguisée (« ok pour moi »),
- *      le verdict est IMPOSSIBLE : 400, et rien n'est écrit ;
+ *   2. le commentaire est FACULTATIF (arbitrage du 19/09/2026) : sans lui, le
+ *      verdict se pose, aucune ligne de commentaire n'est écrite, et le marqueur
+ *      n'en désigne aucune ;
  *   3. `/api/journal` refuse le marqueur de verdict (409) — la règle n'est pas
  *      une convention d'écran ;
  *   4. verdict motivé : le commentaire est au dossier avec son auteur (session
@@ -53,6 +54,7 @@ const camp = newTestCampaignId('s25');
 const SARAH = { id: '00000000-0000-4000-8000-0000000025ab', email: 'sarah@treg.local' };
 const motivatedUid = `treg_s25_motive_${Date.now().toString(36)}`;
 const legacyUid = `treg_s25_legacy_${Date.now().toString(36)}`;
+const bareUid = `treg_s25_sans_${Date.now().toString(36)}`;
 
 async function analyze(taskId: string): Promise<void> {
   const res = await call(analyzeCv, {
@@ -106,6 +108,7 @@ beforeAll(async () => {
   expect(created.status).toBe(200);
   await analyze(motivatedUid);
   await analyze(legacyUid);
+  await analyze(bareUid);
 });
 
 afterAll(async () => {
@@ -122,28 +125,27 @@ describe('S25.1 — un verdict ne se pose qu’en attente de verdict', () => {
   });
 });
 
-describe('S25.2 — le verdict est IMPOSSIBLE sans commentaire', () => {
+describe('S25.2 — le commentaire est facultatif', () => {
   beforeAll(async () => {
     await markInterview(motivatedUid);
+    await markInterview(bareUid);
   });
 
-  it.each([
-    ['vide', ''],
-    ['« ok pour moi »', 'ok pour moi'],
-    ['« bla » ×20', 'bla '.repeat(20)],
-  ])('%s : 400, aucun marqueur, aucun commentaire', async (_label, comment) => {
-    const res = await postVerdict(motivatedUid, 'validated', comment);
-    expect(res.status).toBe(400);
-    expect(res.json.error).toBe('comment_too_thin');
-    expect(await verdictMarkers(motivatedUid)).toHaveLength(0);
+  it('verdict SANS commentaire : 200, aucune ligne de commentaire, marqueur sans commentId', async () => {
+    const res = await postVerdict(bareUid, 'rejected', '');
+    expect(res.status).toBe(200);
+    expect(res.json.commentId).toBeNull();
     expect(
-      await readRows('verdict_comments', { analysis_id: await analysisIdOf(motivatedUid) }),
+      await readRows('verdict_comments', { analysis_id: await analysisIdOf(bareUid) }),
     ).toHaveLength(0);
+    const markers = await verdictMarkers(bareUid);
+    expect(markers).toHaveLength(1);
+    expect(markers[0]!.payload).not.toHaveProperty('commentId');
   });
 
-  it('la raison du refus est lisible par l’humain', async () => {
-    const res = await postVerdict(motivatedUid, 'rejected', 'bon profil technique');
-    expect(res.json.message).toBe('Encore 12 mots : expliquez ce qui motive votre décision.');
+  it('le dossier le dit honnêtement : aucun commentaire', async () => {
+    const ctx = await contextFor(bareUid);
+    expect(ctx.verdictComment).toBeNull();
   });
 });
 

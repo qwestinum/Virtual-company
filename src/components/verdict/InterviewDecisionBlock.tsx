@@ -5,10 +5,9 @@
  * points d'affichage : l'onglet Entretiens (saisie principale) et la fiche
  * candidature. Spec : docs/specs/compte-rendu-entretien.md §14.2.
  *
- * Les champs sont DEVANT la décision, pas derrière un clic : on écrit pourquoi,
- * puis on choisit. « GO définitif » et « Non retenu » restent inactifs tant que
- * le commentaire n'a pas le minimum de sens — et c'est la route qui l'exige,
- * ce bloc ne fait que le montrer.
+ * Le champ est DEVANT la décision, pas derrière un clic : on peut écrire
+ * pourquoi, puis on choisit. Le commentaire est FACULTATIF (arbitrage du
+ * 19/09/2026) : les boutons ne dépendent pas de lui.
  *
  * `children` : l'emplacement du compte rendu d'entretien (lot 3), AU-DESSUS du
  * commentaire — ce qui s'est passé, puis pourquoi on décide.
@@ -16,7 +15,6 @@
 
 import { useId, useState } from 'react';
 
-import { assessCommentSubstance } from '@/lib/candidatures/comment-substance';
 import { postCandidateVerdict } from '@/lib/dashboard/candidate-actions';
 import type { FinalVerdict } from '@/types/verdict-comment';
 
@@ -40,10 +38,9 @@ export function InterviewDecisionBlock({
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState<FinalVerdict | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const ready = assessCommentSubstance(comment).ok;
 
   async function decide(verdict: FinalVerdict) {
-    if (!ready || busy) return;
+    if (busy) return;
     setBusy(verdict);
     setError(null);
     const result = await postCandidateVerdict({
@@ -80,23 +77,18 @@ export function InterviewDecisionBlock({
       <div className="flex flex-wrap items-center gap-2">
         <DecisionButton
           tone="positive"
-          disabled={!ready || busy !== null}
+          disabled={busy !== null}
           onClick={() => void decide('validated')}
         >
           {busy === 'validated' ? 'Enregistrement…' : 'GO définitif'}
         </DecisionButton>
         <DecisionButton
           tone="negative"
-          disabled={!ready || busy !== null}
+          disabled={busy !== null}
           onClick={() => void decide('rejected')}
         >
           {busy === 'rejected' ? 'Enregistrement…' : 'Non retenu'}
         </DecisionButton>
-        {!ready ? (
-          <span className="font-body text-[12px] text-stone-500">
-            Motivez votre décision pour pouvoir la poser.
-          </span>
-        ) : null}
       </div>
     </div>
   );

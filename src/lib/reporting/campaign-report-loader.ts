@@ -156,9 +156,8 @@ export async function assembleCampaignReport(
   // été contacté (sinon la campagne n'a pas utilisé le vivier).
   const vivier = vivierCounts.contacted > 0 ? vivierCounts : null;
   // Verdicts COURANTS des candidatures de la campagne, et combien portent le
-  // commentaire écrit pour eux. Montré seulement si la campagne a vécu sous la
-  // règle (au moins un verdict motivé) : sinon « 0/14 » reprocherait au
-  // recruteur une règle qui n'existait pas encore.
+  // commentaire écrit pour eux (facultatif). Montré seulement si au moins un
+  // en porte : « 0/14 » ne dirait rien d'utile au client.
   const decisions = verdictMarkers ? foldDecisionsByUid(verdictMarkers) : null;
   const motivated = decisions
     ? countMotivatedDecisions(

@@ -171,13 +171,12 @@ begin
     insert into public.verdict_comments (analysis_id, uid, verdict, body, author_user_id)
     values (an, 'uid-check-a', 'validated', body_ok, who) returning id into c_id;
     res := res || pg_temp.ir('commentaire nominal accepté', c_id is not null);
-    res := res || pg_temp.ir_rejects('commentaire : « ok pour moi » (sous le plancher)',
-      format($q$insert into public.verdict_comments (analysis_id, uid, verdict, body) values (%L, 'uid-check-a', 'rejected', 'ok pour moi')$q$, an), '23514');
+    res := res || pg_temp.ir_rejects('commentaire : vide',
+      format($q$insert into public.verdict_comments (analysis_id, uid, verdict, body) values (%L, 'uid-check-a', 'rejected', '')$q$, an), '23514');
     res := res || pg_temp.ir_rejects('commentaire : 50 espaces',
       format($q$insert into public.verdict_comments (analysis_id, uid, verdict, body) values (%L, 'uid-check-a', 'rejected', repeat(' ', 50))$q$, an), '23514');
-    res := res || pg_temp.ir_accepts('commentaire : 15 mots de 2 lettres (44 caractères) passe le plancher',
-      format($q$insert into public.verdict_comments (analysis_id, uid, verdict, body) values (%L, 'uid-check-a', 'rejected', %L)$q$,
-        an, 'aa ab ac ad ae af ag ah ai aj ak al am an ao'));
+    res := res || pg_temp.ir_accepts('commentaire court (facultatif, aucun minimum de longueur)',
+      format($q$insert into public.verdict_comments (analysis_id, uid, verdict, body) values (%L, 'uid-check-a', 'rejected', 'ok pour moi')$q$, an));
     res := res || pg_temp.ir_rejects('commentaire : verdict « réserves » (pas un verdict)',
       format($q$insert into public.verdict_comments (analysis_id, uid, verdict, body) values (%L, 'uid-check-a', 'reserves', %L)$q$, an, body_ok), '23514');
     res := res || pg_temp.ir_rejects('commentaire : modification refusée (ajout seul)',

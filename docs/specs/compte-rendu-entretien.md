@@ -842,3 +842,33 @@ POINT D'ARRÊT avant le lot 3 (vérification de la rétro-compatibilité et rece
   `/api/journal`, commentaire + auteur de session + `commentId` sans texte au
   journal, ajout seul refusé par la base, second verdict 409, dossier HISTORIQUE
   corrigeable sans commentaire, dialog et frise.
+
+---
+
+## 16. Arbitrage du 19/09/2026 — le commentaire devient FACULTATIF
+
+Décision du donneur d'ordre, après recette du lot 2 : **l'obligation du
+commentaire est retirée** — elle pouvait susciter des objections. Ce qui
+change, et ce qui NE change PAS :
+
+- **Change.** Un verdict final se pose sans commentaire. Le champ « Pourquoi
+  cette décision ? » est marqué facultatif, les boutons ne dépendent plus de
+  lui. La règle des 15 mots (§14.1) et son module (`comment-substance.ts`) sont
+  SUPPRIMÉS : une règle de substance sur un champ facultatif n'a pas d'objet.
+  Le plancher en base devient « non vide » (`char_length(btrim(body)) >= 1`,
+  même bloc canonique, pas de doublon) : un verdict sans commentaire n'écrit
+  AUCUNE ligne, une ligne présente porte toujours un texte.
+- **Ne change pas.** La route unique `POST /api/candidatures/[id]/verdict` et
+  le refus de `candidate_validation_marked` par `/api/journal` : le verdict et
+  son commentaire éventuel s'écrivent ENSEMBLE, par un seul chemin, sur tous
+  les écrans. Le commentaire écrit reste en ajout seul, lié au marqueur par son
+  identifiant (jamais son texte au journal), effacé par rattachement à la purge.
+  Lecteurs inchangés : ils disaient déjà « aucun commentaire » quand il n'y en
+  a pas.
+- **Rapport de campagne** : l'indicateur devient « Décisions finales
+  accompagnées d'un commentaire du recruteur : N/M », montré seulement si au
+  moins un verdict en porte. ⚠️ À trancher : avec un commentaire facultatif, ce
+  ratio montre au client une pratique de documentation — il peut lui-même
+  susciter des objections. Le retirer est une ligne.
+- **Supersède** : §4 (commentaire obligatoire), §14.1 (D1), et les mentions
+  « obligatoire » des maquettes §10.

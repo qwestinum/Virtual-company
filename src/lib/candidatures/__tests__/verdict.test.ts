@@ -3,8 +3,9 @@
  * Spec : docs/specs/compte-rendu-entretien.md §4.2, §14.
  *
  * Ce qui est tenu ici :
- *   - pas de décision sans commentaire, et un refus ne coûte AUCUNE lecture ni
- *     écriture ;
+ *   - le commentaire est FACULTATIF (19/09/2026) : sans lui, le verdict se pose,
+ *     aucune ligne de commentaire n'est écrite et le marqueur n'en désigne
+ *     aucune ;
  *   - l'étape est relue : hors attente de verdict ⇒ rien n'est écrit (c'est
  *     aussi ce qui laisse l'historique en paix) ;
  *   - le commentaire PUIS le marqueur, qui porte l'IDENTIFIANT du commentaire
@@ -64,21 +65,21 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('pas de décision sans commentaire', () => {
-  it.each(['', 'ok pour moi', 'bla '.repeat(20)])('« %s » : refusé, RIEN lu ni écrit', async (comment) => {
+describe('commentaire facultatif', () => {
+  it.each(['', '   ', undefined, null])('« %s » : verdict posé, AUCUN commentaire écrit', async (comment) => {
+    stages = ['entretien_fait', 'retenu'];
     const out = await postFinalVerdict({ analysis, verdict: 'validated', comment, actor });
-    expect(out.status).toBe('comment_too_thin');
-    expect(loadStageSignals).not.toHaveBeenCalled();
+    expect(out).toEqual({ status: 'decided', verdict: 'validated', commentId: null, nextStage: 'retenu' });
     expect(insertVerdictComment).not.toHaveBeenCalled();
-    expect(appendJournalEntry).not.toHaveBeenCalled();
+    expect(calls).toEqual(['journal:candidate_validation_marked']);
+    expect(appendJournalEntry.mock.calls[0]![0].payload).not.toHaveProperty('commentId');
   });
 
-  it('la phrase de refus est métier', async () => {
-    const out = await postFinalVerdict({ analysis, verdict: 'rejected', comment: 'non', actor });
-    expect(out).toEqual({
-      status: 'comment_too_thin',
-      message: 'Encore 14 mots : expliquez ce qui motive votre décision.',
-    });
+  it('un commentaire court est accepté tel quel (aucun minimum)', async () => {
+    stages = ['entretien_fait', 'non_retenu'];
+    const out = await postFinalVerdict({ analysis, verdict: 'rejected', comment: 'ok pour moi', actor });
+    expect(out.status).toBe('decided');
+    expect(insertVerdictComment.mock.calls[0]![0]).toMatchObject({ body: 'ok pour moi' });
   });
 });
 
