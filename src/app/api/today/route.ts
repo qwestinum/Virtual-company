@@ -7,8 +7,9 @@
  * des routes des écrans de travail — c'est ce qui garantit que ses compteurs
  * égalent les leurs. Cette route n'ajoute QUE ce qui manquait.
  *
- * `since` est fourni par le client (son dernier passage). Il est borné côté
- * serveur : une valeur absente, illisible ou dans le futur retombe sur 24 h.
+ * La fenêtre d'activité est FIXE — les sept derniers jours — et décidée ICI :
+ * le client n'en propose aucune. Une fenêtre qui change d'une visite à l'autre
+ * rend deux chiffres incomparables sans que rien ne l'explique.
  */
 import { NextResponse } from 'next/server';
 
@@ -26,14 +27,11 @@ function firstName(displayName: string | null): string | null {
   return first.length > 0 ? first : null;
 }
 
-export async function GET(request: Request): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   const user = await getApiUser();
   if (!user) return unauthorizedResponse();
 
-  const since = bandWindowStart(
-    new URL(request.url).searchParams.get('since'),
-    Date.now(),
-  );
+  const since = bandWindowStart(Date.now());
 
   try {
     // Les six comptes partent ENSEMBLE : ils ne se dépendent pas, et chacun

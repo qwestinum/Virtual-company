@@ -35,6 +35,7 @@ type ValidationsResponse = {
 type InterviewsResponse = {
   scheduled?: {
     briefId: string;
+    uid: string | null;
     candidateName: string;
     campaignId: string | null;
     jobTitle: string | null;
@@ -43,6 +44,7 @@ type InterviewsResponse = {
   }[];
   verdict?: {
     briefId: string;
+    uid: string | null;
     candidateName: string;
     campaignId: string | null;
     jobTitle: string | null;

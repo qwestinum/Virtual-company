@@ -48,6 +48,8 @@ export type DecisionItem = {
 
 export type InterviewItem = {
   id: string;
+  /** Identité de candidature — nécessaire pour confirmer depuis l'accueil. */
+  uid: string | null;
   candidateName: string;
   campaignId: string | null;
   /** Intitulé du poste — la colonne « campagne » de la ligne. */
@@ -71,11 +73,42 @@ export type VerificationItem = {
   action?: BusinessSignalAction;
 };
 
+/**
+ * ⚠️ STRUCTURE — la règle de l'écran, et elle vaut partout :
+ *
+ *   LA CARTE PORTE LE SUJET   (une couleur, un titre chiffré)
+ *   LE SOUS-BLOC PORTE LE VERBE (un sous-titre, un format, un bouton qui
+ *                                nomme le geste)
+ *
+ * Un sujet = une carte. Plusieurs verbes = plusieurs sous-blocs DANS la carte.
+ *
+ * C'est ce qui a fait fusionner « à décider » et « propositions de refus » :
+ * deux cartes de la même couleur, côte à côte, parlaient du même sujet — les
+ * candidatures qui attendent une validation — et le lecteur devait deviner
+ * pourquoi elles étaient séparées. Elles ne diffèrent que par le GESTE, donc
+ * par le sous-bloc.
+ *
+ * Même raison côté entretiens : « confirmer qu'il a eu lieu » et « donner sa
+ * décision » sont deux verbes qui portaient le même bouton « Répondre ». Les
+ * séparer en sous-blocs rend l'ordre — confirmer PUIS décider — visible sans
+ * qu'on l'explique.
+ */
 export type TodayBoard = {
-  decide: { items: DecisionItem[]; total: number };
-  /** Une SEULE ligne agrégée, jamais une ligne par candidat. */
-  proposals: { total: number; oldestDays: number; href: string };
-  interviews: { items: InterviewItem[]; total: number };
+  validation: {
+    /** Le sujet : tout ce qui attend une validation, toutes formes confondues. */
+    total: number;
+    /** Verbe « lire et décider » — lignes unitaires. */
+    aLire: { items: DecisionItem[]; total: number };
+    /** Verbe « passer en revue » — UNE ligne agrégée, jamais une par candidat. */
+    aEcarter: { total: number; oldestDays: number; href: string };
+  };
+  entretiens: {
+    total: number;
+    /** Verbe « confirmer » : l'entretien a-t-il eu lieu ? */
+    aConfirmer: { items: InterviewItem[]; total: number };
+    /** Verbe « décider » : retenez-vous ce candidat ? */
+    aDecider: { items: InterviewItem[]; total: number };
+  };
   verify: { items: VerificationItem[]; total: number };
   /** Rien nulle part : l'écran dit une phrase, pas quatre cartes vides. */
   allClear: boolean;
@@ -87,6 +120,7 @@ export type TodayInput = {
   coherenceByValidation: Record<string, ValidationCoherence | undefined>;
   scheduled: {
     briefId: string;
+    uid: string | null;
     candidateName: string;
     campaignId: string | null;
     jobTitle: string | null;
@@ -95,6 +129,7 @@ export type TodayInput = {
   }[];
   verdict: {
     briefId: string;
+    uid: string | null;
     candidateName: string;
     campaignId: string | null;
     jobTitle: string | null;
@@ -164,6 +199,7 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
     .filter((row) => row.section === 'a_pointer')
     .map((row) => ({
       id: row.briefId,
+      uid: row.uid ?? null,
       candidateName: row.candidateName,
       campaignId: row.campaignId,
       jobTitle: row.jobTitle,
@@ -173,6 +209,7 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
     }));
   const verdicts: InterviewItem[] = input.verdict.map((row) => ({
     id: row.briefId,
+    uid: row.uid ?? null,
     candidateName: row.candidateName,
     campaignId: row.campaignId,
     jobTitle: row.jobTitle,
@@ -180,7 +217,7 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
     kind: 'retenu' as const,
     href: interviewsHref({ campaignId: row.campaignId }),
   }));
-  const interviewItems = [...toPoint, ...verdicts];
+
 
   // ── À vérifier : des réglages et des campagnes. JAMAIS un candidat ───────
   // La frontière est portée par le registre des signaux, pas par une liste
@@ -199,21 +236,32 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
     }));
 
   return {
-    decide: { items: decideItems, total: decidable.length },
-    proposals: {
-      total: actionableProposals.length,
-      oldestDays: oldestProposal,
-      href: '/candidatures/validation',
+    validation: {
+      total: decidable.length + actionableProposals.length,
+      aLire: { items: decideItems, total: decidable.length },
+      aEcarter: {
+        total: actionableProposals.length,
+        oldestDays: oldestProposal,
+        href: '/candidatures/validation',
+      },
     },
-    interviews: {
-      items: interviewItems.slice(0, TODAY_SECTION_LIMIT),
-      total: interviewItems.length,
+    entretiens: {
+      total: toPoint.length + verdicts.length,
+      aConfirmer: {
+        items: toPoint.slice(0, TODAY_SECTION_LIMIT),
+        total: toPoint.length,
+      },
+      aDecider: {
+        items: verdicts.slice(0, TODAY_SECTION_LIMIT),
+        total: verdicts.length,
+      },
     },
     verify: { items: verify, total: verify.length },
     allClear:
       decidable.length === 0 &&
       actionableProposals.length === 0 &&
-      interviewItems.length === 0 &&
+      toPoint.length === 0 &&
+      verdicts.length === 0 &&
       verify.length === 0,
   };
 }

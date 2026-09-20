@@ -15,6 +15,10 @@
  * ⚠️ Chaque chiffre vient du JOURNAL. Zéro activité affiche **0**, jamais un
  * texte d'attente : le zéro est une information, la phrase est une excuse.
  *
+ * ⚠️ La FENÊTRE est fixe — sept jours — et DITE sous la bande. Une fenêtre qui
+ * change d'une visite à l'autre rend deux chiffres incomparables sans que rien
+ * ne l'explique.
+ *
  * Registre NEUTRE, volontairement : cette bande n'appelle aucune action, elle
  * rend compte. Les teintes de registre sont réservées aux cartes qui, elles,
  * attendent un geste.
@@ -24,6 +28,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import { getAvatarColor, getAvatarInitials, getAvatarUrl } from '@/lib/agents/avatar-colors';
+import { PHRASES } from '@/lib/lexique/phrases-ecran';
 import { AGENT_BAND, agentCountLabel } from '@/lib/today/agents-band';
 
 export function TodayTeamBand({
@@ -91,6 +96,12 @@ export function TodayTeamBand({
           );
         })}
       </div>
+      <p
+        className="font-body mt-3 text-center"
+        style={{ fontSize: 11, color: 'var(--dash-text-secondary)' }}
+      >
+        {PHRASES.equipe.fenetre}
+      </p>
     </Link>
   );
 }

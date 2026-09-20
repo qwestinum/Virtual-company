@@ -18,11 +18,11 @@ import { selectActiveCampaigns, useCampaignsStore } from '@/stores/campaigns-sto
 
 import { TodayBoardView } from './TodayBoardView';
 import { useTodayBoard } from './useTodayBoard';
-import { useTodayContext } from './useTodayContext';
+import { useTodayTeam } from './useTodayTeam';
 
 export function TodayScreen() {
   const state = useTodayBoard();
-  const context = useTodayContext();
+  const team = useTodayTeam();
   const { data } = useDashboardData();
   const campaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
 
@@ -54,8 +54,8 @@ export function TodayScreen() {
   return (
     <TodayBoardView
       board={state.board}
-      firstName={context.firstName}
-      agentCounts={context.agentCounts}
+      firstName={team.firstName}
+      agentCounts={team.agentCounts}
       zones={data?.zones ?? null}
       campaignLabel={campaignLabel}
       partial={state.partial}

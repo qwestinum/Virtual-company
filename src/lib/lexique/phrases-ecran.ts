@@ -28,61 +28,84 @@
 const s = (n: number): string => (n > 1 ? 's' : '');
 
 export const PHRASES = {
-  /** Candidatures dont la note tombe entre les deux repères de la campagne. */
-  decision: {
+  /**
+   * SUJET « validation » — tout ce qui attend une validation. Deux verbes en
+   * dessous, donc deux sous-blocs : lire et décider · passer en revue.
+   */
+  validation: {
     titre: (n: number) =>
-      `${n} candidature${s(n)} attend${n > 1 ? 'ent' : ''} votre décision`,
-    /** Ce que fait l'outil, dit explicitement. */
-    sousTitre:
-      'L’outil ne tranche pas : leur note se situe entre vos deux repères.',
-    vide: 'Aucune candidature n’attend votre décision',
-    action: 'Voir la candidature',
-    resume: (n: number) => `${n} décision${s(n)} à prendre`,
+      `${n} candidature${s(n)} attend${n > 1 ? 'ent' : ''} votre validation`,
+    vide: 'Aucune candidature n’attend votre validation',
+    resume: (n: number) => `${n} candidature${s(n)} à valider`,
   },
 
-  /** Candidatures sous le repère bas : l'outil propose de les écarter. */
-  ecarter: {
+  /** Verbe : lire le dossier et trancher, un par un. */
+  aLire: {
+    titre: (n: number) => `${n} à lire et décider`,
+    sousTitre:
+      'L’outil ne tranche pas : leur note se situe entre vos deux repères.',
+    action: 'Voir la candidature',
+  },
+
+  /** Verbe : passer en revue d'un bloc ce qui est sous les critères. */
+  aEcarter: {
     /**
      * « en dessous de VOS critères », pas « trop faibles » : le barème est
      * celui du cabinet, pas un jugement que l'outil porterait sur des gens.
      */
     titre: (n: number) =>
-      `${n} candidature${s(n)} en dessous de vos critères — l’outil vous propose de les écarter`,
+      `${n} en dessous de vos critères — l’outil vous propose de les écarter`,
     sousTitre:
       'Rien n’est envoyé sans vous : vous relisez la liste, puis vous décidez.',
-    vide: 'Aucune candidature à écarter',
     action: 'Les passer en revue',
-    resume: (n: number) => `${n} candidature${s(n)} en dessous de vos critères`,
   },
 
-  /** Entretiens qui attendent qu'on dise ce qui s'est passé, puis le verdict. */
+  /** SUJET « entretiens » — deux verbes : confirmer, puis décider. */
   entretiens: {
     titre: (n: number) => `${n} entretien${s(n)} à conclure`,
-    sousTitre:
-      'Dites ce qui s’est passé, puis si vous retenez le candidat.',
     vide: 'Aucun entretien à conclure',
-    /** Deux questions, dans l'ordre où elles se posent. */
-    questionEuLieu: 'A-t-il eu lieu ?',
-    questionRetenu: 'Retenez-vous ce candidat ?',
-    action: 'Répondre',
     resume: (n: number) => `${n} entretien${s(n)} à conclure`,
   },
 
   /**
-   * Réglages et campagnes qui vont poser problème. Jamais un candidat.
-   *
-   * ⚠️ Le titre ne dit PAS « sur vos campagnes » : la section recueille aussi
-   * des réglages personnels (un agenda qui propose un jour férié, un lieu de
-   * rencontre manquant). Un titre qui promet « vos campagnes » et montre votre
-   * agenda se corrige tout seul dans la tête du lecteur — au prix d'une
-   * hésitation à chaque lecture.
+   * Verbe 1 : dire si l'entretien a eu lieu. C'est un CONSTAT — d'où deux
+   * réponses explicites plutôt qu'un « Répondre » qui ne dit pas quoi.
    */
+  aConfirmer: {
+    titre: (n: number) => `${n} entretien${s(n)} à confirmer`,
+    sousTitre: 'L’entretien a-t-il eu lieu ?',
+    question: 'A-t-il eu lieu ?',
+    oui: 'Oui, il a eu lieu',
+    non: 'Non',
+  },
+
+  /** Verbe 2 : trancher. Il ne se pose QU'APRÈS le constat. */
+  aDecider: {
+    titre: (n: number) => `${n} décision${s(n)} à donner`,
+    sousTitre: 'Retenez-vous ce candidat ?',
+    question: 'Retenez-vous ce candidat ?',
+    action: 'Donner ma décision',
+  },
+
+  /** SUJET « réglages » — un seul verbe, donc pas de sous-bloc. */
   regler: {
+    /**
+     * ⚠️ Le titre ne dit PAS « sur vos campagnes » : la section recueille aussi
+     * des réglages personnels (un agenda qui propose un jour férié, un lieu de
+     * rencontre manquant). Un titre qui promet « vos campagnes » et montre
+     * votre agenda se corrige tout seul dans la tête du lecteur — au prix
+     * d'une hésitation à chaque lecture.
+     */
     titre: (n: number) => `${n} point${s(n)} à régler`,
     sousTitre:
       'Vos campagnes et vos réglages — rien ici ne concerne un candidat en particulier.',
     vide: 'Rien à régler',
     resume: (n: number) => `${n} point${s(n)} à régler`,
+  },
+
+  /** L'équipe : fenêtre FIXE, dite sous la bande. */
+  equipe: {
+    fenetre: 'cette semaine',
   },
 
   /** Rien nulle part. Une phrase, centrée, et on s'arrête là. */

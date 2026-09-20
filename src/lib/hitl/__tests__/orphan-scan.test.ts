@@ -87,7 +87,43 @@ describe('un seul geste initié depuis l’accueil', () => {
     // Un second bouton dans l'en-tête, et plus aucun des deux ne se voit.
     const src = lire('src/components/today/TodayHeader.tsx');
     expect(src).toContain('AddCampaignButton');
-    expect(src).not.toContain('TodayPrimary');
+  });
+
+  it('UN SEUL bouton principal sur la page : tout le reste est secondaire', () => {
+    // Deux styles pleins en concurrence, et le lecteur doit tout relire pour
+    // savoir ce qu'on attend de lui. La garde lit les fichiers : un dégradé
+    // réintroduit à la main compile et s'affiche très bien.
+    for (const chemin of [
+      'src/components/today/TodayBoardView.tsx',
+      'src/components/today/TodayRow.tsx',
+      'src/components/today/TodayNotice.tsx',
+      'src/components/today/RequeueOrphansButton.tsx',
+      'src/components/today/ConfirmInterviewButtons.tsx',
+    ]) {
+      expect(lire(chemin), chemin).not.toContain('linear-gradient');
+    }
+    // Et le seul principal est bien celui du produit.
+    expect(lire('src/components/campagnes/AddCampaignButton.tsx')).toContain(
+      'linear-gradient',
+    );
+  });
+
+  it('les actions de ligne emploient le bouton secondaire EXISTANT', () => {
+    const vue = lire('src/components/today/TodayBoardView.tsx');
+    expect(vue).toContain("from '@/components/campagnes/ActionButton'");
+    // Celui de la carte campagne, pas une copie.
+    expect(lire('src/components/campagnes/CampaignStatusActions.tsx')).toContain(
+      "from './ActionButton'",
+    );
+  });
+
+  it('confirmer un entretien ne pose JAMAIS un no-show d’un clic', () => {
+    // Un entretien manqué dérive vers « non retenu » : c'est une décision, et
+    // le produit impose un dialogue avant de la poser. « Non » emmène donc
+    // vers l'écran qui le porte, il ne marque rien.
+    const src = lire('src/components/today/ConfirmInterviewButtons.tsx');
+    expect(src).toContain("status: 'realized'");
+    expect(src).not.toContain("'missed'");
   });
 
   it('c’est le composant EXISTANT, pas une copie', () => {

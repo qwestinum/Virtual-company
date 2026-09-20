@@ -91,7 +91,56 @@ export function TodayCard({
           ) : null}
         </div>
       </header>
-      <div className="px-4 py-1.5">{children}</div>
+      <div>{children}</div>
     </section>
+  );
+}
+
+/**
+ * Sous-bloc d'une carte — LE VERBE.
+ *
+ * La carte dit DE QUOI il s'agit ; le sous-bloc dit ce qu'on y fait. Deux
+ * verbes sous un même sujet font deux sous-blocs, et l'ordre dans lequel ils
+ * s'empilent EST l'ordre dans lequel les gestes se posent : on confirme qu'un
+ * entretien a eu lieu avant de décider du candidat.
+ *
+ * Le sous-bloc n'a pas de couleur à lui : il hérite de celle de sa carte. Le
+ * distinguer par la teinte reviendrait à en refaire un sujet.
+ */
+export function TodaySubBlock({
+  title,
+  subtitle,
+  children,
+}: {
+  /** Le verbe, chiffré : « 3 à lire et décider ». */
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="border-b border-[var(--dash-border)] px-4 py-3 last:border-b-0"
+    >
+      <p
+        className="font-display"
+        style={{ fontSize: 13, fontWeight: 700, color: 'var(--dash-text)' }}
+      >
+        {title}
+      </p>
+      {subtitle ? (
+        <p
+          className="font-body"
+          style={{
+            marginTop: 1,
+            marginBottom: 4,
+            fontSize: 12,
+            color: 'var(--dash-text-secondary)',
+          }}
+        >
+          {subtitle}
+        </p>
+      ) : null}
+      {children}
+    </div>
   );
 }

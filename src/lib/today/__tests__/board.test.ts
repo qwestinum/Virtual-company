@@ -60,10 +60,10 @@ describe('à zéro — une phrase, jamais quatre cartes vides', () => {
   it('tout est vide → allClear', () => {
     const board = buildTodayBoard(input());
     expect(board.allClear).toBe(true);
-    expect(board.decide.items).toEqual([]);
-    expect(board.interviews.items).toEqual([]);
+    expect(board.validation.aLire.items).toEqual([]);
+    expect(board.entretiens.aConfirmer.items).toEqual([]);
     expect(board.verify.items).toEqual([]);
-    expect(board.proposals.total).toBe(0);
+    expect(board.validation.aEcarter.total).toBe(0);
   });
 
   it('une seule chose quelque part suffit à sortir de « allClear »', () => {
@@ -92,10 +92,10 @@ describe('la partition est celle de la file d’arbitrage', () => {
         zoneByValidation: { a: 'gray', b: 'proposed_reject' },
       }),
     );
-    expect(board.decide.total).toBe(1);
-    expect(board.decide.items[0]?.id).toBe('a');
-    expect(board.proposals.total).toBe(1);
-    expect(board.proposals.oldestDays).toBe(31);
+    expect(board.validation.aLire.total).toBe(1);
+    expect(board.validation.aLire.items[0]?.id).toBe('a');
+    expect(board.validation.aEcarter.total).toBe(1);
+    expect(board.validation.aEcarter.oldestDays).toBe(31);
   });
 
   it('la zone NE SUFFIT PAS : il faut aussi un brouillon de refus', () => {
@@ -109,16 +109,16 @@ describe('la partition est celle de la file d’arbitrage', () => {
         zoneByValidation: { a: 'proposed_reject' },
       }),
     );
-    expect(board.proposals.total).toBe(0);
-    expect(board.decide.total).toBe(1);
+    expect(board.validation.aEcarter.total).toBe(0);
+    expect(board.validation.aLire.total).toBe(1);
   });
 
   it('une zone absente reste « à examiner » — on ne propose pas un refus sur une donnée qu’on n’a pas', () => {
     const board = buildTodayBoard(
       input({ validations: [validation({ id: 'a' })], zoneByValidation: {} }),
     );
-    expect(board.decide.total).toBe(1);
-    expect(board.proposals.total).toBe(0);
+    expect(board.validation.aLire.total).toBe(1);
+    expect(board.validation.aEcarter.total).toBe(0);
   });
 });
 
@@ -139,8 +139,8 @@ describe('un dossier indécidable n’est JAMAIS proposé', () => {
         },
       }),
     );
-    expect(board.decide.total).toBe(0);
-    expect(board.proposals.total).toBe(0);
+    expect(board.validation.aLire.total).toBe(0);
+    expect(board.validation.aEcarter.total).toBe(0);
     expect(board.allClear).toBe(true);
   });
 });
@@ -153,23 +153,24 @@ describe('chaque ligne mène à la vue filtrée annoncée', () => {
         zoneByValidation: { a: 'gray' },
       }),
     );
-    expect(board.decide.items[0]?.href).toBe(
+    expect(board.validation.aLire.items[0]?.href).toBe(
       '/candidatures?campagne=CAMP-2026-991&statut=a_valider',
     );
   });
 
   it('les propositions mènent à la revue GROUPÉE, jamais à une liste', () => {
-    expect(buildTodayBoard(input()).proposals.href).toBe(
+    expect(buildTodayBoard(input()).validation.aEcarter.href).toBe(
       '/candidatures/validation',
     );
   });
 
-  it('un entretien à pointer mène à Entretiens, section « à pointer »', () => {
+  it('un entretien à confirmer mène à Entretiens, section « à pointer »', () => {
     const board = buildTodayBoard(
       input({
         scheduled: [
           {
             briefId: 'b1',
+            uid: 'uid-b1',
             candidateName: 'Damois Bernard',
             campaignId: 'CAMP-2026-221',
             jobTitle: 'Directeur des opérations',
@@ -179,7 +180,7 @@ describe('chaque ligne mène à la vue filtrée annoncée', () => {
         ],
       }),
     );
-    expect(board.interviews.items[0]?.href).toBe(
+    expect(board.entretiens.aConfirmer.items[0]?.href).toBe(
       '/entretiens?campagne=CAMP-2026-221&section=a_pointer',
     );
   });
@@ -230,8 +231,8 @@ describe('sections unitaires plafonnées', () => {
     const board = buildTodayBoard(
       input({ validations: many, zoneByValidation: zones }),
     );
-    expect(board.decide.items).toHaveLength(TODAY_SECTION_LIMIT);
-    expect(board.decide.total).toBe(8);
+    expect(board.validation.aLire.items).toHaveLength(TODAY_SECTION_LIMIT);
+    expect(board.validation.aLire.total).toBe(8);
   });
 
   it('le plus ancien d’abord — c’est l’attente qui fait la priorité', () => {
@@ -244,16 +245,17 @@ describe('sections unitaires plafonnées', () => {
         zoneByValidation: { recent: 'gray', vieux: 'gray' },
       }),
     );
-    expect(board.decide.items.map((i) => i.id)).toEqual(['vieux', 'recent']);
-    expect(board.decide.items[0]?.waitingDays).toBe(30);
+    expect(board.validation.aLire.items.map((i) => i.id)).toEqual(['vieux', 'recent']);
+    expect(board.validation.aLire.items[0]?.waitingDays).toBe(30);
   });
 
-  it('pointer AVANT le verdict — un verdict se pose sur un entretien pointé', () => {
+  it('confirmer AVANT décider — un verdict se pose sur un entretien confirmé', () => {
     const board = buildTodayBoard(
       input({
         verdict: [
           {
             briefId: 'v1',
+            uid: 'uid-v1',
             candidateName: 'Molika Khuon',
             campaignId: 'CAMP-2026-221',
             jobTitle: 'Directeur des opérations',
@@ -263,6 +265,7 @@ describe('sections unitaires plafonnées', () => {
         scheduled: [
           {
             briefId: 'p1',
+            uid: 'uid-p1',
             candidateName: 'Damois Bernard',
             campaignId: 'CAMP-2026-221',
             jobTitle: 'Directeur des opérations',
@@ -272,8 +275,12 @@ describe('sections unitaires plafonnées', () => {
         ],
       }),
     );
-    expect(board.interviews.items.map((i) => i.kind)).toEqual([
+    // Deux SOUS-BLOCS, et leur ordre EST l'ordre des gestes : on confirme
+    // qu'un entretien a eu lieu avant de décider du candidat.
+    expect(board.entretiens.aConfirmer.items.map((i) => i.kind)).toEqual([
       'a_eu_lieu',
+    ]);
+    expect(board.entretiens.aDecider.items.map((i) => i.kind)).toEqual([
       'retenu',
     ]);
   });
@@ -284,6 +291,7 @@ describe('sections unitaires plafonnées', () => {
         scheduled: [
           {
             briefId: 'x',
+            uid: 'uid-x',
             candidateName: 'Demain',
             campaignId: 'CAMP-2026-221',
             jobTitle: 'Directeur des opérations',
@@ -293,7 +301,7 @@ describe('sections unitaires plafonnées', () => {
         ],
       }),
     );
-    expect(board.interviews.total).toBe(0);
+    expect(board.entretiens.total).toBe(0);
     expect(board.allClear).toBe(true);
   });
 });

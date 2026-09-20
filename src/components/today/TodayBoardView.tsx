@@ -3,43 +3,49 @@
 /**
  * La VUE d'*Aujourd'hui* — présentationnelle : elle ne lit rien, elle rend.
  *
- * Trois zones, dans cet ordre : qui vous êtes et ce qu'il y a · l'équipe et ce
- * qu'elle a fait · ce qui vous attend. Puis, en pied, la répartition — la
- * preuve chiffrée que l'humain décide.
+ * STRUCTURE (la règle de l'écran, et elle vaut partout) :
+ *   LA CARTE PORTE LE SUJET   — une couleur, un titre chiffré
+ *   LE SOUS-BLOC PORTE LE VERBE — un sous-titre, un format, un bouton qui
+ *                                 nomme le geste
  *
  * PEAU : celle du produit, pas une nouvelle. Conteneur, polices, palette,
- * carte et bouton viennent de Campagnes, Réglages et Sourcing — cet écran les
- * applique, il n'en invente aucun.
+ * carte et boutons viennent de Campagnes, Réglages et Sourcing.
  *
- * Séparée du chargement pour deux raisons, et la seconde compte autant :
- *  1. elle se rend avec des données fixes, donc elle se REGARDE (recette,
- *     capture) sans base ni session ;
- *  2. ce qui reste dans `TodayScreen` est exactement le chargement.
+ * ⚠️ UN SEUL bouton principal sur la page — « + Nouvelle campagne », dans
+ * l'en-tête. Toutes les actions de ligne sont SECONDAIRES : deux styles pleins
+ * en concurrence, et le lecteur doit tout relire pour savoir ce qu'on attend
+ * de lui.
  */
 
+import { ActionButton } from '@/components/campagnes/ActionButton';
 import { formatSmartDate } from '@/components/candidatures/stage-ui';
 import { PHRASES } from '@/lib/lexique/phrases-ecran';
 import type { TodayBoard } from '@/lib/today/board';
 
+import { ConfirmInterviewButtons } from './ConfirmInterviewButtons';
 import { RequeueOrphansButton } from './RequeueOrphansButton';
-import { TodayCard } from './TodayCard';
+import { TodayCard, TodaySubBlock } from './TodayCard';
 import { TodayHeader } from './TodayHeader';
 import { TodayNotice } from './TodayNotice';
-import { TodayPrimary, TodayRow } from './TodayRow';
+import { TodayRow } from './TodayRow';
 import { TodayTeamBand } from './TodayTeamBand';
 import { TodayZoneStrip, type TodayZoneCounts } from './TodayZoneStrip';
 
 export type TodayBoardViewProps = {
   board: TodayBoard;
   firstName: string | null;
-  /** id d'agent → activité depuis la dernière visite (journal). */
   agentCounts: Record<string, number>;
-  /** Répartition des décisions — le pied de page. */
   zones: TodayZoneCounts | null;
   campaignLabel: (id: string | null, jobTitle?: string | null) => string;
   partial: boolean;
   onReload: () => void;
 };
+
+/** « en attente depuis 0 jour » ne veut rien dire — elle est arrivée ce matin. */
+function attente(jours: number): string {
+  if (jours <= 0) return 'reçue aujourd’hui';
+  return `en attente depuis ${jours} jour${jours > 1 ? 's' : ''}`;
+}
 
 export function TodayBoardView({
   board,
@@ -51,15 +57,12 @@ export function TodayBoardView({
   onReload,
 }: TodayBoardViewProps) {
   const vides = [
-    { id: 'decision', n: board.decide.total, vide: PHRASES.decision.vide },
-    { id: 'ecarter', n: board.proposals.total, vide: PHRASES.ecarter.vide },
-    { id: 'entretiens', n: board.interviews.total, vide: PHRASES.entretiens.vide },
+    { id: 'validation', n: board.validation.total, vide: PHRASES.validation.vide },
+    { id: 'entretiens', n: board.entretiens.total, vide: PHRASES.entretiens.vide },
     { id: 'regler', n: board.verify.total, vide: PHRASES.regler.vide },
   ].filter((s) => s.n === 0);
 
   return (
-    // Conteneur de Campagnes, à l'identique : 1400 px de large, centré,
-    // 24/28/60 de marges. La colonne étroite faisait un quatrième gabarit.
     <div className="h-full overflow-auto" style={{ padding: '24px 28px 60px' }}>
       <div
         className="flex flex-col gap-5"
@@ -68,9 +71,12 @@ export function TodayBoardView({
         <TodayHeader
           firstName={firstName}
           chiffres={[
-            board.decide.total > 0 ? PHRASES.decision.resume(board.decide.total) : null,
-            board.proposals.total > 0 ? PHRASES.ecarter.resume(board.proposals.total) : null,
-            board.interviews.total > 0 ? PHRASES.entretiens.resume(board.interviews.total) : null,
+            board.validation.total > 0
+              ? PHRASES.validation.resume(board.validation.total)
+              : null,
+            board.entretiens.total > 0
+              ? PHRASES.entretiens.resume(board.entretiens.total)
+              : null,
             board.verify.total > 0 ? PHRASES.regler.resume(board.verify.total) : null,
           ].filter((x): x is string => x !== null)}
           allClear={board.allClear}
@@ -80,92 +86,135 @@ export function TodayBoardView({
 
         <TodayTeamBand counts={agentCounts} />
 
-        {board.decide.total > 0 ? (
+        {/* SUJET : les candidatures qui attendent une validation.
+            Deux verbes en dessous — lire et décider · passer en revue. */}
+        {board.validation.total > 0 ? (
           <TodayCard
             accent="purple"
-            title={PHRASES.decision.titre(board.decide.total)}
-            subtitle={PHRASES.decision.sousTitre}
+            title={PHRASES.validation.titre(board.validation.total)}
           >
-            {board.decide.items.map((item) => (
-              <TodayRow
-                key={item.id}
-                name={item.candidateName}
-                campaign={campaignLabel(item.campaignId)}
-                state={`note ${item.score ?? '—'} · en attente depuis ${item.waitingDays} jour${item.waitingDays > 1 ? 's' : ''}`}
-                action={<TodayPrimary href={item.href} label={PHRASES.decision.action} />}
-              />
-            ))}
+            {board.validation.aLire.total > 0 ? (
+              <TodaySubBlock
+                title={PHRASES.aLire.titre(board.validation.aLire.total)}
+                subtitle={PHRASES.aLire.sousTitre}
+              >
+                {board.validation.aLire.items.map((item) => (
+                  <TodayRow
+                    key={item.id}
+                    name={item.candidateName}
+                    campaign={campaignLabel(item.campaignId)}
+                    state={`note ${item.score ?? '—'} · ${attente(item.waitingDays)}`}
+                    action={
+                      <ActionButton href={item.href} label={PHRASES.aLire.action} />
+                    }
+                  />
+                ))}
+              </TodaySubBlock>
+            ) : null}
+
+            {/* UNE ligne, jamais une par candidat : le geste est une revue en
+                fournée, pas une suite de décisions. */}
+            {board.validation.aEcarter.total > 0 ? (
+              <TodaySubBlock
+                title={PHRASES.aEcarter.titre(board.validation.aEcarter.total)}
+                subtitle={PHRASES.aEcarter.sousTitre}
+              >
+                <TodayNotice
+                  text={
+                    board.validation.aEcarter.oldestDays > 0
+                      ? `La plus ancienne attend depuis ${board.validation.aEcarter.oldestDays} jours.`
+                      : 'Elles viennent d’arriver.'
+                  }
+                  action={
+                    <ActionButton
+                      href={board.validation.aEcarter.href}
+                      label={PHRASES.aEcarter.action}
+                    />
+                  }
+                />
+              </TodaySubBlock>
+            ) : null}
           </TodayCard>
         ) : null}
 
-        {/* UNE ligne, jamais une par candidat : le geste est une revue en
-            fournée, pas une suite de décisions. */}
-        {board.proposals.total > 0 ? (
-          <TodayCard
-            accent="purple"
-            title={PHRASES.ecarter.titre(board.proposals.total)}
-            subtitle={PHRASES.ecarter.sousTitre}
-          >
-            <TodayNotice
-              text={
-                board.proposals.oldestDays > 0
-                  ? `La plus ancienne attend depuis ${board.proposals.oldestDays} jours.`
-                  : 'Elles viennent d’arriver.'
-              }
-              action={
-                <TodayPrimary href={board.proposals.href} label={PHRASES.ecarter.action} />
-              }
-            />
-          </TodayCard>
-        ) : null}
-
-        {board.interviews.total > 0 ? (
+        {/* SUJET : les entretiens. Deux verbes, dans l'ordre où ils se posent —
+            on confirme qu'il a eu lieu AVANT de décider du candidat. */}
+        {board.entretiens.total > 0 ? (
           <TodayCard
             accent="teal"
-            title={PHRASES.entretiens.titre(board.interviews.total)}
-            subtitle={PHRASES.entretiens.sousTitre}
+            title={PHRASES.entretiens.titre(board.entretiens.total)}
           >
-            {board.interviews.items.map((item) => (
-              <TodayRow
-                key={item.id}
-                name={item.candidateName}
-                campaign={campaignLabel(item.campaignId, item.jobTitle)}
-                state={[
-                  item.kind === 'a_eu_lieu'
-                    ? PHRASES.entretiens.questionEuLieu
-                    : PHRASES.entretiens.questionRetenu,
-                  item.startAt ? formatSmartDate(item.startAt) : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                action={<TodayPrimary href={item.href} label={PHRASES.entretiens.action} />}
-              />
-            ))}
+            {board.entretiens.aConfirmer.total > 0 ? (
+              <TodaySubBlock
+                title={PHRASES.aConfirmer.titre(board.entretiens.aConfirmer.total)}
+                subtitle={PHRASES.aConfirmer.sousTitre}
+              >
+                {board.entretiens.aConfirmer.items.map((item) => (
+                  <TodayRow
+                    key={item.id}
+                    name={item.candidateName}
+                    campaign={campaignLabel(item.campaignId, item.jobTitle)}
+                    state={item.startAt ? formatSmartDate(item.startAt) : ''}
+                    action={
+                      <ConfirmInterviewButtons
+                        uid={item.uid}
+                        candidateName={item.candidateName}
+                        campaignId={item.campaignId}
+                        href={item.href}
+                        onDone={onReload}
+                      />
+                    }
+                  />
+                ))}
+              </TodaySubBlock>
+            ) : null}
+
+            {board.entretiens.aDecider.total > 0 ? (
+              <TodaySubBlock
+                title={PHRASES.aDecider.titre(board.entretiens.aDecider.total)}
+                subtitle={PHRASES.aDecider.sousTitre}
+              >
+                {board.entretiens.aDecider.items.map((item) => (
+                  <TodayRow
+                    key={item.id}
+                    name={item.candidateName}
+                    campaign={campaignLabel(item.campaignId, item.jobTitle)}
+                    state={item.startAt ? formatSmartDate(item.startAt) : ''}
+                    action={
+                      <ActionButton href={item.href} label={PHRASES.aDecider.action} />
+                    }
+                  />
+                ))}
+              </TodaySubBlock>
+            ) : null}
           </TodayCard>
         ) : null}
 
+        {/* SUJET : les réglages. Un seul verbe, donc pas de sous-bloc. */}
         {board.verify.total > 0 ? (
           <TodayCard
             accent="orange"
             title={PHRASES.regler.titre(board.verify.total)}
             subtitle={PHRASES.regler.sousTitre}
           >
-            {board.verify.items.map((item) => (
-              <TodayNotice
-                key={item.key}
-                text={item.message}
-                action={
-                  // Un point qui se RÉPARE porte un bouton qui écrit ; un point
-                  // qui se regarde porte un lien. Les confondre ferait cliquer
-                  // pour rien, ou écrire sans le savoir.
-                  item.action ? (
-                    <RequeueOrphansButton label={item.ctaLabel} onDone={onReload} />
-                  ) : item.href ? (
-                    <TodayPrimary href={item.href} label={item.ctaLabel} />
-                  ) : null
-                }
-              />
-            ))}
+            <div className="px-4">
+              {board.verify.items.map((item) => (
+                <TodayNotice
+                  key={item.key}
+                  text={item.message}
+                  action={
+                    // Un point qui se RÉPARE porte un bouton qui écrit ; un
+                    // point qui se regarde porte un lien. Les confondre ferait
+                    // cliquer pour rien, ou écrire sans le savoir.
+                    item.action ? (
+                      <RequeueOrphansButton label={item.ctaLabel} onDone={onReload} />
+                    ) : item.href ? (
+                      <ActionButton href={item.href} label={item.ctaLabel} />
+                    ) : null
+                  }
+                />
+              ))}
+            </div>
           </TodayCard>
         ) : null}
 

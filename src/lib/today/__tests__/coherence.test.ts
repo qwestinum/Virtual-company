@@ -72,9 +72,9 @@ describe('les compteurs d’Aujourd’hui égalent ceux de la file d’arbitrage
       signals: [],
       nowMs: NOW,
     });
-    expect(board.decide.total).toBe(hub.toExamine.length);
-    expect(board.proposals.total).toBe(hub.proposals.length);
-    expect(board.decide.total + board.proposals.total).toBe(validations.length);
+    expect(board.validation.aLire.total).toBe(hub.toExamine.length);
+    expect(board.validation.aEcarter.total).toBe(hub.proposals.length);
+    expect(board.validation.aLire.total + board.validation.aEcarter.total).toBe(validations.length);
   });
 
   it('garde STRUCTURELLE : l’écran n’a pas sa propre règle de partition', () => {

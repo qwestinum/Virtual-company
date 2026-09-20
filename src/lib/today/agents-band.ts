@@ -88,23 +88,19 @@ export function agentCountLabel(entry: AgentBandEntry, count: number): string {
   return `${count} ${count > 1 ? entry.unit.many : entry.unit.one}`;
 }
 
+/** La fenêtre de la bande d'équipe, en jours. FIXE. */
+export const BAND_WINDOW_DAYS = 7;
+
 /**
- * Début de la fenêtre « depuis votre dernière visite ».
+ * Début de la fenêtre d'activité — les SEPT DERNIERS JOURS, toujours.
  *
- * Première visite (aucun horodatage) : les DERNIÈRES 24 H. Ni « depuis
- * toujours » — qui afficherait des milliers et ne dirait rien d'aujourd'hui —
- * ni zéro, qui ferait croire l'équipe à l'arrêt.
- *
- * Un horodatage dans le FUTUR (horloge décalée, fuseau) retombe aussi sur
- * 24 h : mieux vaut une fenêtre trop large qu'une fenêtre vide.
+ * ⚠️ Elle était indexée sur la dernière visite du recruteur. Deux défauts, et
+ * le second est le vrai : la fenêtre vivait dans le navigateur (donc une par
+ * machine), et surtout elle CHANGEAIT d'une visite à l'autre — « 12 CV
+ * analysés » un jour et « 3 » le lendemain ne se comparent pas, et rien à
+ * l'écran ne disait pourquoi. Une fenêtre fixe se lit, se compare, et se dit
+ * en trois mots sous la bande.
  */
-export function bandWindowStart(
-  lastVisitIso: string | null,
-  nowMs: number,
-): string {
-  const vingtQuatreHeures = new Date(nowMs - 86_400_000).toISOString();
-  if (!lastVisitIso) return vingtQuatreHeures;
-  const t = Date.parse(lastVisitIso);
-  if (Number.isNaN(t) || t > nowMs) return vingtQuatreHeures;
-  return new Date(t).toISOString();
+export function bandWindowStart(nowMs: number): string {
+  return new Date(nowMs - BAND_WINDOW_DAYS * 86_400_000).toISOString();
 }

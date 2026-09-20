@@ -15,8 +15,6 @@
  * chasse fixe — le monospace appartient aux données qu'on compare en colonne.
  */
 
-import Link from 'next/link';
-
 export function TodayRow({
   name,
   campaign,
@@ -52,48 +50,5 @@ export function TodayRow({
       </span>
       <span className="shrink-0">{action}</span>
     </div>
-  );
-}
-
-/**
- * Action PRINCIPALE — le bouton EXISTANT du produit, celui de « Nouvelle
- * campagne » : pastille, dégradé bleu→violet, `font-display` 12/700.
- *
- * Un seul style d'action principale sur tout l'écran : deux styles pleins
- * concurrents, et le lecteur doit tout relire pour savoir ce qu'on attend de
- * lui.
- */
-export function TodayPrimary({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="font-display inline-flex items-center"
-      style={{
-        padding: '6px 14px',
-        borderRadius: 999,
-        background: 'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: 700,
-        letterSpacing: '0.02em',
-        boxShadow: '0 2px 10px rgba(47,110,235,0.3)',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label}
-    </Link>
-  );
-}
-
-/** Action SECONDAIRE — le lien texte du produit. Jamais un second bouton. */
-export function TodaySecondary({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="font-body inline-flex min-h-6 items-center hover:underline"
-      style={{ fontSize: 12, fontWeight: 600, color: 'var(--dash-text-secondary)' }}
-    >
-      {label}
-    </Link>
   );
 }

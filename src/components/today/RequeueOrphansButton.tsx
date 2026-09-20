@@ -3,9 +3,12 @@
 /**
  * Le geste qui répare les candidatures bloquées — un bouton, une fournée.
  *
- * ⚠️ Il ÉCRIT, il ne navigue pas : c'est pour ça qu'il ne ressemble pas à un
- * lien. Demander d'ouvrir douze dossiers pour y cliquer douze fois le même
- * bouton, c'est présenter une liste comme une réparation.
+ * ⚠️ Il ÉCRIT, il ne navigue pas. Demander d'ouvrir douze dossiers pour y
+ * cliquer douze fois le même bouton, c'est présenter une liste comme une
+ * réparation.
+ *
+ * Il porte le style SECONDAIRE du produit, comme toutes les actions de ligne :
+ * l'écran n'a qu'un seul bouton principal, « + Nouvelle campagne ».
  *
  * Le serveur recalcule les cibles : ce bouton n'en envoie aucune. Il ne peut
  * donc pas réparer ce que l'écran avait en mémoire plutôt que ce qui est vrai.
@@ -15,6 +18,8 @@
  */
 
 import { useState } from 'react';
+
+import { ActionButton } from '@/components/campagnes/ActionButton';
 
 type Etat = 'prêt' | 'en cours' | 'fait' | 'échec';
 
@@ -80,29 +85,11 @@ export function RequeueOrphansButton({
   }
 
   return (
-    <button
-      type="button"
+    <ActionButton
+      variant="neutral"
+      label={etat === 'en cours' ? 'Remise en cours…' : label}
       onClick={() => void reparer()}
       disabled={etat === 'en cours'}
-      className="font-display inline-flex items-center"
-      style={{
-        padding: '6px 14px',
-        borderRadius: 999,
-        border: 'none',
-        background:
-          etat === 'en cours'
-            ? 'var(--dash-hover)'
-            : 'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
-        color: etat === 'en cours' ? 'var(--dash-text-secondary)' : '#fff',
-        fontSize: 12,
-        fontWeight: 700,
-        letterSpacing: '0.02em',
-        cursor: etat === 'en cours' ? 'not-allowed' : 'pointer',
-        boxShadow: etat === 'en cours' ? undefined : '0 2px 10px rgba(47,110,235,0.3)',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {etat === 'en cours' ? 'Remise en cours…' : label}
-    </button>
+    />
   );
 }

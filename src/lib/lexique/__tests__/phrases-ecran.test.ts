@@ -113,37 +113,57 @@ describe('les écrans convertis ne parlent pas la langue du code', () => {
 });
 
 describe('chaque titre est une phrase complète, du point de vue du recruteur', () => {
-  const titres = [
-    PHRASES.decision.titre(2),
-    PHRASES.ecarter.titre(2),
+  const sujets = [
+    PHRASES.validation.titre(2),
     PHRASES.entretiens.titre(2),
     PHRASES.regler.titre(2),
   ];
+  const verbes = [
+    PHRASES.aLire.titre(2),
+    PHRASES.aEcarter.titre(2),
+    PHRASES.aConfirmer.titre(2),
+    PHRASES.aDecider.titre(2),
+  ];
 
-  it('un titre porte un VERBE conjugué — « À décider » n’est pas une phrase', () => {
-    for (const titre of titres) {
+  it('un titre de SUJET porte un verbe conjugué', () => {
+    for (const titre of sujets) {
       expect(
-        /(attendent|attend|propose|à conclure|à régler)/.test(titre),
+        /(attendent|attend|à conclure|à régler)/.test(titre),
         `« ${titre} » ne porte aucun verbe`,
       ).toBe(true);
     }
   });
 
-  it('un titre commence par le CHIFFRE : on sait combien avant de lire', () => {
-    for (const titre of titres) expect(titre).toMatch(/^\d/);
+  it('un titre de SOUS-BLOC nomme le GESTE, pas l’état', () => {
+    // C'est la raison d'être du sous-bloc : « Répondre » servait à confirmer
+    // ET à décider, deux gestes sous un même mot.
+    for (const titre of verbes) {
+      expect(
+        /(à lire et décider|propose de les écarter|à confirmer|à donner)/.test(titre),
+        `« ${titre} » ne nomme aucun geste`,
+      ).toBe(true);
+    }
+  });
+
+  it('tous commencent par le CHIFFRE : on sait combien avant de lire', () => {
+    for (const titre of [...sujets, ...verbes]) expect(titre).toMatch(/^\d/);
   });
 
   it('le rôle de l’outil est dit quand il intervient', () => {
-    // « L'outil vous propose de… », « l'outil ne tranche pas » : le produit
-    // dit ce qu'il fait au lieu de le laisser deviner.
-    expect(PHRASES.ecarter.titre(2)).toContain('l’outil vous propose');
-    expect(PHRASES.decision.sousTitre).toContain('L’outil ne tranche pas');
+    expect(PHRASES.aEcarter.titre(2)).toContain('l’outil vous propose');
+    expect(PHRASES.aLire.sousTitre).toContain('L’outil ne tranche pas');
+  });
+
+  it('les deux réponses de confirmation sont EXPLICITES', () => {
+    // « Répondre » ne disait pas ce qu'on allait répondre.
+    expect(PHRASES.aConfirmer.oui).toBe('Oui, il a eu lieu');
+    expect(PHRASES.aConfirmer.non).toBe('Non');
+    expect(PHRASES.aDecider.action).toBe('Donner ma décision');
   });
 
   it('les états vides sont des phrases, pas des étiquettes', () => {
     for (const vide of [
-      PHRASES.decision.vide,
-      PHRASES.ecarter.vide,
+      PHRASES.validation.vide,
       PHRASES.entretiens.vide,
       PHRASES.regler.vide,
     ]) {
@@ -151,16 +171,19 @@ describe('chaque titre est une phrase complète, du point de vue du recruteur', 
     }
   });
 
-  it('les deux questions d’entretien se posent dans l’ordre', () => {
-    expect(PHRASES.entretiens.questionEuLieu).toBe('A-t-il eu lieu ?');
-    expect(PHRASES.entretiens.questionRetenu).toBe(
-      'Retenez-vous ce candidat ?',
+  it('singulier et pluriel sont accordés', () => {
+    expect(PHRASES.validation.titre(1)).toBe(
+      '1 candidature attend votre validation',
     );
+    expect(PHRASES.validation.titre(3)).toBe(
+      '3 candidatures attendent votre validation',
+    );
+    expect(PHRASES.regler.titre(1)).toBe('1 point à régler');
   });
 
-  it('singulier et pluriel sont accordés', () => {
-    expect(PHRASES.decision.titre(1)).toBe('1 candidature attend votre décision');
-    expect(PHRASES.decision.titre(3)).toBe('3 candidatures attendent votre décision');
-    expect(PHRASES.regler.titre(1)).toBe('1 point à régler');
+  it('la fenêtre de l’équipe est FIXE et dite', () => {
+    // Plus de « depuis votre dernière visite » : une fenêtre qui change d'un
+    // jour à l'autre rend deux chiffres incomparables sans qu'on sache pourquoi.
+    expect(PHRASES.equipe.fenetre).toBe('cette semaine');
   });
 });
