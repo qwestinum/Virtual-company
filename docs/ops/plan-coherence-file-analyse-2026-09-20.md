@@ -92,7 +92,7 @@ Tant que la cohérence est traitée « une direction à la fois », il y aura un
 
 ## 5. Le plan, en quatre lots
 
-### Lot 0 — Contenir, maintenant *(prod, XS)*
+### Lot 0 — Contenir, maintenant *(prod, XS)* — ✅ **LIVRÉ le 20/09/2026**
 
 Ne pas laisser un refus partir sur un dossier accepté.
 
@@ -107,6 +107,27 @@ Ne pas laisser un refus partir sur un dossier accepté.
 
 ⚠️ **Masquer les cartes serait pire.** Deux dossiers disparaîtraient du hub sans que personne ne
 sache pourquoi le compteur a bougé. On désarme et on explique.
+
+**Ce qui a été livré** (branche `fix/validations-orphelines`) :
+
+| Pièce | Rôle |
+|---|---|
+| `src/lib/hitl/queue-coherence.ts` | Prédicat PUR et unique — `awaiting` · `settled{reason}` · `unknown`. **Ne conclut jamais sur un doute** : analyse introuvable ou zone absente ⇒ `unknown`, la carte garde son arbitrage. 10 tests. |
+| `GET /api/validations` | Sert `coherenceByValidation` à côté de `zoneByValidation` — jugé SERVEUR, jamais recalculé à l'écran. Coût nul : la route lisait déjà les analyses. |
+| `SettledValidationCard` | La carte désarmée : plus d'« Accepter / Refuser », la phrase qui dit pourquoi, et **un** geste — *Clore cette fiche*. |
+| `POST /api/validations/[id]/settle` | Clôture `pending → void`. **Re-juge la cohérence côté serveur** (409 `still_awaiting` sinon) et **refuse un `sending`** (409 `send_in_flight` — jamais clore sous incertitude). Journal `validation_settled`. |
+| `RejectionProposalsTab` | Une fiche désarmée **n'est pas sélectionnable** : ni case à cocher, ni « Tout sélectionner », ni fournée. |
+
+Couverture : les **quatre** motifs de clôture, pas seulement celui de production —
+analyse acceptée · décision humaine prise ailleurs (l'angle mort de
+`decision-correction.ts`) · candidature classée sans suite · zone `auto_reject` legacy.
+
+Vérifié en dev sur un cas fabriqué à l'identique du cas prod (analyse `auto_accept`, fiche
+ouverte en direction `reject`) : carte désarmée à l'écran, clôture → ligne `void`, journal écrit,
+**aucun mail**. Typecheck propre, 2 700 tests unitaires, régression S1→S25 **232/232**.
+
+**Reste du lot 0** : clore les 2 lignes de production. Elles sont désormais désarmées à l'écran —
+le geste est un clic par dossier, après vérification nominative, et il n'envoie rien.
 
 ### Lot 1 — Fermer l'asymétrie du re-scoring *(S)*
 

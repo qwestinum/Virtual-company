@@ -20,6 +20,11 @@ import {
 } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { mergePendingValidationEnqueue } from '@/lib/hitl/enqueue-merge';
+import {
+  checkValidationCoherence,
+  type AnalysisFacts,
+  type ValidationCoherence,
+} from '@/lib/hitl/queue-coherence';
 import { prepareReferentContext } from '@/lib/referent/context';
 import {
   HitlDecisionSchema,
@@ -53,6 +58,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     // Bureau), chunké pour rester sous le cap PostgREST quel que soit le volume.
     // Forme : { [validationId]: DecisionZone | null }. Absent = « à examiner ».
     const zoneByValidation: Record<string, DecisionZone | null> = {};
+    // COHÉRENCE file ↔ analyse, servie AVEC la file. Le sens inverse de
+    // `validations_orphelines` : une ligne OUVERTE dont l'analyse n'attend
+    // plus. Deux dossiers de production portaient ainsi la direction `reject`
+    // sur une analyse `auto_accept` — refuser depuis cette carte aurait envoyé
+    // un refus à quelqu'un que le reste du produit compte comme accepté.
+    // Jugée par un prédicat PUR et partagé, jamais recalculée à l'écran.
+    const coherenceByValidation: Record<string, ValidationCoherence> = {};
     const uidOf = (v: PendingValidation): string | null =>
       typeof v.payload?.uid === 'string' ? v.payload.uid : null;
     const uids = [
@@ -63,28 +75,41 @@ export async function GET(request: Request): Promise<NextResponse> {
     // que les zones : les deux ne dépendent que de la file.
     const referentPromise = referentContextFor(validations.map((v) => v.campaignId));
     if (uids.length > 0) {
-      const zoneByUid = new Map<string, DecisionZone | null>();
+      const factsByUid = new Map<string, NonNullable<AnalysisFacts>>();
       const parts = await Promise.all(
         chunk(uids, 300).map((part) => listAllCandidateAnalyses({ uidIn: part })),
       );
       for (const rows of parts) {
-        for (const row of rows) zoneByUid.set(row.uid, row.decisionZone);
+        for (const row of rows) {
+          factsByUid.set(row.uid, {
+            decisionZone: row.decisionZone,
+            decidedBy: row.decidedBy,
+            dismissedAt: row.dismissedAt,
+          });
+        }
       }
       for (const v of validations) {
         const uid = uidOf(v);
-        zoneByValidation[v.id] = uid ? (zoneByUid.get(uid) ?? null) : null;
+        const facts = uid ? (factsByUid.get(uid) ?? null) : null;
+        zoneByValidation[v.id] = facts?.decisionZone ?? null;
+        coherenceByValidation[v.id] = checkValidationCoherence(facts);
       }
     }
     const { referentByCampaign, currentUserId } = await referentPromise;
     return NextResponse.json({
       validations,
       zoneByValidation,
+      coherenceByValidation,
       referentByCampaign,
       currentUserId,
     });
   } catch (err) {
     console.error('[api/validations] GET failed', err);
-    return NextResponse.json({ validations: [], zoneByValidation: {} });
+    return NextResponse.json({
+      validations: [],
+      zoneByValidation: {},
+      coherenceByValidation: {},
+    });
   }
 }
 

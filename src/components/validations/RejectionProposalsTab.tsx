@@ -25,10 +25,12 @@ import {
   toggleSelection,
 } from '@/lib/hitl/bulk-selection';
 import type { ReferentInfo } from '@/lib/referent/filter';
+import type { ValidationCoherence } from '@/lib/hitl/queue-coherence';
 import type { PendingValidation } from '@/types/hitl';
 
 import { BulkRejectDialog } from './BulkRejectDialog';
 import { EmptyQueueNotice } from './EmptyQueueNotice';
+import { SettledValidationCard } from './SettledValidationCard';
 import { ValidationCard } from './ValidationCard';
 
 /** Au-delà, on le DIT plutôt que de laisser la page ramer sans explication. */
@@ -41,6 +43,7 @@ export function RejectionProposalsTab({
   referentOf,
   filterKey,
   maskedByFilter,
+  coherence,
 }: {
   items: PendingValidation[];
   onSent: (v: PendingValidation, message: string) => void;
@@ -52,6 +55,8 @@ export function RejectionProposalsTab({
   filterKey: string;
   /** Propositions présentes mais écartées par le filtre (état vide honnête). */
   maskedByFilter: number;
+  /** Cohérence file ↔ analyse, jugée serveur. Absente = on ne conclut pas. */
+  coherence: Record<string, ValidationCoherence>;
 }) {
   const [selection, setSelection] = useState(() => emptySelection(filterKey));
   const [confirming, setConfirming] = useState(false);
@@ -72,8 +77,16 @@ export function RejectionProposalsTab({
   const synced = syncSelectionToFilter(selection, filterKey, running);
   if (synced !== selection) setSelection(synced);
 
-  const allSelected = isAllSelected(items, synced);
-  const chosen = selectedAmong(items, synced);
+  // Une fiche dont le dossier n'attend plus n'est ni sélectionnable ni
+  // refusable : elle serait emportée par une fournée et enverrait un refus
+  // contredisant l'état réel du dossier. Elle reste AFFICHÉE, désarmée.
+  const settledOf = (v: PendingValidation) => {
+    const c = coherence[v.id];
+    return c?.kind === 'settled' ? c.reason : null;
+  };
+  const selectable = items.filter((v) => settledOf(v) === null);
+  const allSelected = isAllSelected(selectable, synced);
+  const chosen = selectedAmong(selectable, synced);
 
   const runBatch = async (sendMail: boolean) => {
     if (runningRef.current) return;
@@ -134,13 +147,13 @@ export function RejectionProposalsTab({
               setSelection(
                 setAllSelected(
                   synced,
-                  items.map((v) => v.id),
+                  selectable.map((v) => v.id),
                   !allSelected,
                 ),
               )
             }
           />
-          Tout sélectionner ({items.length})
+          Tout sélectionner ({selectable.length})
         </label>
       </div>
 
@@ -168,24 +181,43 @@ export function RejectionProposalsTab({
         </div>
       ) : null}
 
-      {items.map((v) => (
-        <div key={v.id} className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            checked={synced.ids.has(v.id)}
-            onChange={() => setSelection(toggleSelection(synced, v.id))}
-            className="mt-4"
-            aria-label={`Sélectionner ${v.candidateName}`}
-          />
-          <div className="min-w-0 flex-1">
-            <ValidationCard
-              v={v}
-              onSent={onSent}
-              referent={referentOf(v.campaignId)}
+      {items.map((v) => {
+        const settled = settledOf(v);
+        if (settled !== null) {
+          return (
+            <div key={v.id} className="flex items-start gap-2">
+              {/* Pas de case : une fiche désarmée ne rejoint aucune fournée. */}
+              <span aria-hidden className="mt-4 w-[13px] shrink-0" />
+              <div className="min-w-0 flex-1">
+                <SettledValidationCard
+                  v={v}
+                  reason={settled}
+                  onSettled={onSent}
+                  referent={referentOf(v.campaignId)}
+                />
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div key={v.id} className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={synced.ids.has(v.id)}
+              onChange={() => setSelection(toggleSelection(synced, v.id))}
+              className="mt-4"
+              aria-label={`Sélectionner ${v.candidateName}`}
             />
+            <div className="min-w-0 flex-1">
+              <ValidationCard
+                v={v}
+                onSent={onSent}
+                referent={referentOf(v.campaignId)}
+              />
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {confirming ? (
         <BulkRejectDialog
