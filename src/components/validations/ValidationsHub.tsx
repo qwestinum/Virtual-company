@@ -29,8 +29,10 @@ import {
   type ReferentSelection,
 } from '@/lib/referent/filter';
 import {
+  defaultValidationSubTab,
   partitionRejectionProposals,
   sortRejectionProposals,
+  type ValidationSubTab,
 } from '@/lib/hitl/rejection-proposal';
 import type { PendingValidation } from '@/types/hitl';
 
@@ -42,8 +44,6 @@ import { SubTabButton } from './SubTabButton';
 import { useValidationsQueue } from './use-validations-queue';
 import { ValidationCard } from './ValidationCard';
 import { ValidationsHistory } from './ValidationsHistory';
-
-type SubTab = 'examine' | 'proposals';
 
 export function ValidationsHub() {
   const {
@@ -61,7 +61,11 @@ export function ValidationsHub() {
   // un filtre oublié qui masque des dossiers est pire que pas de filtre.
   const [referentFilter, setReferentFilter] =
     useState<ReferentSelection>(ALL_REFERENTS);
-  const [tab, setTab] = useState<SubTab>('examine');
+  // `null` = « le sous-onglet d'arrivée n'est pas encore pris ». Il ne peut pas
+  // l'être ici : à ce stade la file est en chargement et les comptes sont
+  // inconnus. Il est donc pris PLUS BAS, pendant le rendu — pas dans un
+  // `useEffect`, qui afficherait le mauvais onglet pendant une frame.
+  const [tab, setTab] = useState<ValidationSubTab | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -113,6 +117,23 @@ export function ValidationsHub() {
   const options = buildReferentOptions(items, referents);
   const myCount = myCampaignsCount(items, referents, currentUserId);
 
+  // Sous-onglet d'arrivée, pris UNE SEULE FOIS sur les comptes NON FILTRÉS
+  // (cf. defaultValidationSubTab), puis figé dans l'état.
+  //
+  // ⚠️ Il serait faux de le recalculer à chaque rendu : traiter la dernière
+  // proposition ferait retomber le calcul sur « À examiner », et l'écran
+  // basculerait TOUT SEUL sous le message qui confirme le traitement — on
+  // lirait « 2 candidatures refusées » sous un onglet qui n'est pas celui où
+  // on vient d'agir. Une fois pris, l'onglet appartient à l'utilisateur.
+  //
+  // Ajustement d'état PENDANT le rendu (React le prévoit) : la garde `=== null`
+  // ne passe qu'au premier rendu où la file est chargée, donc pas de boucle.
+  if (tab === null) {
+    setTab(defaultValidationSubTab(toExamine.length, proposals.length));
+  }
+  const activeTab =
+    tab ?? defaultValidationSubTab(toExamine.length, proposals.length);
+
   const visibleExamine = filterByReferent(toExamine, referents, referentFilter);
   const visibleProposals = filterByReferent(
     sortedProposals,
@@ -151,14 +172,14 @@ export function ValidationsHub() {
 
       <div className="flex items-center gap-1 border-b border-stone-200">
         <SubTabButton
-          active={tab === 'examine'}
+          active={activeTab === 'examine'}
           label="À examiner"
           count={visibleExamine.length}
           total={toExamine.length}
           onClick={() => setTab('examine')}
         />
         <SubTabButton
-          active={tab === 'proposals'}
+          active={activeTab === 'proposals'}
           label="Propositions de refus"
           count={visibleProposals.length}
           total={sortedProposals.length}
@@ -166,7 +187,7 @@ export function ValidationsHub() {
         />
       </div>
 
-      {tab === 'proposals' ? (
+      {activeTab === 'proposals' ? (
         <RejectionProposalsTab
           items={visibleProposals}
           onSent={onSent}

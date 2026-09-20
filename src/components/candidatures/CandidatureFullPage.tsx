@@ -15,10 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { formatFrDate } from '@/lib/reporting/audit-display';
-import {
-  CANDIDATE_STAGE_LABELS,
-  type CandidateStage,
-} from '@/lib/reporting/candidate-stage';
+import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { TimelineEvent } from '@/lib/reporting/candidate-timeline';
 import type { CandidateAnalysisDetail, CandidateListItem } from '@/types/reporting';
 import { ReferentMention } from '@/components/referent/ReferentMention';
@@ -33,7 +30,8 @@ import {
   TimelineList,
 } from './CandidatureDetailBlocks';
 import { ScoreRing } from './ScoreRing';
-import { STAGE_PILL_CLASS, initials } from './stage-ui';
+import { StagePill } from './StagePill';
+import { initials } from './stage-ui';
 import { ZonePill } from './ZonePill';
 
 type DetailResponse = {
@@ -228,11 +226,7 @@ function Body({
           <ScoreRing score={scoringResult.totalScore} size="lg" />
           <div className="flex flex-col items-start gap-1.5">
             <ZonePill zone={candidate.decisionZone} status={candidate.status} />
-            <span
-              className={`rounded-full px-3 py-1 font-inter text-[12px] font-medium ${STAGE_PILL_CLASS[stage]}`}
-            >
-              {CANDIDATE_STAGE_LABELS[stage]}
-            </span>
+            <StagePill stage={stage} />
           </div>
         </div>
       </div>

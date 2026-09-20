@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  defaultValidationSubTab,
   isRejectionProposal,
   partitionRejectionProposals,
   sortRejectionProposals,
@@ -106,5 +107,37 @@ describe('sortRejectionProposals', () => {
     const input = [v('a', 10), v('b', 38)];
     sortRejectionProposals(input);
     expect(input.map((x) => x.id)).toEqual(['a', 'b']);
+  });
+});
+
+// ── Sous-onglet d'arrivée ───────────────────────────────────────────────────
+
+describe('defaultValidationSubTab', () => {
+  it('ouvre sur « Propositions de refus » quand c’est le seul sous-onglet peuplé', () => {
+    // Le cas mesuré en recette : badge d'onglet à 2, « À examiner » à 0.
+    expect(defaultValidationSubTab(0, 2)).toBe('proposals');
+  });
+
+  it('garde « À examiner » dès qu’il a quelque chose', () => {
+    expect(defaultValidationSubTab(3, 0)).toBe('examine');
+    expect(defaultValidationSubTab(3, 7)).toBe('examine');
+    expect(defaultValidationSubTab(1, 200)).toBe('examine');
+  });
+
+  it('file entièrement vide → « À examiner », dont l’état vide est le plus juste', () => {
+    expect(defaultValidationSubTab(0, 0)).toBe('examine');
+  });
+
+  it('n’ouvre JAMAIS sur un sous-onglet vide quand l’autre est peuplé', () => {
+    for (const [examine, proposals] of [
+      [0, 1],
+      [0, 14],
+      [5, 0],
+      [1, 0],
+    ] as const) {
+      const onglet = defaultValidationSubTab(examine, proposals);
+      const peuplé = onglet === 'examine' ? examine : proposals;
+      expect(peuplé).toBeGreaterThan(0);
+    }
   });
 });

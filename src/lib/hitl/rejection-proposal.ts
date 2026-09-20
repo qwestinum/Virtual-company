@@ -93,3 +93,33 @@ export function sortRejectionProposals<
   );
 }
 
+
+/** Les deux sous-onglets de la file de validation. */
+export type ValidationSubTab = 'examine' | 'proposals';
+
+/**
+ * Sur QUEL sous-onglet ouvrir la file, tant que l'utilisateur n'a rien choisi.
+ *
+ * Le défaut était `'examine'`, en dur. Mesuré en recette le 20/09/2026 :
+ * l'onglet annonçait **2** dossiers, « À examiner » en affichait **0**, et les
+ * deux dossiers étaient dans « Propositions de refus ». L'écran d'arrivée
+ * disait donc « rien à faire » sous un badge qui disait le contraire — et rien
+ * n'indiquait qu'il fallait cliquer le second sous-onglet.
+ *
+ * Règle : on ouvre sur le sous-onglet qui PORTE le badge, c'est-à-dire le seul
+ * qui a quelque chose. Si les deux en ont, `'examine'` garde la main (c'est
+ * l'arbitrage unitaire, le geste principal, et l'autre porte son compte à
+ * côté). Si les deux sont vides, `'examine'` aussi : il faut bien un défaut, et
+ * son état vide est le plus juste.
+ *
+ * ⚠️ Comptes NON FILTRÉS. Le filtre par référent est une commodité de lecture
+ * qui ne restreint rien ; le faire décider du sous-onglet d'arrivée ferait
+ * bouger la destination selon un réglage, et masquerait à nouveau des dossiers.
+ */
+export function defaultValidationSubTab(
+  toExamineCount: number,
+  proposalsCount: number,
+): ValidationSubTab {
+  if (toExamineCount === 0 && proposalsCount > 0) return 'proposals';
+  return 'examine';
+}

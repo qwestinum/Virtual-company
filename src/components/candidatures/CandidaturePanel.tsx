@@ -11,10 +11,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import {
-  CANDIDATE_STAGE_LABELS,
-  type CandidateStage,
-} from '@/lib/reporting/candidate-stage';
+import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { CandidateAnalysisDetail, CandidateListItem } from '@/types/reporting';
 import { ReferentMention } from '@/components/referent/ReferentMention';
 import type { ReferentInfo } from '@/lib/referent/filter';
@@ -23,7 +20,8 @@ import { CandidatureActions } from './CandidatureActions';
 import { DetailPieces, SectionLabel } from './CandidatureDetailBlocks';
 import { JobTitleChip } from './JobTitleChip';
 import { ScoreRing } from './ScoreRing';
-import { STAGE_PILL_CLASS, initials } from './stage-ui';
+import { StagePill } from './StagePill';
+import { initials } from './stage-ui';
 import { ZonePill } from './ZonePill';
 
 type DetailResponse = {
@@ -153,11 +151,7 @@ export function CandidaturePanel({
         <div className="flex flex-wrap items-center gap-2.5">
           <ScoreRing score={item.totalScore} size="md" />
           <ZonePill zone={item.decisionZone} status={item.status} />
-          <span
-            className={`rounded-full px-3 py-1.5 font-inter text-[12px] font-medium ${STAGE_PILL_CLASS[liveItem.stage]}`}
-          >
-            {CANDIDATE_STAGE_LABELS[liveItem.stage]}
-          </span>
+          <StagePill stage={liveItem.stage} />
         </div>
 
         <div>

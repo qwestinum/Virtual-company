@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatSmartDate, initials } from '@/components/candidatures/stage-ui';
+import {
+  formatSmartDate,
+  initials,
+  stagePillStyle,
+  stageStepMarks,
+} from '@/components/candidatures/stage-ui';
+import {
+  CANDIDATE_STAGE_LABELS,
+  type CandidateStage,
+} from '@/lib/reporting/candidate-stage';
 
 // Dates construites en composantes LOCALES (round-trip ISO) → déterministe quel
 // que soit le fuseau du runner. `now` = 30 juin 2026, 18:00 local.
@@ -52,5 +61,79 @@ describe('initials', () => {
     expect(initials('Karim Benali')).toBe('KB');
     expect(initials('sophie marchand')).toBe('SM');
     expect(initials('Cher')).toBe('C');
+  });
+});
+
+// ── Contraste des pastilles d'étape (WCAG 1.4.3, AA texte normal : 4,5:1) ───
+//
+// Le ratio est RECALCULÉ ici depuis les couleurs réellement servies, jamais
+// recopié d'un tableau : c'est le seul moyen qu'un changement de teinte qui
+// repasse sous le seuil fasse rougir la suite. Formule de luminance relative
+// WCAG 2.1 §« relative luminance ».
+
+const relativeLuminance = (hex: string): number => {
+  const channels = [1, 3, 5]
+    .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return (
+    0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
+  );
+};
+
+const contrastRatio = (fg: string, bg: string): number => {
+  const a = relativeLuminance(fg);
+  const b = relativeLuminance(bg);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+};
+
+const ALL_STAGES = Object.keys(CANDIDATE_STAGE_LABELS) as CandidateStage[];
+
+describe('stagePillStyle — contraste AA', () => {
+  it('couvre les 8 étapes (aucune ne tombe dans un trou de la palette)', () => {
+    expect(ALL_STAGES).toHaveLength(8);
+    for (const stage of ALL_STAGES) {
+      const { color, background } = stagePillStyle(stage);
+      expect(color).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(background).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+
+  it.each(ALL_STAGES)('« %s » atteint 4,5:1', (stage) => {
+    const { color, background } = stagePillStyle(stage);
+    expect(contrastRatio(color, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('la formule sait détecter un échec (sonde : la palette ORQA retirée)', () => {
+    // « Invité » d'avant : #2b9fd8 sur #e6f4fb, mesuré à 2,65:1. Si cette
+    // assertion devenait fausse, le test ci-dessus ne prouverait plus rien.
+    expect(contrastRatio('#2b9fd8', '#e6f4fb')).toBeLessThan(4.5);
+  });
+});
+
+describe('stageStepMarks — repère non chromatique', () => {
+  it('distingue les trois étapes qui PARTAGENT une couleur', () => {
+    const progress: CandidateStage[] = ['invite', 'rdv_pris', 'entretien_fait'];
+
+    // Prémisse du test : ces trois-là sortent bien de la même couleur.
+    const colors = new Set(progress.map((s) => stagePillStyle(s).color));
+    expect(colors.size).toBe(1);
+
+    // Donc leurs repères, eux, doivent différer deux à deux.
+    const marks = progress.map((s) => stageStepMarks(s).join(''));
+    expect(new Set(marks).size).toBe(3);
+  });
+
+  it('remplit jusqu\'au rang de l\'étape', () => {
+    expect(stageStepMarks('a_valider')).toEqual([true, false, false, false, false]);
+    expect(stageStepMarks('invite')).toEqual([true, true, false, false, false]);
+    expect(stageStepMarks('rdv_pris')).toEqual([true, true, true, false, false]);
+    expect(stageStepMarks('entretien_fait')).toEqual([true, true, true, true, false]);
+    expect(stageStepMarks('retenu')).toEqual([true, true, true, true, true]);
+  });
+
+  it('les terminaux hors pipeline ne portent aucun repère', () => {
+    expect(stageStepMarks('non_retenu')).toEqual([]);
+    expect(stageStepMarks('refus_auto')).toEqual([]);
+    expect(stageStepMarks('sans_suite')).toEqual([]);
   });
 });

@@ -7,9 +7,9 @@ import {
 import type { CandidateListItem } from '@/types/reporting';
 
 import { JobTitleChip } from './JobTitleChip';
+import { StagePill } from './StagePill';
 import {
   STAGE_DOT_CLASS,
-  STAGE_PILL_CLASS,
   STAGE_STEP,
   formatSmartDate,
   initials,
@@ -77,11 +77,7 @@ export function CandidatureRow({
           {item.totalScore}
           <span className="text-[10px] text-orqa-gris-clair">%</span>
         </span>
-        <span
-          className={`whitespace-nowrap rounded-full px-3 py-1.5 font-inter text-[12px] font-medium ${STAGE_PILL_CLASS[item.stage]}`}
-        >
-          {CANDIDATE_STAGE_LABELS[item.stage]}
-        </span>
+        <StagePill stage={item.stage} compact />
       </span>
     </button>
   );

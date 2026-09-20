@@ -206,8 +206,21 @@ export type ChatState = {
   reset: () => void;
 };
 
+/**
+ * Message d'accueil — il ne promet QUE ce que le Manager sait faire.
+ *
+ * L'ancien disait « lancer un recrutement […] et je m'occupe du reste ». Le
+ * Manager est en LECTURE SEULE depuis la refonte : il ne crée pas de campagne,
+ * n'en modifie aucune, n'envoie rien. La première phrase que lit un client en
+ * démonstration annonçait donc un produit qui n'existe pas, et chaque
+ * explication orale servait à réparer cette phrase-là.
+ *
+ * Les trois capacités énoncées sont exactement celles du tour de formulation
+ * (cf. `manager.ts` — analyser un CV, faire le point, orienter). Toute
+ * capacité ajoutée ici sans exister là serait la même faute.
+ */
 const GREETING =
-  "Bonjour, je suis votre Manager RH. Décrivez-moi votre demande — lancer un recrutement, faire le point sur une campagne — et je m'occupe du reste.";
+  "Bonjour, je suis votre Manager RH. Je ne crée et ne modifie rien moi-même — vous gardez la main sur l'outil. Je suis là pour faire le point sur une campagne, analyser un CV que vous me déposez, et vous dire où agir.";
 
 /**
  * Identifiant et timestamp déterministes du message d'accueil. Sans
