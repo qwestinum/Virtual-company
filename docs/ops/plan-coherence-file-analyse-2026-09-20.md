@@ -126,8 +126,32 @@ Vérifié en dev sur un cas fabriqué à l'identique du cas prod (analyse `auto_
 ouverte en direction `reject`) : carte désarmée à l'écran, clôture → ligne `void`, journal écrit,
 **aucun mail**. Typecheck propre, 2 700 tests unitaires, régression S1→S25 **232/232**.
 
-**Reste du lot 0** : clore les 2 lignes de production. Elles sont désormais désarmées à l'écran —
-le geste est un clic par dossier, après vérification nominative, et il n'envoie rien.
+**Les 2 lignes de production — closes le 20/09/2026 à 19:14 UTC.**
+
+Opération bornée, en deux temps (constat puis exécution), sur `obkruafjsbynwbayzuvy` confirmé par
+saisie explicite du ref — jamais une base par défaut. Le prédicat appliqué est la réplique exacte
+de `checkValidationCoherence`, et le balayage a porté sur **les 50 lignes ouvertes**, pas sur les
+2 identifiants du diagnostic : chercher seulement ce qu'on s'attend à trouver n'aurait rien
+démontré.
+
+| Constat | Après |
+|---|---|
+| 50 ouvertes, dont **2** dont le dossier n'attend plus | `pending` **50 → 48** · `void` **0 → 2** |
+| Kevin NGUYEN · CAMP-2026-045 · fiche `reject`/100 · analyse `auto_accept`/`accepted` | fiche `void`, **analyse intacte** |
+| Asma Zghonda · CAMP-2026-288 · fiche `reject`/90 · analyse `auto_accept`/`accepted` | fiche `void`, **analyse intacte** |
+
+**L'équation se referme** : 48 lignes ouvertes = les 48 du ruban « À valider ».
+
+Contrôles : `status`, `decision_zone`, `decided_by`, `dismissed_at` et le score des deux analyses
+**inchangés** — la clôture est orthogonale à l'évaluation, comme le classement sans suite. Deux
+entrées `validation_settled` au journal (campagne, candidat, motif). **Zéro envoi** dans les
+quinze minutes autour de l'opération, vérifié sur `imap_outreach_mail` et `hitl_validation_sent`.
+
+Le script d'exécution est resté hors du dépôt (scratchpad de session) : c'est une réparation
+ponctuelle, et le geste durable est désormais à l'écran.
+
+⚠️ **Ces deux fiches reviendront au prochain `npm run rescore`** tant que le lot 1 n'est pas
+livré. La clôture répare l'état, pas la cause.
 
 ### Lot 1 — Fermer l'asymétrie du re-scoring *(S)*
 
