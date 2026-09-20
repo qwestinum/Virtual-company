@@ -33,7 +33,7 @@ export function KPIGrid({ kpis }: KPIGridProps) {
       color: 'blue',
     },
     {
-      label: 'Shortlistés / Invités',
+      label: 'Passés par l’invitation',
       value: kpis.shortlisted,
       icon: '⭐',
       color: 'purple',
@@ -44,7 +44,7 @@ export function KPIGrid({ kpis }: KPIGridProps) {
       icon: '🎯',
       color: 'teal',
     },
-    { label: 'GO', value: kpis.go, icon: '✅', color: 'green' },
+    { label: 'Retenus', value: kpis.go, icon: '✅', color: 'green' },
     {
       label: 'À valider',
       value: kpis.awaitingValidation,

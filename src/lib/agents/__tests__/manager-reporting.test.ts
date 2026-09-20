@@ -89,7 +89,7 @@ describe('buildCampaignFollowupResponse', () => {
     expect(res.message).toContain('Test Manager');
     expect(res.message).toContain('Active');
     expect(res.message).toContain('CV reçus : 2');
-    expect(res.message).toContain('Shortlistés / Invités : 1');
+    expect(res.message).toContain('Passés par l’invitation : 1');
   });
 
   it('snapshot null → message dégradé', () => {

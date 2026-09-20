@@ -3,8 +3,8 @@
 /**
  * Corps déplié d'une carte campagne (Session 6).
  *
- * Affiche la grille de 5 stats détaillées, les deux rate boxes (Taux GO
- * et Conversion globale) et la zone d'actions (suspendre, désactiver,
+ * Affiche la grille de 5 stats détaillées, les deux rate boxes (taux de
+ * retenus et conversion globale) et la zone d'actions (suspendre, désactiver,
  * éditer, etc.). La maquette met le détail (budget, date, plateformes)
  * dans une troisième box à côté des rates.
  */
@@ -87,7 +87,7 @@ export function CampaignCardBody({
           icon="⭐"
           color={DASH_COLORS.purple.solid}
           value={stats.shortlisted}
-          label="Shortlistés / Invités"
+          label="Passés par l’invitation"
           onOpen={
             onOpenCandidatures
               ? () => onOpenCandidatures({ stage: null, everInvited: true })
@@ -98,7 +98,7 @@ export function CampaignCardBody({
           icon="🎯"
           color={DASH_COLORS.teal.solid}
           value={stats.interviews}
-          label="Entretiens"
+          label="Passés par l’entretien"
           onOpen={
             onOpenCandidatures
               ? () => onOpenCandidatures({ stage: null, everInterviewed: true })
@@ -109,7 +109,7 @@ export function CampaignCardBody({
           icon="✅"
           color={DASH_COLORS.green.solid}
           value={stats.goCount}
-          label="GO"
+          label="Retenus"
           onOpen={
             onOpenCandidatures
               ? () => onOpenCandidatures({ stage: 'retenu' })
@@ -130,15 +130,15 @@ export function CampaignCardBody({
           background={DASH_COLORS.green.light}
           color={DASH_COLORS.green.solid}
           value={goRate}
-          label="Taux GO"
-          sub={`${stats.goCount} GO sur ${stats.interviews} entretiens`}
+          label="Taux de retenus"
+          sub={`${stats.goCount} retenus sur ${stats.interviews} entretiens`}
         />
         <RateBox
           background={DASH_COLORS.blue.light}
           color={DASH_COLORS.blue.solid}
           value={conversionRate}
           label="Conversion globale"
-          sub="CV reçu → recommandation GO"
+          sub="CV reçu → retenu"
         />
         <div
           style={{

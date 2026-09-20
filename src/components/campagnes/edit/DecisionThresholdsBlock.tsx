@@ -121,7 +121,7 @@ function DecisionThresholdsInner({ campaign }: DecisionThresholdsBlockProps) {
       >
         {hint} <strong>{NO_AUTOMATIC_REJECTION}</strong> :
         sous le seuil bas, la candidature part dans «&nbsp;Propositions de
-        refus&nbsp;» (Validation suspendue) où vous la refusez en un geste. Seule
+        refus&nbsp;», où vous la refusez en un geste. Seule
         l&apos;acceptation au-dessus du seuil haut déclenche un mail sans vous.
         Le changement s&apos;applique aux prochaines candidatures — on ne
         reclasse pas les CV déjà analysés.

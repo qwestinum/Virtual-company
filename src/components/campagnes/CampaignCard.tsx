@@ -4,9 +4,9 @@
  * Carte d'une campagne avec head clickable et body dépliable
  * (Session 6).
  *
- * La head montre 4 mini-stats à droite (Candidats / Shortlistés / GO /
+ * La head montre 4 mini-stats à droite (Candidats / passés par l’invitation / retenus /
  * Conversion) qui restent visibles même quand la carte est repliée.
- * Le body montre la grille 5 stats, les rate boxes (Taux GO et
+ * Le body montre la grille 5 stats, les rate boxes (taux de retenus et
  * Conversion globale) et les boutons d'action.
  */
 
@@ -289,12 +289,12 @@ function QuickStats({
       <MiniStat
         value={shortlisted}
         color={DASH_COLORS.purple.solid}
-        label="Shortlistés / Invités"
+        label="Passés par l’invitation"
       />
       <MiniStat
         value={goCount}
         color={DASH_COLORS.green.solid}
-        label="GO"
+        label="Retenus"
       />
       <MiniStat
         value={conversion}

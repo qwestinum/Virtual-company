@@ -832,7 +832,7 @@ async function enqueuePendingValidation(args: {
   chat.appendMessage({
     role: 'manager',
     source: 'text',
-    content: `${args.cv.candidate.fullName} est en zone de validation (score ${args.cv.scoringResult.totalScore}/100) — à accepter ou refuser dans « Validation suspendue ».`,
+    content: `${args.cv.candidate.fullName} est en zone de validation (score ${args.cv.scoringResult.totalScore}/100) — à accepter ou refuser dans « Candidatures », puce « À valider ».`,
   });
   return true;
 }

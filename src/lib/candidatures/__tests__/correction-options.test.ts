@@ -78,7 +78,7 @@ describe('resolveCurrentDecision — même priorité que deriveCandidateStage', 
       value: 'rejected',
       auto: true,
     });
-    expect(currentDecisionLabel(current!)).toContain('ancien régime');
+    expect(currentDecisionLabel(current!)).toContain('historique');
   });
 });
 

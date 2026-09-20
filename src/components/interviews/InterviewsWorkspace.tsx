@@ -63,9 +63,21 @@ const referentOfRow = (row: RowReferent) => row.referent;
 
 export function InterviewsWorkspace({
   initialSection = null,
+  campaignId = null,
 }: {
   /** Cible d'un signal métier : ouvre directement le bon onglet. */
   initialSection?: 'a_pointer' | 'awaiting' | null;
+  /**
+   * Filtre campagne porté par l'URL (`/entretiens?campagne=…`), typiquement
+   * posé depuis une carte campagne.
+   *
+   * ⚠️ Appliqué CÔTÉ CLIENT, aux listes seules — exactement comme le filtre par
+   * référent, et pour la même raison : le bandeau des cibles orphelines et le
+   * badge « à pointer » lisent le pipeline COMPLET. Le passer à l'API
+   * (`/api/interviews?campaignId=`, qui le supporte) restreindrait aussi les
+   * alertes, et un filtre de confort ne doit jamais éteindre une alerte.
+   */
+  campaignId?: string | null;
 }) {
   const [pipeline, setPipeline] = useState<InterviewPipeline>(EMPTY);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -207,8 +219,12 @@ export function InterviewsWorkspace({
   ];
   const options = buildReferentOptionsBy(allRows, referentOfRow);
   const myCount = myReferentCountBy(allRows, referentOfRow, currentUserId);
-  const filter = <T extends RowReferent>(rows: T[]) =>
-    filterByReferentBy(rows, referentOfRow, referentFilter);
+  const filter = <T extends RowReferent & { campaignId: string | null }>(
+    rows: T[],
+  ) =>
+    filterByReferentBy(rows, referentOfRow, referentFilter).filter(
+      (row) => !campaignId || row.campaignId === campaignId,
+    );
   const awaiting = filter(pipeline.awaiting);
   const scheduled = filter(pipeline.scheduled);
   const verdictRows = filter(pipeline.verdict);

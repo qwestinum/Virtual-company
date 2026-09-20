@@ -24,6 +24,7 @@ import { CampaignEditSheet } from './edit/CampaignEditSheet';
 
 export function CampaignsWorkspace({
   onOpenCandidatures,
+  focusCampaignId = null,
 }: {
   /**
    * Navigation croisée : un quadrant de carte campagne (« CV reçus »,
@@ -34,6 +35,8 @@ export function CampaignsWorkspace({
     campaignId: string,
     preset: CampaignCandidaturesPreset,
   ) => void;
+  /** Campagne à ouvrir, désignée par l'URL (« retour à la campagne »). */
+  focusCampaignId?: string | null;
 } = {}) {
   const { data } = useDashboardData();
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
@@ -72,6 +75,7 @@ export function CampaignsWorkspace({
         </header>
         <UnsavedChangesBanner />
         <CampaignsList
+          focusCampaignId={focusCampaignId}
           candidates={candidates}
           onEditCampaign={setEditingCampaignId}
           onCreateCampaign={() => setCreating(true)}

@@ -217,7 +217,7 @@ async function computePendingValidationsOverdue(
     count,
     oldestDays,
     message: buildPendingValidationsMessage(count, days, oldestDays),
-    ctaLabel: 'Ouvrir la validation suspendue',
+    ctaLabel: 'Ouvrir les dossiers à valider',
     target: { tab: 'validations' },
   };
 }
@@ -464,7 +464,7 @@ async function computeApecRepublicationWindow(
         ? `1 offre APEC suspendue ne pourra plus être republiée dans ${soonest} jour${soonest > 1 ? 's' : ''} — il faudra en créer une nouvelle.`
         : `${closing.length} offres APEC suspendues ne pourront plus être republiées d’ici ${soonest} jour${soonest > 1 ? 's' : ''}.`,
     ctaLabel: 'Voir les campagnes',
-    target: { route: '/rh/recrutement' },
+    target: { route: '/campagnes' },
   };
 }
 
@@ -503,7 +503,7 @@ async function computeApecLiveOnClosedCampaign(
         ? 'Une offre est toujours en ligne sur l’APEC alors que sa campagne est clôturée — des candidats peuvent encore postuler.'
         : `${orphans.length} offres sont toujours en ligne sur l’APEC alors que leur campagne est clôturée.`,
     ctaLabel: 'Voir les campagnes',
-    target: { route: '/rh/recrutement' },
+    target: { route: '/campagnes' },
   };
 }
 
@@ -664,7 +664,7 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
       ? daysSinceIso(new Date(oldestMs).toISOString(), nowMs)
       : 0,
     message: buildQueueMismatchMessage({ awaitingWithoutRow, rowWithoutAwaiting }),
-    ctaLabel: 'Ouvrir la validation suspendue',
+    ctaLabel: 'Ouvrir les dossiers à valider',
     target: { tab: 'validations' },
   };
 }

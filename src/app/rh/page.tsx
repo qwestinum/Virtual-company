@@ -14,7 +14,7 @@ const RH_SERVICES: ServiceCardProps[] = [
     icon: '🎯',
     accent: 'linear-gradient(135deg, #FFB000, #FF8A00)',
     status: 'active',
-    href: '/rh/recrutement',
+    href: '/aujourdhui',
   },
   {
     id: 'vivier',

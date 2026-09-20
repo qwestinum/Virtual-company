@@ -212,7 +212,7 @@ function Filters({
 }) {
   const items: { id: StatusFilter; label: string }[] = [
     { id: 'all', label: 'Tous' },
-    { id: 'shortlisted', label: 'Shortlistés' },
+    { id: 'shortlisted', label: 'Passés par l’invitation' },
     { id: 'interview_done', label: 'Entretiens' },
   ];
   return (

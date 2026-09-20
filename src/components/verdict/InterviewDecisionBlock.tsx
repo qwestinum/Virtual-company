@@ -83,7 +83,7 @@ export function InterviewDecisionBlock({
           disabled={busy !== null}
           onClick={() => void decide('validated')}
         >
-          {busy === 'validated' ? 'Enregistrement…' : 'GO définitif'}
+          {busy === 'validated' ? 'Enregistrement…' : 'Retenu'}
         </DecisionButton>
         <DecisionButton
           tone="negative"

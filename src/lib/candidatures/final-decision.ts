@@ -28,7 +28,7 @@ export type FinalDecisionView = {
 };
 
 export const FINAL_VERDICT_LABELS: Record<FinalVerdict, string> = {
-  validated: 'Retenu — GO définitif',
+  validated: 'Retenu',
   rejected: 'Non retenu',
 };
 

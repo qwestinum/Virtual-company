@@ -12,16 +12,25 @@
  *
  * À tenir à jour quand un libellé d'UI change : un chemin faux ici se traduit
  * par une orientation fausse côté donneur d'ordre.
+ *
+ * Aligné sur la navigation à CINQ entrées (refonte, lot 1). Restent périmés,
+ * et traités au lot 6 : le nombre de sections du formulaire de création (il
+ * devient un assistant au lot 5), et les niveaux de scoring.
  */
 
 export const MANAGER_CARTOGRAPHY = `# CARTOGRAPHIE PRODUIT — ORQA, service Recrutement
 
 ## Repères de navigation
-- Workspace Recrutement : 7 onglets en haut — « Bureau », « Campagnes »,
-  « Candidatures », « Entretiens », « Validation suspendue » (badge = mails en
-  attente), « Validations vivier » (badge = prises de contact vivier en
-  attente), « Reporting ». (Le Dashboard n'est plus un onglet : il vit sur la
-  page d'administration.)
+- Workspace Recrutement : CINQ entrées en haut — « Aujourd'hui » (l'entrée par
+  défaut), « Campagnes », « Candidatures » (badge = dossiers à valider),
+  « Entretiens », « Pilotage ». Chacune a sa propre adresse : on peut la mettre
+  en favori, la partager, et revenir en arrière avec le navigateur.
+- Ce qui a changé de porte : l'ancienne file d'arbitrage est devenue la puce
+  « À valider » de Candidatures ; « Validations vivier » est passée sous
+  Campagnes ; « Reporting » s'appelle « Pilotage » ; le « Bureau » est devenu
+  « Aujourd'hui ». Les anciennes adresses continuent de fonctionner : elles
+  mènent d'elles-mêmes au bon écran. (Le Dashboard n'est pas une entrée : il
+  vit sur la page d'administration.)
 - Bandeau supérieur : liens « Paramètres » et « Se déconnecter ». L'engrenage
   mène aussi à « Paramètres ».
 - Chat Manager : tablette verte « Chat Manager » au bord droit ; le trombone
@@ -30,14 +39,14 @@ export const MANAGER_CARTOGRAPHY = `# CARTOGRAPHIE PRODUIT — ORQA, service Rec
 ## Tâches courantes (où les faire)
 
 ### Créer une campagne
-Onglet « Campagnes » → bouton « Nouvelle campagne ». Parcours : étape 1 (saisie
+Entrée « Campagnes » → bouton « Nouvelle campagne ». Parcours : étape 1 (saisie
 du poste), puis 5 sections — « Fiche de poste », « Fiche de scoring », « Canaux
 de diffusion », « Flux de réception », « Seuil d'acceptation » —, puis bouton
 « Créer la campagne ». Pourquoi : tout se cadre AVANT le lancement, et c'est le
 donneur d'ordre qui crée (jamais le Manager).
 
 ### Créer une campagne à partir d'un document
-Onglet « Campagnes » → « Nouvelle campagne » → étape 1 → bouton « Démarrer à
+Entrée « Campagnes » → « Nouvelle campagne » → étape 1 → bouton « Démarrer à
 partir d'un document (appel d'offres, notes) » (PDF ou DOCX). Cela pré-remplit un
 brouillon à relire et valider ; rien n'est créé sans l'accord du donneur d'ordre.
 
@@ -65,21 +74,21 @@ Création/édition d'une campagne, section « Seuil d'acceptation » (note minim
 pour qu'un CV soit retenu).
 
 ### Activer / lancer une campagne
-Onglet « Campagnes » → carte de la campagne → bouton « Activer » (ou, juste après
+Entrée « Campagnes » → carte de la campagne → bouton « Activer » (ou, juste après
 la création, « Activer la campagne »). L'activation n'est possible que si les
 phases obligatoires sont faites et les pondérations suggérées par l'IA ont été
 traitées.
 
 ### Suspendre, reprendre ou clôturer une campagne
-Onglet « Campagnes » → carte de la campagne : « Suspendre » (campagne active),
+Entrée « Campagnes » → carte de la campagne : « Suspendre » (campagne active),
 « Reprendre » (campagne suspendue), « Clôturer » (action définitive).
 
 ### Éditer une campagne existante
-Onglet « Campagnes » → carte de la campagne → bouton « Éditer » (mêmes 5 sections
+Entrée « Campagnes » → carte de la campagne → bouton « Éditer » (mêmes 5 sections
 que la création).
 
 ### Filtrer les campagnes par statut
-Onglet « Campagnes », chips de filtre : « Actives », « Suspendues », « Brouillon »,
+Entrée « Campagnes », chips de filtre : « Actives », « Suspendues », « Brouillon »,
 « Clôturées », « Toutes ».
 
 ### Déposer un CV pour le faire analyser
@@ -87,23 +96,27 @@ Chat Manager (tablette verte) → trombone « Joindre des fichiers ». Le CV est
 analysé par rapport à une campagne existante.
 
 ### Traiter les prises de contact issues du vivier
-Onglet « Validations vivier » → choisir une campagne → pour chaque candidat,
-« Accepter » (envoie une invitation à postuler) ou « Rejeter ».
+Entrée « Campagnes » → « Prises de contact vivier » → choisir une campagne →
+pour chaque candidat, « Accepter » (envoie une invitation à postuler) ou
+« Rejeter ».
 
-### Valider les mails en attente (refus / acceptation)
-Onglet « Validation suspendue » (le badge indique le nombre en attente). Ce mode
-de validation humaine s'active dans « Paramètres » → « Validation humaine (Human
-in the loop) ».
+### Arbitrer les candidatures à valider
+Entrée « Candidatures » → puce « À valider » (le badge de l'entrée indique le
+nombre en attente). Chaque dossier s'y tranche à l'unité. Pour passer en revue
+d'un coup les dossiers sous le seuil bas, le lien « Passer en revue en une
+fois » ouvre la revue groupée des propositions de refus. Les seuils qui
+décident de cette zone se règlent PAR CAMPAGNE (Campagnes → édition →
+« Seuils de décision »), pas dans les Paramètres.
 
 ### Consulter un bilan ou un rapport
-Onglet « Reporting » → sous-onglets « Rapport de campagne », « Rapport
+Entrée « Pilotage » → sous-onglets « Rapport de campagne », « Rapport
 multi-campagnes », « Audit ».
 
-### Voir les KPIs, les candidats, l'activité récente
-Onglet « Dashboard ».
+### Voir ce qui attend une action aujourd'hui
+Entrée « Aujourd'hui » : c'est l'écran d'arrivée.
 
 ### Voir l'équipe d'agents
-Onglet « Bureau ».
+Entrée « Aujourd'hui ».
 
 ### Réglages globaux (Paramètres)
 Bandeau → « Paramètres ». Les sections sont REPLIÉES : on clique sur le titre
@@ -123,12 +136,12 @@ autre recruteur. C'est ce qui alimente les créneaux proposés aux candidats
 quand la campagne est en réservation native.
 
 ### Voir les rendez-vous d'entretien
-Onglet « Entretiens » : les rendez-vous pris, ceux en attente de réservation,
+Entrée « Entretiens » : les rendez-vous pris, ceux en attente de réservation,
 les liens éteints, et les campagnes dont le référent n'est plus actif. Actions :
 annuler, replanifier, renvoyer un lien.
 
-### Poser le verdict après un entretien (GO définitif / non retenu)
-Onglet « Entretiens » → sous-onglet « En attente de verdict » → sur la ligne du
+### Poser le verdict après un entretien (retenu / non retenu)
+Entrée « Entretiens » → sous-onglet « En attente de verdict » → sur la ligne du
 candidat, « Décider ». Le même bloc est aussi sur la fiche candidature
 (Candidatures → le candidat, section « Action »). Le champ « Pourquoi cette
 décision ? » est FACULTATIF. S'il est rédigé, le commentaire est au dossier du
@@ -136,7 +149,7 @@ candidat et dans son audit ; il ne se modifie pas ensuite (une erreur se répare
 par « Corriger la décision »).
 
 ### Rédiger le compte rendu d'un entretien
-Même endroit que le verdict (onglet « Entretiens » → « En attente de verdict » →
+Même endroit que le verdict (entrée « Entretiens » → « En attente de verdict » →
 « Décider », ou la fiche candidature). Deux zones : d'abord « Pourquoi cette
 décision ? », puis « Compte rendu d'entretien » — un seul champ libre, prêt à
 écrire (le texte d'aide rappelle les repères : sujets abordés, critères de la

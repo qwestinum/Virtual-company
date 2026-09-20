@@ -109,5 +109,5 @@ export const SETTLED_LABELS: Record<SettledReason, string> = {
   dismissed:
     'Cette candidature a été classée sans suite : elle n’attend plus d’arbitrage.',
   legacy_auto_reject:
-    'Ce dossier relève de l’ancien régime de refus automatique : il n’aurait pas dû rester en file.',
+    'Ce dossier relève de l’ancien régime, celui où le refus partait seul : il n’aurait pas dû rester en file.',
 };

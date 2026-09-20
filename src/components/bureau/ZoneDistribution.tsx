@@ -25,11 +25,11 @@ type ZoneRow = {
 // ZoneCounts doit être ajoutée ici À LA MAIN, sinon elle compile mais
 // n'apparaît jamais (les % ne somment plus à 100).
 const ZONES: ZoneRow[] = [
-  { key: 'autoReject', label: 'Refusés automatiquement', dot: 'bg-orqa-rouge', text: 'text-orqa-rouge' },
-  { key: 'autoAccept', label: 'Acceptés automatiquement', dot: 'bg-orqa-vert', text: 'text-orqa-vert' },
-  { key: 'humanValidated', label: 'Validés par un humain', dot: 'bg-orqa-ciel', text: 'text-orqa-ciel' },
-  { key: 'pending', label: 'En attente de validation', dot: 'bg-orqa-ambre', text: 'text-orqa-ambre' },
-  { key: 'sansSuite', label: 'Classées sans suite', dot: 'bg-stone-400', text: 'text-stone-500' },
+  { key: 'autoReject', label: 'Refusés', dot: 'bg-orqa-rouge', text: 'text-orqa-rouge' },
+  { key: 'autoAccept', label: 'Retenus automatiquement', dot: 'bg-orqa-vert', text: 'text-orqa-vert' },
+  { key: 'humanValidated', label: 'Tranchés par un humain', dot: 'bg-orqa-ciel', text: 'text-orqa-ciel' },
+  { key: 'pending', label: 'À valider', dot: 'bg-orqa-ambre', text: 'text-orqa-ambre' },
+  { key: 'sansSuite', label: 'Sans suite', dot: 'bg-stone-400', text: 'text-stone-500' },
 ];
 
 export function ZoneDistribution({ zones }: { zones: ZoneCounts }) {

@@ -120,7 +120,11 @@ export const CANDIDATE_STAGE_LABELS: Record<CandidateStage, string> = {
   sans_suite: 'Sans suite',
   non_retenu: 'Non retenu',
   // LEGACY : plus jamais produit — l'ancien régime où le refus partait seul.
-  refus_auto: 'Refus auto',
+  // Le libellé DIT que c'est de l'histoire : « Refus auto » se lisait comme un
+  // comportement courant du produit, alors qu'il n'existe plus depuis le
+  // 18/08/2026. La zone, elle, reste `auto_reject` — on ne réécrit pas les
+  // données, seulement ce qu'on en montre.
+  refus_auto: 'Refusé (historique)',
 };
 
 export type CandidateStageTone =

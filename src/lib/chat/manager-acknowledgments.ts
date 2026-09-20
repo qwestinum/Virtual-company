@@ -91,9 +91,11 @@ function phraseFor(action: AcknowledgmentAction): string {
     }
     case 'thresholds_changed': {
       const noGray = action.nextLow === action.nextHigh;
+      // ⚠️ « refus auto » disait faux depuis le 18/08/2026 : sous le seuil bas
+      // rien ne part, la candidature est PROPOSÉE au refus.
       const zones = noGray
-        ? `tout est désormais automatique (refus sous ${action.nextLow}, acceptation au-dessus).`
-        : `refus auto sous ${action.nextLow}, validation entre ${action.nextLow} et ${action.nextHigh}, acceptation auto au-dessus de ${action.nextHigh}.`;
+        ? `proposé au refus sous ${action.nextLow}, acceptation automatique au-dessus.`
+        : `proposé au refus sous ${action.nextLow}, à examiner entre ${action.nextLow} et ${action.nextHigh}, acceptation automatique au-dessus de ${action.nextHigh}.`;
       return `Vous avez ajusté les seuils de décision sur « ${action.campaignName} » : ${zones} J'applique ça aux prochaines candidatures — pas de reclassement des CV déjà analysés.`;
     }
     case 'scoring_updated':

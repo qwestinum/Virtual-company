@@ -416,11 +416,12 @@ export function SettingsHub({
       >
         <div className="rounded-lg border border-[var(--dash-border)] bg-[var(--dash-warm)] px-4 py-3 text-[13px] text-[var(--dash-text-secondary)] font-body leading-relaxed">
           Le réglage global a été remplacé par deux seuils de score par campagne :
-          en dessous du seuil bas, le refus part automatiquement ; au-dessus du
-          seuil haut, l&apos;acceptation part automatiquement ; entre les deux,
-          la candidature est mise en file dans « Validation suspendue » pour que
-          vous tranchiez. Ajustez ces seuils dans l&apos;onglet Campagnes → édition
-          → « Seuils de décision ».
+          sous le seuil bas, la candidature est <strong>proposée au refus</strong>{' '}
+          — aucun mail ne part, vous tranchez ; au-dessus du seuil haut,
+          l&apos;acceptation part automatiquement ; entre les deux, la
+          candidature est à examiner. Dans les deux premiers cas elle vous
+          attend dans « Candidatures », puce « À valider ». Ajustez ces seuils
+          dans l&apos;onglet Campagnes → édition → « Seuils de décision ».
         </div>
       </SettingsSection>
 

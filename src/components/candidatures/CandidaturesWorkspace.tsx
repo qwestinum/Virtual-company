@@ -9,6 +9,7 @@
  * reste découplée et reçoit le libellé en prop).
  */
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -241,6 +242,22 @@ export function CandidaturesWorkspace({
               active={filters.stage}
               onSelect={(stage) => setFilters({ stage })}
             />
+            {/* Accès à la revue GROUPÉE, attaché à la puce « À valider » — il
+                n'apparaît que quand cette puce est sélectionnée, d'où qu'on
+                vienne : un clic dans le ruban comme une arrivée par l'adresse
+                `?statut=a_valider`. C'est la seule porte vers le mode groupé
+                depuis que l'onglet dédié a disparu du premier niveau. */}
+            {filters.stage === 'a_valider' ? (
+              <div className="mt-2 flex justify-end">
+                <Link
+                  href="/candidatures/validation"
+                  className="inline-flex min-h-6 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-2.5 py-1 font-body text-[12px] font-semibold text-stone-700 hover:bg-stone-50"
+                >
+                  Passer en revue en une fois
+                  <span aria-hidden>→</span>
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
 

@@ -12,6 +12,8 @@
  */
 
 import { useMemo, useState } from 'react';
+
+import { resolveCampaignFocus } from '@/lib/navigation/campaign-focus';
 import { useShallow } from 'zustand/react/shallow';
 
 import {
@@ -34,6 +36,12 @@ export type CampaignsListProps = {
     campaignId: string,
     preset: CampaignCandidaturesPreset,
   ) => void;
+  /**
+   * Campagne désignée par l'URL (`/campagnes?campagne=…`) — « retour à la
+   * campagne ». Elle est dépliée, et le filtre comme la pagination s'écartent
+   * pour l'atteindre, jusqu'au premier geste de l'utilisateur.
+   */
+  focusCampaignId?: string | null;
 };
 
 const PAGE_SIZE = 5;
@@ -53,6 +61,7 @@ export function CampaignsList({
   onEditCampaign,
   onCreateCampaign,
   onOpenCandidatures,
+  focusCampaignId = null,
 }: CampaignsListProps) {
   const rawCampaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
   // Tri par récence (createdAt desc). Fallback sur l'ordre d'insertion si
@@ -68,27 +77,46 @@ export function CampaignsList({
   // Filtre statut — par défaut « Actives » pour démarrer en focus sur
   // ce qui tourne. `draft` agrège draft + in_progress (cadrage en
   // cours) pour éviter de fragmenter la vue à l'écran.
+  // Campagne désignée par l'URL (« retour à la campagne ») : elle décide du
+  // filtre et de la page tant que l'utilisateur n'a rien touché. Résolu à
+  // CHAQUE rendu, pas au montage : la liste arrive du store après coup, et un
+  // état initial calculé sur une liste vide ne déplierait jamais rien.
+  const focus = resolveCampaignFocus(
+    allCampaigns.map((c) => c.id),
+    focusCampaignId,
+    PAGE_SIZE,
+  );
+  const [touched, setTouched] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  const effectiveStatusFilter: StatusFilter =
+    !touched && focus.showAllStatuses ? 'all' : statusFilter;
   const campaigns = useMemo(() => {
-    if (statusFilter === 'all') return allCampaigns;
-    if (statusFilter === 'draft') {
+    if (effectiveStatusFilter === 'all') return allCampaigns;
+    if (effectiveStatusFilter === 'draft') {
       return allCampaigns.filter(
         (c) => c.status === 'draft' || c.status === 'in_progress',
       );
     }
-    return allCampaigns.filter((c) => c.status === statusFilter);
-  }, [allCampaigns, statusFilter]);
+    return allCampaigns.filter((c) => c.status === effectiveStatusFilter);
+  }, [allCampaigns, effectiveStatusFilter]);
 
   const [page, setPage] = useState(0);
   const totalPages = Math.max(1, Math.ceil(campaigns.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);
+  const safePage = Math.min(!touched ? focus.page : page, totalPages - 1);
   const pageCampaigns = campaigns.slice(
     safePage * PAGE_SIZE,
     safePage * PAGE_SIZE + PAGE_SIZE,
   );
-  const [expandedId, setExpandedId] = useState<string | null>(
-    pageCampaigns[0]?.id ?? null,
-  );
+  const [openedId, setOpenedId] = useState<string | null>(null);
+  // Déplié : le choix de l'utilisateur s'il a cliqué, sinon la campagne de
+  // l'URL, sinon la première de la page (comportement d'origine).
+  const expandedId = touched
+    ? openedId
+    : (focus.expandedId ?? pageCampaigns[0]?.id ?? null);
+  const setExpandedId = (id: string | null) => {
+    setTouched(true);
+    setOpenedId(id);
+  };
 
   // Compteurs basés sur la liste totale (pas filtrée) pour informer
   // l'utilisateur du volume disponible derrière chaque chip.
@@ -160,10 +188,13 @@ export function CampaignsList({
   }, [candidates]);
 
   const selectStatus = (next: StatusFilter) => {
-    if (next === statusFilter) return;
+    if (next === effectiveStatusFilter) return;
+    // Premier geste de l'utilisateur : il reprend la main sur le focus venu
+    // de l'URL (sinon le filtre reviendrait à « Toutes » au rendu suivant).
+    setTouched(true);
     setStatusFilter(next);
     setPage(0);
-    setExpandedId(null);
+    setOpenedId(null);
   };
 
   return (
@@ -193,7 +224,7 @@ export function CampaignsList({
           </h2>
         </div>
         <StatusFilterChips
-          current={statusFilter}
+          current={effectiveStatusFilter}
           counts={statusCounts}
           onChange={selectStatus}
         />
@@ -202,7 +233,7 @@ export function CampaignsList({
       {campaigns.length === 0 ? (
         <EmptyState
           onCreate={onCreateCampaign}
-          filter={statusFilter}
+          filter={effectiveStatusFilter}
           totalCampaigns={allCampaigns.length}
           onReset={() => selectStatus('all')}
         />
@@ -237,8 +268,14 @@ export function CampaignsList({
             <Pager
               page={safePage}
               total={totalPages}
-              onPrev={() => setPage(Math.max(0, safePage - 1))}
-              onNext={() => setPage(Math.min(totalPages - 1, safePage + 1))}
+              onPrev={() => {
+                setTouched(true);
+                setPage(Math.max(0, safePage - 1));
+              }}
+              onNext={() => {
+                setTouched(true);
+                setPage(Math.min(totalPages - 1, safePage + 1));
+              }}
             />
           ) : null}
         </>

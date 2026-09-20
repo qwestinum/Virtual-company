@@ -31,7 +31,29 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 import { getUserFromMiddleware } from '@/lib/auth/middleware-helper';
 
-const PROTECTED_PREFIXES = ['/app', '/rh', '/settings', '/validations', '/admin'];
+const PROTECTED_PREFIXES = [
+  '/app',
+  '/rh',
+  '/settings',
+  '/admin',
+  // Les cinq entrées du workspace, désormais adressables (refonte lot 1).
+  '/aujourdhui',
+  '/campagnes',
+  '/candidatures',
+  '/entretiens',
+  '/pilotage',
+  // Anciennes adresses conservées en redirection.
+  '/validations',
+  '/validations-vivier',
+  '/reporting',
+  '/candidatures-apercu',
+  // ⚠️ `/vivier` n'a JAMAIS figuré dans cette liste : la page du stock de CV
+  // se rendait donc sans session (ses données restaient gardées par le régime
+  // API, mais la coque, les intitulés et la structure partaient à un visiteur
+  // non authentifié). Corrigé ici — la liste blanche ne pardonne pas un oubli,
+  // c'est le prix de son avantage : ce qui n'y est pas est public, point.
+  '/vivier',
+];
 
 /**
  * Routes `/api` à auth PROPRE (pas de session) — à NE PAS gater, sinon on
@@ -141,9 +163,15 @@ export async function proxy(request: NextRequest) {
   // Régime pages : redirect vers /login.
   if (isProtected(pathname) && !user) {
     const loginUrl = request.nextUrl.clone();
+    // Le `next` emporte la QUERY, pas seulement le chemin : depuis la refonte
+    // le filtre vit dans l'URL, et renvoyer sur `/candidatures` après
+    // connexion au lieu de `/candidatures?statut=a_valider` perdrait en
+    // silence ce que le lien promettait. (`sanitizeNextPath` continue de
+    // n'accepter qu'un chemin interne.)
+    const next = `${pathname}${request.nextUrl.search}`;
     loginUrl.pathname = '/login';
     loginUrl.search = '';
-    loginUrl.searchParams.set('next', pathname);
+    loginUrl.searchParams.set('next', next);
     return NextResponse.redirect(loginUrl);
   }
 

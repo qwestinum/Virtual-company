@@ -32,7 +32,7 @@ function resolve(
         cls: 'text-orqa-ambre bg-orqa-ambre-bg',
       };
     default:
-      return { label: 'Refus automatique', cls: 'text-orqa-rouge bg-orqa-rouge-bg' };
+      return { label: 'Refusé (historique)', cls: 'text-orqa-rouge bg-orqa-rouge-bg' };
   }
 }
 

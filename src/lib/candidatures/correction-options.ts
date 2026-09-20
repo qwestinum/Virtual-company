@@ -129,7 +129,7 @@ export function correctionOptionsFor(
         : [
             {
               target: 'verdict_validated',
-              label: 'Retenu — GO définitif',
+              label: 'Retenu',
               detail: 'Le dossier passe en « Retenu ».',
             },
             CLEARED_VERDICT,
@@ -217,12 +217,12 @@ export function currentDecisionLabel(current: CurrentDecision): string {
         : 'Entretien non réalisé';
     case 'final_verdict':
       return current.value === 'validated'
-        ? 'Retenu — GO définitif'
+        ? 'Retenu'
         : 'Non retenu';
     case 'screening_decision':
       if (current.value === 'accepted') return 'Candidature acceptée';
       return current.auto
-        ? 'Refus automatique (ancien régime)'
+        ? 'Refusé (historique)'
         : 'Candidature refusée';
     case 'dismissal':
       return 'Classée sans suite';
