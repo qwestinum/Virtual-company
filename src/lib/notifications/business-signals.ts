@@ -21,10 +21,16 @@ import {
 } from '@/lib/calendar/french-holidays';
 import { chunk } from '@/lib/db/paginate';
 import { listLiveJobPostings } from '@/lib/db/repos/job-postings';
-import { listCampaignSummaries } from '@/lib/db/repos/campaigns';
+import {
+  listActiveCampaignBriefs,
+  listCampaignSummaries,
+} from '@/lib/db/repos/campaigns';
 import { republishDaysLeft } from '@/lib/jobboards/adep/panel-state';
 import { listBriefsByStatus } from '@/lib/db/repos/interview-briefs';
-import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import {
+  countCandidateAnalyses,
+  listAllCandidateAnalyses,
+} from '@/lib/db/repos/candidate-analyses';
 import {
   countOverduePendingValidations,
   oldestPendingValidationCreatedAt,
@@ -683,6 +689,71 @@ export type BusinessSignalDefinition = {
   ) => Promise<BusinessSignal | null>;
 };
 
+// ─── Signal 9 — campagne active sans la moindre candidature ────────────────
+
+/**
+ * Une campagne tourne depuis plus d'une semaine et n'a RIEN reçu.
+ *
+ * Ce n'est pas un dossier en souffrance, c'est un tuyau qui ne coule pas —
+ * boîte jamais associée à la campagne, annonce jamais diffusée, référence
+ * `CAMP-YYYY-NNN` absente de l'objet des mails. Trois pannes silencieuses par
+ * construction : le chemin email SKIPPE sans journal une boîte non associée, et
+ * une campagne sans candidat ressemble à s'y méprendre à une campagne sans
+ * candidat MÉRITANT. La seule façon de les distinguer est le temps.
+ *
+ * Compté par `countCandidateAnalyses` en `head: true` — on demande s'il existe
+ * au moins une ligne, on ne rapatrie rien. Une campagne sans candidature est
+ * justement celle dont la lecture coûte le moins.
+ *
+ * ⚠️ Les CLASSÉES SANS SUITE comptent comme des candidatures reçues : le tuyau
+ * a coulé, ce qui est arrivé ensuite ne regarde pas ce signal.
+ */
+async function computeCampaignsWithoutCandidates(
+  nowMs: number,
+): Promise<BusinessSignal | null> {
+  const days = BUSINESS_NOTIFICATION_THRESHOLDS.campaignWithoutCandidatesDays;
+  const cutoff = nowMs - days * 86_400_000;
+  const briefs = await listActiveCampaignBriefs();
+
+  // Seules les campagnes assez anciennes sont interrogées : une campagne
+  // lancée hier n'a aucune raison d'avoir reçu quoi que ce soit.
+  const mûres = briefs.filter(
+    (c) => c.startedAt !== null && Date.parse(c.startedAt) <= cutoff,
+  );
+  if (mûres.length === 0) return null;
+
+  const counts = await Promise.all(
+    mûres.map((c) =>
+      countCandidateAnalyses({ campaignId: c.id }).catch(() => -1),
+    ),
+  );
+  // -1 = lecture en échec. On ne signale JAMAIS sur un comptage raté : « zéro
+  // candidature » serait alors une accusation fabriquée par une panne.
+  const muettes = mûres.filter((_, i) => counts[i] === 0);
+  if (muettes.length === 0) return null;
+
+  const oldest = Math.max(
+    ...muettes.map((c) => daysSinceIso(c.startedAt!, nowMs)),
+  );
+  return {
+    key: 'campaign_without_candidates',
+    count: muettes.length,
+    oldestDays: oldest,
+    message:
+      muettes.length === 1
+        ? `« ${muettes[0]!.name} » tourne depuis ${oldest} jours et n’a reçu aucune candidature — vérifiez la boîte associée et la diffusion.`
+        : `${muettes.length} campagnes actives n’ont reçu aucune candidature (la plus ancienne depuis ${oldest} jours).`,
+    ctaLabel:
+      muettes.length === 1 ? 'Ouvrir la campagne' : 'Voir les campagnes',
+    target: {
+      route:
+        muettes.length === 1
+          ? `/campagnes?campagne=${encodeURIComponent(muettes[0]!.id)}`
+          : '/campagnes',
+    },
+  };
+}
+
 export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'pending_validations_overdue',
@@ -717,6 +788,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'validations_incoherentes',
     compute: (nowMs) => computeQueueMismatches(nowMs),
+  },
+  {
+    key: 'campaign_without_candidates',
+    compute: (nowMs) => computeCampaignsWithoutCandidates(nowMs),
   },
 ];
 

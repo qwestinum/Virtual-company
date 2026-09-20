@@ -7,7 +7,7 @@
  */
 
 import { parseLifecycle, reconcileLifecycle } from '@/lib/campaign/lifecycle';
-import { chunk } from '@/lib/db/paginate';
+import { chunk, fetchAllKeyset } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 import type { CampaignRow } from '@/lib/db/types';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
@@ -296,6 +296,55 @@ export async function listCampaignSummaries(
     }
   }
   return out;
+}
+
+/** Campagne ACTIVE, projection minimale pour les signaux de suivi. */
+export type ActiveCampaignBrief = {
+  id: string;
+  name: string;
+  /** Date de lancement, repli `created_at` (campagnes antérieures au champ). */
+  startedAt: string | null;
+};
+
+/**
+ * Toutes les campagnes ACTIVES, projection minimale, en pagination keyset.
+ *
+ * ⚠️ Pas `listCampaigns()` : elle fait `select('*')` sans `.range()`, donc
+ * PostgREST la plafonne SILENCIEUSEMENT à 1000 lignes (dette connue). Un
+ * signal qui repose dessus cesserait d'alerter sur les campagnes au-delà du
+ * millième sans que rien ne le dise — exactement la classe de défaut que la
+ * règle « zéro troncature silencieuse » élimine.
+ *
+ * Curseur = `id` (PK unique et stable), jamais un timestamp : aucun trou ni
+ * doublon aux frontières de page, même sous création concurrente.
+ */
+export async function listActiveCampaignBriefs(): Promise<ActiveCampaignBrief[]> {
+  const supabase = requireServerSupabase();
+  const rows = await fetchAllKeyset<{
+    id: string;
+    name: string;
+    launched_at: string | null;
+    created_at: string | null;
+  }>({
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('id, name, launched_at, created_at')
+        .eq('status', 'active')
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('id', afterId);
+      const { data, error } = await q;
+      if (error) throw new Error(`listActiveCampaignBriefs: ${error.message}`);
+      return data ?? [];
+    },
+    cursorOf: (row) => row.id,
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    startedAt: row.launched_at ?? row.created_at ?? null,
+  }));
 }
 
 /**

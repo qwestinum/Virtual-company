@@ -1,8 +1,10 @@
 'use client';
 
 /**
- * Hub du module Reporting (cf. docs/specs/reporting.md §1) — trois
- * sous-onglets : Rapport de campagne, Rapport multi-campagnes, Audit.
+ * Hub de PILOTAGE (ex-Reporting, cf. docs/specs/reporting.md §1) — quatre
+ * sous-onglets : Rapport de campagne, Rapport multi-campagnes, Audit, et
+ * « Activité » qui recueille ce que l'écran d'accueil ne porte plus
+ * (répartition par zone, fil d'activité, équipe d'agents).
  *
  * Périmètre actuel : Rapport de campagne, Rapport multi-campagnes et Audit
  * (→ Audit candidat) sont fonctionnels. Les autres types d'audit (campagne,
@@ -11,17 +13,19 @@
 
 import { useState } from 'react';
 
+import { ActivityPanel } from './ActivityPanel';
 import { AuditCandidatView } from './AuditCandidatView';
 import { AuditHome } from './AuditHome';
 import { CampaignReportList } from './CampaignReportList';
 import { MultiCampaignReportView } from './MultiCampaignReportView';
 
-type SubTab = 'campaign' | 'multi' | 'audit';
+type SubTab = 'campaign' | 'multi' | 'audit' | 'activity';
 
 const TABS: { key: SubTab; label: string }[] = [
   { key: 'campaign', label: 'Rapport de campagne' },
   { key: 'multi', label: 'Rapport multi-campagnes' },
   { key: 'audit', label: 'Audit' },
+  { key: 'activity', label: 'Activité' },
 ];
 
 export function ReportingHub() {
@@ -55,6 +59,8 @@ export function ReportingHub() {
         ) : (
           <AuditCandidatView onBack={() => setAuditView('home')} />
         )
+      ) : tab === 'activity' ? (
+        <ActivityPanel />
       ) : tab === 'campaign' ? (
         <CampaignReportList />
       ) : (
