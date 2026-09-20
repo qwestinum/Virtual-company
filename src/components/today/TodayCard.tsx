@@ -1,33 +1,34 @@
 'use client';
 
 /**
- * Carte de section — la carte EXISTANTE du produit, teintée par son registre.
+ * Carte de section — TROIS NIVEAUX DE RELIEF, aucun inventé.
  *
- * Bordure fine `--dash-border`, coins arrondis, AUCUNE ombre portée. C'est la
- * carte de Campagnes et de Réglages : cet écran l'applique, il ne la redessine
- * pas.
+ *   ① la CARTE      — teinte du registre à 6 % sur le blanc, filet gauche
+ *   ② le SOUS-BLOC  — même teinte, un cran plus dense (14 %), repliable
+ *   ③ la RANGÉE     — blanc franc, bordure fine, coins arrondis
  *
- * REGISTRE — trois signaux, aucun ne suffisant seul :
- *   1. un fond très dilué de la couleur du registre (≈ 6 % sur le blanc) ;
- *   2. un filet gauche de 3 px de la même couleur ;
- *   3. une pastille devant le titre.
+ * L'écart entre les trois doit se lire à 50 % de zoom SANS texte : c'est lui
+ * qui dit « ceci contient cela » sans qu'on ait à le comprendre. Un trait fin
+ * comme seul séparateur ne le disait pas — il séparait sans hiérarchiser.
  *
- * ⚠️ La teinte est une NUANCE, pas une couleur : à 6 % d'opacité la page reste
- * blanche à l'œil et le texte garde son contraste (le fond effectif est à
- * moins de 1,05:1 du blanc — le calcul de contraste du texte ne bouge pas).
- * C'est vérifié par test, parce qu'une teinte « juste un peu plus visible »
- * est exactement le genre d'ajustement qui passe inaperçu et casse l'AA.
+ * ⚠️ Les teintes restent des NUANCES : la page demeure blanche à l'œil et le
+ * texte garde son contraste AA sur les deux niveaux. Vérifié par test, parce
+ * qu'une teinte « juste un peu plus visible » est exactement l'ajustement qui
+ * passe inaperçu et casse l'accessibilité.
  */
+
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
 
 import { DASH_COLORS, type DashColor } from '@/components/dashboard/tokens';
 
-/**
- * Part de la couleur de registre mélangée au blanc. 6 % : assez pour que trois
- * blocs se distinguent à 50 % de zoom sans lire, trop peu pour que la page
- * cesse d'être blanche. Au-delà de 8 % la teinte devient une couleur et le
- * contraste du texte commence à bouger.
- */
+/** Teinte de la CARTE : le sujet. */
 export const TINT_PERCENT = 6;
+/** Teinte du SOUS-BLOC : le verbe. Un cran plus dense, jamais une couleur. */
+export const SUBTINT_PERCENT = 14;
+
+const tint = (accent: DashColor, pct: number): string =>
+  `color-mix(in srgb, ${DASH_COLORS[accent].solid} ${pct}%, var(--dash-surface))`;
 
 export function TodayCard({
   accent,
@@ -35,9 +36,7 @@ export function TodayCard({
   subtitle,
   children,
 }: {
-  /** Jeton de couleur EXISTANT — teal/violet pour les candidats, ambre sinon. */
   accent: DashColor;
-  /** Phrase complète : chiffre + verbe, du point de vue du recruteur. */
   title: string;
   subtitle?: string;
   children: React.ReactNode;
@@ -48,9 +47,7 @@ export function TodayCard({
         borderRadius: 14,
         border: '1px solid var(--dash-border)',
         borderLeft: `3px solid ${DASH_COLORS[accent].solid}`,
-        // `color-mix` plutôt qu'un hex figé : la teinte SUIT le jeton. Changer
-        // `--dash-teal` change la nuance, sans qu'une seconde valeur traîne.
-        background: `color-mix(in srgb, ${DASH_COLORS[accent].solid} ${TINT_PERCENT}%, var(--dash-surface))`,
+        background: tint(accent, TINT_PERCENT),
         overflow: 'hidden',
       }}
     >
@@ -91,56 +88,109 @@ export function TodayCard({
           ) : null}
         </div>
       </header>
-      <div>{children}</div>
+      <div className="flex flex-col gap-2 p-2">{children}</div>
     </section>
   );
 }
 
+/** Repli mémorisé PENDANT LA SESSION : un confort, jamais un réglage. */
+function lireRepli(cle: string): boolean | null {
+  try {
+    const v = window.sessionStorage.getItem(`orqa.today.fold.${cle}`);
+    return v === null ? null : v === '1';
+  } catch {
+    return null;
+  }
+}
+
+function ecrireRepli(cle: string, replie: boolean): void {
+  try {
+    window.sessionStorage.setItem(`orqa.today.fold.${cle}`, replie ? '1' : '0');
+  } catch {
+    // Stockage indisponible : le sous-bloc s'ouvre par défaut. Dégradation
+    // douce — jamais un écran qui refuse de s'afficher.
+  }
+}
+
 /**
- * Sous-bloc d'une carte — LE VERBE.
+ * Sous-bloc — LE VERBE, dans un groupe visible et repliable.
  *
- * La carte dit DE QUOI il s'agit ; le sous-bloc dit ce qu'on y fait. Deux
- * verbes sous un même sujet font deux sous-blocs, et l'ordre dans lequel ils
- * s'empilent EST l'ordre dans lequel les gestes se posent : on confirme qu'un
- * entretien a eu lieu avant de décider du candidat.
- *
- * Le sous-bloc n'a pas de couleur à lui : il hérite de celle de sa carte. Le
- * distinguer par la teinte reviendrait à en refaire un sujet.
+ * Déplié par défaut : on vient voir ce qui attend, pas le chercher. Un
+ * sous-bloc VIDE, lui, se replie de lui-même — il reste sur une ligne, parce
+ * qu'un verbe qui n'a rien à faire aujourd'hui doit quand même se voir (sinon
+ * le total de la carte ne se retrouve nulle part).
  */
 export function TodaySubBlock({
+  accent,
+  id,
   title,
   subtitle,
+  count,
+  action,
   children,
 }: {
-  /** Le verbe, chiffré : « 3 à lire et décider ». */
+  accent: DashColor;
+  /** Clé de mémorisation du repli, stable d'un rendu à l'autre. */
+  id: string;
   title: string;
   subtitle?: string;
-  children: React.ReactNode;
+  count: number;
+  /** Bouton de lot, posé DANS l'en-tête : il porte sur tout le groupe. */
+  action?: React.ReactNode;
+  children?: React.ReactNode;
 }) {
+  const [replie, setReplie] = useState<boolean | null>(null);
+  // Un sous-bloc vide est replié, sauf si l'utilisateur l'a rouvert lui-même.
+  const memorise = replie ?? lireRepli(id);
+  const ouvert = memorise !== null ? !memorise : count > 0;
+
+  const basculer = (): void => {
+    const prochain = ouvert;
+    setReplie(prochain);
+    ecrireRepli(id, prochain);
+  };
+
   return (
     <div
-      className="border-b border-[var(--dash-border)] px-4 py-3 last:border-b-0"
+      style={{
+        borderRadius: 10,
+        background: tint(accent, SUBTINT_PERCENT),
+      }}
     >
-      <p
-        className="font-display"
-        style={{ fontSize: 13, fontWeight: 700, color: 'var(--dash-text)' }}
-      >
-        {title}
-      </p>
-      {subtitle ? (
-        <p
-          className="font-body"
-          style={{
-            marginTop: 1,
-            marginBottom: 4,
-            fontSize: 12,
-            color: 'var(--dash-text-secondary)',
-          }}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
+        <button
+          type="button"
+          onClick={basculer}
+          aria-expanded={ouvert}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
-          {subtitle}
-        </p>
+          {ouvert ? (
+            <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-stone-500" />
+          ) : (
+            <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-stone-500" />
+          )}
+          <span className="min-w-0">
+            <span
+              className="font-display block"
+              style={{ fontSize: 13, fontWeight: 700, color: 'var(--dash-text)' }}
+            >
+              {title}
+            </span>
+            {subtitle && ouvert ? (
+              <span
+                className="font-body block"
+                style={{ fontSize: 12, color: 'var(--dash-text-secondary)' }}
+              >
+                {subtitle}
+              </span>
+            ) : null}
+          </span>
+        </button>
+        {action ? <span className="shrink-0">{action}</span> : null}
+      </div>
+      {ouvert && count > 0 ? (
+        <div className="flex flex-col gap-2 px-2 pb-2">{children}</div>
       ) : null}
-      {children}
     </div>
   );
 }

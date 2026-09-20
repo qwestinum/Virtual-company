@@ -3,7 +3,7 @@ import { join, relative, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { TINT_PERCENT } from '@/components/today/TodayCard';
+import { SUBTINT_PERCENT, TINT_PERCENT } from '@/components/today/TodayCard';
 
 /**
  * SOCLE — il NOMME ce qui existe, il n'invente rien.
@@ -92,6 +92,30 @@ describe('les teintes de registre restent des NUANCES', () => {
       const teinte = melange(dash(role), surface, TINT_PERCENT);
       expect(ratio(dash('text'), teinte)).toBeGreaterThanOrEqual(4.5);
       expect(ratio(dash('text-secondary'), teinte)).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it.each(['teal', 'purple', 'orange'])(
+    'le SOUS-BLOC %s se distingue de sa carte, sans cesser d’être une nuance',
+    (role) => {
+      const carte = melange(dash(role), surface, TINT_PERCENT);
+      const sousBloc = melange(dash(role), surface, SUBTINT_PERCENT);
+      // Les trois niveaux doivent se lire à 50 % de zoom SANS texte : il faut
+      // donc un écart réel entre carte et sous-bloc…
+      expect(ratio(sousBloc, carte)).toBeGreaterThan(1.02);
+      // …et la rangée blanche doit trancher sur le sous-bloc.
+      expect(ratio(surface, sousBloc)).toBeGreaterThan(1.05);
+      // …sans que le sous-bloc devienne une couleur.
+      expect(ratio(sousBloc, surface)).toBeLessThan(1.25);
+    },
+  );
+
+  it.each(['teal', 'purple', 'orange'])(
+    'le texte garde son AA sur le SOUS-BLOC %s',
+    (role) => {
+      const sousBloc = melange(dash(role), surface, SUBTINT_PERCENT);
+      expect(ratio(dash('text'), sousBloc)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(dash('text-secondary'), sousBloc)).toBeGreaterThanOrEqual(4.5);
     },
   );
 

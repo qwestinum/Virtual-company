@@ -93,47 +93,52 @@ export function TodayBoardView({
             accent="purple"
             title={PHRASES.validation.titre(board.validation.total)}
           >
-            {board.validation.aLire.total > 0 ? (
-              <TodaySubBlock
-                title={PHRASES.aLire.titre(board.validation.aLire.total)}
-                subtitle={PHRASES.aLire.sousTitre}
-              >
-                {board.validation.aLire.items.map((item) => (
-                  <TodayRow
-                    key={item.id}
-                    name={item.candidateName}
-                    campaign={campaignLabel(item.campaignId)}
-                    state={`note ${item.score ?? '—'} · ${attente(item.waitingDays)}`}
-                    action={
-                      <ActionButton href={item.href} label={PHRASES.aLire.action} />
-                    }
-                  />
-                ))}
-              </TodaySubBlock>
-            ) : null}
-
-            {/* UNE ligne, jamais une par candidat : le geste est une revue en
-                fournée, pas une suite de décisions. */}
-            {board.validation.aEcarter.total > 0 ? (
-              <TodaySubBlock
-                title={PHRASES.aEcarter.titre(board.validation.aEcarter.total)}
-                subtitle={PHRASES.aEcarter.sousTitre}
-              >
-                <TodayNotice
-                  text={
-                    board.validation.aEcarter.oldestDays > 0
-                      ? `La plus ancienne attend depuis ${board.validation.aEcarter.oldestDays} jours.`
-                      : 'Elles viennent d’arriver.'
-                  }
+            <TodaySubBlock
+              accent="purple"
+              id="validation.aLire"
+              count={board.validation.aLire.total}
+              title={PHRASES.aLire.titre(board.validation.aLire.total)}
+              subtitle={PHRASES.aLire.sousTitre}
+            >
+              {board.validation.aLire.items.map((item) => (
+                <TodayRow
+                  key={item.id}
+                  name={item.candidateName}
+                  campaign={campaignLabel(item.campaignId)}
+                  state={`note ${item.score ?? '—'} · ${attente(item.waitingDays)}`}
                   action={
-                    <ActionButton
-                      href={board.validation.aEcarter.href}
-                      label={PHRASES.aEcarter.action}
-                    />
+                    <ActionButton href={item.href} label={PHRASES.aLire.action} />
                   }
                 />
-              </TodaySubBlock>
-            ) : null}
+              ))}
+            </TodaySubBlock>
+
+            {/* Le bouton est dans l'EN-TÊTE du sous-bloc : il porte sur tout
+                le groupe, pas sur une ligne. Une revue en fournée n'a pas de
+                ligne à laquelle s'accrocher. */}
+            <TodaySubBlock
+              accent="purple"
+              id="validation.aEcarter"
+              count={board.validation.aEcarter.total}
+              title={PHRASES.aEcarter.titre(board.validation.aEcarter.total)}
+              subtitle={PHRASES.aEcarter.sousTitre}
+              action={
+                board.validation.aEcarter.total > 0 ? (
+                  <ActionButton
+                    href={board.validation.aEcarter.href}
+                    label={PHRASES.aEcarter.action}
+                  />
+                ) : null
+              }
+            >
+              <TodayNotice
+                text={
+                  board.validation.aEcarter.oldestDays > 0
+                    ? `La plus ancienne attend depuis ${board.validation.aEcarter.oldestDays} jours.`
+                    : 'Elles viennent d’arriver.'
+                }
+              />
+            </TodaySubBlock>
           </TodayCard>
         ) : null}
 
@@ -144,49 +149,51 @@ export function TodayBoardView({
             accent="teal"
             title={PHRASES.entretiens.titre(board.entretiens.total)}
           >
-            {board.entretiens.aConfirmer.total > 0 ? (
-              <TodaySubBlock
-                title={PHRASES.aConfirmer.titre(board.entretiens.aConfirmer.total)}
-                subtitle={PHRASES.aConfirmer.sousTitre}
-              >
-                {board.entretiens.aConfirmer.items.map((item) => (
-                  <TodayRow
-                    key={item.id}
-                    name={item.candidateName}
-                    campaign={campaignLabel(item.campaignId, item.jobTitle)}
-                    state={item.startAt ? formatSmartDate(item.startAt) : ''}
-                    action={
-                      <ConfirmInterviewButtons
-                        uid={item.uid}
-                        candidateName={item.candidateName}
-                        campaignId={item.campaignId}
-                        href={item.href}
-                        onDone={onReload}
-                      />
-                    }
-                  />
-                ))}
-              </TodaySubBlock>
-            ) : null}
+            <TodaySubBlock
+              accent="teal"
+              id="entretiens.aConfirmer"
+              count={board.entretiens.aConfirmer.total}
+              title={PHRASES.aConfirmer.titre(board.entretiens.aConfirmer.total)}
+              subtitle={PHRASES.aConfirmer.sousTitre}
+            >
+              {board.entretiens.aConfirmer.items.map((item) => (
+                <TodayRow
+                  key={item.id}
+                  name={item.candidateName}
+                  campaign={campaignLabel(item.campaignId, item.jobTitle)}
+                  state={item.startAt ? formatSmartDate(item.startAt) : ''}
+                  action={
+                    <ConfirmInterviewButtons
+                      uid={item.uid}
+                      candidateName={item.candidateName}
+                      campaignId={item.campaignId}
+                      href={item.href}
+                      onDone={onReload}
+                    />
+                  }
+                />
+              ))}
+            </TodaySubBlock>
 
-            {board.entretiens.aDecider.total > 0 ? (
-              <TodaySubBlock
-                title={PHRASES.aDecider.titre(board.entretiens.aDecider.total)}
-                subtitle={PHRASES.aDecider.sousTitre}
-              >
-                {board.entretiens.aDecider.items.map((item) => (
-                  <TodayRow
-                    key={item.id}
-                    name={item.candidateName}
-                    campaign={campaignLabel(item.campaignId, item.jobTitle)}
-                    state={item.startAt ? formatSmartDate(item.startAt) : ''}
-                    action={
-                      <ActionButton href={item.href} label={PHRASES.aDecider.action} />
-                    }
-                  />
-                ))}
-              </TodaySubBlock>
-            ) : null}
+            <TodaySubBlock
+              accent="teal"
+              id="entretiens.aDecider"
+              count={board.entretiens.aDecider.total}
+              title={PHRASES.aDecider.titre(board.entretiens.aDecider.total)}
+              subtitle={PHRASES.aDecider.sousTitre}
+            >
+              {board.entretiens.aDecider.items.map((item) => (
+                <TodayRow
+                  key={item.id}
+                  name={item.candidateName}
+                  campaign={campaignLabel(item.campaignId, item.jobTitle)}
+                  state={item.startAt ? formatSmartDate(item.startAt) : ''}
+                  action={
+                    <ActionButton href={item.href} label={PHRASES.aDecider.action} />
+                  }
+                />
+              ))}
+            </TodaySubBlock>
           </TodayCard>
         ) : null}
 
@@ -197,7 +204,9 @@ export function TodayBoardView({
             title={PHRASES.regler.titre(board.verify.total)}
             subtitle={PHRASES.regler.sousTitre}
           >
-            <div className="px-4">
+            {/* Un seul verbe : pas de sous-bloc. Les rangées blanches, si —
+                c'est le relief qui dit « une ligne, une décision ». */}
+            <>
               {board.verify.items.map((item) => (
                 <TodayNotice
                   key={item.key}
@@ -214,7 +223,7 @@ export function TodayBoardView({
                   }
                 />
               ))}
-            </div>
+            </>
           </TodayCard>
         ) : null}
 
