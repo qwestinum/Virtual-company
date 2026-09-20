@@ -73,6 +73,7 @@ import {
 } from '@/lib/scheduling';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { PendingValidation } from '@/types/hitl';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import { call, callWithId, testCampaignPayload, TEST_JOB_TITLE } from './helpers/api';
 import { cleanAll, db, newTestCampaignId } from './helpers/db';
@@ -154,24 +155,36 @@ async function cleanScheduling(): Promise<void> {
   }
 }
 
+/**
+ * `key` désigne le DOSSIER, pas la fiche : depuis l'écrivain unique, la route
+ * dérive l'identifiant de la fiche du dossier. Le helper rend donc l'id réel,
+ * que les scénarios utilisent ensuite — une fixture ne choisit plus cet id.
+ */
+/** Identifiants RÉELS des trois fiches, rendus par la route. */
+let idRef = '';
+let idParti = '';
+let idSans = '';
+
 async function enqueueValidation(
-  id: string,
+  key: string,
   campaignId: string,
   score: number,
-): Promise<void> {
+): Promise<string> {
+  const uid = `uid_${key}`;
   const res = await call(postValidation, {
     method: 'POST',
     body: {
-      id,
+      id: validationIdFor(uid, 'reject'),
       campaignId,
-      candidateName: `Candidat ${id}`,
-      candidateEmail: `${id}@test.local`,
+      candidateName: `Candidat ${key}`,
+      candidateEmail: `${key}@test.local`,
       score,
       decision: 'reject',
-      payload: { uid: `uid_${id}`, jobTitle: TEST_JOB_TITLE },
+      payload: { uid, jobTitle: TEST_JOB_TITLE },
     },
   });
   expect(res.status).toBe(200);
+  return validationIdFor(uid, 'reject');
 }
 
 /** Analyse minimale : sans elle, le pipeline écarte le briefing (candidature introuvable). */
@@ -232,9 +245,9 @@ beforeAll(async () => {
     expect(res.status).toBe(200);
   }
 
-  await enqueueValidation('val_s17_ref', campRef, 45);
-  await enqueueValidation('val_s17_parti', campParti, 46);
-  await enqueueValidation('val_s17_sans', campSans, 47);
+  idRef = await enqueueValidation('s17_ref', campRef, 45);
+  idParti = await enqueueValidation('s17_parti', campParti, 46);
+  idSans = await enqueueValidation('s17_sans', campSans, 47);
 });
 
 afterAll(async () => {
@@ -315,12 +328,12 @@ describe('S17 §2 — le filtre, sur les données réellement servies', () => {
       kind: 'recruiter',
       id: REFERENT.id,
     });
-    expect(mine.map((v) => v.id)).toEqual(['val_s17_ref']);
+    expect(mine.map((v) => v.id)).toEqual([idRef]);
 
     const orphelines = filterByReferent(validations, referents, { kind: 'none' });
     expect(orphelines.map((v) => v.id).sort()).toEqual([
-      'val_s17_parti',
-      'val_s17_sans',
+      idParti,
+      idSans,
     ]);
 
     expect(filterByReferent(validations, referents, { kind: 'all' })).toHaveLength(3);
@@ -349,21 +362,21 @@ describe('S17 §3 — le filtre ne restreint AUCUN accès', () => {
       kind: 'recruiter',
       id: REFERENT.id,
     });
-    expect(visible.map((v) => v.id)).not.toContain('val_s17_parti');
+    expect(visible.map((v) => v.id)).not.toContain(idParti);
 
     // … et pourtant elle se tranche, sans le moindre traitement de faveur.
-    const patched = await callWithId(patchValidation, 'val_s17_parti', {
+    const patched = await callWithId(patchValidation, idParti, {
       method: 'PATCH',
       body: { decision: 'accept' },
     });
     expect(patched.status).toBe(200);
 
     const after = await loadQueue();
-    expect(after.validations.find((v) => v.id === 'val_s17_parti')?.decision).toBe(
+    expect(after.validations.find((v) => v.id === idParti)?.decision).toBe(
       'accept',
     );
     // Remise en l'état pour ne pas polluer les scénarios suivants.
-    await callWithId(patchValidation, 'val_s17_parti', {
+    await callWithId(patchValidation, idParti, {
       method: 'PATCH',
       body: { decision: 'reject' },
     });

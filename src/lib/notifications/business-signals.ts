@@ -30,10 +30,16 @@ import {
   oldestPendingValidationCreatedAt,
 } from '@/lib/db/repos/pending-validations';
 import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
+import {
+  checkValidationCoherence,
+  queueMismatch,
+} from '@/lib/hitl/queue-coherence';
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
 import { getResource, isMeetingLocationComplete, listExceptions, listWeeklyRules } from '@/lib/scheduling';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
+import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import type { DecisionZone } from '@/types/hitl';
+import type { CandidateAnalysisSummary } from '@/types/reporting';
 import type { BusinessSignal } from '@/types/notifications';
 
 // ─── Helpers PURS (testés) ─────────────────────────────────────────────────
@@ -67,10 +73,36 @@ export function buildInterviewsAwaitingMessage(count: number): string {
     : `${count} candidats ont passé leur entretien et attendent votre décision.`;
 }
 
-export function buildOrphanValidationsMessage(count: number): string {
-  return count === 1
-    ? '1 candidature est comptée « à valider » mais sa fiche de validation est introuvable : elle n’est pas décidable.'
-    : `${count} candidatures sont comptées « à valider » mais leur fiche de validation est introuvable : elles ne sont pas décidables.`;
+/**
+ * Le message dit les DEUX écarts, séparément : ils n'appellent pas le même
+ * geste (remettre en file d'un côté, clore de l'autre), et les fondre dans un
+ * total rendrait le signal inactionnable.
+ */
+export function buildQueueMismatchMessage(input: {
+  awaitingWithoutRow: number;
+  rowWithoutAwaiting: number;
+}): string {
+  const parts: string[] = [];
+  if (input.awaitingWithoutRow > 0) {
+    parts.push(
+      input.awaitingWithoutRow === 1
+        ? '1 attend sans fiche de validation (non décidable)'
+        : `${input.awaitingWithoutRow} attendent sans fiche de validation (non décidables)`,
+    );
+  }
+  if (input.rowWithoutAwaiting > 0) {
+    parts.push(
+      input.rowWithoutAwaiting === 1
+        ? '1 garde une fiche qui n’a plus lieu d’être'
+        : `${input.rowWithoutAwaiting} gardent une fiche qui n’a plus lieu d’être`,
+    );
+  }
+  const total = input.awaitingWithoutRow + input.rowWithoutAwaiting;
+  const head =
+    total === 1
+      ? '1 dossier n’est pas cohérent entre la file de validation et son analyse'
+      : `${total} dossiers ne sont pas cohérents entre la file de validation et leur analyse`;
+  return `${head} : ${parts.join(', ')}.`;
 }
 
 export function buildInterviewsPointingMessage(count: number): string {
@@ -536,59 +568,104 @@ export function createSharedLoads(): SharedLoads {
   };
 }
 
-// ─── Signal 8 — validations orphelines ─────────────────────────────────────
+// ─── Signal 8 — incohérences file ↔ analyse ────────────────────────────────
 
 /**
- * Une candidature en zone d'attente et sa ligne de file décrivent le même
+ * Une candidature en zone d'attente et sa fiche de validation décrivent le même
  * fait, et RIEN ne les relie en base : pas de clé étrangère, pas de
- * réconciliation. La seconde peut donc manquer — l'analyse reste comptée « à
- * valider » et personne ne peut la trancher (diagnostic du 20/09/2026,
- * `docs/ops/diagnostic-validations-orphelines-2026-09-20.md`).
+ * réconciliation. Elles divergent donc, DANS LES DEUX SENS — et la première
+ * version de ce signal n'en surveillait qu'un, ce qui a laissé le défaut de
+ * production du 21/08 vivre un mois dans l'angle mort de l'autre.
  *
- * C'est la classe de défaut du 21/08 sur le fil d'activité : une divergence
- * entre deux listes tenues à part est SILENCIEUSE. Ce signal est ce qui la
- * rend bruyante — il n'y a rien d'autre, dans le produit, qui la remarque.
+ * L'écart est jugé par `queueMismatch`, prédicat PUR et unique (le même que
+ * celui qui désarme une carte dans le hub). L'étape n'intervient pas : c'est la
+ * COHÉRENCE des deux tables qu'on mesure, pas le parcours du candidat.
  *
- * L'étape vient de `stageFor` (source canonique, déjà chargée par les signaux
- * 2 et 3) : le signal s'éteint par construction dès qu'un dossier est remis en
- * file, classé sans suite ou tranché. Aucune logique d'étape parallèle.
+ * Extinction par construction : remettre en file, clore, classer sans suite ou
+ * trancher fait disparaître la ligne sans logique dédiée.
  */
-async function computeOrphanValidations(
-  nowMs: number,
-  shared: SharedLoads = createSharedLoads(),
-): Promise<BusinessSignal | null> {
-  // Sélection bornée AU PLUS PRÈS : seules les zones d'attente, jamais
-  // décidées par un humain, jamais classées. Deux passes (le filtre de zone
-  // est à valeur unique), chacune paginée en interne.
+async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | null> {
+  // Aucune lecture partagée : ce signal mesure la COHÉRENCE des deux tables,
+  // pas l'étape d'un candidat — il ne dépend donc pas des signaux d'étape.
+  // Sens A — analyses en attente : sélection bornée aux deux zones, jamais
+  // décidées par un humain, jamais classées.
   const zones: DecisionZone[] = ['gray', 'proposed_reject'];
-  const batches = await Promise.all(
+  const awaitingBatches = await Promise.all(
     zones.map((zone) =>
-      listAllCandidateAnalyses({
-        decisionZone: zone,
-        decidedBy: 'auto',
-        dismissed: false,
-      }).catch(() => []),
+      listAllCandidateAnalyses({ decisionZone: zone, decidedBy: 'auto', dismissed: false }).catch(
+        () => [],
+      ),
     ),
   );
-  const candidates = batches.flat();
-  if (candidates.length === 0) return null;
+  const awaiting = awaitingBatches.flat();
 
-  const signals = await shared.stageSignals();
-  const orphans = candidates.filter(
-    (a) => stageFor(a, signals) === 'a_valider' && !signals.pendingUids.has(a.uid),
+  // Sens B — fiches ouvertes : la file entière (keyset, jamais tronquée).
+  const openRows = await listPendingValidations().catch(() => []);
+  const openUids = new Set(
+    openRows
+      .map((v) => (typeof v.payload?.uid === 'string' ? v.payload.uid : null))
+      .filter((u): u is string => u !== null),
   );
-  if (orphans.length === 0) return null;
 
-  const oldestMs = Math.min(...orphans.map((o) => Date.parse(o.createdAt)));
+  let awaitingWithoutRow = 0;
+  const oldest: number[] = [];
+  for (const a of awaiting) {
+    const mismatch = queueMismatch({
+      coherence: checkValidationCoherence({
+        decisionZone: a.decisionZone,
+        decidedBy: a.decidedBy,
+        dismissedAt: a.dismissedAt,
+      }),
+      hasOpenRow: openUids.has(a.uid),
+    });
+    if (mismatch === 'awaiting_without_row') {
+      awaitingWithoutRow++;
+      oldest.push(Date.parse(a.createdAt));
+    }
+  }
+
+  // Les analyses des fiches ouvertes, rapprochées par uid comme partout
+  // ailleurs. Chunké : la garantie ne dépend pas du volume.
+  const factsByUid = new Map<string, CandidateAnalysisSummary>();
+  const uids = [...openUids];
+  if (uids.length > 0) {
+    const parts = await Promise.all(
+      chunk(uids, 300).map((part) => listAllCandidateAnalyses({ uidIn: part }).catch(() => [])),
+    );
+    for (const rows of parts) for (const row of rows) factsByUid.set(row.uid, row);
+  }
+  let rowWithoutAwaiting = 0;
+  for (const v of openRows) {
+    const uid = typeof v.payload?.uid === 'string' ? v.payload.uid : null;
+    const a = uid ? factsByUid.get(uid) : undefined;
+    // Aucune analyse rapprochée ⇒ `unknown` ⇒ aucun écart : on ne réclame pas
+    // une correction sur un dossier qu'on n'a pas su lire.
+    const mismatch = queueMismatch({
+      coherence: checkValidationCoherence(
+        a
+          ? { decisionZone: a.decisionZone, decidedBy: a.decidedBy, dismissedAt: a.dismissedAt }
+          : null,
+      ),
+      hasOpenRow: true,
+    });
+    if (mismatch === 'row_without_awaiting') {
+      rowWithoutAwaiting++;
+      oldest.push(Date.parse(v.createdAt));
+    }
+  }
+
+  const total = awaitingWithoutRow + rowWithoutAwaiting;
+  if (total === 0) return null;
+  const oldestMs = Math.min(...oldest.filter((n) => Number.isFinite(n)));
   return {
-    key: 'validations_orphelines',
-    count: orphans.length,
+    key: 'validations_incoherentes',
+    count: total,
     oldestDays: Number.isFinite(oldestMs)
       ? daysSinceIso(new Date(oldestMs).toISOString(), nowMs)
       : 0,
-    message: buildOrphanValidationsMessage(orphans.length),
-    ctaLabel: 'Voir les candidatures à valider',
-    target: { tab: 'candidatures', stage: 'a_valider' },
+    message: buildQueueMismatchMessage({ awaitingWithoutRow, rowWithoutAwaiting }),
+    ctaLabel: 'Ouvrir la validation suspendue',
+    target: { tab: 'validations' },
   };
 }
 
@@ -638,8 +715,8 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
     compute: (nowMs, _ctx, shared) => computeApecLiveOnClosedCampaign(nowMs, shared),
   },
   {
-    key: 'validations_orphelines',
-    compute: (nowMs, _ctx, shared) => computeOrphanValidations(nowMs, shared),
+    key: 'validations_incoherentes',
+    compute: (nowMs) => computeQueueMismatches(nowMs),
   },
 ];
 

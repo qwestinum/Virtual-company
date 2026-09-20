@@ -25,6 +25,7 @@ import {
   type AnalysisFacts,
   type ValidationCoherence,
 } from '@/lib/hitl/queue-coherence';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 import { prepareReferentContext } from '@/lib/referent/context';
 import {
   HitlDecisionSchema,
@@ -142,9 +143,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  // IDENTIFIANT CANONIQUE, dérivé du dossier — l'id envoyé par l'appelant n'est
+  // qu'un repli. C'est le dernier chemin par lequel DEUX fiches pouvaient
+  // coexister pour une seule candidature : chaque appelant calculait sa propre
+  // chaîne, et le chemin chat en tirait une ALÉATOIRE. Deux fiches pour un
+  // dossier, c'est le même candidat proposé deux fois au recruteur, et une
+  // décision qui n'en ferme qu'une.
+  const analysisKey =
+    typeof parsed.payload.analysisId === 'string' && parsed.payload.analysisId
+      ? parsed.payload.analysisId
+      : parsed.payload.uid;
+  const canonicalId = validationIdFor(analysisKey, parsed.decision);
+
   const now = new Date().toISOString();
   const validation: PendingValidation = {
-    id: parsed.id,
+    id: canonicalId,
     campaignId: parsed.campaignId,
     candidateName: parsed.candidateName,
     candidateEmail: parsed.candidateEmail,

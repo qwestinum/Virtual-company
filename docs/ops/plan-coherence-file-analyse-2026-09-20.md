@@ -153,7 +153,7 @@ ponctuelle, et le geste durable est désormais à l'écran.
 ⚠️ **Ces deux fiches reviendront au prochain `npm run rescore`** tant que le lot 1 n'est pas
 livré. La clôture répare l'état, pas la cause.
 
-### Lot 1 — Fermer l'asymétrie du re-scoring *(S)*
+### Lot 1 — Fermer l'asymétrie du re-scoring *(S)* — ✅ **LIVRÉ**
 
 La branche symétrique que je n'ai pas écrite :
 
@@ -171,7 +171,7 @@ jamais tranchée, jamais envoyée »*. Seule la CAUSE diffère, et sa place est 
 (`validation_settled`, avec la zone avant/après). L'alternative — un statut `superseded` — coûte
 une migration et un CHECK pour une nuance que le journal porte mieux. **À trancher.**
 
-### Lot 2 — Un écrivain unique pour la CLÔTURE, comme pour la création *(M)*
+### Lot 2 — Un écrivain unique pour la CLÔTURE, comme pour la création *(M)* — ✅ **LIVRÉ**
 
 C'est le lot qui empêche le **E**. `src/lib/hitl/settle.ts`, appelé par **tout** chemin qui fait
 sortir une analyse de l'attente :
@@ -186,7 +186,7 @@ sortir une analyse de l'attente :
 Et **`POST /api/validations` cesse d'accepter un id libre** : il dérive l'identifiant canonique
 de `payload.analysisId`. C'est le dernier chemin par lequel un doublon reste possible (D).
 
-### Lot 3 — Un invariant BIDIRECTIONNEL, une seule fois *(S)*
+### Lot 3 — Un invariant BIDIRECTIONNEL, une seule fois *(S)* — ✅ **LIVRÉ**
 
 Remplacer `validations_orphelines` (un sens) par **un prédicat unique et testé** —
 `src/lib/hitl/queue-coherence.ts`, pur : *« l'analyse attend-elle ⟺ une ligne ouverte existe-t-elle ? »* —
@@ -200,6 +200,28 @@ ou `dismissed_at`, la suite vérifie qu'il passe par l'écrivain de création OU
 Sans lui, le lot 2 se défait au premier chemin ajouté.
 
 ---
+
+### Ce qui a été livré (lots 1 à 3)
+
+| Pièce | Rôle |
+|---|---|
+| `src/lib/hitl/settle.ts` | **Écrivain unique de la CLÔTURE**, le pendant qui manquait à `enqueueValidationRow`. Ferme par l'**uid** et non par l'identifiant canonique — les fiches antérieures à l'id déterministe portent un id aléatoire, et ce sont précisément celles qu'on ne retrouverait pas autrement. Un `sending` suspend tout. |
+| `scripts/rescore-analyses.ts` | La **branche symétrique** : `else settleValidationsForAnalysisId(…)`. Le prochain `rescore` ne reproduit plus le défaut du 21/08, et le dit dans sa sortie (`· file close` / `⚠ FILE NON CLOSE`). |
+| `decision-correction.ts` | Ferme désormais la fiche quand la correction tranche le dossier — l'angle mort trouvé en vérifiant. Best-effort : la correction ne se défait pas pour une fiche qu'on n'a pas su fermer, le signal la verra. |
+| `queueMismatch` (pur) | L'invariant **dans les deux sens, en un seul endroit**. Le doute (`unknown`) ne produit jamais d'écart. |
+| Signal `validations_incoherentes` | Remplace `validations_orphelines`. Compte les deux écarts **séparément** — ils n'appellent pas le même geste, et les fondre rendrait le signal inactionnable. |
+| `POST /api/validations` | L'identifiant est **DÉRIVÉ du dossier**, plus jamais choisi par l'appelant : dernier chemin par lequel deux fiches pouvaient coexister. |
+| `queue-writers.test.ts` | Garde **structurelle sondée** : aucun chemin n'écrit le statut d'une fiche hors des écrivains, sauf liste assumée et motivée. Un nouveau chemin fait rougir la suite en le nommant. |
+
+Vérifié : signal à **12** en dev (sens A), puis **13 dont 1 du sens B** sur une fiche fantôme
+fabriquée — les deux sens sont comptés et distingués. Typecheck propre, **2 707 tests
+unitaires**, **régression S1→S25 232/232**.
+
+⚠️ **Effet de bord assumé** : la dérivation de l'identifiant a fait tomber 11 scénarios de
+régression — tous parce que la fixture choisissait l'id puis agissait dessus. Ils ont été
+alignés sur l'identifiant canonique, comme ceux du 20/09. Ce n'est pas un contournement : ces
+suites créaient **déjà** deux fiches par dossier depuis le filet serveur, et la dérivation les
+ramène à une.
 
 ## 6. Ordre, et pourquoi
 

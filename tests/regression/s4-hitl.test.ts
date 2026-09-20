@@ -21,6 +21,7 @@ import { POST as reserveSend } from '@/app/api/validations/[id]/reserve-send/rou
 import { POST as markSent } from '@/app/api/validations/[id]/send/route';
 import { cvApplicationToMailCandidate, type MailCandidate } from '@/types/mail-candidate';
 import type { CVApplication } from '@/types/cv-analysis';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import { call, callWithId, cvAnalyzerForm, testCampaignPayload, testScoringSheet, TEST_JOB_TITLE } from './helpers/api';
 import { cleanAll, newTestCampaignId, readRow, readRows } from './helpers/db';
@@ -53,7 +54,9 @@ async function seedGrayValidation(slug: string): Promise<{
   expect(application.scoringResult.decisionZone).toBe('gray');
 
   const candidate = cvApplicationToMailCandidate(application);
-  const validationId = `val_treg_${taskId}`;
+  // Identifiant CANONIQUE : depuis l'écrivain unique, la route le DÉRIVE du
+  // dossier — un id inventé par la fixture ne serait pas celui de la fiche.
+  const validationId = validationIdFor(taskId, 'reject');
   const enqueue = await call(postValidation, {
     method: 'POST',
     body: {

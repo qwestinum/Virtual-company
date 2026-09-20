@@ -69,6 +69,35 @@ export function isSettledElsewhere(c: ValidationCoherence): boolean {
 }
 
 /**
+ * L'invariant, dans les DEUX sens et en un seul endroit : une analyse attend
+ * une décision ⟺ une fiche ouverte existe.
+ *
+ * Écrire deux prédicats — un par direction — reviendrait à re-fabriquer la
+ * divergence qu'on cherche à voir : c'est déjà ce qui est arrivé, le signal du
+ * 20/09 ne surveillait qu'un sens et le défaut de production a vécu un mois
+ * dans l'angle mort de l'autre.
+ */
+export type QueueMismatch =
+  /** L'analyse attend, aucune fiche ouverte : indécidable (sens A). */
+  | 'awaiting_without_row'
+  /** Une fiche est ouverte, le dossier n'attend plus : arbitrage fantôme (sens B). */
+  | 'row_without_awaiting';
+
+export function queueMismatch(input: {
+  coherence: ValidationCoherence;
+  /** Une fiche `pending` ou `sending` existe-t-elle pour ce dossier ? */
+  hasOpenRow: boolean;
+}): QueueMismatch | null {
+  // Le doute ne produit JAMAIS d'écart : on ne réclame pas une correction sur
+  // une analyse qu'on n'a pas su lire.
+  if (input.coherence.kind === 'unknown') return null;
+  if (input.coherence.kind === 'awaiting') {
+    return input.hasOpenRow ? null : 'awaiting_without_row';
+  }
+  return input.hasOpenRow ? 'row_without_awaiting' : null;
+}
+
+/**
  * Ce que la carte DIT, à la place des boutons d'arbitrage. Jamais de jargon :
  * la phrase doit se tenir devant un recruteur qui n'a pas lu le diagnostic.
  */

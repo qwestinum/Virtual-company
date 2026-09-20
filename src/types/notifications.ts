@@ -16,12 +16,14 @@ export type BusinessSignalKey =
   /** Une offre APEC toujours en ligne alors que la campagne est clôturée. */
   | 'apec_offer_live_on_closed_campaign'
   /**
-   * Des candidatures comptées « à valider » dont la fiche de validation
-   * manque : elles ne sont pas décidables. Rien ne relie l'analyse à sa file
-   * en base, la divergence était donc SILENCIEUSE — ce signal est ce qui la
-   * rend bruyante (diagnostic du 20/09/2026).
+   * La file de validation et les analyses ne racontent pas la même histoire,
+   * DANS UN SENS COMME DANS L'AUTRE : une analyse qui attend sans fiche (donc
+   * indécidable), ou une fiche ouverte sur un dossier qui n'attend plus (donc
+   * un arbitrage fantôme). Rien ne relie les deux tables en base : la
+   * divergence était silencieuse, et la première version de ce signal n'en
+   * surveillait qu'un sens.
    */
-  | 'validations_orphelines';
+  | 'validations_incoherentes';
 
 /**
  * Cible de navigation INTERNE (onglets du WorkspacePane — pas de route Next

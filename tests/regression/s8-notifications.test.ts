@@ -22,6 +22,7 @@ import { POST as markSent } from '@/app/api/validations/[id]/send/route';
 import { cvApplicationToMailCandidate, type MailCandidate } from '@/types/mail-candidate';
 import type { BusinessSignal } from '@/types/notifications';
 import type { CVApplication } from '@/types/cv-analysis';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import { call, callWithId, cvAnalyzerForm, testCampaignPayload, testScoringSheet, TEST_JOB_TITLE } from './helpers/api';
 import { cleanAll, db, newTestCampaignId } from './helpers/db';
@@ -76,7 +77,7 @@ beforeAll(async () => {
   const grayApp = await analyze('moyen', grayTaskId);
   expect(grayApp.scoringResult.decisionZone).toBe('gray');
   grayCandidate = cvApplicationToMailCandidate(grayApp);
-  grayValidationId = `val_treg_${grayTaskId}`;
+  grayValidationId = validationIdFor(grayTaskId, 'reject');
   const enqueue = await call(postValidation, {
     method: 'POST',
     body: {

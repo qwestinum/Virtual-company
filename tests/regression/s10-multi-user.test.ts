@@ -85,6 +85,7 @@ import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 import { invalidateEmailAddressesCache } from '@/lib/email/addresses';
 import type { MailCandidate } from '@/types/mail-candidate';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import { call, callWithId, testCampaignPayload, TEST_JOB_TITLE } from './helpers/api';
 import { cleanAll, db, newTestCampaignId, readRow, readRows } from './helpers/db';
@@ -776,7 +777,7 @@ describe('S10.4 — réservation native', () => {
     const token = tokenIn(String(preview.json.html));
     expect(token).toBeTruthy();
 
-    const validationId = `val_treg_s10_${Date.now().toString(36)}`;
+    const validationId = validationIdFor(`treg_s10_${Date.now().toString(36)}`, 'reject');
     const insVal = await db().from('pending_validations').insert({
       id: validationId,
       campaign_id: campNative,

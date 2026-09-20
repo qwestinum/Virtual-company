@@ -266,6 +266,25 @@ async function main(): Promise<void> {
       else if (queued.kind !== 'already_queued') {
         queueNote = ` · ⚠ FILE NON POSÉE (${'reason' in queued ? queued.reason : queued.kind})`;
       }
+    } else {
+      // BRANCHE SYMÉTRIQUE — celle qui manquait jusqu'au 20/09/2026, et dont
+      // l'absence a produit le défaut de production du 21/08 : un dossier que
+      // le re-scoring fait SORTIR de la zone d'attente gardait sa fiche
+      // ouverte, laquelle continuait d'offrir un arbitrage (direction
+      // `reject`) sur une analyse devenue `auto_accept`.
+      const { settleValidationsForAnalysisId } = await import('@/lib/hitl/settle');
+      const settled = await settleValidationsForAnalysisId(r.id, {
+        actor: null,
+        journalActor: 'rescore_script',
+        context: { zoneBefore: r.decision_zone, zoneAfter, via: 'rescore' },
+      }).catch((err: unknown) => ({ kind: 'error' as const, err }));
+      // Jamais un silence, dans un sens comme dans l'autre.
+      if (settled.kind === 'settled') queueNote = ' · file close';
+      else if (settled.kind === 'send_in_flight') {
+        queueNote = ' · ⚠ FILE NON CLOSE (envoi en cours — relancer plus tard)';
+      } else if (settled.kind !== 'nothing_open') {
+        queueNote = ` · ⚠ FILE NON CLOSE (${settled.kind})`;
+      }
     }
 
     const { appendJournalEntry } = await import('@/lib/db/repos/journal');

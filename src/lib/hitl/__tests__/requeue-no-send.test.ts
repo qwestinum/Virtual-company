@@ -35,6 +35,9 @@ describe('aucun envoi, jamais', () => {
   it.each([
     'src/lib/hitl/requeue.ts',
     'src/lib/hitl/enqueue.ts',
+    'src/lib/hitl/settle.ts',
+    'src/lib/hitl/queue-coherence.ts',
+    'src/app/api/validations/[id]/settle/route.ts',
     'src/lib/hitl/validation-from-analysis.ts',
     'src/app/api/validations/requeue/route.ts',
   ])('%s n’importe AUCUN émetteur', (relPath) => {

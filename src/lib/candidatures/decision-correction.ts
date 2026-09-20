@@ -37,6 +37,7 @@ import {
   currentDecisionLabel,
 } from '@/lib/candidatures/correction-options';
 import { reopenCandidature } from '@/lib/candidatures/dismissal';
+import { settleValidationsForAnalysis } from '@/lib/hitl/settle';
 import {
   getCandidateAnalysis,
   updateCandidateAnalysisDecision,
@@ -166,6 +167,23 @@ export async function applyDecisionCorrection(args: {
         campaignId: analysis.campaignId,
         status: plan.status,
         decidedByUser: actor,
+      });
+      // Le dossier vient d'être tranché par un humain : une fiche de
+      // validation encore ouverte continuerait d'offrir un arbitrage sur une
+      // décision déjà prise. C'est le sens B du défaut de cohérence, et ce
+      // chemin ne fermait rien jusqu'au 20/09/2026. Écrivain UNIQUE de la
+      // clôture : il n'envoie rien, comme tout ce module.
+      await settleValidationsForAnalysis(
+        { ...analysis, decidedBy: 'user' },
+        {
+          actor,
+          journalActor: 'user',
+          context: { via: 'decision_correction' },
+        },
+      ).catch((err: unknown) => {
+        // Best-effort : la correction est posée, elle ne se défait pas pour
+        // une fiche qu'on n'a pas su fermer. Le signal d'incohérence la verra.
+        console.error('[correction] clôture de la fiche de validation échouée', err);
       });
       break;
     case 'reopen': {

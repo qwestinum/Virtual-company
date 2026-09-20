@@ -25,6 +25,7 @@ import { POST as reserveSend } from '@/app/api/validations/[id]/reserve-send/rou
 import { POST as markSent } from '@/app/api/validations/[id]/send/route';
 import { cvApplicationToMailCandidate, type MailCandidate } from '@/types/mail-candidate';
 import type { CVApplication } from '@/types/cv-analysis';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import { call, callWithId, cvAnalyzerForm, testCampaignPayload, testScoringSheet, TEST_JOB_TITLE } from './helpers/api';
 import {
@@ -117,7 +118,7 @@ async function inject(profile: 'fort' | 'faible' | 'moyen', slug: string): Promi
   const zone = application.scoringResult.decisionZone;
   if (zone === 'gray' || zone === 'proposed_reject') {
     const candidate = cvApplicationToMailCandidate(application);
-    const validationId = `val_treg_${taskId}`;
+    const validationId = validationIdFor(taskId, 'reject');
     const enqueue = await call(postValidation, {
       method: 'POST',
       body: {
