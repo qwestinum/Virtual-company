@@ -191,9 +191,11 @@ présenté comme probablement traité, dans le gris le moins lisible de l'écran
 
 ## 5. Correctifs — APPLIQUÉS le 20/09/2026
 
-Branche `fix/validations-orphelines`. Typecheck propre, 2 690 tests verts, aucune erreur de
-lint ajoutée. Vérifié sur la base dev : le bandeau s'affiche sur un dossier orphelin, la carte
-de validation reste intacte sur un dossier sain, et le nouveau signal remonte **12**.
+Branche `fix/validations-orphelines`. Typecheck propre, **2 690 tests unitaires verts**,
+**suite de régression S1→S25 au niveau de la ligne de base** (1 échec, `S20.4`, présent avant
+comme après — cf. §5.1), aucune erreur de lint ajoutée. Vérifié sur la base dev : le bandeau
+s'affiche sur un dossier orphelin, la carte de validation reste intacte sur un dossier sain, et
+le nouveau signal remonte **12**.
 
 | # | Correctif | Ce que ça résout | État |
 |---|---|---|---|
@@ -206,6 +208,26 @@ de validation reste intacte sur un dossier sain, et le nouveau signal remonte **
 
 ⚠️ **L'ordre compte** : le correctif 1 devait précéder le retrait de l'onglet « Validation
 suspendue » (maquette v2) — c'est fait, la refonte peut donc s'appuyer dessus.
+
+### 5.1 Un invariant que la régression a fait apparaître
+
+Le filet serveur crée la ligne de file **avant** que le client ne poste la sienne. Les fixtures
+de la suite de régression inventaient leur propre identifiant (`val_treg_<uid>`) : elles
+produisaient donc une **SECONDE ligne pour la même candidature**, et un dossier déjà tranché
+restait compté « à valider » (`deriveCandidateStage` regarde `isPendingValidation` AVANT
+`decidedBy === 'user'`). 14 scénarios tombaient pour cette seule raison.
+
+Les fixtures sont alignées sur l'identifiant canonique (`validationIdFor`). Ce n'est pas un
+contournement : S9 pose elle-même la règle — *« sinon ce scénario testerait un cas qui n'existe
+plus en production »*. Depuis l'écrivain unique, **aucun chemin du produit ne peut plus créer
+deux lignes pour une candidature** ; une fixture qui y parvenait testait un état devenu
+impossible.
+
+Une assertion a été corrigée pour la même raison : S18.4 exigeait une campagne **sans aucune**
+validation après l'effacement. Or le VOISIN en a une, légitimement, et la purge ne doit
+surtout pas y toucher. L'assertion confondait « les satellites du sujet sont partis » avec
+« personne d'autre n'attend » — elle vérifie désormais les deux séparément, donc aussi le
+non-débordement.
 
 **Ce que la correction a changé au passage**, et qui n'était pas dans le périmètre initial :
 l'identifiant de validation du chemin chat était **ALÉATOIRE** (`nowTaskId('val')`), donc deux

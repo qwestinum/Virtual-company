@@ -42,6 +42,7 @@ import { POST as markSent } from '@/app/api/validations/[id]/send/route';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { DecisionCorrectionContext } from '@/types/decision-correction';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import {
   call,
@@ -147,7 +148,9 @@ beforeAll(async () => {
   refusedUid = `treg_s16_rej_${Date.now().toString(36)}`;
   const app = await analyze('faible', refusedUid);
   refusedAnalysisId = await analysisIdFor(refusedUid);
-  const validationId = `val_treg_${refusedUid}`;
+  // Identifiant CANONIQUE (écrivain unique de la file) : un id inventé
+  // créerait une SECONDE ligne pour la même candidature.
+  const validationId = validationIdFor(refusedUid, 'reject');
   const enqueued = await call(postValidation, {
     method: 'POST',
     body: {

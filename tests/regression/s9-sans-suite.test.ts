@@ -40,6 +40,8 @@ import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import type { CVApplication } from '@/types/cv-analysis';
 import type { BusinessSignal } from '@/types/notifications';
 
+import { validationIdFor } from '@/lib/hitl/validation-id';
+
 import {
   call,
   callWithId,
@@ -105,7 +107,10 @@ async function enqueueGray(
   taskId: string,
   app: CVApplication,
 ): Promise<string> {
-  const validationId = `val_treg_${taskId}`;
+  // Identifiant CANONIQUE : la production n'en produit plus d'autre depuis
+  // l'écrivain unique de la file. Un id inventé créerait une SECONDE ligne
+  // pour la même candidature — un état que le produit ne peut plus atteindre.
+  const validationId = validationIdFor(taskId, 'reject');
   const res = await call(postValidation, {
     method: 'POST',
     body: {
@@ -133,7 +138,10 @@ async function enqueueGray(
  */
 async function refuseByHuman(taskId: string): Promise<void> {
   const app = await analyze('faible', taskId);
-  const validationId = `val_treg_${taskId}`;
+  // Identifiant CANONIQUE : la production n'en produit plus d'autre depuis
+  // l'écrivain unique de la file. Un id inventé créerait une SECONDE ligne
+  // pour la même candidature — un état que le produit ne peut plus atteindre.
+  const validationId = validationIdFor(taskId, 'reject');
   const enqueue = await call(postValidation, {
     method: 'POST',
     body: {
@@ -196,7 +204,7 @@ beforeAll(async () => {
   // Gris en file (moyen) — OUVERT, antidaté 5 jours (allume le signal 1).
   grayTaskId = `treg_s9_gray_${Date.now().toString(36)}`;
   const grayApp = await analyze('moyen', grayTaskId);
-  grayValidationId = `val_treg_${grayTaskId}`;
+  grayValidationId = validationIdFor(grayTaskId, 'reject');
   const enqueue = await call(postValidation, {
     method: 'POST',
     body: {
