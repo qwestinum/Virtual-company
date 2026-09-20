@@ -14,16 +14,13 @@
 
 import { useState } from 'react';
 
-import { useDashboardData } from '@/hooks/useDashboardData';
 
-import type { CampaignCandidaturesPreset } from './CampaignCard';
 import { CampaignsList } from './CampaignsList';
 import { UnsavedChangesBanner } from './UnsavedChangesBanner';
 import { CampaignCreateSheet } from './edit/CampaignCreateSheet';
 import { CampaignEditSheet } from './edit/CampaignEditSheet';
 
 export function CampaignsWorkspace({
-  onOpenCandidatures,
   focusCampaignId = null,
   openCreate = false,
 }: {
@@ -32,10 +29,6 @@ export function CampaignsWorkspace({
    * « Entretiens »…) ouvre l'onglet Candidatures pré-filtré sur la campagne
    * (+ préset du quadrant). Optionnel : absent = quadrants non cliquables.
    */
-  onOpenCandidatures?: (
-    campaignId: string,
-    preset: CampaignCandidaturesPreset,
-  ) => void;
   /** Campagne à ouvrir, désignée par l'URL (« retour à la campagne »). */
   focusCampaignId?: string | null;
   /**
@@ -46,13 +39,11 @@ export function CampaignsWorkspace({
    */
   openCreate?: boolean;
 } = {}) {
-  const { data } = useDashboardData();
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
     null,
   );
   const [creating, setCreating] = useState(openCreate);
 
-  const candidates = data?.candidates ?? [];
 
   return (
     <div
@@ -84,10 +75,8 @@ export function CampaignsWorkspace({
         <UnsavedChangesBanner />
         <CampaignsList
           focusCampaignId={focusCampaignId}
-          candidates={candidates}
           onEditCampaign={setEditingCampaignId}
           onCreateCampaign={() => setCreating(true)}
-          onOpenCandidatures={onOpenCandidatures}
         />
       </div>
       {editingCampaignId ? (

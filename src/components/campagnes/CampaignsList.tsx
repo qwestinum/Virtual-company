@@ -25,19 +25,13 @@ import {
 
 import {
   CampaignCard,
-  type CampaignCandidaturesPreset,
 } from './CampaignCard';
 import type { DashboardData } from '@/hooks/useDashboardData';
 
 export type CampaignsListProps = {
-  candidates: DashboardData['candidates'];
   onEditCampaign: (campaignId: string) => void;
   onCreateCampaign: () => void;
   /** Quadrant de carte cliqué → onglet Candidatures pré-filtré (campagne + préset). */
-  onOpenCandidatures?: (
-    campaignId: string,
-    preset: CampaignCandidaturesPreset,
-  ) => void;
   /**
    * Campagne désignée par l'URL (`/campagnes?campagne=…`) — « retour à la
    * campagne ». Elle est dépliée, et le filtre comme la pagination s'écartent
@@ -59,10 +53,8 @@ const STATUS_FILTERS: { id: StatusFilter; label: string; dot: string }[] = [
 ];
 
 export function CampaignsList({
-  candidates,
   onEditCampaign,
   onCreateCampaign,
-  onOpenCandidatures,
   focusCampaignId = null,
 }: CampaignsListProps) {
   const rawCampaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
@@ -157,37 +149,6 @@ export function CampaignsList({
   // Bug fixé en Session 6 v4 : goCount partait sur recommendation === 'go',
   // ce qui montrait « 6 GO » dans la carte alors que la liste candidats
   // n'en affichait que ceux validés. Maintenant les deux vues s'accordent.
-  const statsByCampaign = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        candidates: number;
-        shortlisted: number;
-        invited: number;
-        interviews: number;
-        goCount: number;
-      }
-    >();
-    for (const c of candidates) {
-      if (!c.campaignId) continue;
-      const cur = map.get(c.campaignId) ?? {
-        candidates: 0,
-        shortlisted: 0,
-        invited: 0,
-        interviews: 0,
-        goCount: 0,
-      };
-      cur.candidates += 1;
-      if (c.recommendation === 'go') {
-        cur.shortlisted += 1;
-      }
-      if (c.status !== 'analyzed') cur.invited += 1;
-      if (c.interviewMarked === 'realized') cur.interviews += 1;
-      if (c.validationMarked === 'validated') cur.goCount += 1;
-      map.set(c.campaignId, cur);
-    }
-    return map;
-  }, [candidates]);
 
   const selectStatus = (next: StatusFilter) => {
     if (next === effectiveStatusFilter) return;
@@ -245,25 +206,11 @@ export function CampaignsList({
             <CampaignCard
               key={camp.id}
               campaign={camp}
-              stats={
-                statsByCampaign.get(camp.id) ?? {
-                  candidates: 0,
-                  shortlisted: 0,
-                  invited: 0,
-                  interviews: 0,
-                  goCount: 0,
-                }
-              }
               expanded={expandedId === camp.id}
               onToggle={() =>
                 setExpandedId(expandedId === camp.id ? null : camp.id)
               }
               onEdit={() => onEditCampaign(camp.id)}
-              onOpenCandidatures={
-                onOpenCandidatures
-                  ? (preset) => onOpenCandidatures(camp.id, preset)
-                  : undefined
-              }
             />
           ))}
           {totalPages > 1 ? (

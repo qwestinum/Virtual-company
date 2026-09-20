@@ -17,56 +17,26 @@ import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { StatusPill, type PillKind } from '@/components/dashboard/StatusPill';
 import { DASH_COLORS } from '@/components/dashboard/tokens';
 
-import { CampaignCardBody } from './CampaignCardBody';
+import { CampaignCardDetail } from './CampaignCardDetail';
 import {
   CampaignStatusActions,
   type CampaignActionStatus,
 } from './CampaignStatusActions';
 
-export type CampaignCardStats = {
-  candidates: number;
-  shortlisted: number;
-  invited: number;
-  interviews: number;
-  goCount: number;
-};
-
-/**
- * Pré-filtre porté par un quadrant de stats : étape COURANTE du pipeline
- * (`stage`) ou TRAJECTOIRE — « passés par l'invitation » (`everInvited`) /
- * « passés par l'entretien » (`everInterviewed`) : ces quadrants ramènent
- * AUSSI ceux qui ont avancé depuis (RDV/entretien/GO/non retenus), pas
- * seulement ceux dont c'est le stade actuel.
- */
-export type CampaignCandidaturesPreset = {
-  stage: CandidateStage | null;
-  everInvited?: boolean;
-  everInterviewed?: boolean;
-};
-
 export type CampaignCardProps = {
   campaign: ActiveCampaign;
-  stats: CampaignCardStats;
   expanded: boolean;
   onToggle: () => void;
   onEdit: () => void;
-  /** Quadrant de stats cliqué → Candidatures de CETTE campagne (pré-filtré). */
-  onOpenCandidatures?: (preset: CampaignCandidaturesPreset) => void;
 };
 
 export function CampaignCard({
   campaign,
-  stats,
   expanded,
   onToggle,
   onEdit,
-  onOpenCandidatures,
 }: CampaignCardProps) {
   const pillKind: PillKind = pillKindOf(campaign.status);
-  const conversion =
-    stats.candidates > 0
-      ? Math.round((stats.goCount / stats.candidates) * 100)
-      : 0;
 
   const iconKey = campaign.status === 'paused' ? 'paused' : campaign.status === 'draft' || campaign.status === 'in_progress' ? 'draft' : 'active';
   const description = describeCampaign(campaign);
@@ -149,12 +119,6 @@ export function CampaignCard({
             {description}
           </div>
         </div>
-        <QuickStats
-          candidates={stats.candidates}
-          shortlisted={stats.shortlisted}
-          goCount={stats.goCount}
-          conversion={conversion}
-        />
         <span
           aria-hidden
           style={{
@@ -168,19 +132,21 @@ export function CampaignCard({
           ▾
         </span>
       </button>
+      {/* ⚠️ La lecture du détail est conditionnée au DÉPLIAGE : une liste de
+          quinze campagnes ne déclenche aucune requête, et la liste n'ouvre
+          qu'une carte à la fois. */}
       {expanded ? (
-        <CampaignCardBody
-          campaign={campaign}
-          stats={stats}
-          onEdit={onEdit}
-          onOpenCandidatures={onOpenCandidatures}
-        >
-          <CampaignStatusActions
-            status={campaign.status as CampaignActionStatus}
-            campaignId={campaign.id}
-            onEdit={onEdit}
-          />
-        </CampaignCardBody>
+        <CampaignCardDetail
+          campaignId={campaign.id}
+          expanded={expanded}
+          actions={
+            <CampaignStatusActions
+              status={campaign.status as CampaignActionStatus}
+              campaignId={campaign.id}
+              onEdit={onEdit}
+            />
+          }
+        />
       ) : null}
     </article>
   );
@@ -250,96 +216,6 @@ function CampaignIcon({
       }}
     >
       {spec.emoji}
-    </div>
-  );
-}
-
-function QuickStats({
-  candidates,
-  shortlisted,
-  goCount,
-  conversion,
-}: {
-  candidates: number;
-  shortlisted: number;
-  goCount: number;
-  conversion: number;
-}) {
-  const conversionColor =
-    conversion > 20
-      ? DASH_COLORS.green.solid
-      : conversion > 10
-        ? DASH_COLORS.orange.solid
-        : DASH_COLORS.red.solid;
-  return (
-    <div
-      className="hidden-on-narrow"
-      style={{
-        display: 'flex',
-        gap: 24,
-        alignItems: 'center',
-        flexShrink: 0,
-      }}
-    >
-      <MiniStat
-        value={candidates}
-        color={DASH_COLORS.blue.solid}
-        label="Candidats"
-      />
-      <MiniStat
-        value={shortlisted}
-        color={DASH_COLORS.purple.solid}
-        label="Passés par l’invitation"
-      />
-      <MiniStat
-        value={goCount}
-        color={DASH_COLORS.green.solid}
-        label="Retenus"
-      />
-      <MiniStat
-        value={conversion}
-        suffix="%"
-        color={conversionColor}
-        label="Conversion"
-      />
-    </div>
-  );
-}
-
-function MiniStat({
-  value,
-  suffix,
-  color,
-  label,
-}: {
-  value: number;
-  suffix?: string;
-  color: string;
-  label: string;
-}) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div
-        className="font-data"
-        style={{
-          fontSize: 22,
-          fontWeight: 800,
-          lineHeight: 1,
-          color,
-        }}
-      >
-        <AnimatedCounter value={value} suffix={suffix} />
-      </div>
-      <div
-        className="font-body"
-        style={{
-          fontSize: 11,
-          color: 'var(--dash-text-tertiary)',
-          marginTop: 4,
-        }}
-      >
-        {label}
-      </div>
     </div>
   );
 }
