@@ -198,12 +198,26 @@ beforeAll(async () => {
   if (artErr) throw new Error(`seed artefacts : ${artErr.message}`);
 
   // 4. Une soumission en cours de création.
+  //
+  // `admission_attempts: 3` n'est pas un détail : depuis que la grâce de
+  // première tentative vaut 0 (14/09 — la route ne fait plus que réserver, le
+  // rail est le seul à admettre), une réservation à 0 tentative est DUE
+  // IMMÉDIATEMENT. N'importe quel passage du rail — y compris celui du serveur
+  // de dev, qui tourne sur la même base — la ramasserait, verrait une campagne
+  // sans fiche de scoring validée et RELÂCHERAIT la saisie (`releaseSubmission`),
+  // faisant disparaître l'arrêt que ce scénario vérifie.
+  //
+  // Trois tentatives placent la reprise dans sa fenêtre de 15 minutes : le
+  // dossier est immunisé le temps du run, sans rien changer à ce qui est testé
+  // (l'arrêt, la saisie préservée, le statut). C'est aussi l'état le plus
+  // réaliste : une soumission jamais tentée n'existe que quelques secondes.
   await insertApproach({
     campaign_id: campB,
     fingerprint: PENDING_FP,
     message: 'Bonjour Paule',
     status: 'admission_pending',
     submitted_at: now,
+    admission_attempts: 3,
     submission: { email: 'paule-s20@test.local' },
   });
 });
