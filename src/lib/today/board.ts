@@ -28,7 +28,7 @@ import {
   interviewsHref,
   signalHref,
 } from '@/lib/navigation/workspace-routes';
-import type { BusinessSignal } from '@/types/notifications';
+import type { BusinessSignal, BusinessSignalAction } from '@/types/notifications';
 import { BUSINESS_SIGNAL_SURFACES } from '@/types/notifications';
 import type { DecisionZone, PendingValidation } from '@/types/hitl';
 
@@ -67,6 +67,8 @@ export type VerificationItem = {
   message: string;
   ctaLabel: string;
   href: string;
+  /** Présent quand le point se RÉPARE d'un geste, au lieu de s'ouvrir. */
+  action?: BusinessSignalAction;
 };
 
 export type TodayBoard = {
@@ -193,6 +195,7 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
       // porte une cible d'ONGLET, pas une route. Un repli « vers les
       // campagnes » l'aurait envoyé là où le problème n'est pas.
       href: signalHref(s.target),
+      action: s.action,
     }));
 
   return {

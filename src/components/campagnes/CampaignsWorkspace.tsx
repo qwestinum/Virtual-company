@@ -25,6 +25,7 @@ import { CampaignEditSheet } from './edit/CampaignEditSheet';
 export function CampaignsWorkspace({
   onOpenCandidatures,
   focusCampaignId = null,
+  openCreate = false,
 }: {
   /**
    * Navigation croisée : un quadrant de carte campagne (« CV reçus »,
@@ -37,12 +38,19 @@ export function CampaignsWorkspace({
   ) => void;
   /** Campagne à ouvrir, désignée par l'URL (« retour à la campagne »). */
   focusCampaignId?: string | null;
+  /**
+   * `/campagnes?nouvelle=1` — ouvre la création d'emblée. C'est ce qui rend le
+   * raccourci de l'accueil possible sans dupliquer la feuille, et ce qui la
+   * rendra adressable quand elle deviendra l'assistant (lot 5) : le raccourci
+   * ne changera pas.
+   */
+  openCreate?: boolean;
 } = {}) {
   const { data } = useDashboardData();
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
     null,
   );
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(openCreate);
 
   const candidates = data?.candidates ?? [];
 

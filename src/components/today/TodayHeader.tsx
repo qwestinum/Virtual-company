@@ -14,6 +14,7 @@
  * tout court. Jamais « Bonjour null », jamais une adresse e-mail.
  */
 
+import { AddCampaignButton } from '@/components/campagnes/AddCampaignButton';
 import { PHRASES } from '@/lib/lexique/phrases-ecran';
 
 export function TodayHeader({
@@ -42,12 +43,18 @@ export function TodayHeader({
 
   return (
     <header>
-      <h1
-        className="font-display"
-        style={{ fontSize: 22, fontWeight: 800, color: 'var(--dash-text)' }}
-      >
-        {firstName ? `Bonjour ${firstName}` : 'Bonjour'}
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1
+          className="font-display"
+          style={{ fontSize: 22, fontWeight: 800, color: 'var(--dash-text)' }}
+        >
+          {firstName ? `Bonjour ${firstName}` : 'Bonjour'}
+        </h1>
+        {/* LE SEUL geste que le recruteur initie depuis l'accueil : tout le
+            reste de l'écran répond à ce qui est arrivé. Il reste donc seul —
+            un second bouton ici et plus aucun des deux ne se voit. */}
+        <AddCampaignButton href="/campagnes?nouvelle=1" />
+      </div>
       <p
         className="font-body"
         style={{ marginTop: 2, fontSize: 13, color: 'var(--dash-text-secondary)' }}

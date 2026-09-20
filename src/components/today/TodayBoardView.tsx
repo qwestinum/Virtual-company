@@ -21,6 +21,7 @@ import { formatSmartDate } from '@/components/candidatures/stage-ui';
 import { PHRASES } from '@/lib/lexique/phrases-ecran';
 import type { TodayBoard } from '@/lib/today/board';
 
+import { RequeueOrphansButton } from './RequeueOrphansButton';
 import { TodayCard } from './TodayCard';
 import { TodayHeader } from './TodayHeader';
 import { TodayNotice } from './TodayNotice';
@@ -154,7 +155,12 @@ export function TodayBoardView({
                 key={item.key}
                 text={item.message}
                 action={
-                  item.href ? (
+                  // Un point qui se RÉPARE porte un bouton qui écrit ; un point
+                  // qui se regarde porte un lien. Les confondre ferait cliquer
+                  // pour rien, ou écrire sans le savoir.
+                  item.action ? (
+                    <RequeueOrphansButton label={item.ctaLabel} onDone={onReload} />
+                  ) : item.href ? (
                     <TodayPrimary href={item.href} label={item.ctaLabel} />
                   ) : null
                 }

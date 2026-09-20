@@ -43,6 +43,7 @@ import {
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
 import { getResource, isMeetingLocationComplete, listExceptions, listWeeklyRules } from '@/lib/scheduling';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
+import { listAwaitingWithoutRow } from '@/lib/hitl/orphan-scan';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import type { DecisionZone } from '@/types/hitl';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
@@ -101,10 +102,13 @@ export function buildQueueMismatchMessage(input: {
     // relancée » — l'analyse est bonne, c'est la fiche de décision qui manque,
     // et la réparation est une remise en file, candidature par candidature
     // (il n'existe aucun chemin groupé).
+    // Le message porte la CAUSE et sa conséquence ; le GESTE est le bouton.
+    // Écrire « ouvrez chacune » à côté d'un bouton qui les traite toutes
+    // ferait décrire un travail que le produit vient de supprimer.
     parts.push(
       n === 1
-        ? 'Une candidature attend votre décision mais sa fiche de décision manque — ouvrez-la et remettez-la en file.'
-        : `${n} candidatures attendent votre décision mais leur fiche de décision manque — ouvrez chacune et remettez-la en file.`,
+        ? 'Une candidature attend votre décision mais sa fiche de décision manque : vous ne pouvez pas trancher tant qu’elle n’est pas rétablie.'
+        : `${n} candidatures attendent votre décision mais leur fiche de décision manque : vous ne pouvez pas trancher tant qu’elles ne sont pas rétablies.`,
     );
   }
   if (input.rowWithoutAwaiting > 0) {
@@ -602,15 +606,12 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
   // pas l'étape d'un candidat — il ne dépend donc pas des signaux d'étape.
   // Sens A — analyses en attente : sélection bornée aux deux zones, jamais
   // décidées par un humain, jamais classées.
-  const zones: DecisionZone[] = ['gray', 'proposed_reject'];
-  const awaitingBatches = await Promise.all(
-    zones.map((zone) =>
-      listAllCandidateAnalyses({ decisionZone: zone, decidedBy: 'auto', dismissed: false }).catch(
-        () => [],
-      ),
-    ),
-  );
-  const awaiting = awaitingBatches.flat();
+  // Sens A — la MÊME sélection que le geste qui les répare (orphan-scan) :
+  // un bouton qui réparerait onze dossiers pendant que le compteur en annonce
+  // douze serait pire que pas de bouton du tout.
+  const orphelines = await listAwaitingWithoutRow().catch(() => []);
+  const awaitingWithoutRow = orphelines.length;
+  const oldest: number[] = orphelines.map((a) => Date.parse(a.createdAt));
 
   // Sens B — fiches ouvertes : la file entière (keyset, jamais tronquée).
   const openRows = await listPendingValidations().catch(() => []);
@@ -619,23 +620,6 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
       .map((v) => (typeof v.payload?.uid === 'string' ? v.payload.uid : null))
       .filter((u): u is string => u !== null),
   );
-
-  let awaitingWithoutRow = 0;
-  const oldest: number[] = [];
-  for (const a of awaiting) {
-    const mismatch = queueMismatch({
-      coherence: checkValidationCoherence({
-        decisionZone: a.decisionZone,
-        decidedBy: a.decidedBy,
-        dismissedAt: a.dismissedAt,
-      }),
-      hasOpenRow: openUids.has(a.uid),
-    });
-    if (mismatch === 'awaiting_without_row') {
-      awaitingWithoutRow++;
-      oldest.push(Date.parse(a.createdAt));
-    }
-  }
 
   // Les analyses des fiches ouvertes, rapprochées par uid comme partout
   // ailleurs. Chunké : la garantie ne dépend pas du volume.
@@ -680,10 +664,17 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
     // La cible suit le GESTE, pas la catégorie : rouvrir une candidature se
     // fait depuis la liste, refermer une présentation en trop depuis la revue.
     // Envoyer les deux au même endroit ferait un bouton juste une fois sur deux.
+    // Le geste de réparation est un LOT, pas une navigation : on ne demande
+    // pas d'ouvrir douze dossiers un par un pour cliquer douze fois le même
+    // bouton. La cible reste renseignée pour qui préfère les voir d'abord.
     ctaLabel:
       awaitingWithoutRow > 0
-        ? 'Voir ces candidatures'
+        ? `Remettre ${awaitingWithoutRow === 1 ? 'la candidature' : `les ${awaitingWithoutRow} candidatures`} en attente de décision`
         : 'Ouvrir la revue',
+    action:
+      awaitingWithoutRow > 0
+        ? { kind: 'requeue_orphans' as const, count: awaitingWithoutRow }
+        : undefined,
     target: {
       route:
         awaitingWithoutRow > 0

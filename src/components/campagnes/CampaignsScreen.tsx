@@ -24,6 +24,7 @@ export function CampaignsScreen() {
   return (
     <CampaignsWorkspace
       focusCampaignId={params?.get(PARAM.campagne) ?? null}
+      openCreate={params?.get('nouvelle') === '1'}
       onOpenCandidatures={(campaignId, preset) =>
         router.push(
           candidaturesHref({

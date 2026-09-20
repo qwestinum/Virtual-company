@@ -13,6 +13,8 @@
 
 import { useMemo, useState } from 'react';
 
+import { AddCampaignButton } from './AddCampaignButton';
+
 import { resolveCampaignFocus } from '@/lib/navigation/campaign-focus';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -281,51 +283,6 @@ export function CampaignsList({
         </>
       )}
     </section>
-  );
-}
-
-function AddCampaignButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Ajouter une nouvelle campagne"
-      className="font-display"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '6px 12px 6px 8px',
-        borderRadius: 999,
-        border: 'none',
-        cursor: 'pointer',
-        background:
-          'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: 700,
-        letterSpacing: '0.02em',
-        boxShadow: '0 2px 10px rgba(47,110,235,0.3)',
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: '50%',
-          background: 'rgba(255,255,255,0.22)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 14,
-          lineHeight: 1,
-        }}
-      >
-        +
-      </span>
-      Nouvelle campagne
-    </button>
   );
 }
 

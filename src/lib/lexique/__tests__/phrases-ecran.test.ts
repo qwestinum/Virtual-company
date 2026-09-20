@@ -53,10 +53,16 @@ const sansCommentaires = (src: string): string =>
  * statuts (lot 1) : on juge ce qui se lit, pas ce qui se compile.
  */
 function texteRendu(code: string): string {
+  // ⚠️ Les blocs `style={{…}}` sont retirés AVANT extraction : ils contiennent
+  // des mots-clés CSS (`cursor: 'pointer'`, `textAlign: 'center'`) qui sont
+  // du vocabulaire de mise en page, pas du texte lu. Sans ça, `pointer`
+  // faisait échouer un composant qui n'affiche nulle part ce mot — un test qui
+  // accuse à tort finit par être désactivé, et c'est pire que pas de test.
+  const sansStyle = code.replace(/style=\{\{[\s\S]*?\}\}/g, '');
   const morceaux: string[] = [];
   const motif =
     /'([^'\\\n]{3,})'|"([^"\\\n]{3,})"|`([^`\\]{3,})`|>\s*([^<>{}\n]{3,})\s*</g;
-  for (const m of code.matchAll(motif)) {
+  for (const m of sansStyle.matchAll(motif)) {
     const texte = m[1] ?? m[2] ?? m[3] ?? m[4];
     if (texte) morceaux.push(texte);
   }
@@ -98,6 +104,11 @@ describe('les écrans convertis ne parlent pas la langue du code', () => {
     // Ni sur un IDENTIFIANT : `texteRendu` ne garde que ce qui se lit.
     expect(texteRendu('const zoneByValidation = {};')).not.toContain('zone');
     expect(texteRendu("const t = 'hors zone';")).toContain('zone');
+    // Ni sur un mot-clé CSS, qui n'est pas du texte.
+    expect(texteRendu("<b style={{ cursor: 'pointer' }}>Voir</b>")).not.toContain(
+      'pointer',
+    );
+    expect(texteRendu('<b>à pointer</b>')).toContain('à pointer');
   });
 });
 

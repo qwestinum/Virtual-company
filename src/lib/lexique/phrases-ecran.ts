@@ -42,13 +42,17 @@ export const PHRASES = {
 
   /** Candidatures sous le repère bas : l'outil propose de les écarter. */
   ecarter: {
+    /**
+     * « en dessous de VOS critères », pas « trop faibles » : le barème est
+     * celui du cabinet, pas un jugement que l'outil porterait sur des gens.
+     */
     titre: (n: number) =>
-      `${n} candidature${s(n)} trop faible${s(n)} — l’outil vous propose de les écarter`,
+      `${n} candidature${s(n)} en dessous de vos critères — l’outil vous propose de les écarter`,
     sousTitre:
       'Rien n’est envoyé sans vous : vous relisez la liste, puis vous décidez.',
     vide: 'Aucune candidature à écarter',
     action: 'Les passer en revue',
-    resume: (n: number) => `${n} candidature${s(n)} trop faible${s(n)}`,
+    resume: (n: number) => `${n} candidature${s(n)} en dessous de vos critères`,
   },
 
   /** Entretiens qui attendent qu'on dise ce qui s'est passé, puis le verdict. */

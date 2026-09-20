@@ -76,6 +76,19 @@ export type BusinessSignalTarget =
    */
   | { route: string };
 
+/**
+ * Geste de RÉPARATION offert par un signal, quand il en existe un.
+ *
+ * Distinct de `target` : `target` est une navigation, ceci est une action qui
+ * ÉCRIT. Un écran doit pouvoir les distinguer sans deviner — un bouton qui
+ * navigue et un bouton qui répare ne se ressemblent que de loin.
+ */
+export type BusinessSignalAction = {
+  kind: 'requeue_orphans';
+  /** Combien de dossiers le geste va toucher — repris dans le libellé. */
+  count: number;
+};
+
 /** Un signal actif, prêt à afficher (message + CTA construits côté serveur). */
 export type BusinessSignal = {
   key: BusinessSignalKey;
@@ -92,6 +105,8 @@ export type BusinessSignal = {
   /** Libellé du lien d'action. */
   ctaLabel: string;
   target: BusinessSignalTarget;
+  /** Présent SEULEMENT quand le signal se répare d'un geste. */
+  action?: BusinessSignalAction;
 };
 
 export type BusinessNotificationsResponse = {
