@@ -172,6 +172,7 @@ describe('chaque ligne mène à la vue filtrée annoncée', () => {
             briefId: 'b1',
             candidateName: 'Damois Bernard',
             campaignId: 'CAMP-2026-221',
+            jobTitle: 'Directeur des opérations',
             interviewStartAt: ilYA(1),
             section: 'a_pointer',
           },
@@ -255,6 +256,7 @@ describe('sections unitaires plafonnées', () => {
             briefId: 'v1',
             candidateName: 'Molika Khuon',
             campaignId: 'CAMP-2026-221',
+            jobTitle: 'Directeur des opérations',
             interviewStartAt: ilYA(3),
           },
         ],
@@ -263,6 +265,7 @@ describe('sections unitaires plafonnées', () => {
             briefId: 'p1',
             candidateName: 'Damois Bernard',
             campaignId: 'CAMP-2026-221',
+            jobTitle: 'Directeur des opérations',
             interviewStartAt: ilYA(1),
             section: 'a_pointer',
           },
@@ -270,8 +273,8 @@ describe('sections unitaires plafonnées', () => {
       }),
     );
     expect(board.interviews.items.map((i) => i.kind)).toEqual([
-      'a_pointer',
-      'verdict',
+      'a_eu_lieu',
+      'retenu',
     ]);
   });
 
@@ -283,6 +286,7 @@ describe('sections unitaires plafonnées', () => {
             briefId: 'x',
             candidateName: 'Demain',
             campaignId: 'CAMP-2026-221',
+            jobTitle: 'Directeur des opérations',
             interviewStartAt: new Date(NOW + 86_400_000).toISOString(),
             section: 'a_venir',
           },

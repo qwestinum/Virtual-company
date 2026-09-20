@@ -1,48 +1,88 @@
 'use client';
 
 /**
- * En-tête d'*Aujourd'hui* : la date, et le nombre de choses qui attendent.
+ * En-tête d'*Aujourd'hui* : « Bonjour [prénom] », la date, et UNE LIGNE DE
+ * CHIFFRES factuelle.
  *
- * Il porte aussi l'aveu de lecture partielle. Un « Rien ne vous attend »
- * produit par une panne réseau serait le pire mensonge que cet écran puisse
- * faire : sa seule fonction est de dire ce qui reste à faire.
+ * ⚠️ Pas de total, et pas de phrase de synthèse. Additionner deux candidatures,
+ * deux entretiens et deux réglages donne « 6 », un nombre qui ne désigne rien
+ * et qu'on ne peut retrouver nulle part. Quant au ton — « 6 choses vous
+ * attendent » — il commente au lieu d'informer : le recruteur sait lire une
+ * liste, il n'a pas besoin qu'on la lui résume avec entrain.
+ *
+ * Prénom absent (session illisible, recruteur sans nom enregistré) : « Bonjour »
+ * tout court. Jamais « Bonjour null », jamais une adresse e-mail.
  */
 
+import { PHRASES } from '@/lib/lexique/phrases-ecran';
+
 export function TodayHeader({
-  waiting,
+  firstName,
+  chiffres,
   allClear,
   partial,
   onReload,
 }: {
-  waiting: number;
+  firstName: string | null;
+  /** Un élément par nature, déjà formulé. Jamais une somme. */
+  chiffres: string[];
   allClear: boolean;
   partial: boolean;
   onReload: () => void;
 }) {
-  const jour = new Intl.DateTimeFormat('fr-FR', {
+  // ⚠️ `capitalize` en CSS met une majuscule à CHAQUE mot : « Lundi 21
+  // Septembre ». En français, seule la première lettre en porte une, et les
+  // noms de mois n'en prennent jamais.
+  const brut = new Intl.DateTimeFormat('fr-FR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   }).format(new Date());
+  const jour = brut.charAt(0).toUpperCase() + brut.slice(1);
 
   return (
     <header>
-      <p className="font-body text-[12px] capitalize text-stone-500">{jour}</p>
-      <h1 className="mt-0.5 font-display text-2xl font-bold text-stone-900">
-        {allClear
-          ? 'Rien ne vous attend.'
-          : `${waiting} chose${waiting > 1 ? 's' : ''} vous ${waiting > 1 ? 'attendent' : 'attend'}.`}
+      <h1
+        className="font-display"
+        style={{ fontSize: 22, fontWeight: 800, color: 'var(--dash-text)' }}
+      >
+        {firstName ? `Bonjour ${firstName}` : 'Bonjour'}
       </h1>
+      <p
+        className="font-body"
+        style={{ marginTop: 2, fontSize: 13, color: 'var(--dash-text-secondary)' }}
+      >
+        {jour}
+      </p>
+
+      {chiffres.length > 0 ? (
+        <p
+          className="font-body"
+          style={{ marginTop: 8, fontSize: 13, color: 'var(--dash-text)' }}
+        >
+          {chiffres.join(' · ')}
+        </p>
+      ) : allClear && !partial ? (
+        <p
+          className="font-body"
+          style={{ marginTop: 8, fontSize: 13, color: 'var(--dash-text-secondary)' }}
+        >
+          {PHRASES.toutEstFait}
+        </p>
+      ) : null}
+
       {partial ? (
-        <p className="mt-1 font-body text-[12px] text-amber-700">
-          Une partie des données n&apos;a pas pu être lue — ce décompte est
-          peut-être incomplet.{' '}
+        <p
+          className="font-body"
+          style={{ marginTop: 8, fontSize: 12, color: 'var(--dash-orange)' }}
+        >
+          {PHRASES.lectureIncomplete}{' '}
           <button
             type="button"
             onClick={onReload}
             className="min-h-6 font-semibold underline"
           >
-            Réessayer
+            {PHRASES.reessayer}
           </button>
         </p>
       ) : null}

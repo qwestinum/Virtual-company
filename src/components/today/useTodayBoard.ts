@@ -37,6 +37,7 @@ type InterviewsResponse = {
     briefId: string;
     candidateName: string;
     campaignId: string | null;
+    jobTitle: string | null;
     interviewStartAt: string | null;
     section: 'a_pointer' | 'a_venir' | 'verdict_attendu';
   }[];
@@ -44,6 +45,7 @@ type InterviewsResponse = {
     briefId: string;
     candidateName: string;
     campaignId: string | null;
+    jobTitle: string | null;
     interviewStartAt: string | null;
   }[];
 };

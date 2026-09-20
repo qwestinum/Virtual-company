@@ -84,31 +84,38 @@ export function buildInterviewsAwaitingMessage(count: number): string {
  * geste (remettre en file d'un côté, clore de l'autre), et les fondre dans un
  * total rendrait le signal inactionnable.
  */
+/**
+ * ⚠️ Ce message était écrit dans la langue du code : « fiche de validation »,
+ * « non décidable », « pas cohérent », « file », « analyse ». Six mots du
+ * modèle interne dans une phrase de quinze — et il décrivait un ÉTAT sans dire
+ * une seule fois quoi faire. Deux situations, deux gestes : on les sépare.
+ */
 export function buildQueueMismatchMessage(input: {
   awaitingWithoutRow: number;
   rowWithoutAwaiting: number;
 }): string {
   const parts: string[] = [];
   if (input.awaitingWithoutRow > 0) {
+    const n = input.awaitingWithoutRow;
+    // CAUSE puis GESTE. La cause exacte n'est pas « l'analyse doit être
+    // relancée » — l'analyse est bonne, c'est la fiche de décision qui manque,
+    // et la réparation est une remise en file, candidature par candidature
+    // (il n'existe aucun chemin groupé).
     parts.push(
-      input.awaitingWithoutRow === 1
-        ? '1 attend sans fiche de validation (non décidable)'
-        : `${input.awaitingWithoutRow} attendent sans fiche de validation (non décidables)`,
+      n === 1
+        ? 'Une candidature attend votre décision mais sa fiche de décision manque — ouvrez-la et remettez-la en file.'
+        : `${n} candidatures attendent votre décision mais leur fiche de décision manque — ouvrez chacune et remettez-la en file.`,
     );
   }
   if (input.rowWithoutAwaiting > 0) {
+    const n = input.rowWithoutAwaiting;
     parts.push(
-      input.rowWithoutAwaiting === 1
-        ? '1 garde une fiche qui n’a plus lieu d’être'
-        : `${input.rowWithoutAwaiting} gardent une fiche qui n’a plus lieu d’être`,
+      n === 1
+        ? 'Une candidature vous est encore présentée alors qu’elle est déjà tranchée — refermez-la.'
+        : `${n} candidatures vous sont encore présentées alors qu’elles sont déjà tranchées — refermez-les.`,
     );
   }
-  const total = input.awaitingWithoutRow + input.rowWithoutAwaiting;
-  const head =
-    total === 1
-      ? '1 dossier n’est pas cohérent entre la file de validation et son analyse'
-      : `${total} dossiers ne sont pas cohérents entre la file de validation et leur analyse`;
-  return `${head} : ${parts.join(', ')}.`;
+  return parts.join(' ');
 }
 
 export function buildInterviewsPointingMessage(count: number): string {
@@ -164,8 +171,8 @@ export function buildHolidaysUnblockedMessage(
 ): string {
   const when = `${formatHolidayDay(nearest.day)} (${nearest.label})`;
   return holidayCount === 1
-    ? `Votre agenda propose encore des créneaux le ${when}, qui est férié.`
-    : `Votre agenda propose encore des créneaux sur ${holidayCount} jours fériés — le plus proche : ${when}.`;
+    ? `Un candidat peut encore réserver un rendez-vous avec vous le ${when}, qui est férié — bloquez cette journée dans vos disponibilités.`
+    : `Un candidat peut encore réserver un rendez-vous avec vous sur ${holidayCount} jours fériés, le prochain étant le ${when} — bloquez-les dans vos disponibilités.`;
 }
 
 /**
@@ -425,7 +432,7 @@ async function computeAvailabilityMeetingLocationMissing(
     // Ce signal ne vieillit pas : il est vrai ou il ne l'est pas.
     oldestDays: 0,
     message:
-      'Ton agenda n’indique aucun lieu d’entretien : aucune invitation ne peut partir pour les campagnes dont tu es référent.',
+      'Vos invitations à un entretien ne peuvent pas partir : votre agenda n’indique aucun lieu de rencontre. Renseignez-le dans vos disponibilités.',
     ctaLabel: 'Renseigner le lieu de l’entretien',
     target: { route: '/settings' },
   };
@@ -467,8 +474,8 @@ async function computeApecRepublicationWindow(
     oldestDays: warning - soonest,
     message:
       closing.length === 1
-        ? `1 offre APEC suspendue ne pourra plus être republiée dans ${soonest} jour${soonest > 1 ? 's' : ''} — il faudra en créer une nouvelle.`
-        : `${closing.length} offres APEC suspendues ne pourront plus être republiées d’ici ${soonest} jour${soonest > 1 ? 's' : ''}.`,
+        ? `Une offre APEC suspendue ne pourra plus être remise en ligne dans ${soonest} jour${soonest > 1 ? 's' : ''} — republiez-la maintenant, ou il faudra en créer une nouvelle.`
+        : `${closing.length} offres APEC suspendues ne pourront plus être remises en ligne d’ici ${soonest} jour${soonest > 1 ? 's' : ''} — republiez celles que vous comptez garder.`,
     ctaLabel: 'Voir les campagnes',
     target: { route: '/campagnes' },
   };
@@ -506,8 +513,8 @@ async function computeApecLiveOnClosedCampaign(
     oldestDays: oldest,
     message:
       orphans.length === 1
-        ? 'Une offre est toujours en ligne sur l’APEC alors que sa campagne est clôturée — des candidats peuvent encore postuler.'
-        : `${orphans.length} offres sont toujours en ligne sur l’APEC alors que leur campagne est clôturée.`,
+        ? 'Une offre est toujours en ligne sur l’APEC alors que sa campagne est terminée — des candidats postulent pour un poste déjà pourvu. Retirez-la.'
+        : `${orphans.length} offres sont toujours en ligne sur l’APEC alors que leur campagne est terminée — des candidats postulent pour des postes déjà pourvus. Retirez-les.`,
     ctaLabel: 'Voir les campagnes',
     target: { route: '/campagnes' },
   };
@@ -670,8 +677,19 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
       ? daysSinceIso(new Date(oldestMs).toISOString(), nowMs)
       : 0,
     message: buildQueueMismatchMessage({ awaitingWithoutRow, rowWithoutAwaiting }),
-    ctaLabel: 'Ouvrir les dossiers à valider',
-    target: { tab: 'validations' },
+    // La cible suit le GESTE, pas la catégorie : rouvrir une candidature se
+    // fait depuis la liste, refermer une présentation en trop depuis la revue.
+    // Envoyer les deux au même endroit ferait un bouton juste une fois sur deux.
+    ctaLabel:
+      awaitingWithoutRow > 0
+        ? 'Voir ces candidatures'
+        : 'Ouvrir la revue',
+    target: {
+      route:
+        awaitingWithoutRow > 0
+          ? '/candidatures?statut=a_valider'
+          : '/candidatures/validation',
+    },
   };
 }
 

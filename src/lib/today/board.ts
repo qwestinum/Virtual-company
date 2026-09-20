@@ -50,9 +50,15 @@ export type InterviewItem = {
   id: string;
   candidateName: string;
   campaignId: string | null;
+  /** Intitulé du poste — la colonne « campagne » de la ligne. */
+  jobTitle: string | null;
   /** Début de l'entretien, quand il est connu. */
   startAt: string | null;
-  kind: 'a_pointer' | 'verdict';
+  /**
+   * Ce qu'on attend, et l'ordre dans lequel ça se pose : d'abord savoir si
+   * l'entretien a eu lieu, ensuite seulement si le candidat est retenu.
+   */
+  kind: 'a_eu_lieu' | 'retenu';
   href: string;
 };
 
@@ -81,6 +87,7 @@ export type TodayInput = {
     briefId: string;
     candidateName: string;
     campaignId: string | null;
+    jobTitle: string | null;
     interviewStartAt: string | null;
     section: 'a_pointer' | 'a_venir' | 'verdict_attendu';
   }[];
@@ -88,6 +95,7 @@ export type TodayInput = {
     briefId: string;
     candidateName: string;
     campaignId: string | null;
+    jobTitle: string | null;
     interviewStartAt: string | null;
   }[];
   signals: BusinessSignal[];
@@ -156,16 +164,18 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
       id: row.briefId,
       candidateName: row.candidateName,
       campaignId: row.campaignId,
+      jobTitle: row.jobTitle,
       startAt: row.interviewStartAt,
-      kind: 'a_pointer' as const,
+      kind: 'a_eu_lieu' as const,
       href: interviewsHref({ campaignId: row.campaignId, section: 'a_pointer' }),
     }));
   const verdicts: InterviewItem[] = input.verdict.map((row) => ({
     id: row.briefId,
     candidateName: row.candidateName,
     campaignId: row.campaignId,
+    jobTitle: row.jobTitle,
     startAt: row.interviewStartAt,
-    kind: 'verdict' as const,
+    kind: 'retenu' as const,
     href: interviewsHref({ campaignId: row.campaignId }),
   }));
   const interviewItems = [...toPoint, ...verdicts];

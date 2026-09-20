@@ -70,6 +70,40 @@
   --color-orqa-violet: #7c5cd6;
   --color-orqa-violet-bg: #f0ecfb;
 
+  /* ── SOCLE DE JETONS — NOMMÉ, PAS INVENTÉ ───────────────────────────────
+     L'audit du 20/09/2026 a mesuré 22 à 25 niveaux typographiques sur un seul
+     écran (cible : 3), 27 tailles arbitraires et 52 valeurs de padding en
+     ligne. Le socle ne crée donc RIEN : il NOMME ce que les écrans sains
+     (Campagnes, Réglages, Sourcing) emploient déjà, pour que le prochain
+     écran le reprenne au lieu de réinventer.
+
+     TROIS niveaux typographiques, et trois seulement :
+       .font-display  15 à 22 px / 700-800  — ce qui porte (titres, noms, boutons)
+       .font-body     13 à 14 px / 400-600  — ce qui se lit (phrases)
+       .font-body     11 à 12 px / 400-600  — ce qui se survole (états, dates)
+     Aucun serif hors du menu Candidatures, qui porte sa propre identité.
+
+     UNE échelle d'espacement : 4 · 8 · 12 · 16 · 24 (Tailwind 1/2/3/4/6).
+
+     RÔLES de couleur — tous déjà définis plus bas en `--dash-*` :
+       fond de page        --dash-bg          #faf8f5   (sand)
+       surface de carte    --dash-surface     #ffffff
+       bordure de carte    --dash-border      #ede8e3
+       texte principal     --dash-text        17,3:1 sur blanc  ✓ AA
+       texte secondaire    --dash-text-secondary  6,1:1          ✓ AA
+       accent « candidat » --dash-teal / --dash-purple  (pastilles, 3:1 ✓)
+       accent « réglage »  --dash-orange                (pastille,  3:1 ✓)
+       action principale   dégradé --dash-blue → --dash-purple, texte blanc 4,6:1 ✓
+
+     ⚠️ DETTES CONNUES, mesurées, qui appartiennent au lot « accessibilité »
+     et NON à un écran isolé (les corriger ici ferait diverger cet écran du
+     reste du produit) :
+       --dash-text-tertiary  2,87:1 — sous AA. N'est donc pas employé pour du
+                             texte sur les écrans refondus : `--dash-text-secondary`
+                             le remplace, et il existe déjà.
+       --dash-border         1,22:1 · --dash-border-strong 1,57:1 — sous le
+                             3:1 de WCAG 1.4.11 pour un élément porteur.
+
   /* Ombres ORQA (légères) → utilitaires `shadow-orqa`, `shadow-orqa-lg`. */
   --shadow-orqa: 0 1px 2px rgba(10, 31, 63, 0.04),
     0 4px 16px rgba(10, 31, 63, 0.05);
