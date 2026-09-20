@@ -34,6 +34,7 @@ import {
   rescoreEligibility,
 } from '@/lib/scoring/rescore-selection';
 import type { CVApplication } from '@/types/cv-analysis';
+import { isAwaitingHumanZone, type DecisionZone } from '@/types/hitl';
 import type { ScoringSheet } from '@/types/scoring';
 
 loadEnvConfig(process.cwd());
@@ -240,11 +241,32 @@ async function main(): Promise<void> {
       continue;
     }
 
-    // La carte de validation doit montrer le score sur lequel l'humain décide.
-    const { patchPendingValidationDecision } = await import('@/lib/db/repos/pending-validations');
-    await patchPendingValidationDecision(`val_${r.id.replace(/^can_/, '')}_reject`, {
-      score: after,
-    }).catch(() => {});
+    // La file doit EXISTER et montrer le score sur lequel l'humain décide.
+    //
+    // Avant le 20/09/2026 ce bloc ne faisait que PATCHER une ligne existante,
+    // et avalait l'absence de cible (`.catch(() => {})`) : un dossier que le
+    // re-scoring faisait ENTRER en zone d'attente devenait « à valider » sans
+    // fiche de validation, donc indécidable — l'outil de réparation fabriquait
+    // le défaut qu'il venait réparer (docs/ops/diagnostic-validations-orphelines-2026-09-20.md).
+    //
+    // `ensureValidationForAnalysis` crée la ligne si elle manque et la met à
+    // jour sinon (id déterministe, fusion non destructive), en relisant
+    // l'analyse qui vient d'être ré-écrite — donc avec le bon score. Il
+    // n'envoie rien : la garantie n°1 du script est intacte.
+    let queueNote = '';
+    if (isAwaitingHumanZone(zoneAfter as DecisionZone)) {
+      const { ensureValidationForAnalysis } = await import('@/lib/hitl/requeue');
+      const queued = await ensureValidationForAnalysis(r.id, {
+        actor: null,
+        journalAction: 'validation_requeued',
+        journalActor: 'rescore_script',
+      }).catch((err: unknown) => ({ kind: 'error' as const, err }));
+      // Jamais un silence : une file qu'on n'a pas pu poser doit se voir.
+      if (queued.kind === 'requeued') queueNote = ' · file posée';
+      else if (queued.kind !== 'already_queued') {
+        queueNote = ` · ⚠ FILE NON POSÉE (${'reason' in queued ? queued.reason : queued.kind})`;
+      }
+    }
 
     const { appendJournalEntry } = await import('@/lib/db/repos/journal');
     await appendJournalEntry({
@@ -267,7 +289,11 @@ async function main(): Promise<void> {
     }).catch(() => {});
 
     rescored++;
-    line(String(after), String(zoneAfter), crossesLow ? '✓ RE-SCORÉ — franchit le seuil' : '✓ re-scoré');
+    line(
+      String(after),
+      String(zoneAfter),
+      (crossesLow ? '✓ RE-SCORÉ — franchit le seuil' : '✓ re-scoré') + queueNote,
+    );
   }
 
   console.log('  ' + '─'.repeat(104));

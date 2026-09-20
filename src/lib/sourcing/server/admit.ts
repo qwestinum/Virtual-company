@@ -122,7 +122,7 @@ export async function admitSourcedCandidate(approach: LandingApproach): Promise<
         reportArtifactId: null,
         cvArtifactId: cv.artifactId,
       },
-      { analysisId, claim: { mailboxId: 'sourcing', uid: approach.id }, validationPrefix: `val_src_${approach.id}`, actor: 'sourcing' },
+      { analysisId, claim: { mailboxId: 'sourcing', uid: approach.id }, actor: 'sourcing' },
     );
 
     const won = await completeAdmission(approach.id, analysisId);

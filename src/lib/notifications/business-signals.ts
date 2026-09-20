@@ -33,6 +33,7 @@ import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
 import { getResource, isMeetingLocationComplete, listExceptions, listWeeklyRules } from '@/lib/scheduling';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
+import type { DecisionZone } from '@/types/hitl';
 import type { BusinessSignal } from '@/types/notifications';
 
 // ─── Helpers PURS (testés) ─────────────────────────────────────────────────
@@ -64,6 +65,12 @@ export function buildInterviewsAwaitingMessage(count: number): string {
   return count === 1
     ? '1 candidat a passé son entretien et attend votre décision.'
     : `${count} candidats ont passé leur entretien et attendent votre décision.`;
+}
+
+export function buildOrphanValidationsMessage(count: number): string {
+  return count === 1
+    ? '1 candidature est comptée « à valider » mais sa fiche de validation est introuvable : elle n’est pas décidable.'
+    : `${count} candidatures sont comptées « à valider » mais leur fiche de validation est introuvable : elles ne sont pas décidables.`;
 }
 
 export function buildInterviewsPointingMessage(count: number): string {
@@ -529,6 +536,62 @@ export function createSharedLoads(): SharedLoads {
   };
 }
 
+// ─── Signal 8 — validations orphelines ─────────────────────────────────────
+
+/**
+ * Une candidature en zone d'attente et sa ligne de file décrivent le même
+ * fait, et RIEN ne les relie en base : pas de clé étrangère, pas de
+ * réconciliation. La seconde peut donc manquer — l'analyse reste comptée « à
+ * valider » et personne ne peut la trancher (diagnostic du 20/09/2026,
+ * `docs/ops/diagnostic-validations-orphelines-2026-09-20.md`).
+ *
+ * C'est la classe de défaut du 21/08 sur le fil d'activité : une divergence
+ * entre deux listes tenues à part est SILENCIEUSE. Ce signal est ce qui la
+ * rend bruyante — il n'y a rien d'autre, dans le produit, qui la remarque.
+ *
+ * L'étape vient de `stageFor` (source canonique, déjà chargée par les signaux
+ * 2 et 3) : le signal s'éteint par construction dès qu'un dossier est remis en
+ * file, classé sans suite ou tranché. Aucune logique d'étape parallèle.
+ */
+async function computeOrphanValidations(
+  nowMs: number,
+  shared: SharedLoads = createSharedLoads(),
+): Promise<BusinessSignal | null> {
+  // Sélection bornée AU PLUS PRÈS : seules les zones d'attente, jamais
+  // décidées par un humain, jamais classées. Deux passes (le filtre de zone
+  // est à valeur unique), chacune paginée en interne.
+  const zones: DecisionZone[] = ['gray', 'proposed_reject'];
+  const batches = await Promise.all(
+    zones.map((zone) =>
+      listAllCandidateAnalyses({
+        decisionZone: zone,
+        decidedBy: 'auto',
+        dismissed: false,
+      }).catch(() => []),
+    ),
+  );
+  const candidates = batches.flat();
+  if (candidates.length === 0) return null;
+
+  const signals = await shared.stageSignals();
+  const orphans = candidates.filter(
+    (a) => stageFor(a, signals) === 'a_valider' && !signals.pendingUids.has(a.uid),
+  );
+  if (orphans.length === 0) return null;
+
+  const oldestMs = Math.min(...orphans.map((o) => Date.parse(o.createdAt)));
+  return {
+    key: 'validations_orphelines',
+    count: orphans.length,
+    oldestDays: Number.isFinite(oldestMs)
+      ? daysSinceIso(new Date(oldestMs).toISOString(), nowMs)
+      : 0,
+    message: buildOrphanValidationsMessage(orphans.length),
+    ctaLabel: 'Voir les candidatures à valider',
+    target: { tab: 'candidatures', stage: 'a_valider' },
+  };
+}
+
 export type BusinessSignalDefinition = {
   key: BusinessSignal['key'];
   /**
@@ -573,6 +636,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'apec_offer_live_on_closed_campaign',
     compute: (nowMs, _ctx, shared) => computeApecLiveOnClosedCampaign(nowMs, shared),
+  },
+  {
+    key: 'validations_orphelines',
+    compute: (nowMs, _ctx, shared) => computeOrphanValidations(nowMs, shared),
   },
 ];
 
