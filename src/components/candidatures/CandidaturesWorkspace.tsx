@@ -213,19 +213,6 @@ export function CandidaturesWorkspace({
     <PageShell
       title="Candidatures"
       subtitle={`${listTotal} candidature${listTotal > 1 ? 's' : ''}`}
-      sidePanel={
-        panelItem ? (
-          <CandidaturePanel
-            item={panelItem}
-            referent={referentOf(panelItem.campaignId)}
-            campaignLabel={labelOf(panelItem.campaignId)}
-            jobTitle={titleOf(panelItem.campaignId)}
-            onClose={() => setPanelItem(null)}
-            onOpenFull={() => setFullItem(panelItem)}
-            onActed={onActed}
-          />
-        ) : null
-      }
     >
       <div className="flex flex-col">
         <div className="border-b border-orqa-ligne pb-5">
@@ -275,7 +262,21 @@ export function CandidaturesWorkspace({
           </div>
         </div>
 
-        <div className="pt-5">
+        {/* ⚠️ DEUX COLONNES, ET AUCUN RECOUVREMENT. Posé en calque, le panneau
+            chevauchait la liste en largeur ET l'en-tête en hauteur : on ne
+            voyait plus ni les filtres ni la moitié droite des lignes. Il vit
+            donc À CÔTÉ, sous l'en-tête, qui reste pleine largeur.
+
+            Contrepartie ASSUMÉE et dite : la liste se resserre pendant que le
+            panneau est ouvert. On ne peut pas à la fois garder sa largeur et
+            ne rien recouvrir — il faut choisir, et ne rien recouvrir gagne :
+            une ligne à moitié cachée derrière un panneau est pire qu'une ligne
+            plus étroite.
+
+            `sticky` : le panneau suit le défilement de la liste, comme le
+            faisait la colonne d'origine dans un écran à hauteur fixe. */}
+        <div className="flex items-start gap-5 pt-5">
+          <div className="min-w-0 flex-1">
           {loadingList && rows.length === 0 ? (
             <p className="font-inter text-[13px] text-orqa-gris-clair">Chargement…</p>
           ) : rows.length === 0 ? (
@@ -324,6 +325,30 @@ export function CandidaturesWorkspace({
               >
                 Suivant
               </button>
+            </div>
+          ) : null}
+          </div>
+
+          {panelItem ? (
+            <div
+              data-candidature-panel-column
+              className="sticky top-6 w-[420px] shrink-0 self-start"
+              // ⚠️ HAUTEUR IMPOSÉE, pas un plafond : avec un simple
+              // `max-height`, le panneau gardait sa hauteur de contenu
+              // (1 371 px mesurés pour une fenêtre de 900) et débordait sous
+              // le pli. Il occupe exactement la hauteur visible et fait
+              // défiler son propre contenu.
+              style={{ height: 'calc(100vh - 150px)' }}
+            >
+              <CandidaturePanel
+                item={panelItem}
+                referent={referentOf(panelItem.campaignId)}
+                campaignLabel={labelOf(panelItem.campaignId)}
+                jobTitle={titleOf(panelItem.campaignId)}
+                onClose={() => setPanelItem(null)}
+                onOpenFull={() => setFullItem(panelItem)}
+                onActed={onActed}
+              />
             </div>
           ) : null}
         </div>

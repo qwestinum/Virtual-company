@@ -34,8 +34,6 @@ const MARGE_BASSE = 60;
  * espace, on ne peut pas faire remonter le pied au-dessus de lui.
  */
 const MARGE_BASSE_AEREE = 260;
-/** Largeur d'un panneau de détail latéral. */
-const LARGEUR_PANNEAU = 448;
 
 export type PageShellProps = {
   /**
@@ -48,24 +46,6 @@ export type PageShellProps = {
   actions?: ReactNode;
   /** Bas aéré : pour un écran dont l'action principale est en bas. */
   bottomSpace?: 'normal' | 'wide';
-  /**
-   * Panneau de détail, ancré à droite de la FENÊTRE.
-   *
-   * ⚠️ Deux règles, et elles viennent de deux erreurs successives.
-   *
-   * ① Le panneau ne dépend PAS de la mise en page de son hôte. Celui de
-   *    Candidatures était la seconde colonne d'un `flex h-full` : le cadre de
-   *    l'écran changé, il s'est retrouvé sous la liste, sans hauteur, et
-   *    cliquer une candidature ne montrait plus rien.
-   * ② La liste ne RÉTRÉCIT PAS quand il s'ouvre. Lui réserver sa place en
-   *    resserrant le contenu faisait sauter toute la liste au moment du clic
-   *    — on perdait des yeux la ligne qu'on venait de choisir.
-   *
-   * Il se pose donc en calque, mais calé sur le bord de la COLONNE DE CONTENU,
-   * pas sur celui de la fenêtre : posé contre le bord de l'écran, il flottait
-   * loin de la liste, sans rapport visible avec la ligne cliquée.
-   */
-  sidePanel?: ReactNode;
   children: ReactNode;
 };
 
@@ -74,7 +54,6 @@ export function PageShell({
   subtitle,
   actions,
   bottomSpace = 'normal',
-  sidePanel,
   children,
 }: PageShellProps) {
   return (
@@ -137,28 +116,6 @@ export function PageShell({
         ) : null}
         {children}
       </div>
-      {sidePanel ? (
-        <aside
-          data-page-side-panel
-          style={{
-            position: 'fixed',
-            top: 0,
-            bottom: 0,
-            // Le bord DROIT de la colonne de contenu, jamais celui de la
-            // fenêtre : `(100vw − largeur du gabarit) / 2` est la marge que
-            // le centrage laisse de chaque côté, et `max(0, …)` couvre les
-            // fenêtres plus étroites que le gabarit.
-            right: `calc(max(0px, (100vw - ${LARGEUR_MAX}px) / 2) + ${MARGE_COTE}px)`,
-            width: LARGEUR_PANNEAU,
-            zIndex: 55,
-            display: 'flex',
-            paddingTop: MARGE_HAUTE,
-            paddingBottom: MARGE_HAUTE,
-          }}
-        >
-          {sidePanel}
-        </aside>
-      ) : null}
     </div>
   );
 }

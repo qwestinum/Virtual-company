@@ -67,30 +67,45 @@ describe('S33 — le détail d’une candidature', () => {
     expect(boite!.y, 'panneau sous le pli').toBeLessThan(fenetre.height);
   }, 300_000);
 
-  it('S33.1bis — la liste ne BOUGE PAS quand le panneau s’ouvre', async () => {
-    // Lui réserver sa place en resserrant le contenu faisait sauter toute la
-    // liste au moment du clic : on perdait des yeux la ligne qu'on venait de
-    // choisir. Et le panneau se cale sur le bord de la COLONNE DE CONTENU,
-    // jamais sur celui de la fenêtre — contre le bord de l'écran, il flottait
-    // loin de la liste, sans rapport visible avec la ligne cliquée.
+  it('S33.1bis — le panneau ne CHEVAUCHE rien : ni la liste, ni l’en-tête', async () => {
+    // Posé en calque, il recouvrait la moitié droite des lignes ET la zone de
+    // titre : on ne voyait plus ni les filtres ni le score des candidats. Il
+    // vit donc à CÔTÉ, sous l'en-tête, qui reste pleine largeur.
+    //
+    // ⚠️ Contrepartie ASSUMÉE : la liste se resserre pendant qu'il est ouvert.
+    // On ne peut pas à la fois garder sa largeur et ne rien recouvrir — et une
+    // ligne à moitié cachée derrière un panneau est pire qu'une ligne plus
+    // étroite.
     await ouvrirLaListe();
-    const avant = await lignes(page).first().boundingBox();
     await lignes(page).first().click();
     await panneau(page).waitFor({ state: 'visible', timeout: 30_000 });
-    const apres = await lignes(page).first().boundingBox();
-    expect(apres!.x, 'la liste s’est déplacée').toBe(avant!.x);
-    expect(apres!.width, 'la liste a rétréci').toBe(avant!.width);
 
-    const boite = await panneau(page).boundingBox();
-    const colonne = await page
-      .locator('[data-page-container]')
-      .evaluate((el) => {
-        const r = el.getBoundingClientRect();
-        const s = getComputedStyle(el);
-        return Math.round(r.right - parseFloat(s.paddingRight));
-      });
-    // Le bord droit du panneau EST celui du contenu, pas celui de la fenêtre.
-    expect(Math.round(boite!.x + boite!.width)).toBe(colonne);
+    const boite = (await panneau(page).boundingBox())!;
+    const croise = (b: { x: number; y: number; width: number; height: number }) =>
+      boite.x < b.x + b.width &&
+      b.x < boite.x + boite.width &&
+      boite.y < b.y + b.height &&
+      b.y < boite.y + boite.height;
+
+    // AUCUNE ligne de la liste ne passe sous le panneau.
+    const toutes = await lignes(page).all();
+    const chevauchees: number[] = [];
+    for (let i = 0; i < toutes.length; i += 1) {
+      const r = await toutes[i]!.boundingBox();
+      if (r && croise(r)) chevauchees.push(i);
+    }
+    expect(chevauchees, `lignes recouvertes : ${chevauchees.join(', ')}`).toEqual([]);
+
+    // Ni le titre de page.
+    const titre = (await page.locator('h1').first().boundingBox())!;
+    expect(croise(titre), 'le panneau recouvre le titre').toBe(false);
+
+    // Et il tient DANS la fenêtre : avec un simple plafond de hauteur, il
+    // gardait sa hauteur de contenu et débordait sous le pli.
+    const fenetre = page.viewportSize()!;
+    expect(boite.height, 'panneau plus haut que la fenêtre').toBeLessThanOrEqual(
+      fenetre.height,
+    );
   }, 300_000);
 
   it('S33.2 — le panneau porte ses actions de décision', async () => {
