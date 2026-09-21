@@ -15,6 +15,7 @@ import { Download, MoreVertical, RefreshCw, Send } from 'lucide-react';
 import { useState } from 'react';
 
 import { ListRow } from '@/components/ui/ListRow';
+import { SegmentedCounts } from '@/components/ui/SegmentedCounts';
 import { formatFrDate } from '@/lib/reporting/audit-display';
 import {
   CAMPAIGN_ISSUE_LABELS,
@@ -76,20 +77,28 @@ export function CampaignReportCard({
         )} · ${summary.durationDays} jours`}
         right={
           <>
-            {/* Les volumes en ligne, en gris : ce sont des repères de lecture,
-                pas des boutons. Les empiler en carte les transformait en
-                tableau de bord. */}
-            <span
-              className="hidden flex-wrap items-center gap-x-3 font-body text-[12px] lg:flex"
-              style={{ color: 'var(--dash-text-secondary)' }}
-            >
-              <Vol label="reçues" n={volumes.received} />
-              <Vol label="retenus" n={volumes.retained} />
-              <Vol label="écartés" n={volumes.rejected} />
-              <Vol label="en attente" n={volumes.enAttente} />
-              {volumes.classeeSansSuite > 0 ? (
-                <Vol label="sans suite" n={volumes.classeeSansSuite} />
-              ) : null}
+            {/* ⚠️ L'ENTONNOIR EN SEGMENTS COLORÉS, la géométrie du
+                mini-pipeline de Candidatures. C'étaient cinq nombres gris de
+                même poids qu'il fallait lire un par un ; le segment porte la
+                couleur de l'étape et le nombre la reprend. */}
+            <span className="hidden lg:block">
+              <SegmentedCounts
+                items={[
+                  { label: 'reçues', count: volumes.received, color: 'var(--dash-blue)' },
+                  { label: 'retenus', count: volumes.retained, color: 'var(--dash-green)' },
+                  { label: 'écartés', count: volumes.rejected, color: 'var(--dash-red)' },
+                  { label: 'en attente', count: volumes.enAttente, color: 'var(--dash-yellow)' },
+                  ...(volumes.classeeSansSuite > 0
+                    ? [
+                        {
+                          label: 'sans suite',
+                          count: volumes.classeeSansSuite,
+                          color: 'var(--dash-text-tertiary)',
+                        },
+                      ]
+                    : []),
+                ]}
+              />
             </span>
 
             <span
@@ -132,17 +141,6 @@ export function CampaignReportCard({
         }
       />
     </div>
-  );
-}
-
-function Vol({ label, n }: { label: string; n: number }) {
-  return (
-    <span className="whitespace-nowrap">
-      <span className="font-data font-semibold" style={{ color: 'var(--dash-text)' }}>
-        {n}
-      </span>{' '}
-      {label}
-    </span>
   );
 }
 

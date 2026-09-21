@@ -28,7 +28,6 @@ const HAUTEUR = 900;
 const DOSSIER = resolve(process.cwd(), 'tests/e2e/captures');
 
 const ECRANS = [
-  { nom: 'aujourdhui', route: '/aujourdhui', titre: 'Aujourd' },
   { nom: 'campagnes', route: '/campagnes', titre: 'campagnes' },
   { nom: 'candidatures', route: '/candidatures', titre: 'Candidatures' },
   { nom: 'entretiens', route: '/entretiens', titre: 'Entretiens' },
@@ -53,7 +52,7 @@ describe('capture des trois écrans', () => {
     if (recruiter) await deleteTestRecruiter(recruiter);
   });
 
-  it('les cinq, côte à côte', async () => {
+  it('côte à côte', async () => {
     mkdirSync(DOSSIER, { recursive: true });
     const morceaux: Buffer[] = [];
 
@@ -84,9 +83,9 @@ describe('capture des trois écrans', () => {
       .png()
       .toBuffer();
 
-    await sharp(planche).toFile(resolve(DOSSIER, 'cinq-ecrans-100.png'));
+    await sharp(planche).toFile(resolve(DOSSIER, 'planche-100.png'));
     await sharp(planche)
       .resize(Math.round(total / 2), Math.round(HAUTEUR / 2))
-      .toFile(resolve(DOSSIER, 'cinq-ecrans-50.png'));
+      .toFile(resolve(DOSSIER, 'planche-50.png'));
   }, 300_000);
 });

@@ -23,7 +23,6 @@
 import { PageShell } from '@/components/navigation/PageShell';
 import { CounterRibbon } from '@/components/ui/CounterRibbon';
 
-import type { InterviewTabKey } from './InterviewTabs';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -55,6 +54,13 @@ const EMPTY: InterviewPipeline = {
 };
 
 type Row = AwaitingItem | ScheduledItem;
+/**
+ * Les vues de l'onglet. `toPoint` n'est pas une quatrième liste : c'est la
+ * liste des programmés, réduite à la section « À confirmer ». Elle a sa propre
+ * carte-compteur parce que c'est un volume qui appelle un geste.
+ */
+type InterviewTabKey = 'scheduled' | 'toPoint' | 'awaiting' | 'verdict';
+
 type PageTab = InterviewTabKey;
 
 /**
@@ -275,9 +281,18 @@ export function InterviewsWorkspace({
               label: 'Programmés',
               count: scheduled.length,
               total: pipeline.counts.scheduled,
-              alert: pipeline.counts.toPoint,
-              alertLabel: 'à confirmer',
               color: 'var(--dash-teal)',
+            },
+            {
+              // ⚠️ SA PROPRE CARTE, et un compte qui porte sur le pipeline
+              // COMPLET, jamais sur la vue filtrée : c'est une alerte, et un
+              // filtre de confort ne masque jamais un dossier en souffrance.
+              // Elle ouvre l'onglet des programmés, où la section « À
+              // confirmer » passe en tête.
+              key: 'toPoint',
+              label: 'Passés à confirmer',
+              count: pipeline.counts.toPoint,
+              color: 'var(--dash-orange)',
             },
             {
               key: 'awaiting',
@@ -330,7 +345,13 @@ export function InterviewsWorkspace({
           />
         ) : (
           <ScheduledList
-            rows={tab === 'verdict' ? verdictRows : scheduled}
+            rows={
+              tab === 'verdict'
+                ? verdictRows
+                : tab === 'toPoint'
+                  ? scheduled.filter((r) => r.section === 'a_pointer')
+                  : scheduled
+            }
             busyId={busyId}
             onRealized={(row) => void mark(row, 'realized')}
             onMissed={setNoShow}

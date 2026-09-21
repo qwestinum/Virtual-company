@@ -17,20 +17,26 @@
 
 import { useState } from 'react';
 
-import { ActivityPanel } from './ActivityPanel';
+import { DotTabs } from '@/components/ui/DotTabs';
+
 import { AuditCandidatView } from './AuditCandidatView';
 import { AuditHome } from './AuditHome';
 import { CampaignReportList } from './CampaignReportList';
 import { MultiCampaignReportView } from './MultiCampaignReportView';
 import { PilotageShell } from './PilotageShell';
 
-type SubTab = 'campaign' | 'multi' | 'audit' | 'activity';
+/**
+ * ⚠️ « Activité » est MASQUÉE (21/09/2026). Elle hébergeait le vieux Bureau
+ * (cartes d'agents, lignes de flux) et le fil d'activité : un écran d'une
+ * autre époque, sans rapport avec le reste de Pilotage. Le composant reste au
+ * dépôt, il n'a plus de porte.
+ */
+type SubTab = 'campaign' | 'multi' | 'audit';
 
-const TABS: { key: SubTab; label: string }[] = [
-  { key: 'campaign', label: 'Rapport de campagne' },
-  { key: 'multi', label: 'Rapport multi-campagnes' },
-  { key: 'audit', label: 'Audit' },
-  { key: 'activity', label: 'Activité' },
+const TABS: { key: SubTab; label: string; dot: string }[] = [
+  { key: 'campaign', label: 'Rapport de campagne', dot: 'var(--dash-blue)' },
+  { key: 'multi', label: 'Multi-campagnes', dot: 'var(--dash-purple)' },
+  { key: 'audit', label: 'Audit', dot: 'var(--dash-teal)' },
 ];
 
 export function ReportingHub() {
@@ -39,33 +45,17 @@ export function ReportingHub() {
   // Sous-vue de l'onglet Audit : accueil (3 cartes) ou audit candidat.
   const [auditView, setAuditView] = useState<'home' | 'candidat'>('home');
 
-  // ⚠️ UNE BARRE D'ONGLETS SECONDAIRES, pas des tuiles. Les quatre tuiles à
-  // emoji qui l'ont remplacée un temps n'existaient sur aucun autre écran, et
-  // surtout : ces entrées ne COMPTENT rien, elles mènent à un rapport. Une
-  // tuile promet un chiffre.
+  // ⚠️ LES PUCES À POINT COLORÉ de la liste des campagnes (`DotTabs`), pas un
+  // troisième composant. Cet écran s'en était fabriqué un — une barre
+  // segmentée qui n'existait nulle part ailleurs : on ne reconnaissait plus,
+  // d'un écran à l'autre, la chose qui fait basculer de vue.
   const tabs = (
-    <nav
-      className="inline-flex flex-wrap gap-1 rounded-[10px] p-1"
-      style={{ background: 'var(--dash-warm)', border: '1px solid var(--dash-border)' }}
-    >
-      {TABS.map((t) => (
-        <button
-          key={t.key}
-          type="button"
-          data-report-tab={t.key}
-          aria-pressed={tab === t.key}
-          onClick={() => setTab(t.key)}
-          className="rounded-[8px] px-3.5 py-1.5 font-body text-[13px] font-semibold transition-colors"
-          style={{
-            background: tab === t.key ? 'var(--dash-surface)' : 'transparent',
-            color: tab === t.key ? 'var(--dash-text)' : 'var(--dash-text-secondary)',
-            border: `1px solid ${tab === t.key ? 'var(--dash-border-strong)' : 'transparent'}`,
-          }}
-        >
-          {t.label}
-        </button>
-      ))}
-    </nav>
+    <DotTabs
+      ariaLabel="Choisir la vue de pilotage"
+      tabs={TABS}
+      current={tab}
+      onChange={setTab}
+    />
   );
 
   if (tab === 'campaign') return <CampaignReportList tabs={tabs} />;
@@ -78,8 +68,6 @@ export function ReportingHub() {
         ) : (
           <AuditCandidatView onBack={() => setAuditView('home')} />
         )
-      ) : tab === 'activity' ? (
-        <ActivityPanel />
       ) : (
         <MultiCampaignReportView />
       )}

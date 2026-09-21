@@ -4,11 +4,19 @@
  * LE RUBAN DE COMPTEURS — extrait de `CandidaturesRibbon`, qui en était le
  * modèle, et partagé tel quel par Entretiens et Pilotage.
  *
- * Une carte COMPACTE par compteur : le chiffre, le libellé avec sa pastille,
- * un soulignement coloré de 3 px. Sélection = bordure + fond. **Aucune icône,
- * aucune ombre** — les grandes tuiles à emoji et ombre portée qui l'avaient
- * remplacé un temps n'existaient sur aucun autre écran, créaient du vide et un
- * relief que rien ne porte ailleurs.
+ * UNE CARTE = UN CHIFFRE ET UN LIBELLÉ. Rien d'autre, jamais : pas d'icône,
+ * pas d'ombre, pas de TROISIÈME LIGNE. Toutes les cartes d'un ruban ont donc
+ * exactement la même structure et la même hauteur — une carte plus haute que
+ * ses voisines attire l'œil sans rien dire de plus.
+ *
+ * ⚠️ Une exception a existé un jour et demi : un compte d'alerte en sous-texte
+ * (« 1 à confirmer ») sur la première carte d'Entretiens. Ce qui mérite un
+ * sous-texte mérite sa PROPRE CARTE — c'est un volume, il se compte. Une garde
+ * structurelle (`interface-sobre.test.ts`) refuse qu'un troisième rang de
+ * texte revienne.
+ *
+ * Le soulignement coloré de 3 px porte la couleur ; la sélection se marque par
+ * la bordure et le fond.
  *
  * Le total non filtré s'écrit quand il diffère (« 5 sur 18 ») : un dossier
  * masqué par un filtre reste compté.
@@ -22,15 +30,6 @@ export type CounterItem = {
   count: number;
   /** Total hors filtre — écrit seulement s'il diffère. */
   total?: number;
-  /**
-   * Compte d'ALERTE, toujours sur l'ensemble, jamais sur la vue filtrée.
-   * ⚠️ Rendu en SOUS-TEXTE sous le libellé, jamais incrusté dans le chiffre :
-   * « 1 ① » se lit comme un seul nombre mal composé, et un compteur dont on
-   * doute du chiffre ne compte plus rien.
-   */
-  alert?: number;
-  /** Ce que le compte d'alerte veut dire. Sans lui, le nombre ne dit rien. */
-  alertLabel?: string;
   /** Classe de la pastille et du soulignement (peau `orqa`). */
   dotClass?: string;
   /** Couleur de la pastille et du soulignement (peau `dash`). */
@@ -105,14 +104,6 @@ export function CounterRibbon({
               />
               {item.label}
             </span>
-            {item.alert && item.alert > 0 ? (
-              <span
-                className="mt-1 block font-body text-[11px] font-semibold"
-                style={{ color: 'var(--dash-orange)' }}
-              >
-                {item.alert} {item.alertLabel ?? 'à traiter'}
-              </span>
-            ) : null}
             {/* Soulignement de 3 px : c'est LUI qui porte la couleur, pas un
                 aplat — la teinte doit rester un repère, pas un fond. */}
             <span

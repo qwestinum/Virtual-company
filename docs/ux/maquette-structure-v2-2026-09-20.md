@@ -630,3 +630,38 @@ cycle de vie · invariants du module de réservation · « classée sans suite �
 purge RGPD · idempotence des envois · **commentaire de verdict facultatif** (§0.1).
 **Toutes les routes `/api/*` restent identiques** — c'est ce qui rend S1–S25 insensible à cette
 refonte, et la garantie que réorganiser l'accès ne peut pas casser le métier.
+
+---
+
+## I. Règle de composition — deux composants, et pas un troisième (21/09/2026)
+
+**Un écran ne crée JAMAIS son composant de navigation ni son compteur.** Il prend l'un des deux
+qui existent :
+
+| Besoin | Composant | Fichier |
+|---|---|---|
+| Basculer de vue | **Puces à point coloré** | `src/components/ui/DotTabs.tsx` |
+| Montrer des volumes | **Cartes-compteurs soulignées** | `src/components/ui/CounterRibbon.tsx` |
+
+**Pourquoi.** Le produit en avait quatre formes pour le même geste : les puces de la liste des
+campagnes, une barre segmentée inventée pour *Pilotage*, une barre soulignée pour le *Vivier* et
+les *Validations*, une rangée d'onglets pour *Entretiens*. D'un écran à l'autre, on ne
+reconnaissait plus la chose qui fait changer de vue — et chaque nouvelle forme rendait la
+suivante plus facile à justifier.
+
+**Contraintes portées par les composants eux-mêmes :**
+
+- **Le point coloré n'est pas un ornement** : c'est le même repère de couleur que la pastille
+  d'état d'une ligne, le soulignement d'une carte-compteur et les segments de l'entonnoir.
+- **Une carte-compteur n'a que deux rangs** : un chiffre, un libellé. **Jamais une troisième
+  ligne.** Ce qui mérite un sous-texte mérite sa propre carte — c'est un volume, il se compte.
+  Toutes les cartes d'un ruban ont donc la même structure et la même hauteur.
+- **La couleur vient des composants existants**, jamais d'un aplat local : entonnoir en segments
+  (`SegmentedCounts`, la géométrie du mini-pipeline de *Candidatures*) à la place de nombres gris,
+  pastille d'état colorée, soulignement de carte.
+- **Aucune ombre portée** sur un élément du flux ; la sélection se marque par la bordure et le
+  fond. Une ombre n'informe que sur une couche flottante (dialogue, liste déroulante).
+
+**Garde structurelle** : `src/components/ui/__tests__/interface-sobre.test.ts` — aucune bascule de
+vue définie hors de `DotTabs` (`role="tablist"`, `aria-selected`, onglets soulignés), et le type
+`CounterItem` borné aux champs d'une carte à deux rangs. Sondée dans les deux sens.

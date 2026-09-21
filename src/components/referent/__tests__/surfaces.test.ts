@@ -44,10 +44,12 @@ describe('les alertes échappent au filtre', () => {
     new RegExp(`${prop}\\s*[:=]\\s*\\{?\\s*${valeur.replace(/\./g, '\\.')}`).test(source);
 
   it('le badge « à pointer » lit le compteur du pipeline, pas la liste filtrée', () => {
-    // ⚠️ Le compte d'alerte a changé de FORME (badge incrusté dans le chiffre
-    // → sous-texte de la carte) sans changer de NATURE : il lit toujours le
-    // pipeline COMPLET. C'est la source qu'on garde, jamais le rendu.
-    expect(passe('alert', 'pipeline.counts.toPoint'), 'alert ← pipeline.counts.toPoint').toBe(true);
+    // ⚠️ Le compte d'alerte a changé de FORME DEUX FOIS (badge incrusté dans
+    // le chiffre → sous-texte → sa propre carte-compteur) sans changer de
+    // NATURE : il lit toujours le pipeline COMPLET, jamais la vue filtrée.
+    // C'est la SOURCE qu'on garde, jamais le rendu — une garde écrite sur la
+    // forme rougit à chaque retouche et finit désarmée.
+    expect(passe('count', 'pipeline.counts.toPoint'), 'count ← pipeline.counts.toPoint').toBe(true);
   });
 
   it('les listes affichées, ELLES, sont bien filtrées', () => {

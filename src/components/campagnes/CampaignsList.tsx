@@ -29,6 +29,7 @@ import {
 import {
   CampaignCard,
 } from './CampaignCard';
+import { DotTabs } from '@/components/ui/DotTabs';
 
 export type CampaignsListProps = {
   onEditCampaign: (campaignId: string) => void;
@@ -313,6 +314,10 @@ function PagerBtn({
   );
 }
 
+/**
+ * Les puces de statut — le COMPOSANT PARTAGÉ (`DotTabs`), dont cet écran était
+ * le modèle. Il n'en garde que la liste et les comptes.
+ */
 function StatusFilterChips({
   current,
   counts,
@@ -323,71 +328,17 @@ function StatusFilterChips({
   onChange: (next: StatusFilter) => void;
 }) {
   return (
-    <div
-      role="tablist"
-      aria-label="Filtrer les campagnes par statut"
-      style={{
-        display: 'flex',
-        gap: 3,
-        padding: 3,
-        background: 'var(--dash-warm)',
-        borderRadius: 10,
-        flexWrap: 'wrap',
-      }}
-    >
-      {STATUS_FILTERS.map((filter) => {
-        const active = filter.id === current;
-        const count = counts[filter.id];
-        return (
-          <button
-            key={filter.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(filter.id)}
-            className="font-body"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              borderRadius: 8,
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: active ? 700 : 500,
-              background: active ? 'var(--dash-surface)' : 'transparent',
-              color: active ? 'var(--dash-text)' : 'var(--dash-text-tertiary)',
-              boxShadow: active ? '0 1px 4px rgba(0,0,0,0.06)' : undefined,
-              transition: 'all 0.15s',
-            }}
-          >
-            <span
-              aria-hidden
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: filter.dot,
-              }}
-            />
-            {filter.label}
-            <span
-              className="font-data"
-              style={{
-                fontSize: 10,
-                padding: '1px 6px',
-                borderRadius: 4,
-                background: active ? 'var(--dash-blue-light)' : 'transparent',
-                color: active ? 'var(--dash-blue)' : 'inherit',
-              }}
-            >
-              {count}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <DotTabs
+      ariaLabel="Filtrer les campagnes par statut"
+      current={current}
+      onChange={onChange}
+      tabs={STATUS_FILTERS.map((f) => ({
+        key: f.id,
+        label: f.label,
+        dot: f.dot,
+        count: counts[f.id],
+      }))}
+    />
   );
 }
 

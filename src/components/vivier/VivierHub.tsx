@@ -3,19 +3,24 @@
 /**
  * Hub du Vivier de candidats (Session V1) — deux onglets internes :
  * « Déposer des CV » (upload manuel) et « Dossiers » (liste). Pattern d'onglets
- * sans route Next, aligné sur ReportingHub.
+ * sans route Next.
+ *
+ * ⚠️ La bascule est LE composant partagé (`DotTabs`), pas une barre soulignée
+ * propre à cet écran : un écran ne crée jamais son composant de navigation.
  */
 
 import { useState } from 'react';
+
+import { DotTabs } from '@/components/ui/DotTabs';
 
 import { VivierList } from './VivierList';
 import { VivierUpload } from './VivierUpload';
 
 type SubTab = 'upload' | 'list';
 
-const TABS: { key: SubTab; label: string }[] = [
-  { key: 'upload', label: 'Déposer des CV' },
-  { key: 'list', label: 'Dossiers' },
+const TABS = [
+  { key: 'upload' as const, label: 'Déposer des CV', dot: 'var(--dash-blue)' },
+  { key: 'list' as const, label: 'Dossiers', dot: 'var(--dash-purple)' },
 ];
 
 export function VivierHub() {
@@ -25,22 +30,12 @@ export function VivierHub() {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav className="flex gap-1 border-b border-stone-200">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`-mb-px border-b-2 px-4 py-2 font-body text-[13px] font-semibold transition-colors ${
-              tab === t.key
-                ? 'border-amber-500 text-stone-900'
-                : 'border-transparent text-stone-500 hover:text-stone-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <DotTabs
+        ariaLabel="Choisir la vue du vivier"
+        tabs={TABS}
+        current={tab}
+        onChange={setTab}
+      />
 
       {tab === 'upload' ? (
         <VivierUpload onUploaded={() => setRefreshKey((k) => k + 1)} />

@@ -99,6 +99,56 @@ const flottant = (lignes: string[], n: number) =>
     .slice(Math.max(0, n - PORTEE), n + 1)
     .some((l) => /\b(fixed|absolute)\b|\bz-\d/.test(l));
 
+/**
+ * LES DEUX COMPOSANTS PARTAGÉS, et pas un troisième.
+ *
+ * ⚠️ Règle du 21/09/2026 : un écran ne crée JAMAIS son composant de
+ * navigation ni son compteur. Il prend l'un des deux existants — les puces à
+ * point coloré (`DotTabs`) ou les cartes-compteurs soulignées
+ * (`CounterRibbon`). Pilotage s'était fabriqué une barre segmentée, le Vivier
+ * une barre soulignée, Entretiens une rangée d'onglets : trois façons de faire
+ * la même chose, et plus aucun repère d'un écran à l'autre.
+ */
+const BASCULE = 'src/components/ui/DotTabs.tsx';
+
+describe('une seule bascule de vue', () => {
+  it('aucune page ne définit la sienne', () => {
+    const fautifs: string[] = [];
+    for (const dossier of ['src/components', 'src/app']) {
+      for (const f of fichiers(dossier)) {
+        if (f === BASCULE) continue;
+        const src = sansCommentaires(readFileSync(resolve(RACINE, f), 'utf-8'));
+        if (/role="tablist"/.test(src)) fautifs.push(`${f} — role="tablist"`);
+        if (/aria-selected/.test(src)) fautifs.push(`${f} — aria-selected`);
+        // La barre d'onglets soulignée, l'autre forme maison.
+        if (/-mb-px border-b-2/.test(src)) fautifs.push(`${f} — onglets soulignés`);
+      }
+    }
+    expect(fautifs, fautifs.join('\n')).toEqual([]);
+  });
+});
+
+describe('une carte-compteur n’a que deux rangs', () => {
+  it('un chiffre, un libellé — jamais une troisième ligne', () => {
+    const src = sansCommentaires(
+      readFileSync(resolve(RACINE, 'src/components/ui/CounterRibbon.tsx'), 'utf-8'),
+    );
+    // Le type de l'item borne ce qu'une carte PEUT porter : si un champ de
+    // texte supplémentaire y entre, la carte grandira.
+    const bloc = src.slice(
+      src.indexOf('export type CounterItem'),
+      src.indexOf('export function CounterRibbon'),
+    );
+    const champs = [...bloc.matchAll(/^\s{2}(\w+)\??:/gm)].map((m) => m[1]);
+    expect(
+      champs.sort(),
+      `champs de CounterItem : ${champs.join(', ')}`,
+    ).toEqual(['color', 'count', 'dotClass', 'key', 'label', 'total']);
+    // Et aucun sous-texte rendu : deux <span> de contenu, pas trois.
+    expect(src, 'sous-texte dans la carte').not.toMatch(/mt-1 block font-body/);
+  });
+});
+
 describe('aucun relief inventé', () => {
   it('pas d’ombre portée sur un élément du flux', () => {
     const fautifs: string[] = [];
