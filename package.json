@@ -23,7 +23,8 @@
     "rescore": "tsx scripts/rescore-analyses.ts",
     "purge:candidate": "tsx scripts/purge-candidate.ts",
     "check:scheduling": "tsx scripts/check-scheduling-schema.ts",
-    "test:regression": "vitest run --config vitest.regression.config.ts"
+    "test:regression": "vitest run --config vitest.regression.config.ts",
+    "relocate:vivier": "tsx scripts/relocate-vivier-proposals.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",

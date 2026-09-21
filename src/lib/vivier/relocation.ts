@@ -132,3 +132,63 @@ export function buildRelocationNote(group: RelocationGroup): {
     },
   };
 }
+
+// ── Exécution ───────────────────────────────────────────────────────────────
+
+/**
+ * Lit, planifie, et n'écrit QUE si on le lui demande.
+ *
+ * Le défaut est le CONSTAT : `execute: false` rend le plan sans toucher à
+ * rien. C'est la même règle que la purge RGPD — on regarde ce qui va se passer
+ * avant que ça se passe.
+ *
+ * Les notes sont écrites UNE PAR CAMPAGNE, séquentiellement. Un échec n'arrête
+ * pas les suivantes : la campagne reste non notée, donc reprise au prochain
+ * passage (l'idempotence est portée par la lecture du journal, pas par un
+ * marqueur qu'on poserait ici).
+ */
+export async function relocateVivierProposals(options: {
+  execute: boolean;
+}): Promise<{ plan: RelocationPlan; written: number; failed: number }> {
+  const [{ listPendingPreselections }, { listCampaignSummaries }, { listJournalEntriesByActions }] =
+    await Promise.all([
+      import('@/lib/db/repos/vivier-preselection'),
+      import('@/lib/db/repos/campaigns'),
+      import('@/lib/db/repos/journal'),
+    ]);
+
+  const pending = await listPendingPreselections();
+  if (pending.length === 0) {
+    return { plan: { toNote: [], alreadyNoted: [], stranded: [] }, written: 0, failed: 0 };
+  }
+
+  const ids = [...new Set(pending.map((p) => p.campaignId))];
+  const [summaries, journal] = await Promise.all([
+    listCampaignSummaries(ids),
+    listJournalEntriesByActions([VIVIER_RELOCATION_ACTION]),
+  ]);
+
+  const noted = new Set(
+    journal.map((e) => e.campaignId).filter((id): id is string => id !== null),
+  );
+  const plan = planRelocation(
+    pending,
+    (id) => summaries.get(id)?.status ?? 'unknown',
+    noted,
+  );
+
+  if (!options.execute) return { plan, written: 0, failed: 0 };
+
+  const { appendJournalEntry } = await import('@/lib/db/repos/journal');
+  let written = 0;
+  let failed = 0;
+  for (const group of plan.toNote) {
+    try {
+      await appendJournalEntry(buildRelocationNote(group));
+      written += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { plan, written, failed };
+}
