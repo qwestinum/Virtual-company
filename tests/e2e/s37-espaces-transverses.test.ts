@@ -23,6 +23,11 @@ const ESPACES = [
   { id: 'vivier', route: '/vivier', titre: 'Vivier de candidats' },
   { id: 'sourcing', route: '/sourcing', titre: 'Sourcing' },
   { id: 'diffusion', route: '/diffusion', titre: 'Diffusion' },
+  {
+    id: 'revue',
+    route: '/candidatures/validation',
+    titre: 'Revue de candidature',
+  },
 ];
 
 describe('S37 — barre du haut', () => {
@@ -76,29 +81,39 @@ describe('S37 — barre du haut', () => {
     }
   }, 400_000);
 
-  it('S37.4 — aucune porte « Validations » en haut', async () => {
-    // ⚠️ Une troisième porte vers la même population recréerait l'onglet que
-    // la refonte a supprimé. Sa place est la puce « À valider » de
-    // Candidatures et la section d'Aujourd'hui — deux endroits, pas trois.
+  it('S37.4 — la barre ne porte QUE les quatre espaces', async () => {
+    // ⚠️ « Revue de candidature » n'est pas une troisième porte vers la
+    // décision à l'unité : c'est la revue GROUPÉE. La décision dossier par
+    // dossier reste sous la puce « À valider » de Candidatures.
     await page.goto(`${BASE_URL}/aujourdhui`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-top-espace="vivier"]', { timeout: 90_000 });
     const espaces = await page.$$eval('[data-top-espace]', (ns) =>
       ns.map((n) => n.getAttribute('data-top-espace')),
     );
-    expect(espaces).toEqual(['vivier', 'sourcing', 'diffusion']);
+    expect(espaces).toEqual(['vivier', 'sourcing', 'diffusion', 'revue']);
     // Et plus de fil d'Ariane vers un lobby qui n'existe plus.
     expect(await page.locator('a[href="/app"]').count()).toBe(0);
   }, 300_000);
 
-  it('S37.5 — Sourcing ne lance aucune recherche', async () => {
-    // Le gate du module reste la CAMPAGNE : elle porte la fiche, les critères
-    // et le budget. Une recherche lancée ici n'aurait ni barème ni destination,
-    // et le coût partirait quand même.
+  it('S37.5 — Sourcing ouvre la base des campagnes actives, sans coût', async () => {
     await page.goto(`${BASE_URL}/sourcing`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('h1:has-text("Sourcing")', { timeout: 90_000 });
+    await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(1_200);
+
+    // Une campagne déjà sourcée propose « Détail », une campagne vierge
+    // « Sourcer » — jamais les deux sur la même ligne.
+    const actions = await page.$$eval('[data-sourcing-action]', (ns) =>
+      ns.map((n) => n.getAttribute('data-sourcing-action')),
+    );
+    for (const a of actions) expect(['detail', 'sourcer']).toContain(a);
+
+    // ⚠️ AUCUNE INDICATION DE COÛT. Le budget vit dans l'administration : un
+    // recruteur n'a pas à connaître le prix d'une recherche pour décider s'il
+    // en a besoin.
     const texte = (await page.textContent('[data-page-body]')) ?? '';
-    for (const interdit of ['Lancer la recherche', 'Rechercher des profils']) {
-      expect(texte, `« ${interdit} » ne doit pas être proposé ici`).not.toContain(
+    for (const interdit of ['€', 'Coût', 'coût du moteur']) {
+      expect(texte, `« ${interdit} » n'a rien à faire sur cet écran`).not.toContain(
         interdit,
       );
     }

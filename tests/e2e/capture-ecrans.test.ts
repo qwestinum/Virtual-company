@@ -210,5 +210,12 @@ describe('capture des trois écrans', () => {
     await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
     await page.waitForTimeout(1_500);
     writeFileSync(resolve(KIT, 'vivier.png'), await page.screenshot({ type: 'png' }));
+
+    // SOURCING — la base des campagnes actives, avec « Détail » / « Sourcer ».
+    await page.goto(`${BASE_URL}/sourcing`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-workspace-sidebar]', { timeout: 90_000 });
+    await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(1_500);
+    writeFileSync(resolve(KIT, 'sourcing.png'), await page.screenshot({ type: 'png' }));
   }, 300_000);
 });

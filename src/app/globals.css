@@ -88,6 +88,7 @@
   --color-dash-indigo-text: var(--dash-indigo-text);
   --color-dash-orange-text: var(--dash-orange-text);
   --color-dash-red-text: var(--dash-red-text);
+  --color-dash-green-bandeau: var(--dash-green-bandeau);
 
   /* ── SOCLE DE JETONS — NOMMÉ, PAS INVENTÉ ───────────────────────────────
      L'audit du 20/09/2026 a mesuré 22 à 25 niveaux typographiques sur un seul
@@ -290,6 +291,12 @@
   --dash-indigo-text: #4338ca;
   --dash-orange-text: #b45309;
   --dash-red-text: #b91c1c;
+  /* Le vert des liens du BANDEAU. Celui-ci est ambre (#FFB000 à 50 % sur
+     blanc ≈ #ffd77f), donc plus sombre qu'une carte : `--dash-green` n'y tient
+     que 2,37:1 et `--dash-green-text` 3,65 — sous les 4,5:1 exigés d'un texte
+     de 13 px, fût-il gras (le seuil « grand texte » commence à 18,66 px gras).
+     Celui-ci donne 5,19:1. */
+  --dash-green-bandeau: #166534;
   --dash-yellow-light: #fff8e1;
 }
 

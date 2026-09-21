@@ -704,21 +704,33 @@ personne ne parcourait : trois clics pour atteindre le travail du jour. L'applic
 s'ouvre sur *Aujourd'hui*, le **logo y ramène**, et `/app`, `/rh`, `/rh/recrutement`
 **redirigent** — jamais 404.
 
-À sa place, **trois espaces de gestion TRANSVERSES**, en liens texte discrets (pas des
-onglets : la colonne garde ce rendu) :
+À sa place, **quatre espaces de gestion TRANSVERSES**, groupés **À DROITE** juste avant le
+compte, en **liens texte verts et gras** (pas des onglets : la colonne garde ce rendu) :
 
 | Espace | Ce qu'il porte | Ce qu'il ne porte PAS |
 |---|---|---|
 | **Vivier** | l'écran existant, ré-atteignable directement (déposer, parcourir, rechercher) | — |
-| **Sourcing** | vue transverse : approches en cours toutes campagnes, réponses, oppositions, coût mensuel (carte admin) | **aucun lancement de recherche** — le gate reste la campagne, qui porte la fiche, les critères et le budget |
+| **Sourcing** | **la base des campagnes ACTIVES qui existait déjà** : celles qui ont sourcé passent en tête, portent la pastille « Sourcée » et proposent **Détail** ; les autres proposent **Sourcer** | **aucune indication de coût** — le budget vit dans l'administration ; un recruteur n'a pas à connaître le prix d'une recherche pour décider s'il en a besoin |
 | **Diffusion** | toutes les annonces publiées, tous canaux, toutes campagnes : état, date, jours restants avant que republier soit refusé | aucun geste — chaque ligne mène à la campagne |
+| **Revue de candidature** | la revue **groupée** des dossiers à valider, avec un indicateur du nombre en attente | la décision à l'unité, qui reste sous la puce « À valider » |
 
 Puis le compte / *Se déconnecter* à l'extrême droite.
 
-⚠️ **PAS de « Validations » en haut.** Sa population vit sous la puce « À valider » de
-*Candidatures* et dans la section d'*Aujourd'hui* ; une troisième porte recréerait l'onglet
-que la refonte a supprimé. Les **règles** de validation (seuils par défaut, gabarits de
-refus) sont dans *Réglages*.
+⚠️ **« Revue de candidature » n'est pas un troisième chemin vers la même décision.** C'est
+la revue GROUPÉE — celle qui passe les propositions de refus en une fois. La décision
+dossier par dossier reste sous la puce « À valider » de *Candidatures*. Les **règles** de
+validation (seuils par défaut, gabarits de refus) sont dans *Réglages*. Son indicateur ne
+s'affiche qu'à partir de 1 : un « 0 » sur un lien se lit comme un compteur en panne.
+
+⚠️ **Une seconde vue transverse du sourcing a existé quelques heures, et a été retirée.**
+Elle listait les APPROCHES là où la base existante liste les CAMPAGNES : deux écrans pour
+« où en est mon sourcing ? » finissent par se contredire.
+
+⚠️ **Le vert des liens du bandeau est le sien.** Le bandeau est ambre (#FFB000 à 50 % sur
+blanc ≈ #ffd77f), donc plus sombre qu'une carte : `--dash-green` n'y tient que **2,37:1**
+et `--dash-green-text` **3,65** — sous les 4,5:1 exigés d'un texte de 13 px, fût-il gras
+(le seuil « grand texte » commence à 18,66 px gras). `--dash-green-bandeau` (#166534)
+donne **5,19:1**.
 
 ⚠️ **L'état d'une annonce est un CACHE.** Un consultant Apec peut valider, un recruteur
 peut modifier sur apec.fr : ORQA ne l'apprend qu'en demandant. Chaque ligne de *Diffusion*
