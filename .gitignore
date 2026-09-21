@@ -93,3 +93,6 @@ scripts/*-tmp[0-9].ts
 rapport-effacement*.md
 rapport-rgpd*.md
 rapport-bisseg*.md
+
+# Captures E2E — preuves visuelles régénérables, jamais versionnées (3 Mo par passage)
+tests/e2e/captures/

@@ -13,7 +13,11 @@
  * colonne vide qu'on prendrait pour une anomalie.
  */
 
+import { initials } from '@/components/candidatures/stage-ui';
 import { ReferentMention } from '@/components/referent/ReferentMention';
+import { ListRow } from '@/components/ui/ListRow';
+
+import { Action } from './interview-row-ui';
 import type { RowReferent } from '@/lib/interviews/referent-resolution';
 import type { AwaitingRow } from '@/lib/interviews/pipeline-rows';
 
@@ -51,74 +55,59 @@ export function AwaitingList({
     <ul className="flex flex-col gap-1.5">
       {rows.map((row) => {
         const dead = row.linkStatus === 'expired' || row.linkStatus === 'revoked';
+        const alerte = row.overdue || dead;
         return (
-          <li
-            key={row.briefId}
-            className={`flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 ${
-              row.overdue || dead
-                ? 'border-amber-200 bg-amber-50/40'
-                : 'border-stone-200 bg-white'
-            }`}
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-body text-[13.5px] font-semibold text-stone-800">
-                {row.candidateName}
-              </p>
-              <p className="truncate font-body text-[12px] text-stone-500">
-                {/* L'IDENTIFIANT d'abord : c'est lui qu'on retrouve dans les
-                    objets de mail, le journal et les échanges d'équipe — le
-                    nom de campagne, lui, peut être long et se ressembler. */}
-                {row.campaignId ? (
-                  <span className="font-data text-stone-600">{row.campaignId}</span>
-                ) : (
-                  'hors campagne'
-                )}
-                {row.campaignName ? ` · ${row.campaignName}` : ''}
-                {row.jobTitle ? ` · ${row.jobTitle}` : ''}
-                {' · '}
-                {/* Le référent de la CAMPAGNE : c'est son agenda que le
-                    candidat verra en ouvrant son lien. */}
-                <ReferentMention referent={row.referent} />
-              </p>
-            </div>
-
-            <div className="flex shrink-0 flex-col items-end">
-              <span
-                className={`font-body text-[12px] ${
-                  row.overdue ? 'font-semibold text-amber-800' : 'text-stone-500'
-                }`}
-              >
-                {row.waitingDays === 0
+          <li key={row.briefId}>
+            {/* ⚠️ LA LIGNE DE CANDIDATURES, importée. C'était une rangée à
+                colonne de droite empilée et bandeau ambre : rien de commun
+                avec la liste d'à côté, pour la même nature d'objet. */}
+            <ListRow
+              testId={row.briefId}
+              initials={initials(row.candidateName)}
+              avatarColor={alerte ? 'var(--dash-orange)' : 'var(--dash-purple)'}
+              title={row.candidateName}
+              pill={row.jobTitle ?? row.campaignName ?? null}
+              // ⚠️ La chasse fixe est réservée à la RÉFÉRENCE : « hors
+              // campagne » est une phrase, pas un identifiant qu'on recopie.
+              reference={row.campaignId}
+              meta={[
+                row.campaignId ? null : 'hors campagne',
+                row.waitingDays === 0
                   ? 'invité aujourd’hui'
-                  : `invité il y a ${row.waitingDays} j`}
-              </span>
-              <span
-                className={`font-body text-[11.5px] ${
-                  dead ? 'font-semibold text-amber-800' : 'text-stone-400'
-                }`}
-              >
-                {row.linkStatus
-                  ? LINK_LABEL[row.linkStatus]
-                  : 'lien d’agenda Cal.com'}
-              </span>
-            </div>
+                  : `invité il y a ${row.waitingDays} j`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              right={
+                <>
+                  <span className="font-body text-[12px] text-stone-500">
+                    {/* Le référent de la CAMPAGNE : c'est son agenda que le
+                        candidat verra en ouvrant son lien. */}
+                    <ReferentMention referent={row.referent} />
+                  </span>
 
-            <button
-              type="button"
-              disabled={busyId === row.briefId || !row.analysisId}
-              onClick={() => onReinvite(row)}
-              className="rounded-md border border-stone-300 px-2.5 py-1 font-body text-[12px] font-semibold text-stone-600 hover:bg-stone-50 disabled:opacity-40"
-            >
-              {busyId === row.briefId ? 'Envoi…' : 'Renvoyer une invitation'}
-            </button>
-            <button
-              type="button"
-              disabled={!row.analysisId}
-              onClick={() => onDismiss(row)}
-              className="rounded-md border border-stone-300 px-2.5 py-1 font-body text-[12px] font-semibold text-stone-500 hover:bg-stone-50 disabled:opacity-40"
-            >
-              Classer sans suite
-            </button>
+                  <span
+                    className={`whitespace-nowrap font-body text-[11.5px] ${
+                      dead ? 'font-semibold text-amber-800' : 'text-stone-400'
+                    }`}
+                  >
+                    {row.linkStatus
+                      ? LINK_LABEL[row.linkStatus]
+                      : 'lien d’agenda Cal.com'}
+                  </span>
+
+                  <Action
+                    disabled={busyId === row.briefId || !row.analysisId}
+                    onClick={() => onReinvite(row)}
+                  >
+                    {busyId === row.briefId ? 'Envoi…' : 'Renvoyer une invitation'}
+                  </Action>
+                  <Action disabled={!row.analysisId} onClick={() => onDismiss(row)}>
+                    Classer sans suite
+                  </Action>
+                </>
+              }
+            />
           </li>
         );
       })}

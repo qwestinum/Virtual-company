@@ -194,24 +194,30 @@ export function CampaignReportList() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <CampaignReportFilters
-        search={search}
-        onSearchChange={setSearchReset}
-        period={period}
-        onPeriodChange={setPeriodReset}
-        referenceDate={referenceDate}
-        donneurOrdreId={donneurId}
-        onDonneurChange={setDonneurReset}
-        donneurOptions={donneurOptions}
-        sortKey={sortKey}
-        onSortChange={setSortReset}
-      />
+    // ⚠️ LE RYTHME DE CANDIDATURES : réglages, un filet, puis la liste à
+    // 16 px. Les réglages vivaient dans une carte blanche et la liste flottait
+    // 16 px plus bas sans rien pour séparer les deux.
+    <div className="flex flex-col">
+      <div className="border-b pb-5" style={{ borderColor: 'var(--dash-border)' }}>
+        <CampaignReportFilters
+          search={search}
+          onSearchChange={setSearchReset}
+          period={period}
+          onPeriodChange={setPeriodReset}
+          referenceDate={referenceDate}
+          donneurOrdreId={donneurId}
+          onDonneurChange={setDonneurReset}
+          donneurOptions={donneurOptions}
+          sortKey={sortKey}
+          onSortChange={setSortReset}
+        />
 
-      <p className="font-body text-[12px] font-semibold text-stone-500">
-        {loading ? 'Chargement…' : resultCountLabel(filtered.length)}
-      </p>
+        <p className="mt-3 font-body text-[12px] font-semibold text-stone-500">
+          {loading ? 'Chargement…' : resultCountLabel(filtered.length)}
+        </p>
+      </div>
 
+      <div className="flex flex-col gap-4 pt-4">
       {!loading && filtered.length === 0 ? (
         <p className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-6 text-center font-body text-[13px] text-stone-500">
           Aucune campagne clôturée ne correspond aux filtres.
@@ -231,6 +237,8 @@ export function CampaignReportList() {
           ))}
         </div>
       )}
+
+      </div>
 
       {pageCount > 1 ? (
         <div className="flex items-center justify-center gap-3 font-body text-[13px]">

@@ -2,22 +2,37 @@
 
 /**
  * Filtres du sous-onglet rapport de campagne (cf. docs/specs/reporting.md
- * §3.2) : période de clôture (chips réutilisés), recherche libre, donneur
- * d'ordre, et sélecteur de tri. Contrôlé par le parent (CampaignReportList).
+ * §3.2) : recherche · donneur d'ordre · période · tri. Contrôlé par le parent
+ * (CampaignReportList).
+ *
+ * ⚠️ UNE SEULE RANGÉE, sur la barre d'outils partagée. C'était une carte
+ * blanche à TROIS ÉTAGES (recherche, puis donneur + tri, puis huit puces de
+ * période et deux sélecteurs de date) : trois fois la hauteur pour les mêmes
+ * réglages, et un cadre que ni Campagnes ni Candidatures ne portent.
+ *
+ * La période passe en liste déroulante ; les bornes libres restent
+ * atteignables par « Période personnalisée », qui les fait apparaître SOUS la
+ * barre. Retirer une possibilité sans le dire ne la déplace pas, ça la
+ * supprime — huit puces toujours dépliées pour un réglage qu'on pose une fois
+ * ne se justifiaient pas pour autant.
  */
 
-import { Search } from 'lucide-react';
+import { useState } from 'react';
 
-import { PeriodFilter } from '@/components/reporting/PeriodFilter';
 import {
-  DonneurOrdreSelect,
-  type DonneurOption,
-} from '@/components/reporting/DonneurOrdreSelect';
+  Toolbar,
+  ToolbarSearch,
+  ToolbarSelect,
+} from '@/components/ui/Toolbar';
+import type { DonneurOption } from '@/components/reporting/DonneurOrdreSelect';
 import {
   CAMPAIGN_SORT_LABELS,
   type CampaignSortKey,
 } from '@/lib/reporting/campaign-report-display';
-import { AUDIT_PERIOD_PRESET_KEYS } from '@/lib/reporting/period-presets';
+import {
+  AUDIT_PERIOD_PRESET_KEYS,
+  presetsByKeys,
+} from '@/lib/reporting/period-presets';
 
 const SORT_KEYS: CampaignSortKey[] = [
   'closed_desc',
@@ -25,6 +40,9 @@ const SORT_KEYS: CampaignSortKey[] = [
   'name_asc',
   'duration_desc',
 ];
+
+/** Valeur de la liste « Période » quand l'utilisateur saisit ses bornes. */
+const LIBRE = 'custom';
 
 export function CampaignReportFilters({
   search,
@@ -49,50 +67,118 @@ export function CampaignReportFilters({
   sortKey: CampaignSortKey;
   onSortChange: (key: CampaignSortKey) => void;
 }) {
-  return (
-    <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4">
-      <div className="flex items-center gap-2 rounded-lg border border-stone-300 px-3 py-2">
-        <Search className="h-4 w-4 text-stone-400" aria-hidden />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => onSearchChange(e.currentTarget.value)}
-          placeholder="Poste, intitulé de campagne ou donneur d'ordre…"
-          className="w-full bg-transparent font-body text-[13px] text-stone-800 outline-none"
-        />
-      </div>
+  const presets = presetsByKeys(AUDIT_PERIOD_PRESET_KEYS).map((p) => ({
+    ...p,
+    bornes: p.range(referenceDate),
+  }));
+  const courant = presets.find(
+    (p) => p.bornes.from === period.from && p.bornes.to === period.to,
+  );
+  // ⚠️ Le choix « personnalisée » ne se DÉDUIT pas des bornes : sur une
+  // période vide, il ne changerait rien et les deux champs de date
+  // n'apparaîtraient jamais — l'option serait morte. On retient donc le choix.
+  const [libre, setLibre] = useState(false);
+  const valeur = courant
+    ? courant.key
+    : libre || period.from || period.to
+      ? LIBRE
+      : '';
 
-      <div className="flex flex-wrap items-end gap-4">
-        <DonneurOrdreSelect
-          options={donneurOptions}
+  return (
+    <div className="flex flex-col gap-2.5">
+      <Toolbar>
+        <ToolbarSearch
+          value={search}
+          onChange={onSearchChange}
+          placeholder="Poste, campagne ou donneur d’ordre…"
+        />
+
+        <ToolbarSelect
+          ariaLabel="Filtrer par donneur d’ordre"
+          testId="donneur"
           value={donneurOrdreId}
           onChange={onDonneurChange}
-        />
-        <label className="flex flex-col gap-1">
-          <span className="font-body text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-            Trier par
-          </span>
-          <select
-            value={sortKey}
-            onChange={(e) => onSortChange(e.currentTarget.value as CampaignSortKey)}
-            className="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-body text-[13px] text-stone-800 outline-none focus:border-amber-400"
-          >
-            {SORT_KEYS.map((k) => (
-              <option key={k} value={k}>
-                {CAMPAIGN_SORT_LABELS[k]}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+        >
+          <option value="">Tous les donneurs d’ordre</option>
+          {donneurOptions.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </ToolbarSelect>
 
-      <PeriodFilter
-        from={period.from}
-        to={period.to}
-        onChange={onPeriodChange}
-        presetKeys={AUDIT_PERIOD_PRESET_KEYS}
-        referenceDate={referenceDate}
-      />
+        <ToolbarSelect
+          ariaLabel="Filtrer par période de clôture"
+          testId="periode"
+          value={valeur}
+          onChange={(v) => {
+            setLibre(v === LIBRE);
+            if (v === LIBRE) return;
+            if (v === '') return onPeriodChange({ from: '', to: '' });
+            const p = presets.find((x) => x.key === v);
+            if (p) onPeriodChange(p.bornes);
+          }}
+        >
+          <option value="">Depuis toujours</option>
+          {presets.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.label}
+            </option>
+          ))}
+          <option value={LIBRE}>Période personnalisée…</option>
+        </ToolbarSelect>
+
+        <ToolbarSelect
+          ariaLabel="Trier les campagnes"
+          testId="tri"
+          value={sortKey}
+          onChange={(v) => onSortChange(v as CampaignSortKey)}
+        >
+          {SORT_KEYS.map((k) => (
+            <option key={k} value={k}>
+              {CAMPAIGN_SORT_LABELS[k]}
+            </option>
+          ))}
+        </ToolbarSelect>
+      </Toolbar>
+
+      {valeur === LIBRE ? (
+        <div className="flex flex-wrap items-center gap-2.5">
+          <DateField
+            label="Du"
+            value={period.from}
+            onChange={(v) => onPeriodChange({ from: v, to: period.to })}
+          />
+          <DateField
+            label="Au"
+            value={period.to}
+            onChange={(v) => onPeriodChange({ from: period.from, to: v })}
+          />
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 font-body text-[12.5px] font-semibold text-stone-600">
+      {label}
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.currentTarget.value)}
+        style={{ borderColor: 'var(--dash-border)', color: 'var(--dash-text)' }}
+        className="orqa-field h-10 rounded-[10px] border bg-white px-3.5 font-body text-[13.5px]"
+      />
+    </label>
   );
 }

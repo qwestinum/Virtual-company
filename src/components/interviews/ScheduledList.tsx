@@ -14,6 +14,8 @@
  * absence est un jugement, pas une conséquence de l'horloge.
  */
 
+import { initials } from '@/components/candidatures/stage-ui';
+import { ListRow } from '@/components/ui/ListRow';
 import { useState } from 'react';
 
 import { ReferentMention } from '@/components/referent/ReferentMention';
@@ -81,45 +83,43 @@ export function ScheduledList({
             ) : null}
             <ul className="mt-1.5 flex flex-col gap-1.5">
               {items.map((row) => (
-                <li
-                  key={row.briefId}
-                  className={`flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 ${
-                    section.key === 'a_pointer'
-                      ? 'border-amber-200 bg-amber-50/40'
-                      : 'border-stone-200 bg-white'
-                  }`}
-                >
-                  <span className="w-40 shrink-0 font-data text-[12.5px] font-semibold text-stone-800">
-                    {formatSlot(row.interviewStartAt)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-body text-[13.5px] font-semibold text-stone-800">
-                      {row.candidateName}
-                    </p>
-                    <p className="truncate font-body text-[12px] text-stone-500">
-                      {/* Identifiant en tête : c'est la référence qui circule
-                          dans les mails candidats et le journal. */}
-                      {row.campaignId ? (
-                        <span className="font-data text-stone-600">
-                          {row.campaignId}
+                <li key={row.briefId}>
+                  {/* ⚠️ LA LIGNE DE CANDIDATURES, importée : pavé d'initiales,
+                      nom en gras, puce d'intitulé UNE fois, référence en chasse
+                      fixe — le seul monospace de la ligne — puis le délai en
+                      gris. C'était une rangée à bandeau ambre et colonne de
+                      date, sans rapport avec le reste du produit. */}
+                  <ListRow
+                    testId={row.briefId}
+                    initials={initials(row.candidateName)}
+                    avatarColor={
+                      section.key === 'a_pointer'
+                        ? 'var(--dash-orange)'
+                        : 'var(--dash-teal)'
+                    }
+                    title={row.candidateName}
+                    pill={row.campaignName ?? null}
+                    reference={row.campaignId}
+                    meta={[
+                      row.campaignId ? null : 'hors campagne',
+                      formatSlot(row.interviewStartAt),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                    right={
+                      <>
+                        <span className="font-body text-[12px] text-stone-500">
+                          {/* Celui qui TIENT le rendez-vous — la ressource est
+                              figée à la réservation et ne suit pas un
+                              changement de référent. Quand les deux diffèrent,
+                              on le dit. */}
+                          <ReferentMention
+                            referent={row.referent}
+                            supersededBy={row.supersededBy}
+                          />
                         </span>
-                      ) : (
-                        'hors campagne'
-                      )}
-                      {row.campaignName ? ` · ${row.campaignName}` : ''}
-                      {' · '}
-                      {/* Celui qui TIENT le rendez-vous — la ressource est
-                          figée à la réservation et ne suit pas un changement
-                          de référent. Quand les deux diffèrent, on le dit. */}
-                      <ReferentMention
-                        referent={row.referent}
-                        supersededBy={row.supersededBy}
-                      />
-                      {row.interviewLocation ? ` · ${row.interviewLocation}` : ''}
-                    </p>
-                  </div>
 
-                  {section.key === 'a_pointer' ? (
+                        {section.key === 'a_pointer' ? (
                     <>
                       <Action
                         disabled={busyId === row.briefId}
@@ -137,7 +137,7 @@ export function ScheduledList({
                     </>
                   ) : null}
 
-                  {section.key === 'a_venir' ? (
+                        {section.key === 'a_venir' ? (
                     <>
                       <Action
                         disabled={busyId === row.briefId || !row.analysisId}
@@ -154,19 +154,27 @@ export function ScheduledList({
                     </>
                   ) : null}
 
-                  {section.key === 'verdict_attendu' ? (
-                    <VerdictRowActions
-                      row={row}
-                      open={openId === row.briefId}
-                      onToggle={() => setOpenId(openId === row.briefId ? null : row.briefId)}
-                      onCorrected={onCorrected}
-                    />
-                  ) : null}
+                        {section.key === 'verdict_attendu' ? (
+                          <VerdictRowActions
+                            row={row}
+                            open={openId === row.briefId}
+                            onToggle={() =>
+                              setOpenId(openId === row.briefId ? null : row.briefId)
+                            }
+                            onCorrected={onCorrected}
+                          />
+                        ) : null}
 
-                  <Action disabled={!row.analysisId} onClick={() => onDismiss(row)}>
-                    Classer sans suite
-                  </Action>
+                        <Action disabled={!row.analysisId} onClick={() => onDismiss(row)}>
+                          Classer sans suite
+                        </Action>
+                      </>
+                    }
+                  />
 
+                  {/* Le dépliant de verdict vit SOUS la ligne : il porte un
+                      commentaire libre, et l'entasser à droite écraserait la
+                      ligne au lieu de l'expliquer. */}
                   {section.key === 'verdict_attendu' && openId === row.briefId ? (
                     <VerdictExpansion
                       row={row}
