@@ -12,6 +12,7 @@
  * retomber un badge après une action — comme le faisait le changement d'onglet.
  */
 
+import { dedupeFetch } from '@/lib/net/dedupe-fetch';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -32,7 +33,7 @@ function useCount(url: string, read: (json: unknown) => number): number {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(url, { cache: 'no-store' });
+        const res = await dedupeFetch(url, { cache: 'no-store' });
         if (!res.ok) return;
         const json: unknown = await res.json();
         if (!cancelled) setCount(read(json));

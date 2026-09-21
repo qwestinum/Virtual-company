@@ -6,6 +6,7 @@
  * re-vérifie, c'est ce qui fait décrémenter les badges quand une action vient
  * d'être faite). AUCUN polling d'arrière-plan.
  */
+import { dedupeFetch } from '@/lib/net/dedupe-fetch';
 import { useEffect, useState } from 'react';
 
 import type { BusinessSignal } from '@/types/notifications';
@@ -17,7 +18,7 @@ export function useBusinessSignals(refreshKey: unknown): BusinessSignal[] {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch('/api/notifications/business', { cache: 'no-store' });
+        const res = await dedupeFetch('/api/notifications/business', { cache: 'no-store' });
         if (!res.ok) return;
         const json = (await res.json()) as { signals?: BusinessSignal[] };
         if (!cancelled) setSignals(json.signals ?? []);

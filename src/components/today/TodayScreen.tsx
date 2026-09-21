@@ -23,7 +23,9 @@ import { useTodayTeam } from './useTodayTeam';
 export function TodayScreen() {
   const state = useTodayBoard();
   const team = useTodayTeam();
-  const { data } = useDashboardData();
+  // On ne sonde PAS depuis ici : seule la bande de répartition vient de cette
+  // route, et elle ne bouge pas entre deux clics. Rechargée à chaque affichage.
+  const { data } = useDashboardData({ poll: false });
   const campaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
 
   /** L'intitulé du poste vient du briefing quand il l'a, du store sinon. */
@@ -38,22 +40,14 @@ export function TodayScreen() {
     return titre ? `${id} · ${titre}` : id;
   };
 
-  if (state.kind === 'loading') {
-    return (
-      <div className="h-full overflow-auto px-6 py-6">
-        <p
-          className="font-body mx-auto w-full max-w-4xl"
-          style={{ fontSize: 13, color: 'var(--dash-text-secondary)' }}
-        >
-          Chargement…
-        </p>
-      </div>
-    );
-  }
-
+  // ⚠️ PLUS D'ÉCRAN D'ATTENTE GLOBAL. Un « Chargement… » qui remplace toute la
+  // page fait payer à l'écran entier le prix de la lecture la plus lente :
+  // mesuré, rien ne se peignait avant 1,5 s. La vue se rend tout de suite, et
+  // chaque carte porte son propre squelette jusqu'à ce que SA donnée arrive.
   return (
     <TodayBoardView
       board={state.board}
+      pending={state.pending}
       currentUserId={state.currentUserId}
       firstName={team.firstName}
       agentCounts={team.agentCounts}

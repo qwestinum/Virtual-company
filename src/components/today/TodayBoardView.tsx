@@ -27,6 +27,7 @@ import { applyReferentFilter } from '@/lib/today/referent-view';
 import { formatSmartDate } from '@/components/candidatures/stage-ui';
 import { PHRASES } from '@/lib/lexique/phrases-ecran';
 import type { TodayBoard } from '@/lib/today/board';
+import type { TodayPending } from './useTodayBoard';
 
 import { ConfirmInterviewButtons } from './ConfirmInterviewButtons';
 import { RequeueOrphansButton } from './RequeueOrphansButton';
@@ -34,11 +35,14 @@ import { TodayCard, TodaySubBlock } from './TodayCard';
 import { TodayHeader } from './TodayHeader';
 import { TodayNotice } from './TodayNotice';
 import { TodayRow } from './TodayRow';
+import { TodaySkeleton } from './TodaySkeleton';
 import { TodayTeamBand } from './TodayTeamBand';
 import { TodayZoneStrip, type TodayZoneCounts } from './TodayZoneStrip';
 
 export type TodayBoardViewProps = {
   board: TodayBoard;
+  /** Par carte : sa donnée est-elle encore en route ? */
+  pending?: TodayPending;
   currentUserId: string | null;
   firstName: string | null;
   agentCounts: Record<string, number>;
@@ -66,6 +70,7 @@ function attente(jours: number): string {
 
 export function TodayBoardView({
   board: brut,
+  pending = { validation: false, entretiens: false, verify: false },
   currentUserId,
   firstName,
   agentCounts,
@@ -81,11 +86,14 @@ export function TodayBoardView({
   const vue = applyReferentFilter(brut, referentFilter, currentUserId);
   const board = vue.board;
 
-  const vides = [
+  const enRoute = pending.validation || pending.entretiens || pending.verify;
+  const vides = enRoute
+    ? []
+    : [
     { id: 'validation', n: board.validation.total, vide: PHRASES.validation.vide },
     { id: 'entretiens', n: board.entretiens.total, vide: PHRASES.entretiens.vide },
     { id: 'regler', n: board.verify.total, vide: PHRASES.regler.vide },
-  ].filter((s) => s.n === 0);
+      ].filter((s) => s.n === 0);
 
   return (
     // ⚠️ GABARIT COMMUN : l'écran posait sa propre marge et son propre
@@ -104,7 +112,10 @@ export function TodayBoardView({
               : null,
             board.verify.total > 0 ? PHRASES.regler.resume(board.verify.total) : null,
           ].filter((x): x is string => x !== null)}
-          allClear={board.allClear}
+          // ⚠️ « Tout est fait » ne s'affiche JAMAIS pendant qu'une lecture
+          // est en route : sur un écran qui compte ce qui attend, l'annoncer
+          // trop tôt est le seul mensonge qu'il ne peut pas se permettre.
+          allClear={!enRoute && board.allClear}
           partial={partial}
           onReload={onReload}
         />
@@ -144,7 +155,9 @@ export function TodayBoardView({
 
         {/* SUJET : les candidatures qui attendent une validation.
             Deux verbes en dessous — lire et décider · passer en revue. */}
-        {board.validation.total > 0 ? (
+        {pending.validation ? (
+          <TodaySkeleton titre="Candidatures à valider" />
+        ) : board.validation.total > 0 ? (
           <TodayCard
             accent="purple"
             title={PHRASES.validation.titre(board.validation.total)}
@@ -203,7 +216,9 @@ export function TodayBoardView({
 
         {/* SUJET : les entretiens. Deux verbes, dans l'ordre où ils se posent —
             on confirme qu'il a eu lieu AVANT de décider du candidat. */}
-        {board.entretiens.total > 0 ? (
+        {pending.entretiens ? (
+          <TodaySkeleton titre="Entretiens" />
+        ) : board.entretiens.total > 0 ? (
           <TodayCard
             accent="teal"
             title={PHRASES.entretiens.titre(board.entretiens.total)}
@@ -263,7 +278,9 @@ export function TodayBoardView({
         ) : null}
 
         {/* SUJET : les réglages. Un seul verbe, donc pas de sous-bloc. */}
-        {board.verify.total > 0 ? (
+        {pending.verify ? (
+          <TodaySkeleton titre="À vérifier" />
+        ) : board.verify.total > 0 ? (
           <TodayCard
             accent="orange"
             title={PHRASES.regler.titre(board.verify.total)}
