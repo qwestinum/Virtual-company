@@ -56,6 +56,13 @@ export function CampaignEditAccordion({
   const toggle = (key: BlockKey) =>
     setExpanded(expanded === key ? null : key);
 
+  // Le vivier n'est listé que s'il est une source de la campagne — MAIS la
+  // carte offre « Chercher dans le vivier » à toute campagne active. Une porte
+  // qui déposerait devant un bloc absent serait la même porte morte sous un
+  // autre nom : quand l'URL le nomme, le bloc est là.
+  const montreVivier =
+    campaign.sources.includes('vivier') || initialSection === 'vivier';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <AccordionItem
@@ -104,7 +111,7 @@ export function CampaignEditAccordion({
       >
         <FluxEditBlock campaign={campaign} />
       </AccordionItem>
-      {campaign.sources.includes('vivier') ? (
+      {montreVivier ? (
         <AccordionItem
           title="Vivier — présélection"
           subtitle="Short-list issue de votre stock interne"

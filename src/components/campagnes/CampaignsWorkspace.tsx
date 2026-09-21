@@ -10,16 +10,32 @@
  *
  * L'hydratation du store campagnes est portée par `<HydrationGate />` du
  * workspace recrutement (déjà monté) — rien à initialiser ici.
+ *
+ * ⚠️ L'URL est un ORDRE, pas un état — et il se CONSOMME (défaut du 21/09,
+ * régression S29). Ce qu'elle demande (`?ouvrir=vivier`, `?nouvelle=1`) était
+ * lu dans l'initialiseur d'un `useState`, qui ne s'exécute QU'AU MONTAGE. Or
+ * les portes de la carte (« Chercher dans le vivier », « Diffuser l'annonce »)
+ * mènent à la page DÉJÀ affichée : Next ne remonte rien, l'initialiseur ne
+ * repasse jamais, et le lien ne faisait rien. Le même lien venu d'*Aujourd'hui*
+ * marchait — parce que là, c'est un changement d'écran. D'où un effet, et le
+ * retrait du paramètre une fois servi : sans ce retrait, re-cliquer la MÊME
+ * porte après avoir refermé la feuille ne changerait pas l'adresse, donc
+ * n'ouvrirait plus rien.
  */
 
-import { useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 
+import { PARAM } from '@/lib/navigation/workspace-routes';
 
 import { CampaignsList } from './CampaignsList';
 import { UnsavedChangesBanner } from './UnsavedChangesBanner';
 import { CampaignCreateSheet } from './edit/CampaignCreateSheet';
 import type { BlockKey } from './edit/CampaignEditAccordion';
 import { CampaignEditSheet } from './edit/CampaignEditSheet';
+
+/** Ce que la feuille d'édition montre : une campagne, et par quoi commencer. */
+type Edition = { campaignId: string; section?: BlockKey };
 
 export function CampaignsWorkspace({
   focusCampaignId = null,
@@ -47,13 +63,53 @@ export function CampaignsWorkspace({
    */
   openSection?: BlockKey | null;
 } = {}) {
-  // Une section demandée par l'URL implique d'OUVRIR la campagne : sans ça le
-  // lien déposerait sur la liste, et le geste nommé resterait à chercher.
-  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
-    openSection ? (focusCampaignId ?? null) : null,
-  );
-  const [creating, setCreating] = useState(openCreate);
+  const pathname = usePathname();
 
+  // ⚠️ La section vit ICI, en état local, et n'est PAS relue de l'URL au fil
+  // des rendus : on retire le paramètre une fois servi, et un bloc qui se
+  // refermerait à ce moment-là refermerait précisément ce qu'on vient
+  // d'ouvrir.
+  const [edition, setEdition] = useState<Edition | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  // Nettoyage de l'adresse : `campagne` RESTE (c'est une position, on la
+  // partage et on y revient), `ouvrir` et `nouvelle` partent (ce sont des
+  // gestes, déjà faits).
+  const servi = useRef<string | null>(null);
+  useEffect(() => {
+    // ⚠️ Le repère se REMET À ZÉRO quand l'adresse ne demande plus rien —
+    // c'est-à-dire juste après qu'on l'a nettoyée. Sans ce retour à zéro, la
+    // MÊME porte cliquée une seconde fois porterait la même demande, serait
+    // prise pour un doublon, et n'ouvrirait plus rien (S29.3).
+    if (!openSection && !openCreate) {
+      servi.current = null;
+      return;
+    }
+    const demande = `${focusCampaignId ?? ''}|${openSection ?? ''}|${openCreate ? '1' : ''}`;
+    if (servi.current === demande) return;
+    servi.current = demande;
+
+    // L'adresse EST le système externe qu'on synchronise ici, et l'ordre ne
+    // se joue qu'une fois (repère `servi`, puis nettoyage juste en dessous).
+    // Le lire pendant le rendu ne suffirait pas : il faut aussi RETIRER le
+    // paramètre, et ça, c'est un effet.
+    if (openSection && focusCampaignId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEdition({ campaignId: focusCampaignId, section: openSection });
+    }
+    if (openCreate) setCreating(true);
+
+    // ⚠️ `history.replaceState` et NON `router.replace` : le second déclenche
+    // un aller-retour serveur, et tant qu'il n'a pas abouti l'adresse porte
+    // encore `ouvrir=…` — re-cliquer la même porte y est alors une navigation
+    // vers l'URL courante, donc un geste sans effet. Next accepte l'API
+    // native de l'historique et resynchronise `useSearchParams` : c'est
+    // immédiat, et il n'y a rien à re-télécharger pour retirer un paramètre.
+    const reste = focusCampaignId
+      ? `?${PARAM.campagne}=${encodeURIComponent(focusCampaignId)}`
+      : '';
+    window.history.replaceState(null, '', `${pathname}${reste}`);
+  }, [focusCampaignId, openSection, openCreate, pathname]);
 
   return (
     <div
@@ -85,15 +141,19 @@ export function CampaignsWorkspace({
         <UnsavedChangesBanner />
         <CampaignsList
           focusCampaignId={focusCampaignId}
-          onEditCampaign={setEditingCampaignId}
+          onEditCampaign={(campaignId) => setEdition({ campaignId })}
           onCreateCampaign={() => setCreating(true)}
         />
       </div>
-      {editingCampaignId ? (
+      {edition ? (
+        // `key` : changer de campagne OU de bloc demandé remonte la feuille,
+        // pour que l'accordéon reparte sur le bloc nommé. Sans ça, ouvrir une
+        // seconde porte sur une feuille déjà ouverte ne bougerait rien.
         <CampaignEditSheet
-          campaignId={editingCampaignId}
-          initialSection={openSection ?? undefined}
-          onClose={() => setEditingCampaignId(null)}
+          key={`${edition.campaignId}:${edition.section ?? 'defaut'}`}
+          campaignId={edition.campaignId}
+          initialSection={edition.section}
+          onClose={() => setEdition(null)}
         />
       ) : null}
       {creating ? (

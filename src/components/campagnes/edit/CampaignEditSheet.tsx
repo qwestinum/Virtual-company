@@ -161,7 +161,11 @@ export function CampaignEditSheet({
           </button>
         </header>
         <div style={{ flex: 1, overflowY: 'auto', padding: '14px 22px 28px' }}>
-          <CampaignEditAccordion campaign={campaign} onClose={onClose} />
+          <CampaignEditAccordion
+            campaign={campaign}
+            onClose={onClose}
+            initialSection={initialSection}
+          />
         </div>
       </aside>
     </div>
