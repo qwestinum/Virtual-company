@@ -667,6 +667,36 @@ suivante plus facile à justifier.
 - **Aucune ombre portée** sur un élément du flux ; la sélection se marque par la bordure et le
   fond. Une ombre n'informe que sur une couche flottante (dialogue, liste déroulante).
 
+### La navigation passe en COLONNE (lot 8, 21/09/2026)
+
+La barre d'onglets horizontale devient une **colonne à gauche**, montée par la coquille du
+workspace — **les pages ne changent pas**. Trois rangs, et ils ne se ressemblent pas :
+
+| Rang | Contenu | Rendu |
+|---|---|---|
+| ① | **Aujourd'hui** — le point de départ | une **icône de maison** (`#fedc96`), **sans libellé** et **sans rendu d'onglet** : ni pastille, ni fond. L'état actif ne se marque que par le poids du trait |
+| ② | Campagnes · Candidatures · Entretiens · Pilotage | rendu d'onglet, pastille active = celle des cartes-compteurs (`SELECTION`, **mêmes valeurs importées**), badges existants alignés à droite |
+| ③ | **Paramètres**, en bas | la roue dentée quitte la barre du haut, mais ne rejoint pas les quatre |
+
+La barre du haut garde le logo, *Lobby / RH / Recrutement* et le compte. **Repli sous
+1 100 px** : icônes seules, libellés en infobulles, le contenu garde son cadre de 1 400 px.
+Le repli est en **CSS pur** — piloté en JavaScript, il montrerait la version large pendant
+une frame au chargement.
+
+**Clavier** : Tab et Entrée viennent des liens ; les **flèches** haut/bas déplacent le
+focus, comme dans un menu. `aria-current="page"` marque l'entrée active — c'est ce que lit
+un lecteur d'écran, la couleur ne lui dit rien.
+
+⚠️ **Mesure.** `#fedc96` sur blanc donne **1,32:1**. C'est la seule chose qui désigne cette
+entrée (elle n'a pas de libellé), donc l'icône n'est **jamais atténuée** — une première
+version la passait à 65 % d'opacité au repos et elle devenait invisible. Son nom reste
+porté par `aria-label` et par l'infobulle. Pour la rendre perceptible sans quitter la
+famille : `#e8a33a` donnerait 2,2:1, `--dash-orange` 3,09:1.
+
+**Garde** : S36 (5 cas) — chaque entrée ouvre sa page, *Aujourd'hui* est l'entrée par
+défaut et en tête, la colonne tombe au même pixel sur les cinq, elle se replie à 1 000 px
+sans emporter la largeur du contenu, et les flèches déplacent le focus.
+
 ### Une couleur par NATURE d'objet (21/09/2026)
 
 **Règle.** La couleur d'un pavé d'initiales ou d'une icône de ligne ne code ni l'étape, ni

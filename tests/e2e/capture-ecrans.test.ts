@@ -59,6 +59,20 @@ describe('capture des trois écrans', () => {
   });
 
   it('côte à côte', async () => {
+    await page.setViewportSize({ width: LARGEUR, height: HAUTEUR });
+    // ⚠️ ON ATTEND LE CSS SERVI. Next reconstruit `globals.css` en différé :
+    // QUATRE captures de la journée ont montré une ancienne couleur parce
+    // qu'elles tiraient avant la reconstruction, et chaque fois j'ai cherché
+    // le défaut dans le composant. Un jeton récent sert de témoin.
+    await page.goto(`${BASE_URL}/aujourdhui`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--dash-accueil')
+          .trim() !== '',
+      undefined,
+      { timeout: 120_000 },
+    );
     mkdirSync(DOSSIER, { recursive: true });
     mkdirSync(KIT, { recursive: true });
     const morceaux: Buffer[] = [];
@@ -99,6 +113,39 @@ describe('capture des trois écrans', () => {
     await sharp(planche)
       .resize(Math.round(total / 2), Math.round(HAUTEUR / 2))
       .toFile(resolve(KIT, 'planche-50.png'));
+
+    // ── LA COLONNE REPLIÉE ────────────────────────────────────────────────
+    // Sous 1 100 px, elle passe en icônes. Le repli est en CSS : il ne se
+    // voit QUE dans une vraie fenêtre, à la vraie largeur.
+    await page.setViewportSize({ width: 1000, height: HAUTEUR });
+    const etroits: Buffer[] = [];
+    for (const ecran of ECRANS) {
+      await page.goto(`${BASE_URL}${ecran.route}`, { waitUntil: 'domcontentloaded' });
+      await page
+        .waitForSelector('[data-workspace-sidebar]', { timeout: 90_000 })
+        .catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => {});
+      await page.waitForTimeout(1_200);
+      const png = await page.screenshot({ type: 'png' });
+      writeFileSync(resolve(KIT, `${ecran.nom}-1000.png`), png);
+      etroits.push(Buffer.from(png));
+    }
+    const totalEtroit = 1000 * ECRANS.length + ECART * (ECRANS.length - 1);
+    // ⚠️ DEUX PASSES. Enchaîner `.composite().resize()` ne fait pas ce qu'on
+    // lit : sharp applique le redimensionnement AVANT la composition, donc la
+    // toile rétrécit et les captures pleine taille n'y entrent plus
+    // (« Image to composite must have same dimensions or smaller »). On
+    // compose, on écrit en mémoire, puis on réduit.
+    const plancheEtroite = await sharp({
+      create: { width: totalEtroit, height: HAUTEUR, channels: 3, background: '#3a3632' },
+    })
+      .composite(etroits.map((input, i) => ({ input, left: i * (1000 + ECART), top: 0 })))
+      .png()
+      .toBuffer();
+    await sharp(plancheEtroite)
+      .resize(Math.round(totalEtroit / 2), Math.round(HAUTEUR / 2))
+      .toFile(resolve(KIT, 'planche-1000.png'));
+    await page.setViewportSize({ width: LARGEUR, height: HAUTEUR });
     await sharp(planche)
       .resize(Math.round(total / 2), Math.round(HAUTEUR / 2))
       .toFile(resolve(DOSSIER, 'planche-50.png'));

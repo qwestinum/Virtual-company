@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Barre des cinq entrées + rappel des signaux métier, autour de l'écran courant.
+ * Colonne des cinq entrées + rappel des signaux métier, autour de l'écran courant.
  *
  * Ce qui était porté par `WorkspacePane` (compteurs de badge, signaux, toast,
  * navigation croisée) vit ici, au-dessus des pages : ces éléments ne dépendent
@@ -23,7 +23,7 @@ import {
 } from '@/components/notifications/useBusinessSignals';
 import { signalHref } from '@/lib/navigation/workspace-routes';
 
-import { WorkspaceNav } from './WorkspaceNav';
+import { WorkspaceSidebar } from './WorkspaceSidebar';
 
 /** Compteur best-effort : un chiffre absent vaut mieux qu'une erreur à l'écran. */
 function useCount(url: string, read: (json: unknown) => number): number {
@@ -67,8 +67,11 @@ export function WorkspaceChrome({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <>
-      <WorkspaceNav
+    // ⚠️ La colonne est À CÔTÉ du contenu, pas au-dessus : c'est ce qui rend
+    // la largeur de page indépendante de la navigation. Le contenu garde son
+    // gabarit de 1 400 px centré, colonne dépliée comme repliée.
+    <div className="flex min-h-0 w-full flex-1">
+      <WorkspaceSidebar
         badges={{
           pendingValidations,
           pendingVivier,
@@ -77,13 +80,13 @@ export function WorkspaceChrome({ children }: { children: React.ReactNode }) {
           interviewsToPoint: signalCount(signals, 'interviews_awaiting_pointing'),
         }}
       />
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         {children}
         <BusinessToast
           signals={signals}
           onNavigate={(target) => router.push(signalHref(target))}
         />
       </div>
-    </>
+    </div>
   );
 }

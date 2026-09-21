@@ -172,6 +172,26 @@ export const PASTILLE = {
   campagne: 'var(--dash-sky)',
 } as const;
 
+/**
+ * L'ÉTAT SÉLECTIONNÉ — une seule façon de le marquer dans tout le produit.
+ *
+ * Bordure teintée + fond tiède. C'est ce que porte une carte-compteur choisie
+ * (`CounterRibbon`) ; la colonne de navigation prend EXACTEMENT les mêmes
+ * valeurs, depuis ici, pour que « sélectionné » se reconnaisse d'un coup d'œil
+ * qu'on soit dans un ruban ou dans la colonne.
+ *
+ * ⚠️ Jamais une ombre, jamais une bordure de plus de 1 px : le relief est
+ * l'autre façon de marquer une sélection, et le produit n'en a pas.
+ */
+export const SELECTION = {
+  /** Fond d'une entrée/carte choisie. */
+  fond: 'var(--dash-warm)',
+  /** Fond d'une entrée au repos. */
+  fondRepos: 'transparent',
+  /** Bordure d'une entrée choisie — la teinte de l'entrée, passée en argument. */
+  bordureRepos: 'transparent',
+} as const;
+
 /** Rayons — trois, par taille d'objet. */
 export const RAYON = {
   petit: 8,

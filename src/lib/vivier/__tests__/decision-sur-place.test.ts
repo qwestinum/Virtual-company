@@ -47,9 +47,13 @@ describe('la file différée n’existe plus', () => {
   });
 
   it('plus aucun composant ne la monte', () => {
+    // ⚠️ `WorkspaceNav` a disparu le 21/09/2026 : la navigation est passée en
+    // COLONNE. La garde suit le composant qui monte la navigation, pas son
+    // ancien nom — sinon elle lèverait sur un fichier absent au lieu de
+    // vérifier quoi que ce soit.
     const chemins = [
       'src/components/workspace/WorkspaceChrome.tsx',
-      'src/components/workspace/WorkspaceNav.tsx',
+      'src/components/workspace/WorkspaceSidebar.tsx',
     ];
     for (const c of chemins) {
       expect(lire(c), c).not.toContain('VivierValidationsWorklist');

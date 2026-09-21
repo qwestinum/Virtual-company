@@ -272,6 +272,9 @@
      Tenable seulement parce que les initiales sont REDONDANTES — le nom
      complet est à côté, en contraste AA — et parce que c'est la teinte
      demandée. Dans la même famille : #9a3412 donnerait 4,86:1. */
+  /* L'icône « Aujourd'hui » de la colonne — le point de départ a sa couleur,
+     et elle n'est partagée avec rien d'autre. */
+  --dash-accueil: #fedc96;
   --dash-candidat: #ffcb60;
   --dash-candidat-encre: #ff7f00;
 
