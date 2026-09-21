@@ -21,6 +21,9 @@
  */
 
 import { PageShell } from '@/components/navigation/PageShell';
+import { StatTileButton, StatTileRow } from '@/components/ui/StatTileButton';
+
+import type { InterviewTabKey } from './InterviewTabs';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -40,7 +43,6 @@ import type { FinalVerdict } from '@/types/verdict-comment';
 
 import { AwaitingList, type AwaitingItem } from './AwaitingList';
 import { InterviewSignals } from './InterviewSignals';
-import { InterviewTabs, type InterviewTabKey } from './InterviewTabs';
 import { NoShowDialog, type NoShowChoice } from './NoShowDialog';
 import { ScheduledList, type ScheduledItem } from './ScheduledList';
 
@@ -259,32 +261,42 @@ export function InterviewsWorkspace({
           currentUserId={currentUserId}
         />
 
-        <InterviewTabs
-          active={tab}
-          onSelect={setTab}
-          tabs={[
-            {
-              key: 'scheduled',
-              label: 'Entretiens',
-              count: scheduled.length,
-              total: pipeline.counts.scheduled,
-              // Compte d'ALERTE : toujours celui du pipeline complet.
-              alert: pipeline.counts.toPoint,
-            },
-            {
-              key: 'awaiting',
-              label: 'En attente de réservation',
-              count: awaiting.length,
-              total: pipeline.counts.awaiting,
-            },
-            {
-              key: 'verdict',
-              label: 'En attente de verdict',
-              count: verdictRows.length,
-              total: pipeline.counts.verdict,
-            },
-          ]}
-        />
+        {/* ⚠️ Les MÊMES tuiles que la carte campagne : un compteur sur lequel
+            on clique. Elles étaient des onglets de texte gris de 13 px — même
+            information, mais l'écran paraissait d'un autre produit. Le total
+            non filtré reste écrit quand il diffère, et le compte d'ALERTE
+            porte TOUJOURS sur l'ensemble : un filtre de confort qui masquerait
+            des dossiers en souffrance ferait perdre au signal sa fonction. */}
+        <StatTileRow>
+          <StatTileButton
+            icon="📅"
+            color="var(--dash-teal)"
+            label="Entretiens"
+            value={scheduled.length}
+            total={pipeline.counts.scheduled}
+            alert={pipeline.counts.toPoint}
+            active={tab === 'scheduled'}
+            onClick={() => setTab('scheduled')}
+          />
+          <StatTileButton
+            icon="✉️"
+            color="var(--dash-purple)"
+            label="En attente de réservation"
+            value={awaiting.length}
+            total={pipeline.counts.awaiting}
+            active={tab === 'awaiting'}
+            onClick={() => setTab('awaiting')}
+          />
+          <StatTileButton
+            icon="⏳"
+            color="var(--dash-yellow)"
+            label="En attente de verdict"
+            value={verdictRows.length}
+            total={pipeline.counts.verdict}
+            active={tab === 'verdict'}
+            onClick={() => setTab('verdict')}
+          />
+        </StatTileRow>
 
         {pipeline.counts.unresolved > 0 ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12.5px] text-amber-900">

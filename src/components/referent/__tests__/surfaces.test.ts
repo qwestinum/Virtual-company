@@ -32,8 +32,19 @@ describe('les alertes échappent au filtre', () => {
     expect(source).toContain('<InterviewSignals orphans={pipeline.orphans} />');
   });
 
+  /**
+   * ⚠️ On cherche la VALEUR passée, pas une syntaxe. Ces assertions lisaient
+   * `alert: pipeline.counts.toPoint` — la forme d'un littéral d'objet — et
+   * sont tombées le jour où les onglets sont devenus des tuiles et les clés
+   * des props JSX (`alert={…}`). L'invariant n'avait pas bougé d'un pouce ;
+   * seule son écriture. Une garde attachée à la ponctuation crie au loup sur
+   * un changement de forme, et finit par être désarmée.
+   */
+  const passe = (prop: string, valeur: string) =>
+    new RegExp(`${prop}\\s*[:=]\\s*\\{?\\s*${valeur.replace(/\./g, '\\.')}`).test(source);
+
   it('le badge « à pointer » lit le compteur du pipeline, pas la liste filtrée', () => {
-    expect(source).toContain('alert: pipeline.counts.toPoint');
+    expect(passe('alert', 'pipeline.counts.toPoint'), 'alert ← pipeline.counts.toPoint').toBe(true);
   });
 
   it('les listes affichées, ELLES, sont bien filtrées', () => {
@@ -45,9 +56,9 @@ describe('les alertes échappent au filtre', () => {
   });
 
   it('les totaux des onglets restent ceux du pipeline (affichage « n sur N »)', () => {
-    expect(source).toContain('total: pipeline.counts.scheduled');
-    expect(source).toContain('total: pipeline.counts.awaiting');
-    expect(source).toContain('total: pipeline.counts.verdict');
+    expect(passe('total', 'pipeline.counts.scheduled')).toBe(true);
+    expect(passe('total', 'pipeline.counts.awaiting')).toBe(true);
+    expect(passe('total', 'pipeline.counts.verdict')).toBe(true);
   });
 });
 

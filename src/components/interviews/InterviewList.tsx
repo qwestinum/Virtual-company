@@ -44,7 +44,7 @@ export function InterviewList({
     <div className="flex flex-col gap-4">
       {days.map(([day, items]) => (
         <section key={day}>
-          <h3 className="mb-1.5 font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+          <h3 className="mb-1.5 font-display text-[16px] font-bold text-stone-900">
             {day}
           </h3>
           <ul className="flex flex-col gap-1.5">

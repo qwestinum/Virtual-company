@@ -71,7 +71,7 @@ export function ScheduledList({
         if (items.length === 0) return null;
         return (
           <section key={section.key}>
-            <h3 className="font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+            <h3 className="mb-1.5 font-display text-[16px] font-bold text-stone-900">
               {section.title} ({items.length})
             </h3>
             {section.hint ? (
