@@ -32,11 +32,9 @@ import { markCandidateInterview } from '@/lib/dashboard/candidate-actions';
 import type { InterviewPipeline } from '@/lib/interviews/pipeline';
 import type { RowReferent } from '@/lib/interviews/referent-resolution';
 import {
-  ALL_REFERENTS,
   buildReferentOptionsBy,
   filterByReferentBy,
   myReferentCountBy,
-  type ReferentSelection,
 } from '@/lib/referent/filter';
 import type { FinalVerdict } from '@/types/verdict-comment';
 
@@ -44,6 +42,7 @@ import { AwaitingList, type AwaitingItem } from './AwaitingList';
 import { InterviewSignals } from './InterviewSignals';
 import { NoShowDialog, type NoShowChoice } from './NoShowDialog';
 import { ScheduledList, type ScheduledItem } from './ScheduledList';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
 
 const EMPTY: InterviewPipeline = {
   awaiting: [],
@@ -87,8 +86,9 @@ export function InterviewsWorkspace({
   const [pipeline, setPipeline] = useState<InterviewPipeline>(EMPTY);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   // Commodité de LECTURE : aucune restriction d'accès, aucune persistance.
-  const [referentFilter, setReferentFilter] =
-    useState<ReferentSelection>(ALL_REFERENTS);
+  // ⚠️ UN SEUL ÉTAT pour tout le produit, mémorisé par recruteur : cocher
+  // « Mes campagnes » ici, c'est le retrouver coché sur les autres écrans.
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
   // Défaut : les entretiens. C'est l'agenda de la semaine — ce qu'on vient
   // regarder en ouvrant la page ; les invitations en attente sont une file
   // qu'on traite, pas ce qu'on consulte en premier.

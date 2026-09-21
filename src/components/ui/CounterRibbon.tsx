@@ -31,7 +31,13 @@ import { DASH, SKINS, type ListSkin } from './list-skin';
 export type CounterItem = {
   key: string;
   label: string;
-  count: number;
+  /**
+   * Le chiffre. ABSENT quand il n'y en a pas à montrer — une bascule de vue
+   * n'en a pas toujours un, et le libellé avec son point coloré suffit. Le
+   * rang n'est alors pas rendu, jamais réservé : les cartes d'un même ruban
+   * gardent la même structure entre elles.
+   */
+  count?: number;
   /** Total hors filtre — écrit seulement s'il diffère. */
   total?: number;
   /** Classe de la pastille et du soulignement (peau `orqa`). */
@@ -92,6 +98,7 @@ export function CounterRibbon({
                 : undefined
             }
           >
+            {item.count === undefined ? null : (
             <span
               className={`block ${s.chiffre}`}
               style={skin === 'dash' ? { color: DASH.texte } : undefined}
@@ -106,6 +113,7 @@ export function CounterRibbon({
                 </span>
               ) : null}
             </span>
+            )}
             {/* LIGNE 2 — le repère et le libellé à gauche, la précision tout à
                 droite. `justify-between` : la pastille ne s'ajoute pas à la
                 suite du libellé, elle s'aligne au bord. */}

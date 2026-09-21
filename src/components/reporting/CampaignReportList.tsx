@@ -7,14 +7,23 @@
  * (volume MVP faible) via helpers purs.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { CampaignReportCard } from '@/components/reporting/CampaignReportCard';
 import { CampaignReportDetail } from '@/components/reporting/CampaignReportDetail';
 import { CampaignReportFilters } from '@/components/reporting/CampaignReportFilters';
 import type { DonneurOption } from '@/components/reporting/DonneurOrdreSelect';
 import { SendReportModal } from '@/components/reporting/SendReportModal';
+import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
+import { useReferentContext } from '@/components/referent/useReferentContext';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
 import { PilotageShell } from '@/components/reporting/PilotageShell';
+import {
+  activeReferentOf,
+  buildReferentOptionsBy,
+  filterByReferentBy,
+  myReferentCountBy,
+} from '@/lib/referent/filter';
 import { SentHistoryModal } from '@/components/reporting/SentHistoryModal';
 import {
   campaignSendDefaults,
@@ -105,10 +114,32 @@ export function CampaignReportList({ tabs }: { tabs: ReactNode }) {
     return [...by.entries()].map(([id, label]) => ({ id, label }));
   }, [items]);
 
+  // ⚠️ LE MÊME FILTRE, AU MÊME ENDROIT, et le MÊME ÉTAT que sur les autres
+  // onglets. Ici la liste est chargée ENTIÈRE puis paginée côté client : on
+  // filtre donc les lignes, et le compte « N campagnes clôturées » suit.
+  const { referents, currentUserId } = useReferentContext();
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
+  const referentDe = useCallback(
+    (s: CampaignReportSummary) => activeReferentOf(s.campaignId, referents),
+    [referents],
+  );
+  const referentOptions = useMemo(
+    () => buildReferentOptionsBy(items, referentDe),
+    [items, referentDe],
+  );
+  const myCount = useMemo(
+    () => myReferentCountBy(items, referentDe, currentUserId),
+    [items, referentDe, currentUserId],
+  );
+  const duReferent = useMemo(
+    () => filterByReferentBy(items, referentDe, referentFilter),
+    [items, referentDe, referentFilter],
+  );
+
   const filtered = useMemo(
     () =>
       sortCampaignSummaries(
-        filterCampaignSummaries(items, {
+        filterCampaignSummaries(duReferent, {
           search,
           from: period.from,
           to: period.to,
@@ -116,7 +147,7 @@ export function CampaignReportList({ tabs }: { tabs: ReactNode }) {
         }),
         sortKey,
       ),
-    [items, search, period.from, period.to, donneurId, sortKey],
+    [duReferent, search, period.from, period.to, donneurId, sortKey],
   );
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -200,7 +231,15 @@ export function CampaignReportList({ tabs }: { tabs: ReactNode }) {
     <PilotageShell
       tabs={tabs}
       toolbar={
-        <CampaignReportFilters
+        <div className="flex flex-col gap-2.5">
+          <ReferentFilterBar
+            options={referentOptions}
+            selection={referentFilter}
+            onChange={setReferentFilter}
+            myCount={myCount}
+            currentUserId={currentUserId}
+          />
+          <CampaignReportFilters
           search={search}
           onSearchChange={setSearchReset}
           period={period}
@@ -210,8 +249,9 @@ export function CampaignReportList({ tabs }: { tabs: ReactNode }) {
           onDonneurChange={setDonneurReset}
           donneurOptions={donneurOptions}
           sortKey={sortKey}
-          onSortChange={setSortReset}
-        />
+            onSortChange={setSortReset}
+          />
+        </div>
       }
     >
       <p className="mb-3 font-body text-[12px] font-semibold text-stone-500">

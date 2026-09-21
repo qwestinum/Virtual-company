@@ -298,6 +298,36 @@ export async function listCampaignSummaries(
   return out;
 }
 
+/**
+ * Référent de TOUTES les campagnes, projection minimale, pagination keyset.
+ *
+ * ⚠️ Pas `listCampaigns()` : elle fait `select('*')` sans `.range()`, donc
+ * PostgREST la plafonne SILENCIEUSEMENT à 1000 lignes. Un filtre par référent
+ * qui repose dessus cesserait de classer les campagnes au-delà du millième —
+ * et un filtre qui masque des dossiers sans le dire est pire que pas de
+ * filtre. Curseur = `id` (PK unique et stable).
+ */
+export async function listAllCampaignOwners(): Promise<
+  { id: string; ownerUserId: string | null }[]
+> {
+  const supabase = requireServerSupabase();
+  const rows = await fetchAllKeyset<{ id: string; owner_user_id: string | null }>({
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('id, owner_user_id')
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('id', afterId);
+      const { data, error } = await q;
+      if (error) throw new Error(`listAllCampaignOwners: ${error.message}`);
+      return data ?? [];
+    },
+    cursorOf: (row) => row.id,
+  });
+  return rows.map((r) => ({ id: r.id, ownerUserId: r.owner_user_id ?? null }));
+}
+
 /** Campagne ACTIVE, projection minimale pour les signaux de suivi. */
 export type ActiveCampaignBrief = {
   id: string;

@@ -53,6 +53,7 @@ export function CampaignCard({
 
   return (
     <article
+      data-campaign-card={campaign.id}
       style={{
         background: 'var(--dash-surface)',
         border: `1px solid ${expanded ? 'var(--dash-border-strong)' : 'var(--dash-border)'}`,

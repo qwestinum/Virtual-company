@@ -232,3 +232,30 @@ export function myCampaignsCount(
     currentUserId,
   );
 }
+
+/**
+ * Les campagnes qui entrent dans une sélection — `null` pour « Tous ».
+ *
+ * ⚠️ Pour un écran dont la liste est PAGINÉE PAR LE SERVEUR (le menu
+ * Candidatures), filtrer les lignes reçues ne filtrerait qu'une page : les
+ * compteurs et le total mentiraient. On restreint donc le PÉRIMÈTRE — la
+ * liste des campagnes envoyée à la requête — et le serveur fait le reste,
+ * exactement comme pour le sélecteur de campagne qui existait déjà.
+ *
+ * `none` = aucun référent ACTIF : un recruteur désactivé compte comme « non
+ * défini », même règle que partout ailleurs.
+ */
+export function campaignIdsForSelection(
+  referentByCampaign: ReferentByCampaign,
+  selection: ReferentSelection,
+): string[] | null {
+  if (selection.kind === 'all') return null;
+  const out: string[] = [];
+  for (const [campaignId, referent] of Object.entries(referentByCampaign)) {
+    const actif = asActiveReferent(referent);
+    const garde =
+      selection.kind === 'none' ? actif === null : actif?.id === selection.id;
+    if (garde) out.push(campaignId);
+  }
+  return out;
+}

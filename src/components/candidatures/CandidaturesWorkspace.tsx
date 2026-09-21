@@ -21,7 +21,15 @@ import {
   useCampaignsStore,
 } from '@/stores/campaigns-store';
 import type { CandidateListItem } from '@/types/reporting';
-import { activeReferentOf } from '@/lib/referent/filter';
+import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
+import { useReferentContext } from '@/components/referent/useReferentContext';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
+import {
+  activeReferentOf,
+  buildReferentOptionsBy,
+  campaignIdsForSelection,
+  myReferentCountBy,
+} from '@/lib/referent/filter';
 
 import { CandidatureFullPage } from './CandidatureFullPage';
 import { CandidaturePanel } from './CandidaturePanel';
@@ -120,6 +128,40 @@ export function CandidaturesWorkspace({
   const referentOf = (campaignId: string | null) =>
     campaignId ? activeReferentOf(campaignId, referents) : null;
 
+  // ⚠️ LE MÊME FILTRE, AU MÊME ENDROIT que sur Entretiens : la barre ouvre la
+  // barre d'outils, et l'état est PARTAGÉ entre les écrans (mémorisé par
+  // recruteur). Le référent est celui de la CAMPAGNE — le référentiel complet
+  // vient d'une route dédiée, parce que cet écran ne voit qu'une PAGE de
+  // candidatures et ne peut donc pas en déduire les campagnes.
+  const { referents: tousReferents, currentUserId } = useReferentContext();
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
+  const campagnesDuReferent = useMemo(
+    () => campaignIdsForSelection(tousReferents, referentFilter),
+    [tousReferents, referentFilter],
+  );
+  const referentOptions = useMemo(() => {
+    const entrees = Object.keys(tousReferents).map((id) => ({ id }));
+    return buildReferentOptionsBy(entrees, (c) =>
+      activeReferentOf(c.id, tousReferents),
+    );
+  }, [tousReferents]);
+  const myReferentCount = useMemo(
+    () =>
+      myReferentCountBy(
+        Object.keys(tousReferents).map((id) => ({ id })),
+        (c) => activeReferentOf(c.id, tousReferents),
+        currentUserId,
+      ),
+    [tousReferents, currentUserId],
+  );
+
+  // Le périmètre du référent descend dans les FILTRES : la requête est
+  // paginée côté serveur, filtrer les lignes reçues ne filtrerait qu'une page.
+  useEffect(() => {
+    setFilters({ referentCampaignIds: campagnesDuReferent });
+    setPage(0);
+  }, [campagnesDuReferent, setFilters, setPage]);
+
   const [panelItem, setPanelItem] = useState<CandidateListItem | null>(null);
   const [fullItem, setFullItem] = useState<CandidateListItem | null>(null);
   const [period, setPeriod] = useState<PeriodKey>('all');
@@ -217,7 +259,15 @@ export function CandidaturesWorkspace({
       // l'écran avec ses propres marges — ils se rangent dans la zone de tête,
       // où les espacements sont nommés une fois pour les cinq onglets.
       toolbar={
-        <CandidaturesFilters
+        <div className="flex flex-col gap-2.5">
+          <ReferentFilterBar
+            options={referentOptions}
+            selection={referentFilter}
+            onChange={setReferentFilter}
+            myCount={myReferentCount}
+            currentUserId={currentUserId}
+          />
+          <CandidaturesFilters
           campaignOptions={campaignOptions}
           activeCount={activeIds.length}
           campaignValue={campaignValue}
@@ -232,8 +282,9 @@ export function CandidaturesWorkspace({
           onClearEverInvited={() => setFilters({ everInvited: false })}
           everInterviewed={filters.everInterviewed}
           onClearEverInterviewed={() => setFilters({ everInterviewed: false })}
-          onReset={onResetView}
-        />
+            onReset={onResetView}
+          />
+        </div>
       }
       counters={
         <>

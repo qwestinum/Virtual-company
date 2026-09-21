@@ -17,12 +17,11 @@
  * de lui.
  */
 
-import { useState } from 'react';
 
 import { ActionButton } from '@/components/campagnes/ActionButton';
 import { PageShell } from '@/components/navigation/PageShell';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
-import { ALL_REFERENTS, type ReferentSelection } from '@/lib/referent/filter';
+import { ALL_REFERENTS } from '@/lib/referent/filter';
 import { applyReferentFilter } from '@/lib/today/referent-view';
 import { formatSmartDate } from '@/components/candidatures/stage-ui';
 import { PHRASES } from '@/lib/lexique/phrases-ecran';
@@ -38,6 +37,7 @@ import { TodayRow } from './TodayRow';
 import { TodaySkeleton } from './TodaySkeleton';
 import { TodayTeamBand } from './TodayTeamBand';
 import { TodayZoneStrip, type TodayZoneCounts } from './TodayZoneStrip';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
 
 export type TodayBoardViewProps = {
   board: TodayBoard;
@@ -81,8 +81,9 @@ export function TodayBoardView({
 }: TodayBoardViewProps) {
   // Filtre de LECTURE, volontairement NON persisté (ni URL, ni stockage) : un
   // filtre oublié qui masque des dossiers est pire que pas de filtre.
-  const [referentFilter, setReferentFilter] =
-    useState<ReferentSelection>(ALL_REFERENTS);
+  // ⚠️ UN SEUL ÉTAT pour tout le produit, mémorisé par recruteur : cocher
+  // « Mes campagnes » ici, c'est le retrouver coché sur les autres écrans.
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
   const vue = applyReferentFilter(brut, referentFilter, currentUserId);
   const board = vue.board;
 

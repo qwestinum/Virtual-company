@@ -654,8 +654,13 @@ suivante plus facile à justifier.
 - **Le point coloré n'est pas un ornement** : c'est le même repère de couleur que la pastille
   d'état d'une ligne, le soulignement d'une carte-compteur et les segments de l'entonnoir.
 - **Une carte-compteur n'a que deux rangs** : un chiffre, un libellé. **Jamais une troisième
-  ligne.** Ce qui mérite un sous-texte mérite sa propre carte — c'est un volume, il se compte.
-  Toutes les cartes d'un ruban ont donc la même structure et la même hauteur.
+  ligne.** Une précision tient DANS la deuxième ligne, en pastille poussée à droite
+  (`CountBadge`, celle des onglets de navigation) ; une carte qui n'en a pas n'affiche rien à
+  droite et ne réserve aucune place. Toutes les cartes d'un ruban ont la même structure et la
+  même hauteur.
+- **Le chiffre est FACULTATIF** : une bascule de vue qui ne compte rien (les vues de *Pilotage*)
+  prend le même ruban sans chiffre — le libellé et le point coloré suffisent. Le composant
+  l'accepte ; on ne le recopie pas pour ça.
 - **La couleur vient des composants existants**, jamais d'un aplat local : entonnoir en segments
   (`SegmentedCounts`, la géométrie du mini-pipeline de *Candidatures*) à la place de nombres gris,
   pastille d'état colorée, soulignement de carte.

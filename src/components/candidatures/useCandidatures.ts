@@ -9,6 +9,7 @@ import {
 } from '@/lib/reporting/candidate-stage';
 import type { ReferentByCampaign } from '@/lib/referent/filter';
 import type { CandidateListItem } from '@/types/reporting';
+import { perimetreCampagnes } from '@/lib/candidatures/campaign-perimeter';
 
 export const CANDIDATURES_PAGE_SIZE = 50;
 
@@ -37,6 +38,12 @@ export type CandidaturesFilters = {
    * sémantique de stade courant.
    */
   everInterviewed: boolean;
+  /**
+   * Campagnes du référent sélectionné — `null` quand le filtre est « Tous ».
+   * Restreint le PÉRIMÈTRE de la requête, jamais les lignes reçues : la liste
+   * est paginée côté serveur, un filtre de lignes ne filtrerait qu'une page.
+   */
+  referentCampaignIds: string[] | null;
 };
 
 /** Référence stable pour « aucune campagne ciblée » (évite les refetch en boucle). */
@@ -52,6 +59,7 @@ const EMPTY_FILTERS: CandidaturesFilters = {
   fromVivier: false,
   everInvited: false,
   everInterviewed: false,
+  referentCampaignIds: null,
 };
 
 function buildQuery(params: Record<string, string | undefined>): string {
@@ -88,16 +96,25 @@ export function useCandidatures() {
     return () => clearTimeout(t);
   }, [filters.search]);
 
-  const campaignIds = filters.campaignIds;
-  const campaignIdsParam = campaignIds.length > 0 ? campaignIds.join(',') : undefined;
+  // ⚠️ INTERSECTION du sélecteur de campagne et du filtre par référent :
+  // « Campagnes actives » + « Mes campagnes » = mes campagnes actives.
+  const { campaignId: perimetreCampaignId, campaignIdsParam } = useMemo(
+    () =>
+      perimetreCampagnes({
+        campaignId: filters.campaignId,
+        campaignIds: filters.campaignIds,
+        referentCampaignIds: filters.referentCampaignIds,
+      }),
+    [filters.campaignId, filters.campaignIds, filters.referentCampaignIds],
+  );
   const perimeter = useMemo(
     () => ({
-      campaignId: filters.campaignId,
+      campaignId: perimetreCampaignId,
       campaignIdsParam,
       from: filters.from,
       to: filters.to,
     }),
-    [filters.campaignId, campaignIdsParam, filters.from, filters.to],
+    [perimetreCampaignId, campaignIdsParam, filters.from, filters.to],
   );
 
   // Compteurs — PÉRIMÈTRE uniquement.

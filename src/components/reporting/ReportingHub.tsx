@@ -17,7 +17,7 @@
 
 import { useState } from 'react';
 
-import { DotTabs } from '@/components/ui/DotTabs';
+import { CounterRibbon } from '@/components/ui/CounterRibbon';
 
 import { AuditCandidatView } from './AuditCandidatView';
 import { AuditHome } from './AuditHome';
@@ -45,16 +45,16 @@ export function ReportingHub() {
   // Sous-vue de l'onglet Audit : accueil (3 cartes) ou audit candidat.
   const [auditView, setAuditView] = useState<'home' | 'candidat'>('home');
 
-  // ⚠️ LES PUCES À POINT COLORÉ de la liste des campagnes (`DotTabs`), pas un
-  // troisième composant. Cet écran s'en était fabriqué un — une barre
-  // segmentée qui n'existait nulle part ailleurs : on ne reconnaissait plus,
-  // d'un écran à l'autre, la chose qui fait basculer de vue.
+  // ⚠️ LE RUBAN DE CARTES-COMPTEURS, celui d'Entretiens et de Candidatures —
+  // même carte, même soulignement coloré, même état sélectionné, même hauteur,
+  // étirées sur la largeur. Cet écran s'était fabriqué une barre segmentée,
+  // puis des puces : deux formes de plus pour le même geste. Sans chiffre ici,
+  // parce qu'il n'y en a pas — le composant l'accepte, il n'est pas recopié.
   const tabs = (
-    <DotTabs
-      ariaLabel="Choisir la vue de pilotage"
-      tabs={TABS}
-      current={tab}
-      onChange={setTab}
+    <CounterRibbon
+      active={tab}
+      onSelect={(k) => setTab((k ?? 'campaign') as SubTab)}
+      items={TABS.map((t) => ({ key: t.key, label: t.label, color: t.dot }))}
     />
   );
 

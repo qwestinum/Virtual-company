@@ -21,12 +21,10 @@ import { useState } from 'react';
 
 import {
   activeReferentOf,
-  ALL_REFERENTS,
   buildReferentOptions,
   filterByReferent,
   myCampaignsCount,
   referentSelectionKey,
-  type ReferentSelection,
 } from '@/lib/referent/filter';
 import {
   defaultValidationSubTab,
@@ -44,6 +42,7 @@ import { DotTabs } from '@/components/ui/DotTabs';
 import { useValidationsQueue } from './use-validations-queue';
 import { ValidationCard } from './ValidationCard';
 import { ValidationsHistory } from './ValidationsHistory';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
 
 export function ValidationsHub() {
   const {
@@ -59,8 +58,9 @@ export function ValidationsHub() {
   } = useValidationsQueue();
   // Filtre de LECTURE, volontairement NON persisté (ni URL, ni localStorage) :
   // un filtre oublié qui masque des dossiers est pire que pas de filtre.
-  const [referentFilter, setReferentFilter] =
-    useState<ReferentSelection>(ALL_REFERENTS);
+  // ⚠️ UN SEUL ÉTAT pour tout le produit, mémorisé par recruteur : cocher
+  // « Mes campagnes » ici, c'est le retrouver coché sur les autres écrans.
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
   // `null` = « le sous-onglet d'arrivée n'est pas encore pris ». Il ne peut pas
   // l'être ici : à ce stade la file est en chargement et les comptes sont
   // inconnus. Il est donc pris PLUS BAS, pendant le rendu — pas dans un

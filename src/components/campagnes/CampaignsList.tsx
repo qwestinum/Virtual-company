@@ -30,6 +30,13 @@ import {
   CampaignCard,
 } from './CampaignCard';
 import { DotTabs } from '@/components/ui/DotTabs';
+import {
+  activeReferentOf,
+  ALL_REFERENTS,
+  filterByReferentBy,
+  type ReferentByCampaign,
+  type ReferentSelection,
+} from '@/lib/referent/filter';
 
 export type CampaignsListProps = {
   onEditCampaign: (campaignId: string) => void;
@@ -40,6 +47,13 @@ export type CampaignsListProps = {
    * pour l'atteindre, jusqu'au premier geste de l'utilisateur.
    */
   focusCampaignId?: string | null;
+  /**
+   * Filtre « Référent » posé par l'écran — partagé avec les autres onglets et
+   * mémorisé par recruteur. Il ne RESTREINT rien : il réduit seulement ce qui
+   * s'affiche, et le compte de chaque puce de statut suit.
+   */
+  referentFilter?: ReferentSelection;
+  referents?: ReferentByCampaign;
 };
 
 const PAGE_SIZE = 5;
@@ -57,8 +71,17 @@ const STATUS_FILTERS: { id: StatusFilter; label: string; dot: string }[] = [
 export function CampaignsList({
   onEditCampaign,
   focusCampaignId = null,
+  referentFilter = ALL_REFERENTS,
+  referents = {},
 }: CampaignsListProps) {
-  const rawCampaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
+  const rawCampaignsBrutes = useCampaignsStore(useShallow(selectActiveCampaigns));
+  const rawCampaigns = useMemo(
+    () =>
+      filterByReferentBy(rawCampaignsBrutes, (c) =>
+        activeReferentOf(c.id, referents),
+      referentFilter),
+    [rawCampaignsBrutes, referents, referentFilter],
+  );
   // Tri par récence (createdAt desc). Fallback sur l'ordre d'insertion si
   // createdAt est manquant (campagnes seedées sans timestamp).
   const allCampaigns = useMemo(

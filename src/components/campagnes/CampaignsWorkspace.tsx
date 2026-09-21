@@ -24,7 +24,7 @@
  */
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 
 import { PARAM, nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
 
@@ -34,6 +34,14 @@ import { CampaignsList } from './CampaignsList';
 import { UnsavedChangesBanner } from './UnsavedChangesBanner';
 import type { BlockKey } from './edit/CampaignEditAccordion';
 import { CampaignEditSheet } from './edit/CampaignEditSheet';
+import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
+import { useReferentContext } from '@/components/referent/useReferentContext';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
+import {
+  activeReferentOf,
+  buildReferentOptionsBy,
+  myReferentCountBy,
+} from '@/lib/referent/filter';
 
 /** Ce que la feuille d'édition montre : une campagne, et par quoi commencer. */
 type Edition = { campaignId: string; section?: BlockKey };
@@ -115,15 +123,45 @@ export function CampaignsWorkspace({
     window.history.replaceState(null, '', `${pathname}${reste}`);
   }, [focusCampaignId, openSection, openCreate, pathname, router]);
 
+  const { referents, currentUserId } = useReferentContext();
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
+  const entrees = useMemo<{ id: string }[]>(
+    () => Object.keys(referents).map((id) => ({ id })),
+    [referents],
+  );
+  const referentOptions = useMemo(
+    () => buildReferentOptionsBy(entrees, (c) => activeReferentOf(c.id, referents)),
+    [entrees, referents],
+  );
+  const myCount = useMemo(
+    () =>
+      myReferentCountBy(entrees, (c) => activeReferentOf(c.id, referents), currentUserId),
+    [entrees, referents, currentUserId],
+  );
+
   return (
     <PageShell
       title="Gestion des campagnes"
       subtitle="Vos campagnes de recrutement : création, édition, et pilotage du cycle de vie (suspendre, arrêter, reprendre)."
+      // ⚠️ LE MÊME FILTRE, AU MÊME ENDROIT que sur les autres onglets, et le
+      // MÊME ÉTAT : cocher « Mes campagnes » ici, c'est le retrouver coché
+      // sur Candidatures, Entretiens et Pilotage.
+      toolbar={
+        <ReferentFilterBar
+          options={referentOptions}
+          selection={referentFilter}
+          onChange={setReferentFilter}
+          myCount={myCount}
+          currentUserId={currentUserId}
+        />
+      }
     >
       <>
         <UnsavedChangesBanner />
         <CampaignsList
           focusCampaignId={focusCampaignId}
+          referentFilter={referentFilter}
+          referents={referents}
           onEditCampaign={(campaignId) => setEdition({ campaignId })}
         />
       </>
