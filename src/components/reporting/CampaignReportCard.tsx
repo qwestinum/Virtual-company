@@ -14,7 +14,6 @@
 import { Download, MoreVertical, RefreshCw, Send } from 'lucide-react';
 import { useState } from 'react';
 
-import { initials } from '@/components/candidatures/stage-ui';
 import { ListRow } from '@/components/ui/ListRow';
 import { formatFrDate } from '@/lib/reporting/audit-display';
 import {
@@ -64,10 +63,13 @@ export function CampaignReportCard({
     >
       <ListRow
         testId={summary.campaignId}
-        initials={initials(summary.jobTitle)}
-        avatarColor={recruited ? 'var(--dash-green)' : 'var(--dash-border-strong)'}
+        // Pas de pavé d'initiales : l'objet de la ligne est une CAMPAGNE, pas
+        // une personne. « BA » pour « Business Analyst » la faisait passer
+        // pour un candidat dans une liste de candidats.
         title={summary.jobTitle}
-        pill={donneurOrdreLabel(summary)}
+        // La puce ne s'affiche que s'il y a quelqu'un : une puce « — » occupe
+        // la place d'une information sans en porter aucune.
+        pill={summary.donneurOrdre ? donneurOrdreLabel(summary) : null}
         reference={summary.campaignId}
         meta={`${formatFrDate(summary.launchedAt)} – ${formatFrDate(
           summary.closedAt,

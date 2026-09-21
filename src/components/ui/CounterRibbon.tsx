@@ -22,8 +22,15 @@ export type CounterItem = {
   count: number;
   /** Total hors filtre — écrit seulement s'il diffère. */
   total?: number;
-  /** Compte d'ALERTE, toujours sur l'ensemble, jamais sur la vue filtrée. */
+  /**
+   * Compte d'ALERTE, toujours sur l'ensemble, jamais sur la vue filtrée.
+   * ⚠️ Rendu en SOUS-TEXTE sous le libellé, jamais incrusté dans le chiffre :
+   * « 1 ① » se lit comme un seul nombre mal composé, et un compteur dont on
+   * doute du chiffre ne compte plus rien.
+   */
   alert?: number;
+  /** Ce que le compte d'alerte veut dire. Sans lui, le nombre ne dit rien. */
+  alertLabel?: string;
   /** Classe de la pastille et du soulignement (peau `orqa`). */
   dotClass?: string;
   /** Couleur de la pastille et du soulignement (peau `dash`). */
@@ -44,7 +51,14 @@ export function CounterRibbon({
 }) {
   const s = SKINS[skin];
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1">
+    // ⚠️ GRILLE À COLONNES ÉGALES, quel que soit le nombre de compteurs :
+    // trois cartes = trois tiers, huit cartes = huit huitièmes. En `flex`,
+    // trois cartes s'étiraient sur 460 px chacune, puis — plafonnées — elles
+    // laissaient un vide à droite. Une grille fait les deux à la fois.
+    <div
+      className="grid gap-2 pb-1"
+      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+    >
       {items.map((item) => {
         const selected = active === item.key;
         const teinte = item.color ?? DASH.bordureForte;
@@ -55,12 +69,7 @@ export function CounterRibbon({
             data-counter={item.key}
             aria-pressed={selected}
             onClick={() => onSelect(selected ? null : item.key)}
-            // ⚠️ `flex-1` SEUL étire les cartes sur toute la largeur : huit
-            // compteurs donnent des cartes compactes, trois donnent trois
-            // pavés de 460 px et le vide que le ruban devait supprimer. La
-            // largeur est donc PLAFONNÉE — un ruban de trois se lit comme un
-            // ruban de huit, et Candidatures (155 px par carte) ne bouge pas.
-            className={`relative min-w-[120px] max-w-[200px] flex-1 overflow-hidden px-4 py-3.5 text-left transition ${s.carte} ${
+            className={`relative overflow-hidden px-4 py-3.5 text-left transition ${s.carte} ${
               selected && skin === 'orqa' ? s.carteSelection : ''
             }`}
             style={
@@ -85,15 +94,6 @@ export function CounterRibbon({
                   sur {item.total}
                 </span>
               ) : null}
-              {item.alert && item.alert > 0 ? (
-                <span
-                  title={`${item.alert} en retard`}
-                  className="ml-1.5 rounded-full px-1.5 align-middle font-data text-[11px] font-bold text-white"
-                  style={{ background: 'var(--dash-orange)' }}
-                >
-                  {item.alert}
-                </span>
-              ) : null}
             </span>
             <span
               className={`mt-1.5 flex items-center gap-1.5 ${s.libelle}`}
@@ -105,6 +105,14 @@ export function CounterRibbon({
               />
               {item.label}
             </span>
+            {item.alert && item.alert > 0 ? (
+              <span
+                className="mt-1 block font-body text-[11px] font-semibold"
+                style={{ color: 'var(--dash-orange)' }}
+              >
+                {item.alert} {item.alertLabel ?? 'à traiter'}
+              </span>
+            ) : null}
             {/* Soulignement de 3 px : c'est LUI qui porte la couleur, pas un
                 aplat — la teinte doit rester un repère, pas un fond. */}
             <span

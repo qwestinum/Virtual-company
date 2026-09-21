@@ -249,108 +249,99 @@ export function InterviewsWorkspace({
           Rafraîchir
         </button>
       }
+      // ⚠️ LES FENTES DU GABARIT : la barre d'outils et le ruban ne sont plus
+      // empilés par l'écran, ils se rangent dans la zone de tête. C'est là que
+      // les espacements sont NOMMÉS, une fois, pour les cinq onglets.
+      toolbar={
+        <ReferentFilterBar
+          options={options}
+          selection={referentFilter}
+          onChange={setReferentFilter}
+          myCount={myCount}
+          currentUserId={currentUserId}
+        />
+      }
+      counters={
+        /* ⚠️ LE RUBAN DE CANDIDATURES, importé. Il avait été remplacé par de
+           grandes tuiles à emoji, ombre portée et bordure épaisse : elles
+           n'existaient sur aucun autre écran, fabriquaient du vide et un
+           relief que rien ne porte ailleurs. */
+        <CounterRibbon
+          active={tab}
+          onSelect={(k) => setTab((k ?? 'scheduled') as InterviewTabKey)}
+          items={[
+            {
+              key: 'scheduled',
+              label: 'Programmés',
+              count: scheduled.length,
+              total: pipeline.counts.scheduled,
+              alert: pipeline.counts.toPoint,
+              alertLabel: 'à confirmer',
+              color: 'var(--dash-teal)',
+            },
+            {
+              key: 'awaiting',
+              label: 'En attente de réservation',
+              count: awaiting.length,
+              total: pipeline.counts.awaiting,
+              color: 'var(--dash-purple)',
+            },
+            {
+              key: 'verdict',
+              label: 'En attente de verdict',
+              count: verdictRows.length,
+              total: pipeline.counts.verdict,
+              color: 'var(--dash-yellow)',
+            },
+          ]}
+        />
+      }
     >
-      {/* ⚠️ LE RYTHME DE CANDIDATURES : barre d'outils, compteurs, un filet,
-          puis la liste à 16 px. L'écran espaçait tout de 20 px sans filet —
-          réglages, compteurs et lignes flottaient au même rang, et rien ne
-          disait où finissait l'en-tête. */}
-      <div className="flex w-full flex-col">
-        <div className="border-b pb-5" style={{ borderColor: 'var(--dash-border)' }}>
-          <InterviewSignals orphans={pipeline.orphans} />
+      <div className="flex flex-col gap-3">
+        <InterviewSignals orphans={pipeline.orphans} />
 
-          <div className="mt-1">
-            <ReferentFilterBar
-              options={options}
-              selection={referentFilter}
-              onChange={setReferentFilter}
-              myCount={myCount}
-              currentUserId={currentUserId}
-            />
-          </div>
+        {pipeline.counts.unresolved > 0 ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12.5px] text-amber-900">
+            {pipeline.counts.unresolved} briefing
+            {pipeline.counts.unresolved > 1 ? 's' : ''} sans candidature
+            retrouvable {pipeline.counts.unresolved > 1 ? 'ne sont' : 'n’est'}{' '}
+            pas affiché{pipeline.counts.unresolved > 1 ? 's' : ''} — anomalie de
+            données à signaler.
+          </p>
+        ) : null}
 
-          {/* ⚠️ LE RUBAN DE CANDIDATURES, importé. Il avait été remplacé par de
-              grandes tuiles à emoji, ombre portée et bordure épaisse : elles
-              n'existaient sur aucun autre écran, fabriquaient du vide et un
-              relief que rien ne porte ailleurs. Cartes compactes, chiffre,
-              libellé, soulignement de 3 px — et le total non filtré écrit
-              quand il diffère, le compte d'alerte toujours sur l'ensemble. */}
-          <div className="mt-4">
-            <CounterRibbon
-              active={tab}
-              onSelect={(k) => setTab((k ?? 'scheduled') as InterviewTabKey)}
-              items={[
-                {
-                  key: 'scheduled',
-                  label: 'Entretiens',
-                  count: scheduled.length,
-                  total: pipeline.counts.scheduled,
-                  alert: pipeline.counts.toPoint,
-                  color: 'var(--dash-teal)',
-                },
-                {
-                  key: 'awaiting',
-                  label: 'En attente de réservation',
-                  count: awaiting.length,
-                  total: pipeline.counts.awaiting,
-                  color: 'var(--dash-purple)',
-                },
-                {
-                  key: 'verdict',
-                  label: 'En attente de verdict',
-                  count: verdictRows.length,
-                  total: pipeline.counts.verdict,
-                  color: 'var(--dash-yellow)',
-                },
-              ]}
-            />
-          </div>
-        </div>
+        {notice ? (
+          <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 font-body text-[13px] text-stone-700">
+            {notice}
+          </p>
+        ) : null}
 
-        {/* La liste commence à 16 px sous les compteurs. */}
-        <div className="flex flex-col gap-3 pt-4">
-          {pipeline.counts.unresolved > 0 ? (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12.5px] text-amber-900">
-              {pipeline.counts.unresolved} briefing
-              {pipeline.counts.unresolved > 1 ? 's' : ''} sans candidature
-              retrouvable {pipeline.counts.unresolved > 1 ? 'ne sont' : 'n’est'}{' '}
-              pas affiché{pipeline.counts.unresolved > 1 ? 's' : ''} — anomalie
-              de données à signaler.
-            </p>
-          ) : null}
-
-          {notice ? (
-            <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 font-body text-[13px] text-stone-700">
-              {notice}
-            </p>
-          ) : null}
-
-          {loading ? (
-            <p className="font-body text-[13px] text-stone-400">
-              <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" aria-hidden />
-              Chargement…
-            </p>
-          ) : tab === 'awaiting' ? (
-            <AwaitingList
-              rows={awaiting}
-              busyId={busyId}
-              onReinvite={(row) => void reinvite(row, 'reinvite')}
-              onDismiss={setDismissing}
-            />
-          ) : (
-            <ScheduledList
-              rows={tab === 'verdict' ? verdictRows : scheduled}
-              busyId={busyId}
-              onRealized={(row) => void mark(row, 'realized')}
-              onMissed={setNoShow}
-              onDecided={onVerdictDecided}
-              onStale={() => void load()}
-              onDismiss={setDismissing}
-              onReschedule={(row) => void reinvite(row, 'reschedule')}
-              onCancel={(row) => void cancelBooking(row)}
-              onCorrected={() => void load()}
-            />
-          )}
-        </div>
+        {loading ? (
+          <p className="font-body text-[13px] text-stone-400">
+            <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" aria-hidden />
+            Chargement…
+          </p>
+        ) : tab === 'awaiting' ? (
+          <AwaitingList
+            rows={awaiting}
+            busyId={busyId}
+            onReinvite={(row) => void reinvite(row, 'reinvite')}
+            onDismiss={setDismissing}
+          />
+        ) : (
+          <ScheduledList
+            rows={tab === 'verdict' ? verdictRows : scheduled}
+            busyId={busyId}
+            onRealized={(row) => void mark(row, 'realized')}
+            onMissed={setNoShow}
+            onDecided={onVerdictDecided}
+            onStale={() => void load()}
+            onDismiss={setDismissing}
+            onReschedule={(row) => void reinvite(row, 'reschedule')}
+            onCancel={(row) => void cancelBooking(row)}
+            onCorrected={() => void load()}
+          />
+        )}
       </div>
 
       {noShow ? (

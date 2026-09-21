@@ -99,47 +99,10 @@ export function HRDepartmentView() {
       className="relative w-full h-full overflow-hidden"
       onPointerDown={() => selectAgent(null)}
     >
-      <div
-        className="bg-blob bg-blob-1"
-        style={{
-          width: 480,
-          height: 480,
-          top: '8%',
-          left: '5%',
-          backgroundColor: '#fde68a',
-          opacity: 0.5,
-        }}
-        aria-hidden
-      />
-      <div
-        className="bg-blob bg-blob-2"
-        style={{
-          width: 380,
-          height: 380,
-          bottom: '10%',
-          right: '8%',
-          backgroundColor: '#fde047',
-          opacity: 0.35,
-        }}
-        aria-hidden
-      />
-      <div
-        className="bg-blob bg-blob-3"
-        style={{
-          width: 440,
-          height: 440,
-          top: '38%',
-          right: '32%',
-          backgroundColor: '#cbd5e1',
-          opacity: 0.45,
-        }}
-        aria-hidden
-      />
-
-      <div
-        className="absolute inset-0 bg-grid-dots pointer-events-none"
-        aria-hidden
-      />
+      {/* Les trois taches floutées et la grille de points ont été retirées le
+          21/09/2026 : le fond du produit est UNI (sand) sur tous les écrans.
+          Ce décor se lisait comme de l'information — un coin plus sombre fait
+          chercher ce qui s'y trouve. */}
 
       <FlowLines
         manager={manager}

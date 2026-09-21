@@ -1,4 +1,3 @@
-import { PageShell } from '@/components/navigation/PageShell';
 import { ReportingHub } from '@/components/reporting/ReportingHub';
 
 export const metadata = { title: 'Pilotage — QWESTINUM' };
@@ -11,11 +10,8 @@ export const metadata = { title: 'Pilotage — QWESTINUM' };
  * au lot 3.
  */
 export default function PilotagePage() {
-  return (
-    // ⚠️ GABARIT COMMUN : la page se bornait à 896 px et n'avait AUCUN titre
-    // — seul écran de premier niveau dans ce cas.
-    <PageShell title="Pilotage" subtitle="Les rapports de campagne et la vue transverse.">
-      <ReportingHub />
-    </PageShell>
-  );
+  // ⚠️ Le gabarit est rendu PLUS BAS (`PilotageShell`), par le sous-écran :
+  // sa barre d'outils doit se ranger dans la zone de tête, au-dessus du filet,
+  // et elle dépend d'un état client que cette page serveur n'a pas.
+  return <ReportingHub />;
 }

@@ -7,13 +7,14 @@
  * (volume MVP faible) via helpers purs.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { CampaignReportCard } from '@/components/reporting/CampaignReportCard';
 import { CampaignReportDetail } from '@/components/reporting/CampaignReportDetail';
 import { CampaignReportFilters } from '@/components/reporting/CampaignReportFilters';
 import type { DonneurOption } from '@/components/reporting/DonneurOrdreSelect';
 import { SendReportModal } from '@/components/reporting/SendReportModal';
+import { PilotageShell } from '@/components/reporting/PilotageShell';
 import { SentHistoryModal } from '@/components/reporting/SentHistoryModal';
 import {
   campaignSendDefaults,
@@ -35,7 +36,7 @@ function download(url: string) {
   a.remove();
 }
 
-export function CampaignReportList() {
+export function CampaignReportList({ tabs }: { tabs: ReactNode }) {
   const [items, setItems] = useState<CampaignReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -137,10 +138,12 @@ export function CampaignReportList() {
 
   if (offline) {
     return (
-      <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 font-body text-[13px] text-amber-800">
-        Supabase non configuré — aucune campagne persistée. Configurez la base
-        pour activer les rapports de campagne.
-      </p>
+      <PilotageShell tabs={tabs}>
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 font-body text-[13px] text-amber-800">
+          Supabase non configuré — aucune campagne persistée. Configurez la base
+          pour activer les rapports de campagne.
+        </p>
+      </PilotageShell>
     );
   }
 
@@ -180,7 +183,7 @@ export function CampaignReportList() {
   // Vue détail (consultation du rapport à l'écran) au clic sur une carte.
   if (detailTarget) {
     return (
-      <>
+      <PilotageShell tabs={tabs}>
         <CampaignReportDetail
           summary={detailTarget}
           onBack={() => setDetailTarget(null)}
@@ -189,16 +192,14 @@ export function CampaignReportList() {
           onSend={() => setSendTarget(detailTarget)}
         />
         {modals}
-      </>
+      </PilotageShell>
     );
   }
 
   return (
-    // ⚠️ LE RYTHME DE CANDIDATURES : réglages, un filet, puis la liste à
-    // 16 px. Les réglages vivaient dans une carte blanche et la liste flottait
-    // 16 px plus bas sans rien pour séparer les deux.
-    <div className="flex flex-col">
-      <div className="border-b pb-5" style={{ borderColor: 'var(--dash-border)' }}>
+    <PilotageShell
+      tabs={tabs}
+      toolbar={
         <CampaignReportFilters
           search={search}
           onSearchChange={setSearchReset}
@@ -211,13 +212,12 @@ export function CampaignReportList() {
           sortKey={sortKey}
           onSortChange={setSortReset}
         />
+      }
+    >
+      <p className="mb-3 font-body text-[12px] font-semibold text-stone-500">
+        {loading ? 'Chargement…' : resultCountLabel(filtered.length)}
+      </p>
 
-        <p className="mt-3 font-body text-[12px] font-semibold text-stone-500">
-          {loading ? 'Chargement…' : resultCountLabel(filtered.length)}
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4 pt-4">
       {!loading && filtered.length === 0 ? (
         <p className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-6 text-center font-body text-[13px] text-stone-500">
           Aucune campagne clôturée ne correspond aux filtres.
@@ -238,10 +238,8 @@ export function CampaignReportList() {
         </div>
       )}
 
-      </div>
-
       {pageCount > 1 ? (
-        <div className="flex items-center justify-center gap-3 font-body text-[13px]">
+        <div className="mt-5 flex items-center justify-center gap-3 font-body text-[13px]">
           <button
             type="button"
             disabled={page === 0}
@@ -265,6 +263,6 @@ export function CampaignReportList() {
       ) : null}
 
       {modals}
-    </div>
+    </PilotageShell>
   );
 }

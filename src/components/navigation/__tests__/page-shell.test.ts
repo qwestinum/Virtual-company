@@ -33,7 +33,11 @@ const ECRANS = [
   'src/components/sourcing/SourcingWorkspace.tsx',
   'src/components/campagnes/assistant/CampaignAssistantScreen.tsx',
   'src/components/campagnes/CampaignFocusScreen.tsx',
-  'src/app/(workspace)/pilotage/page.tsx',
+  // Pilotage ne monte PAS le gabarit à la route : sa barre d'outils dépend
+  // d'un état client, et elle doit se ranger dans la zone de tête. C'est donc
+  // le sous-écran qui le monte, via `PilotageShell`.
+  'src/components/reporting/PilotageShell.tsx',
+  'src/components/reporting/CampaignReportList.tsx',
 ];
 
 /** Retire les commentaires : ce fichier-ci en cite, et les écrans aussi. */
@@ -43,7 +47,9 @@ const sansCommentaires = (s: string) =>
 describe('aucun écran ne se refait un conteneur', () => {
   it('chacun monte le gabarit', () => {
     for (const f of ECRANS) {
-      expect(lire(f), f).toContain('PageShell');
+      // `PilotageShell` compte : il ne fait que nommer le gabarit avec le
+      // titre de l'écran, il n'en redessine aucune valeur (vérifié plus bas).
+      expect(lire(f), f).toMatch(/PageShell|PilotageShell/);
     }
   });
 

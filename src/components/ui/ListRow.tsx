@@ -32,7 +32,12 @@ export function ListRow({
   skin = 'dash',
   testId,
 }: {
-  initials: string;
+  /**
+   * Initiales d'une PERSONNE. Absentes ⇒ aucun pavé : une campagne n'a pas
+   * d'initiales, et lui en fabriquer (« BA » pour « Business Analyst ») la
+   * fait passer pour quelqu'un.
+   */
+  initials?: string;
   /** Fond du pavé d'initiales (peau `dash`). */
   avatarColor?: string;
   title: string;
@@ -51,12 +56,14 @@ export function ListRow({
   const s = SKINS[skin];
   const contenu = (
     <>
-      <span
-        className={`grid h-10 w-10 place-items-center ${s.avatar}`}
-        style={skin === 'dash' ? { background: avatarColor ?? 'var(--dash-blue)' } : undefined}
-      >
-        {initials}
-      </span>
+      {initials ? (
+        <span
+          className={`grid h-10 w-10 place-items-center ${s.avatar}`}
+          style={skin === 'dash' ? { background: avatarColor ?? 'var(--dash-blue)' } : undefined}
+        >
+          {initials}
+        </span>
+      ) : null}
 
       <span className="min-w-0">
         <span
@@ -95,7 +102,9 @@ export function ListRow({
     </>
   );
 
-  const classe = `grid w-full grid-cols-[auto_1fr_auto] items-center gap-4 px-4 py-3.5 text-left transition ${s.carte} ${
+  const classe = `grid w-full ${
+    initials ? 'grid-cols-[auto_1fr_auto]' : 'grid-cols-[1fr_auto]'
+  } items-center gap-4 px-4 py-3.5 text-left transition ${s.carte} ${
     selected && skin === 'orqa' ? s.carteSelection : ''
   }`;
   const style =

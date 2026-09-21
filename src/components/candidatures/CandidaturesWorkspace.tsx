@@ -213,69 +213,56 @@ export function CandidaturesWorkspace({
     <PageShell
       title="Candidatures"
       subtitle={`${listTotal} candidature${listTotal > 1 ? 's' : ''}`}
+      // ⚠️ LES FENTES DU GABARIT : filtres et ruban ne sont plus empilés par
+      // l'écran avec ses propres marges — ils se rangent dans la zone de tête,
+      // où les espacements sont nommés une fois pour les cinq onglets.
+      toolbar={
+        <CandidaturesFilters
+          campaignOptions={campaignOptions}
+          activeCount={activeIds.length}
+          campaignValue={campaignValue}
+          onCampaign={onCampaign}
+          search={filters.search}
+          onSearch={(v) => setFilters({ search: v })}
+          period={period}
+          onPeriod={onPeriod}
+          fromVivier={filters.fromVivier}
+          onVivier={(b) => setFilters({ fromVivier: b })}
+          everInvited={filters.everInvited}
+          onClearEverInvited={() => setFilters({ everInvited: false })}
+          everInterviewed={filters.everInterviewed}
+          onClearEverInterviewed={() => setFilters({ everInterviewed: false })}
+          onReset={onResetView}
+        />
+      }
+      counters={
+        <>
+          <CandidaturesRibbon
+            counts={counts}
+            active={filters.stage}
+            onSelect={(stage) => setFilters({ stage })}
+          />
+          {/* Accès à la revue GROUPÉE, attaché à la puce « À valider » — il
+              n'apparaît que quand cette puce est sélectionnée, d'où qu'on
+              vienne : un clic dans le ruban comme une arrivée par l'adresse
+              `?statut=a_valider`. C'est la seule porte vers le mode groupé
+              depuis que l'onglet dédié a disparu du premier niveau. */}
+          {filters.stage === 'a_valider' ? (
+            <div className="mt-2 flex justify-end">
+              <Link
+                href="/candidatures/validation"
+                className="inline-flex min-h-6 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-2.5 py-1 font-body text-[12px] font-semibold text-stone-700 hover:bg-stone-50"
+              >
+                Passer en revue en une fois
+                <span aria-hidden>→</span>
+              </Link>
+            </div>
+          ) : null}
+        </>
+      }
     >
-      <div className="flex flex-col">
-        <div className="border-b border-orqa-ligne pb-5">
-          <div className="mt-1">
-            <CandidaturesFilters
-              campaignOptions={campaignOptions}
-              activeCount={activeIds.length}
-              campaignValue={campaignValue}
-              onCampaign={onCampaign}
-              search={filters.search}
-              onSearch={(v) => setFilters({ search: v })}
-              period={period}
-              onPeriod={onPeriod}
-              fromVivier={filters.fromVivier}
-              onVivier={(b) => setFilters({ fromVivier: b })}
-              everInvited={filters.everInvited}
-              onClearEverInvited={() => setFilters({ everInvited: false })}
-              everInterviewed={filters.everInterviewed}
-              onClearEverInterviewed={() =>
-                setFilters({ everInterviewed: false })
-              }
-              onReset={onResetView}
-            />
-          </div>
-          <div className="mt-4">
-            <CandidaturesRibbon
-              counts={counts}
-              active={filters.stage}
-              onSelect={(stage) => setFilters({ stage })}
-            />
-            {/* Accès à la revue GROUPÉE, attaché à la puce « À valider » — il
-                n'apparaît que quand cette puce est sélectionnée, d'où qu'on
-                vienne : un clic dans le ruban comme une arrivée par l'adresse
-                `?statut=a_valider`. C'est la seule porte vers le mode groupé
-                depuis que l'onglet dédié a disparu du premier niveau. */}
-            {filters.stage === 'a_valider' ? (
-              <div className="mt-2 flex justify-end">
-                <Link
-                  href="/candidatures/validation"
-                  className="inline-flex min-h-6 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-2.5 py-1 font-body text-[12px] font-semibold text-stone-700 hover:bg-stone-50"
-                >
-                  Passer en revue en une fois
-                  <span aria-hidden>→</span>
-                </Link>
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {/* ⚠️ DEUX COLONNES, ET AUCUN RECOUVREMENT. Posé en calque, le panneau
-            chevauchait la liste en largeur ET l'en-tête en hauteur : on ne
-            voyait plus ni les filtres ni la moitié droite des lignes. Il vit
-            donc À CÔTÉ, sous l'en-tête, qui reste pleine largeur.
-
-            Contrepartie ASSUMÉE et dite : la liste se resserre pendant que le
-            panneau est ouvert. On ne peut pas à la fois garder sa largeur et
-            ne rien recouvrir — il faut choisir, et ne rien recouvrir gagne :
-            une ligne à moitié cachée derrière un panneau est pire qu'une ligne
-            plus étroite.
-
-            `sticky` : le panneau suit le défilement de la liste, comme le
-            faisait la colonne d'origine dans un écran à hauteur fixe. */}
-        <div className="flex items-start gap-5 pt-5">
+      <>
+        <div className="flex items-start gap-5">
           <div className="min-w-0 flex-1">
           {loadingList && rows.length === 0 ? (
             <p className="font-inter text-[13px] text-orqa-gris-clair">Chargement…</p>
@@ -352,7 +339,7 @@ export function CandidaturesWorkspace({
             </div>
           ) : null}
         </div>
-      </div>
+      </>
 
       {fullItem ? (
         <CandidatureFullPage

@@ -1,6 +1,8 @@
 /**
- * CAPTURE des trois écrans — Candidatures, Entretiens, Pilotage — côte à côte,
- * MÊME FENÊTRE, MÊME ZOOM, à 100 %.
+ * CAPTURE des cinq onglets, côte à côte, MÊME FENÊTRE, MÊME ZOOM.
+ *
+ * Deux rendus : à 100 % (on lit les lignes) et à 50 % (on juge la page d'un
+ * coup d'œil — c'est à cette taille qu'une rupture de rythme se voit).
  *
  * Ce n'est pas un test : il ne conclut rien. C'est la preuve visuelle qu'un
  * test de clic ne peut pas donner — « les lignes se ressemblent-elles ? » se
@@ -26,6 +28,8 @@ const HAUTEUR = 900;
 const DOSSIER = resolve(process.cwd(), 'tests/e2e/captures');
 
 const ECRANS = [
+  { nom: 'aujourdhui', route: '/aujourdhui', titre: 'Aujourd' },
+  { nom: 'campagnes', route: '/campagnes', titre: 'campagnes' },
   { nom: 'candidatures', route: '/candidatures', titre: 'Candidatures' },
   { nom: 'entretiens', route: '/entretiens', titre: 'Entretiens' },
   { nom: 'pilotage', route: '/pilotage', titre: 'Pilotage' },
@@ -49,7 +53,7 @@ describe('capture des trois écrans', () => {
     if (recruiter) await deleteTestRecruiter(recruiter);
   });
 
-  it('les trois, côte à côte', async () => {
+  it('les cinq, côte à côte', async () => {
     mkdirSync(DOSSIER, { recursive: true });
     const morceaux: Buffer[] = [];
 
@@ -67,23 +71,22 @@ describe('capture des trois écrans', () => {
       morceaux.push(Buffer.from(png));
     }
 
-    // Assemblage : trois colonnes, un liseré entre elles pour qu'on voie où
-    // l'une finit.
+    // Assemblage : une colonne par onglet, un liseré entre elles pour qu'on
+    // voie où l'une finit.
     const ECART = 12;
-    await sharp({
-      create: {
-        width: LARGEUR * 3 + ECART * 2,
-        height: HAUTEUR,
-        channels: 3,
-        background: '#3a3632',
-      },
+    const total = LARGEUR * ECRANS.length + ECART * (ECRANS.length - 1);
+    const planche = await sharp({
+      create: { width: total, height: HAUTEUR, channels: 3, background: '#3a3632' },
     })
       .composite(
         morceaux.map((input, i) => ({ input, left: i * (LARGEUR + ECART), top: 0 })),
       )
       .png()
-      .toFile(resolve(DOSSIER, 'trois-ecrans.png'));
+      .toBuffer();
 
-    console.log(`[capture] ${resolve(DOSSIER, 'trois-ecrans.png')}`);
+    await sharp(planche).toFile(resolve(DOSSIER, 'cinq-ecrans-100.png'));
+    await sharp(planche)
+      .resize(Math.round(total / 2), Math.round(HAUTEUR / 2))
+      .toFile(resolve(DOSSIER, 'cinq-ecrans-50.png'));
   }, 300_000);
 });
