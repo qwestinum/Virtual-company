@@ -45,20 +45,37 @@ describe('① compteurs — option A : des ÉTAPES, jamais des trajectoires', ()
     expect(recues.href).not.toContain('statut=');
   });
 
-  it('« RDV pris » mène à Entretiens — c’est là que le rendez-vous se traite', () => {
+  it('TOUS les compteurs ouvrent Candidatures avec la puce du même mot', () => {
+    // SANS EXCEPTION — « Invité » et « RDV pris » compris : leurs puces
+    // existent là. Un compteur qui changerait d'écran selon l'étape
+    // obligerait à deviner où l'on va avant de cliquer.
     const items = buildCardCounters(CAMP, 12, counts);
-    const rdv = items.find((i) => i.key === 'rdv_pris')!;
-    expect(rdv.href).toBe('/entretiens?campagne=CAMP-2026-221');
-  });
-
-  it('les autres étapes mènent à Candidatures, filtrées sur la campagne', () => {
-    const items = buildCardCounters(CAMP, 12, counts);
-    expect(items.find((i) => i.key === 'a_valider')!.href).toBe(
-      '/candidatures?campagne=CAMP-2026-221&statut=a_valider',
+    for (const item of items) {
+      expect(item.href, item.key).toMatch(/^\/candidatures\?campagne=CAMP-2026-221/);
+    }
+    expect(items.find((i) => i.key === 'invite')!.href).toBe(
+      '/candidatures?campagne=CAMP-2026-221&statut=invite',
+    );
+    expect(items.find((i) => i.key === 'rdv_pris')!.href).toBe(
+      '/candidatures?campagne=CAMP-2026-221&statut=rdv_pris',
     );
     expect(items.find((i) => i.key === 'retenu')!.href).toBe(
       '/candidatures?campagne=CAMP-2026-221&statut=retenu',
     );
+  });
+
+  it('aucun compteur ne mène à Entretiens', () => {
+    // Entretiens se rejoint par « ce qui attend », et par là seulement.
+    for (const item of buildCardCounters(CAMP, 12, counts)) {
+      expect(item.href, item.key).not.toContain('/entretiens');
+    }
+  });
+
+  it('chaque tuile porte son icône et sa couleur — celles de la carte existante', () => {
+    for (const item of buildCardCounters(CAMP, 12, counts)) {
+      expect(item.icon.length, item.key).toBeGreaterThan(0);
+      expect(item.color, item.key).toMatch(/^var\(--dash-/);
+    }
   });
 
   it('un compteur à zéro reste affiché : il informe', () => {
@@ -170,18 +187,36 @@ describe('③ trouver des candidats — fermé sur un brouillon, et DIT', () => 
 
 const lire = (p: string): string => readFileSync(resolve(process.cwd(), p), 'utf-8');
 
-describe('la lecture du détail ne part QU’AU DÉPLIAGE', () => {
-  it('la carte ne monte le détail que si elle est ouverte', () => {
-    // Une liste de quinze campagnes ne doit déclencher AUCUNE requête.
-    const src = lire('src/components/campagnes/CampaignCard.tsx');
-    expect(src).toMatch(/\{expanded \? \(\s*<CampaignCardDetail/);
+describe('latence — ce qui arrive avec la liste, ce qui attend le dépliage', () => {
+  it('les compteurs arrivent AVEC la liste, en UN appel groupé', () => {
+    // Les charger au dépliage faisait apparaître les chiffres après les
+    // cartes, sur un écran dont c'est la première information.
+    const liste = lire('src/components/campagnes/CampaignsList.tsx');
+    expect(liste).toContain('useCampaignsCounters(');
+    const hook = lire('src/components/campagnes/useCampaignsCounters.ts');
+    expect(hook).toContain('/api/campaigns/counters?campaignIds=');
   });
 
-  it('le hook lui-même refuse de lire quand c’est fermé', () => {
-    // Deux ceintures : si un jour la carte montait le détail en permanence,
-    // le hook ne lirait toujours rien.
-    const src = lire('src/components/campagnes/useCampaignCardDetail.ts');
-    expect(src).toContain('if (!enabled) return;');
+  it('la carte ne LIT rien : elle reçoit ses compteurs', () => {
+    const src = lire('src/components/campagnes/CampaignCardDetail.tsx');
+    expect(src).toContain('counters: CampaignCardCounters | null');
+    // Aucune lecture de compteurs dans le composant de carte.
+    expect(src).not.toContain('/api/campaigns/counters');
+  });
+
+  it('seuls les trois états de sourcing attendent le dépliage', () => {
+    const hook = lire('src/components/campagnes/useCampaignCardDetail.ts');
+    expect(hook).toContain('if (!enabled) return;');
+    // Et la route ne rend plus que ça.
+    const route = lire('src/app/api/campaigns/[id]/card/route.ts');
+    expect(route).not.toContain('computeStageCounts');
+  });
+
+  it('le squelette a la MÊME hauteur que la tuile pleine', () => {
+    // Un écran qui se réorganise sous le curseur fait rater le clic déjà visé.
+    const src = lire('src/components/campagnes/CampaignStatTile.tsx');
+    expect(src).toContain('CampaignSourceTileSkeleton');
+    expect(src).toContain('MÊME HAUTEUR');
   });
 });
 

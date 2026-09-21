@@ -1,25 +1,25 @@
 'use client';
 
 /**
- * Contenu DÉPLIÉ d'une carte campagne — quatre blocs.
+ * Contenu DÉPLIÉ d'une carte campagne — quatre blocs, en TUILES.
  *
  *   ① compteurs-filtres · ② ce qui attend · ③ trouver des candidats · ④ actions
  *
+ * La facture est celle de l'ancienne carte (`CampaignStatTile` : fond
+ * `--dash-warm`, icône, gros chiffre, libellé) : « zéro invention » veut dire
+ * réutiliser ce qui existe, pas le remplacer par des rangées à bordure. Seul
+ * le CONTENU change.
+ *
  * ⚠️ OPTION A : les compteurs sont des ÉTAPES COURANTES. Avant, « Shortlistés
  * / Invités » comptait tous ceux PASSÉS par l'invitation — mesuré sur
- * CAMP-2026-221, la carte affichait 2 quand la puce « Invité » affichait 0,
- * les deux candidats ayant avancé depuis. Cliquer un chiffre et atterrir sur
- * une liste vide est pire que deux mots différents.
+ * CAMP-2026-221, la carte affichait 2 quand la puce « Invité » affichait 0.
  *
- * Chaque compteur porte LE MÊME MOT que sa destination et le MÊME nombre,
- * parce qu'il vient de la MÊME source (`computeStageCounts`, celle du ruban) :
- * il n'y a qu'une comptabilité, donc aucun invariant à maintenir.
- *
- * Taux, conversion et détails ont quitté la carte pour Pilotage : ce sont des
- * mesures de performance, pas ce qu'on vient faire ici.
+ * ⚠️ LATENCE : compteurs et « ce qui attend » arrivent AVEC la liste (appel
+ * groupé, une lecture pour toutes les cartes). Seuls les trois états de
+ * sourcing se chargent au dépliage, derrière un squelette de MÊME HAUTEUR —
+ * un écran qui se réorganise sous le curseur fait rater le clic déjà visé.
  */
 
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import {
@@ -27,42 +27,103 @@ import {
   buildCardCounters,
   buildCardSources,
 } from '@/lib/campagnes/card-detail';
+import type { CandidateStageCounts } from '@/lib/reporting/candidate-stage';
 
 import { ActionButton } from './ActionButton';
-import { useCampaignCardDetail } from './useCampaignCardDetail';
+import {
+  CampaignSourceTile,
+  CampaignSourceTileSkeleton,
+  CampaignStatTile,
+} from './CampaignStatTile';
+import { useCampaignCardSources } from './useCampaignCardDetail';
+
+export type CampaignCardCounters = {
+  counts: CandidateStageCounts;
+  received: number;
+  aValiderOldestDays: number | null;
+  entretiensAConfirmer: number;
+};
+
+const GRILLE = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
+  gap: 12,
+} as const;
 
 export function CampaignCardDetail({
   campaignId,
   expanded,
+  counters,
   actions,
 }: {
   campaignId: string;
-  /** La lecture ne part QUE si la carte est ouverte. */
   expanded: boolean;
+  /** Livrés AVEC la liste : les chiffres ne clignotent jamais. */
+  counters: CampaignCardCounters | null;
   actions: ReactNode;
 }) {
-  const state = useCampaignCardDetail(campaignId, expanded);
+  const sources = useCampaignCardSources(campaignId, expanded);
 
   return (
     <div style={{ padding: '18px 22px 20px', borderTop: '1px solid var(--dash-border)' }}>
-      {state.kind === 'ready' ? (
+      {counters ? (
         <>
-          <Compteurs
-            items={buildCardCounters(campaignId, state.data.received, state.data.counts)}
+          <Bloc titre="Candidatures">
+            <div style={GRILLE}>
+              {buildCardCounters(campaignId, counters.received, counters.counts).map(
+                (c) => (
+                  <CampaignStatTile
+                    key={c.key}
+                    icon={c.icon}
+                    color={c.color}
+                    value={c.count}
+                    label={c.label}
+                    href={c.href}
+                  />
+                ),
+              )}
+            </div>
+          </Bloc>
+          <CeQuiAttend
+            items={buildCardAwaiting(campaignId, {
+              aValider: counters.counts.a_valider,
+              aValiderOldestDays: counters.aValiderOldestDays,
+              entretiensAConfirmer: counters.entretiensAConfirmer,
+            })}
           />
-          <CeQuiAttend items={buildCardAwaiting(campaignId, state.data.awaiting)} />
-          <Sources items={buildCardSources(campaignId, state.data.sources)} />
         </>
-      ) : (
-        <p
-          className="font-body"
-          style={{ fontSize: 12, color: 'var(--dash-text-secondary)', marginBottom: 14 }}
-        >
-          {state.kind === 'error'
-            ? 'Le détail de cette campagne n’a pas pu être chargé.'
-            : 'Chargement…'}
-        </p>
-      )}
+      ) : null}
+
+      <Bloc titre="Trouver des candidats">
+        <div style={GRILLE}>
+          {sources.kind === 'ready' ? (
+            buildCardSources(campaignId, sources.data).map((s) => (
+              <CampaignSourceTile
+                key={s.key}
+                icon={s.icon}
+                color={s.color}
+                label={s.label}
+                state={s.state}
+                href={s.href}
+                reason={s.reason}
+              />
+            ))
+          ) : sources.kind === 'error' ? (
+            <p
+              className="font-body"
+              style={{ fontSize: 12, color: 'var(--dash-text-secondary)' }}
+            >
+              Ces informations n’ont pas pu être chargées.
+            </p>
+          ) : (
+            <>
+              <CampaignSourceTileSkeleton />
+              <CampaignSourceTileSkeleton />
+              <CampaignSourceTileSkeleton />
+            </>
+          )}
+        </div>
+      </Bloc>
 
       <Bloc titre="Actions">
         <div className="flex flex-wrap items-center gap-2">{actions}</div>
@@ -92,38 +153,12 @@ function Bloc({ titre, children }: { titre: string; children: ReactNode }) {
   );
 }
 
-/** ① Chaque chiffre est un lien, et porte le mot de sa destination. */
-function Compteurs({ items }: { items: ReturnType<typeof buildCardCounters> }) {
-  return (
-    <Bloc titre="Candidatures">
-      <div className="flex flex-wrap gap-2">
-        {items.map((c) => (
-          <Link
-            key={c.key}
-            href={c.href}
-            className="rounded-md border bg-white px-3 py-2"
-            style={{ borderColor: 'var(--dash-border)', minWidth: 96 }}
-          >
-            <span
-              className="font-display block"
-              style={{ fontSize: 20, fontWeight: 800, color: 'var(--dash-text)', lineHeight: 1.1 }}
-            >
-              {c.count}
-            </span>
-            <span
-              className="font-body block"
-              style={{ fontSize: 12, color: 'var(--dash-text-secondary)' }}
-            >
-              {c.label}
-            </span>
-          </Link>
-        ))}
-      </div>
-    </Bloc>
-  );
-}
-
-/** ② DEUX LIGNES MAXIMUM. Rien en attente ⇒ le bloc n'existe pas. */
+/**
+ * ② DEUX LIGNES MAXIMUM. Rien en attente ⇒ le bloc n'existe pas.
+ *
+ * C'est la SEULE porte vers Entretiens depuis la carte : un compteur qui
+ * changerait d'écran selon l'étape obligerait à deviner où l'on va.
+ */
 function CeQuiAttend({ items }: { items: ReturnType<typeof buildCardAwaiting> }) {
   if (items.length === 0) return null;
   return (
@@ -132,8 +167,12 @@ function CeQuiAttend({ items }: { items: ReturnType<typeof buildCardAwaiting> })
         {items.map((l) => (
           <div
             key={l.key}
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border bg-white px-3 py-2"
-            style={{ borderColor: 'var(--dash-border)' }}
+            className="flex flex-wrap items-center gap-x-4 gap-y-2"
+            style={{
+              background: 'var(--dash-warm)',
+              borderRadius: 12,
+              padding: '10px 14px',
+            }}
           >
             <p
               className="font-body min-w-0 flex-1"
@@ -142,44 +181,6 @@ function CeQuiAttend({ items }: { items: ReturnType<typeof buildCardAwaiting> })
               {l.text}
             </p>
             <ActionButton href={l.href} label="Voir" />
-          </div>
-        ))}
-      </div>
-    </Bloc>
-  );
-}
-
-/**
- * ③ Les trois portes d'entrée de candidatures.
- *
- * ⚠️ FERMÉES SUR UN BROUILLON, et la raison est ÉCRITE à côté. Diffuser depuis
- * un brouillon fait arriver des candidatures que le chemin email n'analysera
- * pas — il ne traite que les campagnes actives. Un bouton grisé sans un mot ne
- * déplace pas le besoin, il le supprime.
- */
-function Sources({ items }: { items: ReturnType<typeof buildCardSources> }) {
-  return (
-    <Bloc titre="Trouver des candidats">
-      <div className="flex flex-col gap-2">
-        {items.map((s) => (
-          <div
-            key={s.key}
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border bg-white px-3 py-2"
-            style={{ borderColor: 'var(--dash-border)' }}
-          >
-            <span className="shrink-0">
-              {s.href ? (
-                <ActionButton href={s.href} label={s.label} />
-              ) : (
-                <ActionButton label={s.label} onClick={() => {}} disabled />
-              )}
-            </span>
-            <p
-              className="font-body min-w-0 flex-1"
-              style={{ fontSize: 12, color: 'var(--dash-text-secondary)' }}
-            >
-              {s.href ? s.state : (s.reason ?? s.state)}
-            </p>
           </div>
         ))}
       </div>

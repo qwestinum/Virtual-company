@@ -11,6 +11,11 @@
  * `suffix` optionnel pour les pourcentages et l'euro. `format` permet
  * de passer un formateur custom (utilisé pour le coût qui veut 2
  * décimales).
+ *
+ * ⚠️ `prefers-reduced-motion: reduce` COURT-CIRCUITE l'animation : la valeur
+ * s'affiche d'emblée. Un chiffre qui défile pendant une seconde est du mouvement
+ * gratuit — inconfortable pour qui y est sensible, et trompeur pour qui lit
+ * vite : on relève « 1 » là où il y en a douze.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -38,6 +43,16 @@ export function AnimatedCounter({
   const fromRef = useRef(0);
 
   useEffect(() => {
+    // Mouvement réduit : on pose la valeur, sans une seule frame d'animation.
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDisplayed(value);
+      fromRef.current = value;
+      return;
+    }
     const from = fromRef.current;
     const to = value;
     const start = performance.now();

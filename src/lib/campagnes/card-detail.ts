@@ -38,6 +38,9 @@ export type CardCounter = {
   label: string;
   count: number;
   href: string;
+  /** Icône et couleur de la tuile — celles de la carte existante. */
+  icon: string;
+  color: string;
 };
 
 /**
@@ -55,6 +58,15 @@ const ETAPES_CARTE: CandidateStage[] = [
   'retenu',
 ];
 
+/** Icône + couleur par étape — les jetons de la carte existante. */
+const APPARENCE: Record<string, { icon: string; color: string }> = {
+  recues: { icon: '📄', color: 'var(--dash-blue)' },
+  a_valider: { icon: '⏳', color: 'var(--dash-yellow)' },
+  invite: { icon: '✉️', color: 'var(--dash-purple)' },
+  rdv_pris: { icon: '📅', color: 'var(--dash-teal)' },
+  retenu: { icon: '✅', color: 'var(--dash-green)' },
+};
+
 export function buildCardCounters(
   campaignId: string,
   received: number,
@@ -68,17 +80,18 @@ export function buildCardCounters(
       label: 'Reçues',
       count: received,
       href: candidaturesHref({ campaignId }),
+      ...APPARENCE.recues!,
     },
     ...ETAPES_CARTE.map((stage) => ({
       key: stage,
       label: CANDIDATE_STAGE_LABELS[stage],
       count: counts[stage],
-      href:
-        // « RDV pris » se traite dans Entretiens : c'est là que le rendez-vous
-        // se déplace, s'annule ou se pointe.
-        stage === 'rdv_pris'
-          ? interviewsHref({ campaignId })
-          : candidaturesHref({ campaignId, stage }),
+      // ⚠️ TOUS vers Candidatures, SANS EXCEPTION — « Invité » et « RDV pris »
+      // compris : leurs puces existent là, et un compteur qui changerait
+      // d'écran selon l'étape obligerait à deviner où l'on va. Entretiens se
+      // rejoint par « ce qui attend », jamais par un compteur.
+      href: candidaturesHref({ campaignId, stage }),
+      ...APPARENCE[stage]!,
     })),
   ];
 }
@@ -134,6 +147,8 @@ export function buildCardAwaiting(
 export type CardSource = {
   key: 'annonce' | 'vivier' | 'approches';
   label: string;
+  icon: string;
+  color: string;
   /** L'état, en français d'utilisateur. Jamais vide : « rien » se dit. */
   state: string;
   /** `null` quand le geste n'est pas offert — la raison est dans `reason`. */
@@ -173,6 +188,8 @@ export function buildCardSources(
     {
       key: 'annonce',
       label: 'Diffuser l’annonce',
+      icon: '📣',
+      color: 'var(--dash-blue)',
       state: facts.annonce,
       href: bloque ? null : `/campagnes?campagne=${encodeURIComponent(campaignId)}&ouvrir=channels`,
       reason: bloque,
@@ -180,6 +197,8 @@ export function buildCardSources(
     {
       key: 'vivier',
       label: 'Chercher dans le vivier',
+      icon: '🗂️',
+      color: 'var(--dash-green)',
       state: facts.vivier,
       href: bloque ? null : `/campagnes?campagne=${encodeURIComponent(campaignId)}&ouvrir=vivier`,
       reason: bloque,
@@ -187,6 +206,8 @@ export function buildCardSources(
     {
       key: 'approches',
       label: 'Approcher des profils',
+      icon: '🔎',
+      color: 'var(--dash-purple)',
       state: facts.approches,
       href:
         bloque || !facts.sourcingEnabled

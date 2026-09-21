@@ -14,6 +14,7 @@
 import { useMemo, useState } from 'react';
 
 import { AddCampaignButton } from './AddCampaignButton';
+import { useCampaignsCounters } from './useCampaignsCounters';
 
 import { resolveCampaignFocus } from '@/lib/navigation/campaign-focus';
 import { useShallow } from 'zustand/react/shallow';
@@ -26,7 +27,6 @@ import {
 import {
   CampaignCard,
 } from './CampaignCard';
-import type { DashboardData } from '@/hooks/useDashboardData';
 
 export type CampaignsListProps = {
   onEditCampaign: (campaignId: string) => void;
@@ -94,6 +94,10 @@ export function CampaignsList({
     return allCampaigns.filter((c) => c.status === effectiveStatusFilter);
   }, [allCampaigns, effectiveStatusFilter]);
 
+  // ⚠️ UN SEUL appel pour toutes les cartes de la page : les compteurs
+  // arrivent AVEC la liste. Un appel par carte aurait fait quinze lectures
+  // pour un écran qui en demande une, et les chiffres seraient apparus après
+  // les cartes — sur un écran dont c'est la première information.
   const [page, setPage] = useState(0);
   const totalPages = Math.max(1, Math.ceil(campaigns.length / PAGE_SIZE));
   const safePage = Math.min(!touched ? focus.page : page, totalPages - 1);
@@ -101,6 +105,9 @@ export function CampaignsList({
     safePage * PAGE_SIZE,
     safePage * PAGE_SIZE + PAGE_SIZE,
   );
+  // Compteurs de la PAGE affichée, en un appel (cf. useCampaignsCounters).
+  const counters = useCampaignsCounters(pageCampaigns.map((c) => c.id));
+
   const [openedId, setOpenedId] = useState<string | null>(null);
   // Déplié : le choix de l'utilisateur s'il a cliqué, sinon la campagne de
   // l'URL, sinon la première de la page (comportement d'origine).
@@ -206,6 +213,7 @@ export function CampaignsList({
             <CampaignCard
               key={camp.id}
               campaign={camp}
+              counters={counters[camp.id] ?? null}
               expanded={expandedId === camp.id}
               onToggle={() =>
                 setExpandedId(expandedId === camp.id ? null : camp.id)

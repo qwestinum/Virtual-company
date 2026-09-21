@@ -17,7 +17,10 @@ import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter';
 import { StatusPill, type PillKind } from '@/components/dashboard/StatusPill';
 import { DASH_COLORS } from '@/components/dashboard/tokens';
 
-import { CampaignCardDetail } from './CampaignCardDetail';
+import {
+  CampaignCardDetail,
+  type CampaignCardCounters,
+} from './CampaignCardDetail';
 import {
   CampaignStatusActions,
   type CampaignActionStatus,
@@ -25,6 +28,12 @@ import {
 
 export type CampaignCardProps = {
   campaign: ActiveCampaign;
+  /**
+   * Compteurs livrés AVEC la liste (appel groupé) : les chiffres d'une carte
+   * ne doivent jamais apparaître après elle. `null` tant que la lecture
+   * groupée n'a pas répondu — la carte se replie alors sur son en-tête.
+   */
+  counters: CampaignCardCounters | null;
   expanded: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -32,6 +41,7 @@ export type CampaignCardProps = {
 
 export function CampaignCard({
   campaign,
+  counters,
   expanded,
   onToggle,
   onEdit,
@@ -139,6 +149,7 @@ export function CampaignCard({
         <CampaignCardDetail
           campaignId={campaign.id}
           expanded={expanded}
+          counters={counters}
           actions={
             <CampaignStatusActions
               status={campaign.status as CampaignActionStatus}

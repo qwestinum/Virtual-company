@@ -1,7 +1,9 @@
 'use client';
 
 /**
- * Le contenu de la carte DÉPLIÉE — lu SEULEMENT au dépliage.
+ * Les TROIS ÉTATS de sourcing — lus SEULEMENT au dépliage.
+ *
+ * Les compteurs, eux, arrivent avec la liste : ils ne passent pas par ici.
  *
  * ⚠️ `enabled` est la garantie, et elle est structurelle : le `fetch` ne part
  * que quand la carte est ouverte. Une liste de quinze campagnes ne déclenche
@@ -17,32 +19,21 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import type { CandidateStageCounts } from '@/lib/reporting/candidate-stage';
-
-export type CampaignCardDetailData = {
-  counts: CandidateStageCounts;
-  received: number;
-  awaiting: {
-    aValider: number;
-    aValiderOldestDays: number | null;
-    entretiensAConfirmer: number;
-  };
-  sources: {
-    isDraft: boolean;
-    sourcingEnabled: boolean;
-    annonce: string;
-    vivier: string;
-    approches: string;
-  };
+export type CampaignCardSources = {
+  isDraft: boolean;
+  sourcingEnabled: boolean;
+  annonce: string;
+  vivier: string;
+  approches: string;
 };
 
 export type DetailState =
   | { kind: 'idle' }
   | { kind: 'loading' }
-  | { kind: 'ready'; data: CampaignCardDetailData }
+  | { kind: 'ready'; data: CampaignCardSources }
   | { kind: 'error' };
 
-export function useCampaignCardDetail(
+export function useCampaignCardSources(
   campaignId: string,
   enabled: boolean,
 ): DetailState {
@@ -59,7 +50,8 @@ export function useCampaignCardDetail(
         setState({ kind: 'error' });
         return;
       }
-      setState({ kind: 'ready', data: (await res.json()) as CampaignCardDetailData });
+      const json = (await res.json()) as { sources: CampaignCardSources };
+      setState({ kind: 'ready', data: json.sources });
     } catch {
       setState({ kind: 'error' });
     }

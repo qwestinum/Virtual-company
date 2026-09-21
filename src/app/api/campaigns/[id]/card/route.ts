@@ -1,39 +1,29 @@
 /**
- * GET /api/campaigns/[id]/card — tout ce que la carte DÉPLIÉE affiche.
+ * GET /api/campaigns/[id]/card — les TROIS ÉTATS de sourcing d'une campagne.
  *
- * Une seule carte est dépliée à la fois : une lecture par ouverture, et les
- * cinq sources partent ENSEMBLE. Les enchaîner ferait attendre cinq fois.
+ * ⚠️ Les compteurs ne sont PLUS ici : ils arrivent avec la liste, en un appel
+ * groupé (`/api/campaigns/counters`). Les charger au dépliage faisait
+ * apparaître les chiffres après coup, sur un écran dont c'est la première
+ * information. Ne restent ici que les trois états qui, eux, demandent des
+ * lectures propres à une campagne — et qu'on ne regarde qu'en l'ouvrant.
  *
- * ⚠️ Les compteurs viennent de `computeStageCounts`, la MÊME source que le
- * ruban de Candidatures. C'est ce qui garantit qu'un chiffre de la carte égale
- * la puce vers laquelle il mène — sans invariant à maintenir, parce qu'il n'y
- * a qu'une comptabilité.
- *
- * Chaque source tombe SEULE : une panne du vivier ne doit pas effacer les
- * compteurs. L'état devient alors « indisponible », jamais zéro — zéro serait
- * une affirmation.
+ * Les trois partent ENSEMBLE et tombent SÉPARÉMENT : une panne du vivier
+ * devient « état indisponible », jamais zéro. Zéro serait une affirmation.
  */
 import { NextResponse } from 'next/server';
 
 import { getApiUser, unauthorizedResponse } from '@/lib/auth/require-api-user';
-import { countCandidateAnalyses, listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import { getCampaign } from '@/lib/db/repos/campaigns';
 import { getCurrentJobPosting } from '@/lib/db/repos/job-postings';
 import { countersForCampaign } from '@/lib/db/repos/sourcing';
 import { listPreselection } from '@/lib/db/repos/vivier-preselection';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
-import { loadInterviewPipeline } from '@/lib/interviews/pipeline';
 import { republishDaysLeft } from '@/lib/jobboards/adep/panel-state';
-import { computeStageCounts } from '@/lib/reporting/stage-signals';
 import { isSourcingEnabled } from '@/lib/sourcing/flag';
 
 export const runtime = 'nodejs';
 
 const INDISPONIBLE = 'État indisponible pour le moment.';
-
-/** Jours entiers écoulés, jamais négatif. */
-const joursDepuis = (iso: string, nowMs: number): number =>
-  Math.max(0, Math.floor((nowMs - Date.parse(iso)) / 86_400_000));
 
 export async function GET(
   _request: Request,
@@ -46,44 +36,20 @@ export async function GET(
   const now = Date.now();
 
   try {
-    const [campagne, stages, received, enAttente, pipeline, posting, vivier, sourcing, sourcingOn] =
-      await Promise.all([
-        getCampaign(id).catch(() => null),
-        computeStageCounts({ campaignId: id }),
-        countCandidateAnalyses({ campaignId: id }).catch(() => 0),
-        // Les dossiers qui attendent, pour dater le plus ancien.
-        listAllCandidateAnalyses({
-          campaignId: id,
-          decidedBy: 'auto',
-          dismissed: false,
-        }).catch(() => []),
-        loadInterviewPipeline({ campaignId: id }).catch(() => null),
-        getCurrentJobPosting(id, 'apec').catch(() => null),
-        listPreselection(id).catch(() => null),
-        countersForCampaign(id).catch(() => null),
-        isSourcingEnabled().catch(() => false),
-      ]);
+    const [campagne, posting, vivier, sourcing, sourcingOn] = await Promise.all([
+      getCampaign(id).catch(() => null),
+      getCurrentJobPosting(id, 'apec').catch(() => null),
+      listPreselection(id).catch(() => null),
+      countersForCampaign(id).catch(() => null),
+      isSourcingEnabled().catch(() => false),
+    ]);
 
     if (!campagne) {
       return NextResponse.json({ error: 'campaign_not_found' }, { status: 404 });
     }
 
-    const attente = enAttente.filter(
-      (a) => a.decisionZone === 'gray' || a.decisionZone === 'proposed_reject',
-    );
-    const plusAncien = attente.length
-      ? Math.max(...attente.map((a) => joursDepuis(a.createdAt, now)))
-      : null;
-
     return NextResponse.json(
       {
-        counts: stages.counts,
-        received,
-        awaiting: {
-          aValider: stages.counts.a_valider,
-          aValiderOldestDays: plusAncien,
-          entretiensAConfirmer: pipeline?.counts.toPoint ?? 0,
-        },
         sources: {
           isDraft: campagne.status !== 'active',
           sourcingEnabled: sourcingOn,
