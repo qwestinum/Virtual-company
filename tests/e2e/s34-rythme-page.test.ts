@@ -145,6 +145,38 @@ describe('S34 — un seul rythme de page', () => {
     expect(fautifs, fautifs.join('\n')).toEqual([]);
   });
 
+  it('S34.5 — une carte-compteur a DEUX rangs, et les colonnes sont égales', async () => {
+    // ⚠️ On compte les RANGS, pas la hauteur. Première version de ce test :
+    // « toutes les cartes ont la même hauteur » — sondée, elle est restée
+    // VERTE avec un sous-texte rétabli, parce que la grille étire ses cellules
+    // à la hauteur de la plus grande. Toutes devenaient hautes ensemble : la
+    // mesure ne pouvait pas voir le défaut qu'elle devait attraper.
+    //
+    // Ce qui se voit, c'est le nombre de rangs de contenu : le chiffre, puis
+    // la ligne libellé + pastille. Un troisième en ajoute un.
+    await page.goto(`${BASE_URL}/entretiens`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-counter]', { timeout: 90_000 });
+    await page.waitForTimeout(2_500);
+    const cartes = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-counter]')].map((e) => ({
+        cle: e.getAttribute('data-counter'),
+        // Les enfants directs qui portent du CONTENU. Le soulignement coloré
+        // est décoratif (`aria-hidden`) et ne compte pas.
+        rangs: [...e.children].filter((c) => c.getAttribute('aria-hidden') === null)
+          .length,
+        largeur: Math.round(e.getBoundingClientRect().width),
+      })),
+    );
+    expect(cartes.length, 'aucune carte-compteur trouvée').toBeGreaterThan(1);
+    const detail = JSON.stringify(cartes);
+    for (const c of cartes) {
+      expect(c.rangs, `${c.cle} : ${detail}`).toBe(2);
+    }
+    // Et des colonnes égales : la grille remplit la largeur quel qu'en soit le
+    // nombre — trois cartes = trois tiers.
+    expect(new Set(cartes.map((c) => c.largeur)).size, detail).toBe(1);
+  }, 200_000);
+
   it('S34.4 — fond de page UNI, sans dégradé ni pointillé', () => {
     for (const [nom, m] of mesures) {
       expect(m.fond.image, `${nom} : le fond porte une image`).toBe('none');

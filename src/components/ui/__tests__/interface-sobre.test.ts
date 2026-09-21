@@ -129,7 +129,7 @@ describe('une seule bascule de vue', () => {
 });
 
 describe('une carte-compteur n’a que deux rangs', () => {
-  it('un chiffre, un libellé — jamais une troisième ligne', () => {
+  it('un chiffre, une ligne de libellé — jamais une troisième', () => {
     const src = sansCommentaires(
       readFileSync(resolve(RACINE, 'src/components/ui/CounterRibbon.tsx'), 'utf-8'),
     );
@@ -143,9 +143,24 @@ describe('une carte-compteur n’a que deux rangs', () => {
     expect(
       champs.sort(),
       `champs de CounterItem : ${champs.join(', ')}`,
-    ).toEqual(['color', 'count', 'dotClass', 'key', 'label', 'total']);
-    // Et aucun sous-texte rendu : deux <span> de contenu, pas trois.
+    ).toEqual([
+      'alert',
+      'alertLabel',
+      'color',
+      'count',
+      'dotClass',
+      'key',
+      'label',
+      'total',
+    ]);
+    // La précision vit DANS la deuxième ligne, poussée à droite — jamais en
+    // sous-texte, qui ferait une carte plus haute que ses voisines.
     expect(src, 'sous-texte dans la carte').not.toMatch(/mt-1 block font-body/);
+    expect(src, 'la deuxième ligne ne pousse pas la pastille à droite').toMatch(
+      /mt-1\.5 flex items-center justify-between/,
+    );
+    // Et la pastille est la PARTAGÉE, pas une forme locale.
+    expect(src, 'pastille locale').toContain('CountBadge');
   });
 });
 

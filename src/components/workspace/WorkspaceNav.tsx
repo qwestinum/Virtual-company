@@ -24,6 +24,7 @@ import {
 import { cn } from '@/lib/utils';
 
 import { SettingsGearLink } from './SettingsGearLink';
+import { CountBadge } from '@/components/ui/CountBadge';
 
 export type WorkspaceNavBadges = {
   /** Volume : combien de dossiers attendent une décision. */
@@ -126,27 +127,23 @@ export function WorkspaceNav({ badges }: { badges: WorkspaceNavBadges }) {
             )}
           >
             <span>{entry.label}</span>
+            {/* ⚠️ LA PASTILLE PARTAGÉE (`CountBadge`), dont cet écran était le
+                modèle : les cartes-compteurs prennent la même. */}
             {volume.map((v) => (
-              <span
-                key={v.tone}
-                title={v.title}
-                className={cn(
-                  'ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 align-middle font-data text-[10px] font-bold text-white',
-                  v.tone === 'vivier' ? 'bg-emerald-600' : 'bg-rose-600',
-                )}
-              >
-                {v.count}
+              <span key={v.tone} className="ml-1.5">
+                <CountBadge tone={v.tone === 'vivier' ? 'vivier' : 'alert'} title={v.title}>
+                  {v.count}
+                </CountBadge>
               </span>
             ))}
             {overdue ? (
-              <span
-                title={overdue.title}
-                className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center gap-0.5 rounded-full border border-orqa-ambre/40 bg-orqa-ambre-bg px-1.5 align-middle font-data text-[10px] font-bold text-orqa-ambre"
-              >
-                <span aria-hidden className="text-[9px] leading-none">
-                  ⏳
-                </span>
-                {overdue.count}
+              <span className="ml-1.5">
+                <CountBadge tone="waiting" title={overdue.title}>
+                  <span aria-hidden className="text-[9px] leading-none">
+                    ⏳
+                  </span>
+                  {overdue.count}
+                </CountBadge>
               </span>
             ) : null}
             {isActive ? (

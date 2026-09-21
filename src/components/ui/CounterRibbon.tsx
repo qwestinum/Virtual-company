@@ -9,11 +9,14 @@
  * exactement la même structure et la même hauteur — une carte plus haute que
  * ses voisines attire l'œil sans rien dire de plus.
  *
- * ⚠️ Une exception a existé un jour et demi : un compte d'alerte en sous-texte
- * (« 1 à confirmer ») sur la première carte d'Entretiens. Ce qui mérite un
- * sous-texte mérite sa PROPRE CARTE — c'est un volume, il se compte. Une garde
- * structurelle (`interface-sobre.test.ts`) refuse qu'un troisième rang de
- * texte revienne.
+ * ⚠️ La précision, quand il y en a une, tient DANS la deuxième ligne : une
+ * pastille de compte poussée tout à droite, en face du libellé (« 1 à
+ * confirmer », ambre, sous « Programmés »). C'est la pastille des onglets de
+ * navigation (`CountBadge`), pas une troisième forme. Elle a d'abord été un
+ * sous-texte — une troisième ligne, donc une carte plus haute que ses voisines
+ * — puis une quatrième carte, ce qui promettait une quatrième vue. Une carte
+ * sans précision n'affiche RIEN à droite et garde exactement la même hauteur :
+ * aucune ligne n'est réservée.
  *
  * Le soulignement coloré de 3 px porte la couleur ; la sélection se marque par
  * la bordure et le fond.
@@ -22,6 +25,7 @@
  * masqué par un filtre reste compté.
  */
 
+import { CountBadge } from './CountBadge';
 import { DASH, SKINS, type ListSkin } from './list-skin';
 
 export type CounterItem = {
@@ -34,6 +38,14 @@ export type CounterItem = {
   dotClass?: string;
   /** Couleur de la pastille et du soulignement (peau `dash`). */
   color?: string;
+  /**
+   * Précision en pastille, à droite de la deuxième ligne. TOUJOURS calculée
+   * sur l'ensemble, jamais sur la vue filtrée : c'est une alerte, et un filtre
+   * de confort ne masque jamais un dossier en souffrance.
+   */
+  alert?: number;
+  /** Ce que la précision veut dire. Sans lui, le nombre ne dit rien. */
+  alertLabel?: string;
 };
 
 export function CounterRibbon({
@@ -94,15 +106,28 @@ export function CounterRibbon({
                 </span>
               ) : null}
             </span>
+            {/* LIGNE 2 — le repère et le libellé à gauche, la précision tout à
+                droite. `justify-between` : la pastille ne s'ajoute pas à la
+                suite du libellé, elle s'aligne au bord. */}
             <span
-              className={`mt-1.5 flex items-center gap-1.5 ${s.libelle}`}
+              className={`mt-1.5 flex items-center justify-between gap-2 ${s.libelle}`}
               style={skin === 'dash' ? { color: DASH.secondaire } : undefined}
             >
-              <span
-                className={`h-[7px] w-[7px] shrink-0 rounded-full ${item.dotClass ?? ''}`}
-                style={item.dotClass ? undefined : { background: teinte }}
-              />
-              {item.label}
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className={`h-[7px] w-[7px] shrink-0 rounded-full ${item.dotClass ?? ''}`}
+                  style={item.dotClass ? undefined : { background: teinte }}
+                />
+                <span className="truncate">{item.label}</span>
+              </span>
+              {item.alert && item.alert > 0 ? (
+                <CountBadge tone="waiting" title={`${item.alert} ${item.alertLabel ?? ''}`.trim()}>
+                  {item.alert}
+                  {item.alertLabel ? (
+                    <span className="font-body font-semibold">{item.alertLabel}</span>
+                  ) : null}
+                </CountBadge>
+              ) : null}
             </span>
             {/* Soulignement de 3 px : c'est LUI qui porte la couleur, pas un
                 aplat — la teinte doit rester un repère, pas un fond. */}
