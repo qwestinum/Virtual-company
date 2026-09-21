@@ -129,6 +129,43 @@ export const ETAPE = {
   sansSuite: 'var(--dash-text-tertiary)',
 } as const;
 
+/**
+ * LES DEUX PASTILLES D'OBJET — UNE couleur par NATURE d'objet, partout.
+ *
+ * ⚠️ RÈGLE (21/09/2026). La couleur d'un pavé d'initiales ou d'une icône ne
+ * dit RIEN de l'objet : elle ne code ni l'étape, ni l'urgence, ni le score —
+ * tout cela est déjà écrit sur la ligne, en toutes lettres. Une couleur qui
+ * change sans rien signifier se lit comme une information, et on la cherche.
+ *
+ * Elle dit donc UNE seule chose : de quelle NATURE est la ligne.
+ *   • une PERSONNE   → orange, partout et SANS EXCEPTION (Entretiens,
+ *     Candidatures, Audit) ;
+ *   • une CAMPAGNE   → bleu ciel et son éclair (Campagnes, Pilotage).
+ *
+ * Avant : un candidat était orange sur Entretiens quand il était en retard,
+ * turquoise sinon, violet en attente de réservation, et marine dégradé sur
+ * Candidatures. Quatre couleurs pour la même personne, selon l'écran.
+ *
+ * ⚠️ PORTÉE EXACTE. Sur la CARTE d'une campagne, les états « suspendue » et
+ * « brouillon » gardent leurs teintes (jaune, gris) : elles distinguent trois
+ * cartes côte à côte dans une même liste, ce qui est un autre problème. Seule
+ * l'icône ACTIVE change — elle était verte, et le vert disait « conforme » là
+ * où il ne signifiait rien de tel, pendant qu'il servait ailleurs à marquer
+ * les candidats retenus.
+ *
+ * ⚠️ MESURE. Les initiales en blanc sur `--dash-orange` donnent **3,09:1** —
+ * au-delà des 3:1 d'un élément non textuel, SOUS les 4,5:1 d'un texte. C'est
+ * tenable parce que les initiales sont REDONDANTES (le nom complet est à
+ * côté, en contraste AA) et c'est la teinte demandée. Si on veut le plein AA
+ * sans changer de famille : `--dash-orange-text` monte à 5,02:1.
+ */
+export const PASTILLE = {
+  /** Le pavé d'initiales d'une PERSONNE. Une seule couleur, sans exception. */
+  candidat: 'var(--dash-orange)',
+  /** Le fond de l'icône d'une CAMPAGNE active. */
+  campagne: 'var(--dash-sky)',
+} as const;
+
 /** Rayons — trois, par taille d'objet. */
 export const RAYON = {
   petit: 8,

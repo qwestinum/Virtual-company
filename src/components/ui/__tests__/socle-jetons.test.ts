@@ -120,6 +120,30 @@ describe('aucun écran n’invente sa propre palette', () => {
     expect(fautifs, fautifs.join('\n')).toEqual([]);
   });
 
+  it('un pavé d’initiales n’a qu’UNE couleur, celle des personnes', () => {
+    // ⚠️ RÈGLE (21/09/2026) : la couleur d'une pastille dit la NATURE de
+    // l'objet, jamais son état. Un candidat était orange en retard, turquoise
+    // sinon, violet en attente, marine sur Candidatures : quatre couleurs pour
+    // la même personne selon l'écran, et aucune ne voulait rien dire.
+    const fautifs: string[] = [];
+    for (const f of SOURCES) {
+      for (const m of f.code.matchAll(/avatarColor=\{([^}]*)\}/g)) {
+        const valeur = m[1]!.replace(/\s+/g, ' ').trim();
+        if (valeur !== 'PASTILLE.candidat') {
+          fautifs.push(`${f.chemin} — avatarColor={${valeur}}`);
+        }
+      }
+      // Un fond posé à la main derrière des initiales, c'est la même
+      // divergence écrite autrement.
+      for (const m of f.code.matchAll(
+        /background: (?!PASTILLE\.candidat)([^,}\n]+)[,}][^]{0,200}?initials\(/g,
+      )) {
+        fautifs.push(`${f.chemin} — fond d’initiales : ${m[1]!.trim()}`);
+      }
+    }
+    expect(fautifs, fautifs.join('\n')).toEqual([]);
+  });
+
   it('la palette retirée ne revient pas', () => {
     const fautifs = SOURCES.filter((f) => /\borqa-(?!field)/.test(f.code)).map(
       (f) => f.chemin,

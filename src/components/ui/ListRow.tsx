@@ -18,9 +18,11 @@
 import type { ReactNode } from 'react';
 
 import { DASH, SKIN } from './list-skin';
+import { PASTILLE } from './tokens';
 
 export function ListRow({
   initials,
+  avatar,
   avatarColor,
   title,
   pill,
@@ -37,7 +39,13 @@ export function ListRow({
    * fait passer pour quelqu'un.
    */
   initials?: string;
-  /** Fond du pavé d'initiales (peau `dash`). */
+  /** Pastille TOUTE FAITE — l'icône d'une campagne, là où il n'y a pas de personne. */
+  avatar?: ReactNode;
+  /**
+   * Fond du pavé d'initiales. Par défaut la couleur des PERSONNES, et il n'y
+   * a pas de raison d'en changer : la couleur dit la nature de l'objet, pas
+   * son état (cf. `PASTILLE`).
+   */
   avatarColor?: string;
   title: string;
   /** Intitulé du poste, en puce — une fois, jamais répété sur la ligne. */
@@ -54,14 +62,16 @@ export function ListRow({
   const s = SKIN;
   const contenu = (
     <>
-      {initials ? (
-        <span
-          className={`grid h-10 w-10 place-items-center ${s.avatar}`}
-          style={{ background: avatarColor ?? 'var(--dash-blue)' }}
-        >
-          {initials}
-        </span>
-      ) : null}
+      {avatar ?? (
+        initials ? (
+          <span
+            className={`grid h-10 w-10 place-items-center ${s.avatar}`}
+            style={{ background: avatarColor ?? PASTILLE.candidat }}
+          >
+            {initials}
+          </span>
+        ) : null
+      )}
 
       <span className="min-w-0">
         <span
@@ -101,7 +111,7 @@ export function ListRow({
   );
 
   const classe = `grid w-full ${
-    initials ? 'grid-cols-[auto_1fr_auto]' : 'grid-cols-[1fr_auto]'
+    initials || avatar ? 'grid-cols-[auto_1fr_auto]' : 'grid-cols-[1fr_auto]'
   } items-center gap-4 px-4 py-3.5 text-left transition ${s.carte}`;
   const style = { borderColor: selected ? 'var(--dash-blue)' : DASH.bordure };
 

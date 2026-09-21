@@ -25,6 +25,7 @@ import {
   CampaignStatusActions,
   type CampaignActionStatus,
 } from './CampaignStatusActions';
+import { CampaignIcon } from '@/components/ui/CampaignIcon';
 
 export type CampaignCardProps = {
   campaign: ActiveCampaign;
@@ -187,47 +188,3 @@ function describeCampaign(campaign: ActiveCampaign): string {
   return parts.length > 0 ? parts.join(' — ') : 'Campagne en cours de cadrage';
 }
 
-function CampaignIcon({
-  kind,
-}: {
-  kind: 'active' | 'paused' | 'draft';
-}) {
-  const map = {
-    active: {
-      bg: 'linear-gradient(135deg, var(--dash-green), var(--dash-teal))',
-      shadow: 'rgba(21,163,100,0.3)',
-      emoji: '⚡',
-    },
-    paused: {
-      bg: 'linear-gradient(135deg, var(--dash-yellow), var(--dash-orange))',
-      shadow: 'rgba(213,160,0,0.3)',
-      emoji: '⏸',
-    },
-    draft: {
-      bg: 'linear-gradient(135deg, var(--dash-text-tertiary), var(--dash-text-secondary))',
-      shadow: 'rgba(101,98,93,0.3)',
-      emoji: '📝',
-    },
-  } as const;
-  const spec = map[kind];
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: 44,
-        height: 44,
-        borderRadius: 12,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 20,
-        color: '#fff',
-        flexShrink: 0,
-        background: spec.bg,
-        boxShadow: `0 3px 12px ${spec.shadow}`,
-      }}
-    >
-      {spec.emoji}
-    </div>
-  );
-}

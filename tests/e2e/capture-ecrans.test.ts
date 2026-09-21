@@ -116,6 +116,20 @@ describe('capture des trois écrans', () => {
       await page.screenshot({ type: 'png' }),
     );
 
+    // L'AUDIT CANDIDAT — la troisième surface qui liste des personnes, et
+    // donc la troisième à devoir porter le même pavé orange.
+    await page.goto(`${BASE_URL}/pilotage`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-counter="audit"]', { timeout: 90_000 });
+    await page.click('[data-counter="audit"]');
+    // ⚠️ On ATTEND la vue, on ne devine pas : la première version tirait la
+    // capture 2 s après le clic et rendait l'écran PRÉCÉDENT. Le clic, lui,
+    // marchait — mesuré : `aria-pressed` passe bien à `true`.
+    await page.waitForSelector('text=Audit candidat', { timeout: 60_000 });
+    await page.click('text=Audit candidat');
+    await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(2_500);
+    writeFileSync(resolve(KIT, 'audit.png'), await page.screenshot({ type: 'png' }));
+
     // UNE CARTE CAMPAGNE DÉPLIÉE — les quadrants, les actions, le cycle de vie.
     // ⚠️ On la DÉPLIE : sans le clic, la capture était l'octet pour octet la
     // même que celle de l'écran Campagnes, et le kit aurait porté deux fois la

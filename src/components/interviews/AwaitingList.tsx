@@ -20,6 +20,7 @@ import { ListRow } from '@/components/ui/ListRow';
 import { Action } from './interview-row-ui';
 import type { RowReferent } from '@/lib/interviews/referent-resolution';
 import type { AwaitingRow } from '@/lib/interviews/pipeline-rows';
+import { PASTILLE } from '@/components/ui/tokens';
 
 export type AwaitingItem = AwaitingRow & {
   campaignName: string | null;
@@ -64,7 +65,7 @@ export function AwaitingList({
             <ListRow
               testId={row.briefId}
               initials={initials(row.candidateName)}
-              avatarColor={alerte ? 'var(--dash-orange)' : 'var(--dash-purple)'}
+              avatarColor={PASTILLE.candidat}
               title={row.candidateName}
               pill={row.jobTitle ?? row.campaignName ?? null}
               // ⚠️ La chasse fixe est réservée à la RÉFÉRENCE : « hors

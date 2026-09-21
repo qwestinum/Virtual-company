@@ -35,8 +35,15 @@ const DOSSIERS = [
   'src/components/ui',
 ];
 
-/** Exemptions : aucune pour l'instant, et c'est bien ainsi. */
-const EXEMPTS = new Set<string>([]);
+/**
+ * Exemptions — nommées une par une, avec leur raison.
+ *
+ * `CampaignIcon` vient de `CampaignCard`, dans Campagnes, que cette garde
+ * exclut délibérément : son glyphe et son ombre SONT la charte du produit,
+ * celle qu'on est venu copier. L'extraire pour la partager ne doit pas la
+ * condamner d'un coup — ce serait punir la mutualisation.
+ */
+const EXEMPTS = new Set<string>(['src/components/ui/CampaignIcon.tsx']);
 
 function fichiers(dir: string): string[] {
   const out: string[] = [];

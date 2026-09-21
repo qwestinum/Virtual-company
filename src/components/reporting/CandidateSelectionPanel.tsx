@@ -21,13 +21,21 @@ import { CandidateStatePill } from './CandidateStatePill';
 import { InterventionFlag } from './InterventionFlag';
 import { PeriodFilter } from './PeriodFilter';
 import { ScoreBadge } from './ScoreBadge';
+import { initials } from '@/components/candidatures/stage-ui';
+import { PASTILLE } from '@/components/ui/tokens';
 
 /**
  * Gabarit de la grille invisible (aucun filet vertical) — colonnes alignées
  * ligne à ligne : Candidat · Score · Modifié · Statut actuel. Partagé entre
  * l'en-tête et chaque ligne pour garantir la cohérence d'alignement.
  */
+// ⚠️ Une colonne de plus en TÊTE : le pavé d'initiales du candidat. Même
+// pastille que partout ailleurs — orange, parce que c'est une PERSONNE (cf.
+// `PASTILLE`). L'en-tête de colonnes garde l'ancienne grille : il ne porte
+// pas de pavé, et lui en réserver la place le décalerait de 40 px.
 const AUDIT_GRID =
+  'grid grid-cols-[auto_minmax(0,1fr)_64px_104px_200px] items-center gap-3';
+const AUDIT_GRID_ENTETE =
   'grid grid-cols-[minmax(0,1fr)_64px_104px_200px] items-center gap-3';
 
 export function CandidateSelectionPanel({
@@ -174,7 +182,7 @@ export function CandidateSelectionPanel({
       ) : (
         <div className="flex flex-col gap-2">
           <div
-            className={`${AUDIT_GRID} px-4 font-body text-[11px] font-semibold uppercase tracking-wide text-stone-400`}
+            className={`${AUDIT_GRID_ENTETE} px-4 font-body text-[11px] font-semibold uppercase tracking-wide text-stone-400`}
           >
             <span>Candidat</span>
             <span className="text-center">Score</span>
@@ -189,6 +197,12 @@ export function CandidateSelectionPanel({
                   onClick={() => onSelect(it.id)}
                   className={`${AUDIT_GRID} w-full rounded-lg border border-stone-200 bg-white px-4 py-3 text-left hover:border-amber-300 hover:bg-amber-50/40`}
                 >
+                  <span
+                    className="grid h-10 w-10 place-items-center rounded-[11px] font-data text-[13px] font-semibold tracking-wide text-white"
+                    style={{ background: PASTILLE.candidat }}
+                  >
+                    {initials(it.candidateName)}
+                  </span>
                   <div className="min-w-0">
                     <p className="truncate font-body text-[14px] font-semibold text-stone-800">
                       {it.candidateName}

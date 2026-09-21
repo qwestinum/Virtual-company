@@ -33,6 +33,7 @@ import { ScoreRing } from './ScoreRing';
 import { StagePill } from './StagePill';
 import { initials } from './stage-ui';
 import { ZonePill } from './ZonePill';
+import { PASTILLE } from '@/components/ui/tokens';
 
 type DetailResponse = {
   candidate: CandidateAnalysisDetail;
@@ -197,7 +198,7 @@ function Body({
       {/* Identité + score */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
-          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-dash-text to-dash-blue font-body text-[17px] font-semibold text-white">
+          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] font-body text-[17px] font-semibold text-white" style={{ background: PASTILLE.candidat }}>
             {initials(candidate.candidateName)}
           </span>
           <div>

@@ -23,6 +23,7 @@ import { ScoreRing } from './ScoreRing';
 import { StagePill } from './StagePill';
 import { initials } from './stage-ui';
 import { ZonePill } from './ZonePill';
+import { PASTILLE } from '@/components/ui/tokens';
 
 type DetailResponse = {
   candidate: CandidateAnalysisDetail;
@@ -112,7 +113,7 @@ export function CandidaturePanel({
     >
       <header className="flex items-start justify-between gap-3 px-6 py-5">
         <div className="flex min-w-0 items-start gap-3.5">
-          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-dash-text to-dash-blue font-body text-[17px] font-semibold text-white">
+          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] font-body text-[17px] font-semibold text-white" style={{ background: PASTILLE.candidat }}>
             {initials(item.candidateName)}
           </span>
           <div className="min-w-0">

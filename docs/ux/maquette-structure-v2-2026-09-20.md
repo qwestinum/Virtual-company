@@ -667,6 +667,38 @@ suivante plus facile à justifier.
 - **Aucune ombre portée** sur un élément du flux ; la sélection se marque par la bordure et le
   fond. Une ombre n'informe que sur une couche flottante (dialogue, liste déroulante).
 
+### Une couleur par NATURE d'objet (21/09/2026)
+
+**Règle.** La couleur d'un pavé d'initiales ou d'une icône de ligne ne code ni l'étape, ni
+l'urgence, ni le score : tout cela est déjà écrit sur la ligne, en toutes lettres. Elle dit
+**de quelle nature est l'objet**, et rien d'autre.
+
+| Objet | Pastille | Écrans |
+|---|---|---|
+| Une **personne** | **orange** (`--dash-orange`), sans exception | Entretiens · Candidatures · Audit |
+| Une **campagne** | **bleu ciel** (`--dash-sky`) et son éclair | Campagnes · Pilotage → Rapport de campagne |
+
+**Pourquoi.** Un candidat était orange sur *Entretiens* quand il était en retard, turquoise
+sinon, violet en attente de réservation, et marine dégradé sur *Candidatures* : **quatre
+couleurs pour la même personne**, selon l'écran et son état. Une couleur qui change sans
+rien signifier se lit comme une information — et on la cherche. L'icône de campagne, elle,
+était **verte** : le vert disait « conforme » là où il ne signifiait rien de tel, pendant
+qu'il servait ailleurs à marquer les candidats retenus.
+
+⚠️ **Portée exacte.** Sur la **carte** d'une campagne, « suspendue » (jaune) et
+« brouillon » (gris) gardent leurs teintes : elles distinguent trois cartes côte à côte
+dans une même liste, ce qui est un autre problème. Seule l'icône **active** change.
+
+⚠️ **Mesure.** Les initiales en blanc sur `--dash-orange` donnent **3,09:1** — au-delà des
+3:1 d'un élément non textuel, **sous les 4,5:1 d'un texte**. C'est tenable parce que les
+initiales sont **redondantes** (le nom complet est à côté, en contraste AA). Pour le plein
+AA sans changer de famille : `--dash-orange-text`, à 5,02:1. Le bleu ciel donne **4,10:1**
+avec son glyphe blanc, qui est décoratif (`aria-hidden`) — l'issue de la campagne est
+écrite dans la pastille à droite.
+
+**Garde** : `socle-jetons.test.ts` — un `avatarColor` qui n'est pas `PASTILLE.candidat`,
+ou un fond posé à la main derrière des initiales, fait rougir la suite. Sondée.
+
 ### Le socle de jetons (lot 7, 21/09/2026)
 
 Un fichier : **`src/components/ui/tokens.ts`**. Il ne dessine rien — il NOMME ce que les

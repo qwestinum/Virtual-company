@@ -25,6 +25,7 @@ import type { FinalVerdict } from '@/types/verdict-comment';
 
 import { Action, formatSlot, SECTIONS } from './interview-row-ui';
 import { VerdictExpansion, VerdictRowActions } from './VerdictRow';
+import { PASTILLE } from '@/components/ui/tokens';
 
 export type ScheduledItem = ScheduledRow & {
   campaignName: string | null;
@@ -92,11 +93,11 @@ export function ScheduledList({
                   <ListRow
                     testId={row.briefId}
                     initials={initials(row.candidateName)}
-                    avatarColor={
-                      section.key === 'a_pointer'
-                        ? 'var(--dash-orange)'
-                        : 'var(--dash-teal)'
-                    }
+                    // ⚠️ UNE SEULE COULEUR pour une personne (cf. `PASTILLE`).
+                    // Elle était orange en retard, turquoise sinon : la
+                    // couleur d'un pavé d'initiales ne code pas l'urgence,
+                    // qui est déjà écrite sur la ligne.
+                    avatarColor={PASTILLE.candidat}
                     title={row.candidateName}
                     pill={row.campaignName ?? null}
                     reference={row.campaignId}

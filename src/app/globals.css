@@ -82,6 +82,7 @@
   --color-dash-teal-light: var(--dash-teal-light);
   --color-dash-yellow: var(--dash-yellow);
   --color-dash-yellow-light: var(--dash-yellow-light);
+  --color-dash-sky: var(--dash-sky);
   /* Teintes de TEXTE des étapes — les seules à passer AA sur fond clair. */
   --color-dash-green-text: var(--dash-green-text);
   --color-dash-indigo-text: var(--dash-indigo-text);
@@ -257,6 +258,14 @@
   --dash-indigo: #3e63dd;
   --dash-indigo-light: #ecf0ff;
   --dash-yellow: #d5a000;
+  /* Bleu CIEL — ajouté le 21/09/2026 pour l'icône de campagne. La palette
+     n'avait que du bleu royal (#2f6eeb) et du turquoise ; il manquait
+     littéralement le ciel.
+     ⚠️ C'est une teinte PÂLE : le glyphe ne peut pas être blanc (1,26:1,
+     invisible). Il prend `--dash-blue` (3,66:1, au-delà des 3:1 exigés d'un
+     élément non textuel). Et la pastille ne se détache que de 1,19:1 du fond
+     sand : elle porte donc un filet, sinon elle flotterait sans contour. */
+  --dash-sky: #d7e6ff;
 
   /* ── TEINTES DE TEXTE DES ÉTAPES ────────────────────────────────────────
      ⚠️ Les couleurs de marque ci-dessus sont des REPÈRES (pastilles, points,

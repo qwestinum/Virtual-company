@@ -14,6 +14,7 @@ import {
   formatSmartDate,
   initials,
 } from './stage-ui';
+import { PASTILLE } from '@/components/ui/tokens';
 
 export function CandidatureRow({
   item,
@@ -39,7 +40,8 @@ export function CandidatureRow({
         selected ? 'border-dash-text' : 'border-dash-border'
       }`}
     >
-      <span className="grid h-10 w-10 place-items-center rounded-[11px] bg-gradient-to-br from-dash-text to-dash-blue font-body text-[13px] font-semibold tracking-wide text-white">
+      <span className="grid h-10 w-10 place-items-center rounded-[11px] font-body text-[13px] font-semibold tracking-wide text-white"
+        style={{ background: PASTILLE.candidat }}>
         {initials(item.candidateName)}
       </span>
 

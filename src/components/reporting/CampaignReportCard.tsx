@@ -14,6 +14,7 @@
 import { Download, MoreVertical, RefreshCw, Send } from 'lucide-react';
 import { useState } from 'react';
 
+import { CampaignIcon } from '@/components/ui/CampaignIcon';
 import { ListRow } from '@/components/ui/ListRow';
 import { SegmentedCounts } from '@/components/ui/SegmentedCounts';
 import { formatFrDate } from '@/lib/reporting/audit-display';
@@ -64,9 +65,12 @@ export function CampaignReportCard({
     >
       <ListRow
         testId={summary.campaignId}
-        // Pas de pavé d'initiales : l'objet de la ligne est une CAMPAGNE, pas
-        // une personne. « BA » pour « Business Analyst » la faisait passer
-        // pour un candidat dans une liste de candidats.
+        // ⚠️ L'ICÔNE DE CAMPAGNE, pas un pavé d'initiales : l'objet de la
+        // ligne est une CAMPAGNE. La MÊME qu'à l'onglet Campagnes — bleu ciel
+        // et son éclair — parce qu'elle dit la NATURE de la ligne ; l'issue,
+        // elle, est écrite en toutes lettres dans la pastille à droite
+        // (« Clôturée sans recrutement »). Cf. `PASTILLE` dans `tokens.ts`.
+        avatar={<CampaignIcon kind="active" taille={40} />}
         title={summary.jobTitle}
         // La puce ne s'affiche que s'il y a quelqu'un : une puce « — » occupe
         // la place d'une information sans en porter aucune.
