@@ -297,6 +297,14 @@
      de 13 px, fût-il gras (le seuil « grand texte » commence à 18,66 px gras).
      Celui-ci donne 5,19:1. */
   --dash-green-bandeau: #166534;
+  /* BEIGE SOBRE — la surbrillance d'une ligne déjà sourcée, et la teinte des
+     boutons qui étaient noirs. Mesuré : 1,22:1 sur le blanc et 1,15 sur le
+     sand — une NUANCE, pas une couleur, exactement comme les teintes de
+     registre d'Aujourd'hui. Le texte du produit y garde 14,20:1, et l'encre
+     beige 5,91:1 : les deux passent AA largement. */
+  --dash-beige: #f2e8d5;
+  --dash-beige-bord: #d9c9a8;
+  --dash-beige-encre: #6b5426;
   --dash-yellow-light: #fff8e1;
 }
 

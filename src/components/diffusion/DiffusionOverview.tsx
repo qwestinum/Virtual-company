@@ -20,24 +20,17 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { CounterRibbon } from '@/components/ui/CounterRibbon';
+import { CampaignIcon } from '@/components/ui/CampaignIcon';
+import { DotTabs } from '@/components/ui/DotTabs';
 import { ListRow } from '@/components/ui/ListRow';
 import {
   LIBELLE_ETAT,
   SEUIL_ALERTE_JOURS,
-  type EtatDiffusion,
   type LigneDiffusion,
 } from '@/lib/diffusion/rows';
 import { dedupeFetch } from '@/lib/net/dedupe-fetch';
 
 type Ligne = LigneDiffusion & { campaignName: string | null };
-
-const TEINTE: Record<EtatDiffusion, string> = {
-  publiee: 'var(--dash-green)',
-  suspendue: 'var(--dash-yellow)',
-  a_republier: 'var(--dash-orange)',
-  brouillon: 'var(--dash-text-tertiary)',
-};
 
 const jour = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : null;
@@ -92,22 +85,27 @@ export function DiffusionOverview() {
 
   return (
     <>
+      {/* ⚠️ LES PUCES À POINT COLORÉ, celles de « Revue de candidature ». Un
+          ruban de cartes-compteurs promet des VOLUMES à comparer ; ici, deux
+          entrées qui font basculer de vue — c'est une navigation, et le
+          produit n'a qu'un composant pour ça. */}
       <div className="mb-4">
-        <CounterRibbon
-          active={vue}
-          onSelect={(k) => setVue((k ?? 'a_traiter') as Vue)}
-          items={[
+        <DotTabs
+          ariaLabel="Choisir les annonces à voir"
+          current={vue}
+          onChange={setVue}
+          tabs={[
             {
-              key: 'a_traiter',
-              label: 'Annonces à reprendre',
+              key: 'a_traiter' as const,
+              label: 'À reprendre',
+              dot: 'var(--dash-orange)',
               count: aTraiter.length,
-              color: 'var(--dash-orange)',
             },
             {
-              key: 'toutes',
+              key: 'toutes' as const,
               label: 'Toutes les annonces',
+              dot: 'var(--dash-blue)',
               count: lignes.length,
-              color: 'var(--dash-blue)',
             },
           ]}
         />
@@ -141,21 +139,11 @@ export function DiffusionOverview() {
               <li key={l.cle}>
                 <ListRow
                   testId={l.cle}
-                  avatar={
-                    <span
-                      aria-hidden
-                      className="grid h-10 w-10 shrink-0 place-items-center rounded-[11px] border"
-                      style={{
-                        borderColor: `color-mix(in srgb, ${TEINTE[l.etat]} 35%, transparent)`,
-                        background: 'var(--dash-warm)',
-                      }}
-                    >
-                      <span
-                        className="h-[9px] w-[9px] rounded-full"
-                        style={{ background: TEINTE[l.etat] }}
-                      />
-                    </span>
-                  }
+                  // ⚠️ L'ICÔNE DE CAMPAGNE, la même que partout : bleu ciel et
+                  // son éclair. La pastille à point coloré que portait cette
+                  // ligne codait l'ÉTAT par la couleur de l'objet — or la
+                  // couleur dit la NATURE, et l'état est écrit juste à côté.
+                  avatar={<CampaignIcon kind="active" taille={40} />}
                   title={l.campaignName ?? l.campaignId}
                   pill={l.canal}
                   reference={l.campaignId}

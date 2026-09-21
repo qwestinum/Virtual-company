@@ -10,8 +10,16 @@
 
 import { PageShell } from '@/components/navigation/PageShell';
 import { Loader2, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
+import { useReferentContext } from '@/components/referent/useReferentContext';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
+import {
+  buildReferentOptionsBy,
+  filterByReferentBy,
+  myReferentCountBy,
+} from '@/lib/referent/filter';
 import type { SourcingCampaignSummary } from '@/types/sourcing';
 
 import { SourcingCampaignList } from './SourcingCampaignList';
@@ -61,6 +69,27 @@ export function SourcingWorkspace({
 
   const open = data?.campaigns.find((c) => c.campaignId === openId) ?? null;
 
+  // ⚠️ LE MÊME FILTRE, AU MÊME ENDROIT que sur les autres écrans, et le MÊME
+  // ÉTAT : cocher « Mes campagnes » ici, c'est le retrouver coché ailleurs.
+  // Le référent vient de la LIGNE (l'API le sert déjà) — pas besoin du
+  // référentiel complet.
+  const { currentUserId } = useReferentContext();
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
+  const toutes = useMemo(() => data?.campaigns ?? [], [data]);
+  const referentDe = (c: SourcingCampaignSummary) => c.referent;
+  const referentOptions = useMemo(
+    () => buildReferentOptionsBy(toutes, referentDe),
+    [toutes],
+  );
+  const myCount = useMemo(
+    () => myReferentCountBy(toutes, referentDe, currentUserId),
+    [toutes, currentUserId],
+  );
+  const visibles = useMemo(
+    () => filterByReferentBy(toutes, referentDe, referentFilter),
+    [toutes, referentFilter],
+  );
+
   return (
     // ⚠️ GABARIT COMMUN (même constat qu'Entretiens : 896 px au lieu de 1400).
     // Le TITRE vient du gabarit : posé dans le contenu, il tombait 20 px plus
@@ -93,6 +122,13 @@ export function SourcingWorkspace({
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
             </header>
+            <ReferentFilterBar
+              options={referentOptions}
+              selection={referentFilter}
+              onChange={setReferentFilter}
+              myCount={myCount}
+              currentUserId={currentUserId}
+            />
             {loading && !data ? (
               <p className="font-body text-[13px] text-stone-500">
                 <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />
@@ -104,7 +140,7 @@ export function SourcingWorkspace({
               </p>
             ) : data ? (
               <SourcingCampaignList
-                campaigns={data.campaigns}
+                campaigns={visibles}
                 myApproachesThisMonth={data.myApproachesThisMonth}
                 onSource={setOpenId}
               />

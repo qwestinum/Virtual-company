@@ -85,6 +85,13 @@ export const COULEUR = {
   surface: 'var(--dash-surface)',
   /** Une surface tiède : sélection, zone de réglage, en-tête de groupe. */
   surfaceTiede: 'var(--dash-warm)',
+  /**
+   * BEIGE — une ligne déjà traitée, ou une zone qu'on met en évidence sans
+   * l'alarmer. 1,22:1 sur le blanc : une nuance, pas une couleur.
+   */
+  beige: 'var(--dash-beige)',
+  beigeBord: 'var(--dash-beige-bord)',
+  beigeEncre: 'var(--dash-beige-encre)',
   /** Le survol d'une surface. */
   survol: 'var(--dash-hover)',
   texte: 'var(--dash-text)',

@@ -30,6 +30,7 @@ export function ListRow({
   meta,
   right,
   selected = false,
+  tint,
   onClick,
   testId,
 }: {
@@ -56,6 +57,12 @@ export function ListRow({
   meta?: string | null;
   right?: ReactNode;
   selected?: boolean;
+  /**
+   * Fond de la ligne, à la place du blanc. Pour MARQUER UN GROUPE (les
+   * campagnes déjà sourcées), jamais pour coder un état individuel : l'état
+   * vit dans la pastille de droite.
+   */
+  tint?: string;
   onClick?: () => void;
   testId?: string;
 }) {
@@ -115,8 +122,13 @@ export function ListRow({
 
   const classe = `grid w-full ${
     initials || avatar ? 'grid-cols-[auto_1fr_auto]' : 'grid-cols-[1fr_auto]'
-  } items-center gap-4 px-4 py-3.5 text-left transition ${s.carte}`;
-  const style = { borderColor: selected ? 'var(--dash-blue)' : DASH.bordure };
+  } items-center gap-4 px-4 py-3.5 text-left transition ${
+    tint ? s.carte.replace('bg-white', '') : s.carte
+  }`;
+  const style = {
+    borderColor: selected ? 'var(--dash-blue)' : DASH.bordure,
+    ...(tint ? { background: tint } : null),
+  };
 
   if (!onClick) {
     return (

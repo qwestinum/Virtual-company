@@ -34,8 +34,15 @@ export function SourcingCampaignView({
           <ArrowLeft className="h-3.5 w-3.5" /> Voir le sourcing de toutes les
           campagnes actives
         </button>
-        <h1 className="font-display text-2xl font-bold text-stone-900">
-          {sourced ? 'Sourcing' : 'Sourcer'} — <span className="font-data text-stone-600">{campaign.campaignId}</span> {campaign.name}
+        {/* ⚠️ L'identifiant et l'intitulé sont DEUX choses : collés, on lisait
+            « CAMP-2026-095développeur back end » d'un seul tenant. Un séparateur
+            et de l'air entre les deux. */}
+        <h1 className="flex flex-wrap items-baseline gap-x-3 font-display text-2xl font-bold" style={{ color: 'var(--dash-text)' }}>
+          <span>{sourced ? 'Sourcing' : 'Sourcer'}</span>
+          <span className="font-data text-[18px] font-semibold" style={{ color: 'var(--dash-text-secondary)' }}>
+            {campaign.campaignId}
+          </span>
+          <span>{campaign.name}</span>
         </h1>
         <p className="font-body text-[12px] text-stone-500">
           <ReferentMention referent={campaign.referent} />
@@ -54,7 +61,15 @@ export function SourcingCampaignView({
         <button
           type="button"
           onClick={() => setQuerying(true)}
-          className="inline-flex w-fit items-center gap-1.5 rounded-md border border-stone-800 bg-stone-900 px-3 py-1.5 font-body text-[12.5px] font-semibold text-white hover:bg-stone-800"
+          // ⚠️ Beige, plus noir : le noir plein n'existe nulle part ailleurs
+          // dans le produit, et il donnait à « relancer » le poids d'une
+          // action principale alors qu'on vient juste de consulter.
+          className="inline-flex w-fit items-center gap-1.5 rounded-lg border px-3 py-1.5 font-body text-[12.5px] font-semibold"
+          style={{
+            borderColor: 'var(--dash-beige-bord)',
+            background: 'var(--dash-beige)',
+            color: 'var(--dash-beige-encre)',
+          }}
         >
           <RefreshCw className="h-3.5 w-3.5" /> Relancer une recherche
         </button>

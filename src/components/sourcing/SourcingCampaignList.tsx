@@ -3,16 +3,19 @@
 /**
  * LES CAMPAGNES ACTIVES, et ce que le sourcing y a déjà fait.
  *
- * ⚠️ MISE EN EXERGUE SANS TEINTER LA LIGNE. Les campagnes déjà sourcées
- * passaient sur un aplat ambre avec un filet de 3 px : c'était un état codé
- * par la couleur du FOND, là où tout le reste du produit code l'état par une
- * pastille à droite et la nature de l'objet par l'icône. Elles se distinguent
- * maintenant comme partout ailleurs — elles passent EN TÊTE, et portent leur
- * pastille.
+ * ⚠️ SURBRILLANCE BEIGE pour les campagnes déjà sourcées. Elles portaient un
+ * aplat AMBRE avec un filet de 3 px : l'ambre est la couleur des alertes du
+ * produit, et une campagne sourcée n'a rien d'alarmant. Le beige est une
+ * NUANCE — 1,22:1 sur le blanc, comme les teintes de registre d'Aujourd'hui :
+ * on voit le groupe sans que la ligne crie.
  *
- * ⚠️ Le geste diffère, et c'est lui qui porte l'exergue : une campagne déjà
- * sourcée propose « Détail » (on y revient pour voir, pas pour relancer), une
- * campagne vierge propose « Sourcer ».
+ * ⚠️ Le geste diffère aussi : une campagne déjà sourcée propose « Détail »
+ * (on y revient pour voir, pas pour relancer), une campagne vierge propose
+ * « Sourcer ».
+ *
+ * ⚠️ ORDRE CHRONOLOGIQUE, la plus récemment sourcée d'abord. Les campagnes
+ * jamais sourcées ferment la liste, par ancienneté de campagne : elles n'ont
+ * pas de date de recherche à comparer.
  *
  * ⚠️ AUCUNE INDICATION DE COÛT. Le suivi du budget vit dans l'administration :
  * un recruteur n'a pas à connaître le prix d'une recherche pour décider s'il
@@ -32,9 +35,20 @@ function derniereRecherche(iso: string | null): string {
   return `dernière recherche il y a ${jours} j`;
 }
 
-/** « 3 vus · 1 approché · 0 manifesté », au singulier près. */
+/**
+ * « 3 vus · 1 approché · 0 manifesté », au singulier près.
+ *
+ * ⚠️ UN CAS À PART : une campagne qui a une recherche DATÉE et pas un seul
+ * profil. « 0 vu · 0 approché · 0 manifesté » s'y lit « la recherche n'a rien
+ * trouvé de nouveau » — alors que le moteur a bien répondu et que
+ * l'enregistrement a échoué (vu le 17/09/2026 : 100 résultats, zéro profil en
+ * base). On le DIT, sinon on cherche le défaut du côté du recrutement.
+ */
 function volumes(c: SourcingCampaignSummary): string {
   const s = (n: number) => (n > 1 ? 's' : '');
+  if (c.lastSearchAt !== null && c.seen + c.approached + c.manifested === 0) {
+    return 'recherche effectuée, aucun profil enregistré — à relancer';
+  }
   return `${c.seen} vu${s(c.seen)} · ${c.approached} approché${s(c.approached)} · ${c.manifested} manifesté${s(c.manifested)}`;
 }
 
@@ -47,7 +61,8 @@ export function SourcingCampaignList({
   myApproachesThisMonth: number;
   onSource: (campaignId: string) => void;
 }) {
-  // Les sourcées d'abord : ce sont elles qui portent un suivi en cours.
+  // CHRONOLOGIE : la dernière recherche d'abord. Les jamais sourcées ferment
+  // la liste — elles n'ont pas de date à comparer.
   const ordonnees = [...campaigns].sort((a, b) => {
     const sa = a.lastSearchAt === null ? 1 : 0;
     const sb = b.lastSearchAt === null ? 1 : 0;
@@ -85,6 +100,9 @@ export function SourcingCampaignList({
               <li key={c.campaignId} data-sourced={sourcee}>
                 <ListRow
                   testId={c.campaignId}
+                  // La LIGNE est teintée, pas un liseré autour : posé en
+                  // bordure d'un pixel, le beige ne se voyait pas.
+                  tint={sourcee ? 'var(--dash-beige)' : undefined}
                   // Une CAMPAGNE : l'icône de campagne, pas un pavé
                   // d'initiales — il n'y a personne sur cette ligne.
                   avatar={<CampaignIcon kind="active" taille={40} />}
@@ -103,8 +121,8 @@ export function SourcingCampaignList({
                         <span
                           className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 font-body text-[11px] font-semibold"
                           style={{
-                            background: 'var(--dash-green-light)',
-                            color: 'var(--dash-green-text)',
+                            background: 'var(--dash-beige)',
+                            color: 'var(--dash-beige-encre)',
                           }}
                         >
                           Sourcée
@@ -115,18 +133,11 @@ export function SourcingCampaignList({
                         data-sourcing-action={sourcee ? 'detail' : 'sourcer'}
                         onClick={() => onSource(c.campaignId)}
                         className="rounded-lg border px-2.5 py-1.5 font-body text-[12px] font-semibold"
-                        style={
-                          sourcee
-                            ? {
-                                borderColor: 'var(--dash-border-strong)',
-                                color: 'var(--dash-text-secondary)',
-                              }
-                            : {
-                                borderColor: 'var(--dash-blue)',
-                                background: 'var(--dash-blue-light)',
-                                color: 'var(--dash-blue)',
-                              }
-                        }
+                        style={{
+                          borderColor: 'var(--dash-beige-bord)',
+                          background: 'var(--dash-beige)',
+                          color: 'var(--dash-beige-encre)',
+                        }}
                       >
                         {sourcee ? 'Détail' : 'Sourcer'}
                       </button>
