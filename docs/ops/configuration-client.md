@@ -1,5 +1,13 @@
 # Configuration par client — inventaire exhaustif
 
+> **Où l'on règle quoi, depuis la refonte des interfaces (21/09/2026).** Le
+> produit a **cinq entrées** : *Aujourd'hui* (l'arrivée), *Campagnes*,
+> *Candidatures*, *Entretiens*, *Pilotage*. Chacune a sa propre adresse. Les
+> réglages ci-dessous vivent soit dans `.env.local`, soit dans **Paramètres**
+> (l'engrenage du bandeau, `/settings`), soit **dans la campagne** — jamais
+> dans un écran « Dashboard » ou « Reporting », qui n'existent plus sous ces
+> noms.
+
 Tout ce qui se règle pour un client donné, en **4 couches**. En Voie A (une instance
 par client), l'ensemble vit dans l'instance et la base Supabase de ce client.
 
@@ -28,7 +36,7 @@ par client), l'ensemble vit dans l'instance et la base Supabase de ce client.
 
 ---
 
-## 2. Réglages applicatifs — page `/settings` (table `app_settings`, **1 jeu par client**)
+## 2. Réglages applicatifs — **Paramètres** (engrenage du bandeau, `/settings` ; table `app_settings`, **1 jeu par client**)
 
 `app_settings` est une **ligne unique** (`id = 1`) → un seul jeu de réglages par
 instance, cohérent avec « une instance par client ».
@@ -69,7 +77,7 @@ l'import s'il le refuse**, avant le premier entretien.
 
 ---
 
-## 3. Boîtes mail IMAP surveillées — page `/settings/mailboxes` (table `mailboxes`, **N par client**)
+## 3. Boîtes mail IMAP surveillées — **Paramètres → « Boîtes de réception des CV »** (`/settings/mailboxes`) (table `mailboxes`, **N par client**)
 
 Les **infos serveur IMAP du client** se saisissent ici. Le poller surveille ces
 boîtes pour la réception automatique des CV.
@@ -89,26 +97,42 @@ Champs techniques tenus par le poller (non saisis) : `last_polled_at`, `last_uid
 
 ---
 
-## 4. Par campagne — dashboard (tables `campaigns`, `campaign_mailboxes`)
+## 4. Par campagne — entrée **Campagnes** (tables `campaigns`, `campaign_mailboxes`)
 
-| Réglage | Rôle |
-|---|---|
-| Sources de réception (flux) | `manual`, `email`… — détermine l'activation (intake) |
-| Seuil d'acceptation | `threshold` 0–100 utilisé par le CV Analyzer |
-| Canaux de diffusion | `publishedChannels` (LinkedIn…) — phase publication |
-| Fiche de poste / fiche de scoring | Contenu (8 champs FDP, critères pondérés) |
-| Boîtes mail associées | Lien campagne ↔ `mailboxes` (`campaign_mailboxes`) |
+Réglé à la création (assistant en six étapes : *Le poste · Ce qui compte · La
+réception · Le suivi · La réservation · Récapitulatif*) ou plus tard par
+**Éditer** sur la carte de la campagne.
+
+| Réglage | Où | Rôle |
+|---|---|---|
+| Sources de réception | étape *La réception* | `manual`, `email`, vivier — détermine l'activation (intake) |
+| Boîtes mail associées | étape *La réception* | Lien campagne ↔ `mailboxes` (`campaign_mailboxes`) |
+| Fiche de poste / fiche de scoring | étapes *Le poste* et *Ce qui compte* | 8 champs FDP, critères pondérés |
+| **Seuils de décision** | étape *Le suivi* | `threshold_low` / `threshold_high` — **DEUX notes, par campagne** |
+| Recruteur référent | étape *Le suivi* | `owner_user_id` — son agenda sert aux créneaux |
+| Réservation native | étape *La réservation* | `scheduling_native` — remplace Cal.com |
+| Canaux de diffusion | après activation | `publishedChannels` — la diffusion fait ARRIVER des candidatures, elle ne s'ouvre donc qu'une fois la campagne active |
+
+> ⚠️ **Il n'y a plus de « seuil d'acceptation » unique** (la colonne
+> `campaigns.threshold` a été retirée). Deux notes par campagne : au-dessus de
+> la haute, la candidature est retenue et l'invitation part seule ; au-dessous
+> de la basse, l'outil **propose** un refus et attend l'accord d'un humain ;
+> entre les deux, elle est présentée pour décision. Détail : `docs/specs/hitl-3-zones.md`.
 
 ---
 
 ## Checklist d'onboarding d'un nouveau client
 
 - [ ] `.env.local` complété (couche 1), `MAILBOX_ENCRYPTION_KEY` générée une fois.
-- [ ] `/settings` : `sender_email`, `synthesis_email` (= recruteur), `intake_email`.
-- [ ] `/settings/mailboxes` : la/les boîte(s) IMAP du client (host/port/ssl/login/mdp).
+- [ ] **Paramètres** (`/settings`, engrenage du bandeau) : `sender_email`,
+      `synthesis_email` (= recruteur), `intake_email`.
+- [ ] **Paramètres → « Boîtes de réception des CV »** (`/settings/mailboxes`) : la/les boîte(s) IMAP du client (host/port/ssl/login/mdp).
 - [ ] Domaine d'envoi vérifié côté Resend (DKIM/SPF) + **DMARC** posé (cf. déploiement).
 - [ ] `CAL_COM_EVENT_URL` = lien de réservation du client (repli global).
 - [ ] `CAL_COM_WEBHOOK_SECRET` posé + webhook enregistré sur CHAQUE compte Cal.com recruteur (même URL, même secret — docs/ops/multi-utilisateur.md §4).
 - [ ] `CRON_SECRET` posé côté Vercel ET cron-job.org (fail-closed).
 - [ ] Compte du client créé dans Supabase Auth (inscription publique désactivée).
-- [ ] Smoke test : login → campagne → upload CV → mail de refus reçu en boîte.
+- [ ] Smoke test : login → *Campagnes* → assistant → activer → déposer un CV →
+      la candidature apparaît dans *Candidatures*, et **aucun refus n'est parti
+      tout seul** (depuis le 18/08/2026, un refus n'est jamais automatique : il
+      est PROPOSÉ et attend une validation humaine).

@@ -26,8 +26,14 @@ import { createTestRecruiter, deleteTestRecruiter, type TestRecruiter } from './
 const LARGEUR = 1280;
 const HAUTEUR = 900;
 const DOSSIER = resolve(process.cwd(), 'tests/e2e/captures');
+/**
+ * Captures du KIT COMMERCIAL — versionnées, elles. Nommées par écran, prises
+ * sur le jeu de démonstration, à la même fenêtre et au même zoom.
+ */
+const KIT = resolve(process.cwd(), 'docs/captures');
 
 const ECRANS = [
+  { nom: 'aujourdhui', route: '/aujourdhui', titre: 'Aujourd' },
   { nom: 'campagnes', route: '/campagnes', titre: 'campagnes' },
   { nom: 'candidatures', route: '/candidatures', titre: 'Candidatures' },
   { nom: 'entretiens', route: '/entretiens', titre: 'Entretiens' },
@@ -54,6 +60,7 @@ describe('capture des trois écrans', () => {
 
   it('côte à côte', async () => {
     mkdirSync(DOSSIER, { recursive: true });
+    mkdirSync(KIT, { recursive: true });
     const morceaux: Buffer[] = [];
 
     for (const ecran of ECRANS) {
@@ -67,6 +74,7 @@ describe('capture des trois écrans', () => {
       await page.waitForTimeout(2_500);
       const png = await page.screenshot({ type: 'png' });
       writeFileSync(resolve(DOSSIER, `${ecran.nom}.png`), png);
+      writeFileSync(resolve(KIT, `${ecran.nom}.png`), png);
       morceaux.push(Buffer.from(png));
     }
 
@@ -84,8 +92,42 @@ describe('capture des trois écrans', () => {
       .toBuffer();
 
     await sharp(planche).toFile(resolve(DOSSIER, 'planche-100.png'));
+    await sharp(planche).toFile(resolve(KIT, 'planche-100.png'));
+    await sharp(planche)
+      .resize(Math.round(total / 2), Math.round(HAUTEUR / 2))
+      .toFile(resolve(KIT, 'planche-50.png'));
     await sharp(planche)
       .resize(Math.round(total / 2), Math.round(HAUTEUR / 2))
       .toFile(resolve(DOSSIER, 'planche-50.png'));
+  }, 300_000);
+
+  it('l’assistant et la carte campagne, pour le kit', async () => {
+    mkdirSync(KIT, { recursive: true });
+
+    // L'ASSISTANT, première étape — c'est l'écran qui porte la démonstration.
+    await page.goto(`${BASE_URL}/campagnes/nouvelle`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-page-container]', { timeout: 90_000 });
+    await page.waitForTimeout(2_500);
+    writeFileSync(
+      resolve(KIT, 'assistant-creation.png'),
+      await page.screenshot({ type: 'png' }),
+    );
+
+    // UNE CARTE CAMPAGNE DÉPLIÉE — les quadrants, les actions, le cycle de vie.
+    // ⚠️ On la DÉPLIE : sans le clic, la capture était l'octet pour octet la
+    // même que celle de l'écran Campagnes, et le kit aurait porté deux fois la
+    // même image sous deux noms.
+    await page.goto(`${BASE_URL}/campagnes`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-campaign-card]', { timeout: 90_000 });
+    await page.waitForTimeout(1_500);
+    const entete = page.locator('[data-campaign-card] [aria-expanded="false"]').first();
+    if (await entete.count()) {
+      await entete.click();
+      await page.waitForTimeout(1_200);
+    }
+    writeFileSync(
+      resolve(KIT, 'carte-campagne.png'),
+      await page.screenshot({ type: 'png' }),
+    );
   }, 300_000);
 });
