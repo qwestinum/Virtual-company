@@ -248,10 +248,11 @@ export function CandidaturesWorkspace({
 
   return (
     // ⚠️ GABARIT COMMUN. L'écran posait son propre cadre : pleine largeur, pas
-    // de conteneur borné, et un fond `orqa-brume` qui n'est pas celui du
+    // de conteneur borné, et un fond `dash-bg` qui n'est pas celui du
     // workspace — en arrivant depuis Campagnes, la page s'élargissait ET
-    // changeait de couleur. Sa PEAU (Fraunces, marine) reste divergente
-    // jusqu'au lot des jetons ; son CADRE, non.
+    // changeait de couleur. Sa peau divergente (Fraunces, marine, bleu-gris)
+    // a été retirée le 21/09/2026 : cet écran porte désormais celle du
+    // produit, et c'est toujours SA structure que les autres ont reprise.
     <PageShell
       title="Candidatures"
       subtitle={`${listTotal} candidature${listTotal > 1 ? 's' : ''}`}
@@ -316,18 +317,18 @@ export function CandidaturesWorkspace({
         <div className="flex items-start gap-5">
           <div className="min-w-0 flex-1">
           {loadingList && rows.length === 0 ? (
-            <p className="font-inter text-[13px] text-orqa-gris-clair">Chargement…</p>
+            <p className="font-body text-[13px] text-dash-text-tertiary">Chargement…</p>
           ) : rows.length === 0 ? (
             <div className="py-16 text-center">
-              <p className="font-fraunces text-[19px] text-orqa-encre">
+              <p className="font-display text-[19px] text-dash-text">
                 Aucune candidature ne correspond
               </p>
-              <p className="mt-1.5 font-inter text-[13px] text-orqa-gris">
+              <p className="mt-1.5 font-body text-[13px] text-dash-text-secondary">
                 Ajustez les filtres ou l&apos;étape sélectionnée pour élargir la recherche.
               </p>
             </div>
           ) : (
-            <ul className="flex flex-col gap-2.5">
+            <ul className="flex flex-col gap-3">
               {rows.map((item) => (
                 <li key={item.id}>
                   <CandidatureRow
@@ -343,23 +344,23 @@ export function CandidaturesWorkspace({
           )}
 
           {pageCount > 1 ? (
-            <div className="mt-5 flex items-center justify-center gap-3 font-inter text-[12px]">
+            <div className="mt-5 flex items-center justify-center gap-3 font-body text-[12px]">
               <button
                 type="button"
                 disabled={page === 0}
                 onClick={() => setPage(page - 1)}
-                className="rounded-[10px] border border-orqa-ligne bg-white px-3 py-1.5 font-medium text-orqa-encre transition hover:border-orqa-ciel disabled:opacity-40"
+                className="rounded-[10px] border border-dash-border bg-white px-3 py-1.5 font-medium text-dash-text transition hover:border-dash-blue disabled:opacity-40"
               >
                 Précédent
               </button>
-              <span className="font-data text-orqa-gris">
+              <span className="font-data text-dash-text-secondary">
                 Page {page + 1} / {pageCount}
               </span>
               <button
                 type="button"
                 disabled={page >= pageCount - 1}
                 onClick={() => setPage(page + 1)}
-                className="rounded-[10px] border border-orqa-ligne bg-white px-3 py-1.5 font-medium text-orqa-encre transition hover:border-orqa-ciel disabled:opacity-40"
+                className="rounded-[10px] border border-dash-border bg-white px-3 py-1.5 font-medium text-dash-text transition hover:border-dash-blue disabled:opacity-40"
               >
                 Suivant
               </button>

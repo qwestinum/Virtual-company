@@ -145,8 +145,8 @@ function OrphanNotice({
   };
 
   return (
-    <div className="rounded-lg border border-orqa-ambre/50 bg-orqa-ambre-bg px-4 py-3">
-      <p className="font-body text-[13px] leading-relaxed text-orqa-encre">
+    <div className="rounded-lg border border-dash-orange/50 bg-dash-orange-light px-4 py-3">
+      <p className="font-body text-[13px] leading-relaxed text-dash-text">
         <strong className="font-semibold">
           Ce dossier attend une décision, mais sa fiche de validation est
           introuvable.
@@ -160,11 +160,11 @@ function OrphanNotice({
           type="button"
           onClick={() => void requeue()}
           disabled={busy}
-          className="rounded-lg border border-orqa-nuit bg-orqa-nuit px-4 py-2 font-body text-[13px] font-semibold text-white disabled:opacity-60"
+          className="rounded-lg border border-dash-text bg-dash-text px-4 py-2 font-body text-[13px] font-semibold text-white disabled:opacity-60"
         >
           {busy ? 'Remise en file…' : 'Remettre en file'}
         </button>
-        <span className="font-body text-[12px] text-orqa-gris">
+        <span className="font-body text-[12px] text-dash-text-secondary">
           ou « Classer sans suite » ci-dessous, si le dossier n’a plus lieu
           d’être décidé.
         </span>
@@ -172,7 +172,7 @@ function OrphanNotice({
       {error ? (
         <p
           role="alert"
-          className="mt-2 font-body text-[12px] font-semibold text-orqa-rouge"
+          className="mt-2 font-body text-[12px] font-semibold text-dash-red"
         >
           {error}
         </p>

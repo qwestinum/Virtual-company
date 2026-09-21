@@ -38,14 +38,14 @@ export function stagePillStyle(stage: CandidateStage): {
 
 /** Point/tick de couleur pleine (ruban, légende, barre de carte). */
 export const STAGE_DOT_CLASS: Record<CandidateStage, string> = {
-  retenu: 'bg-orqa-vert',
-  entretien_fait: 'bg-orqa-nuit2',
-  rdv_pris: 'bg-orqa-violet',
-  invite: 'bg-orqa-ciel',
-  a_valider: 'bg-orqa-ambre',
+  retenu: 'bg-dash-green',
+  entretien_fait: 'bg-dash-blue',
+  rdv_pris: 'bg-dash-purple',
+  invite: 'bg-dash-blue',
+  a_valider: 'bg-dash-orange',
   sans_suite: 'bg-stone-400',
-  non_retenu: 'bg-orqa-rouge',
-  refus_auto: 'bg-orqa-rouge',
+  non_retenu: 'bg-dash-red',
+  refus_auto: 'bg-dash-red',
 };
 
 /**
@@ -97,22 +97,29 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
-/** Couleur (texte sur fond clair) par tonalité d'étape. */
+/**
+ * Couleur de TEXTE par tonalité d'étape — jetons du produit.
+ *
+ * ⚠️ Ce ne sont PAS les couleurs de marque (`--dash-green` et compagnie) :
+ * mesurées sur leur propre fond clair, elles donnent 2,83 à 3,44:1, sous AA.
+ * Elles servent de REPÈRES (pastilles, points, soulignements) ; le texte prend
+ * les teintes `-text`, assombries jusqu'à 4,56 · 6,95 · 4,59 · 5,68:1.
+ */
 export const STAGE_TONE_COLOR: Record<CandidateStageTone, string> = {
-  positive: '#15803d', // green-700
-  progress: '#4338ca', // indigo-700
-  pending: '#b45309', // amber-700
-  negative: '#b91c1c', // red-700
-  neutral: '#57534e', // stone-600
+  positive: 'var(--dash-green-text)',
+  progress: 'var(--dash-indigo-text)',
+  pending: 'var(--dash-orange-text)',
+  negative: 'var(--dash-red-text)',
+  neutral: 'var(--dash-text-secondary)',
 };
 
-/** Fond pastille (clair) par tonalité. */
+/** Fond pastille (clair) par tonalité — les fonds `-light` du produit. */
 export const STAGE_TONE_BG: Record<CandidateStageTone, string> = {
-  positive: '#dcfce7',
-  progress: '#e0e7ff',
-  pending: '#fef3c7',
-  negative: '#fee2e2',
-  neutral: '#f5f5f4', // stone-100
+  positive: 'var(--dash-green-light)',
+  progress: 'var(--dash-indigo-light)',
+  pending: 'var(--dash-orange-light)',
+  negative: 'var(--dash-red-light)',
+  neutral: 'var(--dash-warm)',
 };
 
 /**

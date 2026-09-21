@@ -56,10 +56,10 @@ export function BusinessToast({
     <aside
       role="status"
       aria-label="Actions en attente"
-      className="pointer-events-none absolute bottom-6 right-6 z-40 w-[340px] rounded-xl border border-orqa-ambre/40 bg-orqa-ambre-bg shadow-orqa-lg"
+      className="pointer-events-none absolute bottom-6 right-6 z-40 w-[340px] rounded-xl border border-dash-orange/40 bg-dash-orange-light"
     >
-      <header className="flex items-center justify-between gap-2 border-b border-orqa-ambre/20 px-4 py-2.5">
-        <p className="font-display text-[13px] font-bold text-orqa-encre">
+      <header className="flex items-center justify-between gap-2 border-b border-dash-orange/20 px-4 py-2.5">
+        <p className="font-display text-[13px] font-bold text-dash-text">
           <span aria-hidden className="mr-1.5">⏳</span>
           Des actions vous attendent
         </p>
@@ -67,7 +67,7 @@ export function BusinessToast({
           type="button"
           onClick={() => setVisible(false)}
           aria-label="Fermer la notification"
-          className="pointer-events-auto rounded-md px-1.5 py-0.5 font-body text-[13px] text-orqa-gris hover:bg-orqa-ambre/10 hover:text-orqa-encre"
+          className="pointer-events-auto rounded-md px-1.5 py-0.5 font-body text-[13px] text-dash-text-secondary hover:bg-dash-orange/10 hover:text-dash-text"
         >
           ✕
         </button>
@@ -75,7 +75,7 @@ export function BusinessToast({
       <div className="flex flex-col gap-3 px-4 py-3">
         {signals.map((signal) => (
           <div key={signal.key}>
-            <p className="font-body text-[12.5px] leading-relaxed text-orqa-encre">
+            <p className="font-body text-[12.5px] leading-relaxed text-dash-text">
               {signal.message}
             </p>
             <button
@@ -84,7 +84,7 @@ export function BusinessToast({
                 setVisible(false);
                 onNavigate(signal.target);
               }}
-              className="pointer-events-auto mt-1 font-body text-[12px] font-semibold text-orqa-nuit underline decoration-orqa-ciel/60 underline-offset-2 hover:decoration-orqa-ciel"
+              className="pointer-events-auto mt-1 font-body text-[12px] font-semibold text-dash-text underline decoration-dash-blue/60 underline-offset-2 hover:decoration-dash-blue"
             >
               → {signal.ctaLabel}
             </button>

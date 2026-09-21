@@ -9,8 +9,8 @@
  */
 export function JobTitleChip({ title }: { title: string }) {
   return (
-    <span className="inline-flex min-w-0 max-w-full shrink items-center rounded-md border border-orqa-ciel-clair/50 bg-orqa-cielbg px-2 py-0.5">
-      <span className="truncate font-inter text-[12px] font-semibold text-orqa-nuit">
+    <span className="inline-flex min-w-0 max-w-full shrink items-center rounded-md border border-dash-blue/50 bg-dash-blue-light px-2 py-0.5">
+      <span className="truncate font-body text-[12px] font-semibold text-dash-text">
         {title}
       </span>
     </span>

@@ -97,7 +97,7 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
       <div style={headerStyle}>
         <strong style={{ color: 'var(--dash-text)' }}>APEC</strong>
         {state.simulated ? (
-          <span style={{ fontSize: 12, color: '#b45309' }}>· mode simulation</span>
+          <span style={{ fontSize: 12, color: 'var(--dash-orange)' }}>· mode simulation</span>
         ) : null}
         <span style={{ marginLeft: 'auto', fontSize: 12 }}>
           {state.owner ? `Référent : ${state.owner.displayName}` : 'Aucun référent'}
@@ -184,7 +184,7 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
 
           {open !== null ? (
             <>
-              <p style={{ margin: '12px 0 10px', fontSize: 12, color: '#b45309' }}>
+              <p style={{ margin: '12px 0 10px', fontSize: 12, color: 'var(--dash-orange)' }}>
                 ⚠ {ADEP_IMMUTABLE_NOTICE}
               </p>
 

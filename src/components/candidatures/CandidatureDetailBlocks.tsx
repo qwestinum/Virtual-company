@@ -82,7 +82,7 @@ function PieceButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-[10px] border border-orqa-ligne bg-white px-3.5 py-2.5 font-inter text-[13px] font-medium text-orqa-nuit transition hover:border-orqa-ciel hover:shadow-orqa"
+      className="inline-flex items-center gap-2 rounded-[10px] border border-dash-border bg-white px-3.5 py-2.5 font-body text-[13px] font-medium text-dash-text transition hover:border-dash-blue"
     >
       {children}
     </button>
@@ -92,43 +92,43 @@ function PieceButton({
 /** En-tête de section (mono, majuscules, discret) — identité ORQA. */
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mb-2.5 font-data text-[11px] uppercase tracking-[0.1em] text-orqa-gris-clair">
+    <p className="mb-2.5 font-data text-[11px] uppercase tracking-[0.1em] text-dash-text-tertiary">
       {children}
     </p>
   );
 }
 
 const DECISION_DOT: Record<LlmDecision, string> = {
-  satisfait: 'bg-orqa-vert',
-  partiel: 'bg-orqa-ambre',
-  non: 'bg-orqa-rouge',
-  non_verifiable: 'bg-orqa-gris-clair',
+  satisfait: 'bg-dash-green',
+  partiel: 'bg-dash-orange',
+  non: 'bg-dash-red',
+  non_verifiable: 'bg-dash-text-tertiary',
 };
 
 /** Grille critère par critère (triée par criticité). */
 export function CriteriaGrid({ breakdown }: { breakdown: CriterionDecision[] }) {
   const ordered = sortByCriticality(breakdown);
   return (
-    <div className="overflow-hidden rounded-[11px] border border-orqa-ligne">
+    <div className="overflow-hidden rounded-[11px] border border-dash-border">
       {ordered.map((b, i) => {
         const m = formatCriterionMethod(b);
         return (
           <div
             key={`${b.criterionId}-${i}`}
-            className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 border-b border-orqa-ligne px-3.5 py-2.5 last:border-b-0"
+            className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 border-b border-dash-border px-3.5 py-2.5 last:border-b-0"
           >
             <span className={`h-2 w-2 shrink-0 rounded-full ${DECISION_DOT[b.llmDecision]}`} />
             <div className="min-w-0">
-              <p className="font-inter text-[13px] text-orqa-encre">{b.criterionLabel}</p>
-              <p className="font-inter text-[11px] text-orqa-gris-clair">
+              <p className="font-body text-[13px] text-dash-text">{b.criterionLabel}</p>
+              <p className="font-body text-[11px] text-dash-text-tertiary">
                 {m.label}
                 {m.foundKeywords.length > 0 ? ` · ${m.foundKeywords.join(', ')}` : ''}
               </p>
             </div>
-            <span className="whitespace-nowrap font-data text-[11.5px] text-orqa-gris">
+            <span className="whitespace-nowrap font-data text-[11.5px] text-dash-text-secondary">
               poids {b.weight}
             </span>
-            <span className="whitespace-nowrap font-data text-[13px] font-medium text-orqa-nuit">
+            <span className="whitespace-nowrap font-data text-[13px] font-medium text-dash-text">
               {b.contribution > 0 ? '+' : ''}
               {b.contribution}
             </span>
@@ -148,22 +148,22 @@ export function JourneyPhases({ journey }: { journey: CandidateJourney }) {
         const reached = c.reached;
         const tone =
           c.tone === 'positive'
-            ? 'border-[#bfe6ce] bg-orqa-vert-bg text-orqa-vert'
+            ? 'border-[color-mix(in srgb, var(--dash-green) 35%, transparent)] bg-dash-green-light text-dash-green'
             : c.tone === 'pending'
-              ? 'border-[#f0dcb0] bg-orqa-ambre-bg text-orqa-ambre'
+              ? 'border-[color-mix(in srgb, var(--dash-orange) 35%, transparent)] bg-dash-orange-light text-dash-orange'
               : c.tone === 'negative' || c.tone === 'screening_out'
-                ? 'border-[#f3c9cb] bg-orqa-rouge-bg text-orqa-rouge'
-                : 'border-orqa-ligne bg-orqa-brume text-orqa-encre';
+                ? 'border-[color-mix(in srgb, var(--dash-red) 35%, transparent)] bg-dash-red-light text-dash-red'
+                : 'border-dash-border bg-dash-bg text-dash-text';
         return (
           <div
             key={c.key}
-            className={`rounded-[11px] border px-3 py-2.5 ${reached ? tone : 'border-orqa-ligne bg-orqa-brume'}`}
+            className={`rounded-[11px] border px-3 py-2.5 ${reached ? tone : 'border-dash-border bg-dash-bg'}`}
           >
-            <p className="font-inter text-[11px] uppercase tracking-wide text-orqa-gris-clair">
+            <p className="font-body text-[11px] uppercase tracking-wide text-dash-text-tertiary">
               {c.title}
             </p>
             <p
-              className={`mt-1 font-inter text-[13px] font-medium ${reached ? '' : 'text-orqa-gris-clair'}`}
+              className={`mt-1 font-body text-[13px] font-medium ${reached ? '' : 'text-dash-text-tertiary'}`}
             >
               {c.label}
             </p>
@@ -175,34 +175,34 @@ export function JourneyPhases({ journey }: { journey: CandidateJourney }) {
 }
 
 const TIMELINE_RING: Record<TimelineTone, string> = {
-  neutral: 'border-orqa-ciel bg-orqa-ciel',
-  positive: 'border-orqa-vert bg-orqa-vert',
-  negative: 'border-orqa-rouge bg-orqa-rouge',
-  pending: 'border-orqa-ambre bg-orqa-ambre',
+  neutral: 'border-dash-blue bg-dash-blue',
+  positive: 'border-dash-green bg-dash-green',
+  negative: 'border-dash-red bg-dash-red',
+  pending: 'border-dash-orange bg-dash-orange',
 };
 
 /** Frise datée (pastilles colorées). */
 export function TimelineList({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) {
     return (
-      <p className="font-inter text-[12px] italic text-orqa-gris-clair">
+      <p className="font-body text-[12px] italic text-dash-text-tertiary">
         Aucun événement daté.
       </p>
     );
   }
   return (
     <div className="relative pl-[22px]">
-      <span className="absolute bottom-1 left-[5px] top-1 w-0.5 bg-orqa-brume2" />
+      <span className="absolute bottom-1 left-[5px] top-1 w-0.5 bg-dash-border" />
       {events.map((e) => (
         <div key={e.key} className="relative pb-3.5 last:pb-0">
           <span
             className={`absolute left-[-22px] top-0.5 h-3 w-3 rounded-full border-2 ${TIMELINE_RING[e.tone]}`}
           />
-          <p className="font-inter text-[13.5px] font-medium text-orqa-encre">{e.label}</p>
+          <p className="font-body text-[13.5px] font-medium text-dash-text">{e.label}</p>
           {e.detail ? (
-            <p className="font-inter text-[11.5px] text-orqa-gris">{e.detail}</p>
+            <p className="font-body text-[11.5px] text-dash-text-secondary">{e.detail}</p>
           ) : null}
-          <p className="mt-0.5 font-data text-[11.5px] text-orqa-gris-clair">
+          <p className="mt-0.5 font-data text-[11.5px] text-dash-text-tertiary">
             {formatFrDateTime(e.at)}
           </p>
         </div>

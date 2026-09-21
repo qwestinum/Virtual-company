@@ -20,8 +20,8 @@ const hintStyle: CSSProperties = {
   color: 'var(--dash-text-secondary)',
 };
 
-const derivedStyle: CSSProperties = { ...hintStyle, color: '#b45309' };
-const missingStyle: CSSProperties = { ...hintStyle, color: '#b91c1c' };
+const derivedStyle: CSSProperties = { ...hintStyle, color: 'var(--dash-orange)' };
+const missingStyle: CSSProperties = { ...hintStyle, color: 'var(--dash-red)' };
 
 export type ApecFieldRowProps = {
   label: string;

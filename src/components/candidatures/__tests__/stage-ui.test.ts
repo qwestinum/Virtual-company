@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -70,6 +73,31 @@ describe('initials', () => {
 // recopié d'un tableau : c'est le seul moyen qu'un changement de teinte qui
 // repasse sous le seuil fasse rougir la suite. Formule de luminance relative
 // WCAG 2.1 §« relative luminance ».
+//
+// ⚠️ Depuis le 21/09/2026, les pastilles ne portent plus de `#hex` mais des
+// JETONS (`var(--dash-green-text)`). Le test RÉSOUT donc la variable dans
+// `globals.css` avant de mesurer. C'est plus fort qu'avant, pas moins : il
+// mesure désormais la valeur que le navigateur servira réellement, et une
+// teinte changée dans le CSS fait rougir la suite sans qu'on touche au code.
+
+const CSS = readFileSync(
+  resolve(process.cwd(), 'src/app/globals.css'),
+  'utf-8',
+);
+
+/** `var(--x)` → la valeur déclarée en `:root`. Une variable absente LÈVE. */
+const resoudre = (valeur: string): string => {
+  const m = /^var\((--[\w-]+)\)$/.exec(valeur.trim());
+  if (!m) return valeur;
+  const decl = new RegExp(`${m[1]}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`).exec(CSS);
+  if (!decl) {
+    throw new Error(
+      `Jeton ${m[1]} introuvable dans globals.css — une pastille pointe une ` +
+        'variable qui n’existe pas, donc rien ne s’affiche.',
+    );
+  }
+  return decl[1]!;
+};
 
 const relativeLuminance = (hex: string): number => {
   const channels = [1, 3, 5]
@@ -93,14 +121,16 @@ describe('stagePillStyle — contraste AA', () => {
     expect(ALL_STAGES).toHaveLength(8);
     for (const stage of ALL_STAGES) {
       const { color, background } = stagePillStyle(stage);
-      expect(color).toMatch(/^#[0-9a-f]{6}$/i);
-      expect(background).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(resoudre(color)).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(resoudre(background)).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
 
   it.each(ALL_STAGES)('« %s » atteint 4,5:1', (stage) => {
     const { color, background } = stagePillStyle(stage);
-    expect(contrastRatio(color, background)).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrastRatio(resoudre(color), resoudre(background)),
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
   it('la formule sait détecter un échec (sonde : la palette ORQA retirée)', () => {

@@ -115,20 +115,20 @@ export function CandidatureFullPage({
 
   const overlay = (
     <div
-      className="fixed inset-0 z-[60] flex justify-end bg-orqa-nuit/30"
+      className="fixed inset-0 z-[60] flex justify-end bg-dash-text/30"
       onClick={onClose}
     >
       {/* Flex-colonne : barre fixe (shrink-0) AU-DESSUS d'une zone scrollable —
           la barre ne se superpose jamais au contenu (≠ sticky). */}
       <div
-        className="flex h-full w-full max-w-2xl flex-col bg-white shadow-orqa-lg"
+        className="flex h-full w-full max-w-2xl flex-col bg-white"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-orqa-ligne px-6 py-3.5">
+        <div className="flex shrink-0 items-center justify-between border-b border-dash-border px-6 py-3.5">
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center gap-1.5 font-inter text-[13px] font-medium text-orqa-gris hover:text-orqa-ciel"
+            className="inline-flex items-center gap-1.5 font-body text-[13px] font-medium text-dash-text-secondary hover:text-dash-blue"
           >
             ← Retour aux candidatures
           </button>
@@ -137,7 +137,7 @@ export function CandidatureFullPage({
             onClick={onClose}
             aria-label="Fermer le détail"
             title="Fermer (Échap)"
-            className="grid h-9 w-9 place-items-center rounded-full border border-orqa-ligne text-orqa-gris transition hover:border-orqa-rouge hover:bg-orqa-rouge-bg hover:text-orqa-rouge"
+            className="grid h-9 w-9 place-items-center rounded-full border border-dash-border text-dash-text-secondary transition hover:border-dash-red hover:bg-dash-red-light hover:text-dash-red"
           >
             <X className="h-[18px] w-[18px]" aria-hidden />
           </button>
@@ -170,7 +170,7 @@ export function CandidatureFullPage({
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid place-items-center py-24 font-inter text-[14px] text-orqa-gris">
+    <div className="grid place-items-center py-24 font-body text-[14px] text-dash-text-secondary">
       {children}
     </div>
   );
@@ -197,23 +197,23 @@ function Body({
       {/* Identité + score */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
-          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-orqa-nuit to-orqa-nuit2 font-inter text-[17px] font-semibold text-white">
+          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-dash-text to-dash-blue font-body text-[17px] font-semibold text-white">
             {initials(candidate.candidateName)}
           </span>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="font-fraunces text-[22px] font-semibold tracking-tight text-orqa-nuit">
+              <h2 className="font-display text-[22px] font-semibold tracking-tight text-dash-text">
                 {candidate.candidateName}
               </h2>
               {candidate.fromVivier ? (
-                <span className="rounded-md border border-[#d6ccf5] bg-orqa-violet-bg px-1.5 py-0.5 font-data text-[10px] uppercase tracking-wide text-orqa-violet">
+                <span className="rounded-md border border-[color-mix(in srgb, var(--dash-purple) 35%, transparent)] bg-dash-purple-light px-1.5 py-0.5 font-data text-[10px] uppercase tracking-wide text-dash-purple">
                   ★ Vivier
                 </span>
               ) : null}
             </div>
-            <p className="mt-0.5 font-inter text-[13px] text-orqa-gris">
+            <p className="mt-0.5 font-body text-[13px] text-dash-text-secondary">
               {candidate.campaignId ? (
-                <span className="font-data text-orqa-ciel">{candidate.campaignId}</span>
+                <span className="font-data text-dash-blue">{candidate.campaignId}</span>
               ) : (
                 'Hors campagne'
               )}
@@ -265,14 +265,14 @@ function Body({
 
       {narration.strengths.length > 0 || narration.weaknesses.length > 0 ? (
         <Section label="Points forts / points d'attention">
-          <ul className="flex flex-col gap-1.5 font-inter text-[13px] leading-relaxed">
+          <ul className="flex flex-col gap-1.5 font-body text-[13px] leading-relaxed">
             {narration.strengths.map((s, i) => (
-              <li key={`s${i}`} className="text-orqa-encre">
+              <li key={`s${i}`} className="text-dash-text">
                 + {s}
               </li>
             ))}
             {narration.weaknesses.map((w, i) => (
-              <li key={`w${i}`} className="text-orqa-ambre">
+              <li key={`w${i}`} className="text-dash-orange">
                 ! {w}
               </li>
             ))}
@@ -284,7 +284,7 @@ function Body({
         {candidate.journey ? (
           <JourneyPhases journey={candidate.journey} />
         ) : (
-          <p className="font-inter text-[12px] italic text-orqa-gris-clair">
+          <p className="font-body text-[12px] italic text-dash-text-tertiary">
             Parcours indisponible.
           </p>
         )}
@@ -309,8 +309,8 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="font-inter text-[11px] text-orqa-gris-clair">{label}</dt>
-      <dd className="font-inter text-[13px] text-orqa-encre">{value}</dd>
+      <dt className="font-body text-[11px] text-dash-text-tertiary">{label}</dt>
+      <dd className="font-body text-[13px] text-dash-text">{value}</dd>
     </div>
   );
 }

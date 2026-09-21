@@ -23,16 +23,16 @@ function resolve(
   const z = zone ?? (status === 'accepted' ? 'auto_accept' : 'auto_reject');
   switch (z) {
     case 'gray':
-      return { label: 'Zone de validation', cls: 'text-orqa-ambre bg-orqa-ambre-bg' };
+      return { label: 'Zone de validation', cls: 'text-dash-orange bg-dash-orange-light' };
     case 'auto_accept':
-      return { label: 'Acceptation automatique', cls: 'text-orqa-vert bg-orqa-vert-bg' };
+      return { label: 'Acceptation automatique', cls: 'text-dash-green bg-dash-green-light' };
     case 'proposed_reject':
       return {
         label: 'Proposé au refus',
-        cls: 'text-orqa-ambre bg-orqa-ambre-bg',
+        cls: 'text-dash-orange bg-dash-orange-light',
       };
     default:
-      return { label: 'Refusé (historique)', cls: 'text-orqa-rouge bg-orqa-rouge-bg' };
+      return { label: 'Refusé (historique)', cls: 'text-dash-red bg-dash-red-light' };
   }
 }
 
@@ -46,7 +46,7 @@ export function ZonePill({
   const { label, cls } = resolve(zone, status);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-inter text-[12px] font-medium ${cls}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-body text-[12px] font-medium ${cls}`}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {label}

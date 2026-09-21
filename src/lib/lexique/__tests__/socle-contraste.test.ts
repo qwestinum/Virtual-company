@@ -170,6 +170,11 @@ describe('zéro invention — l’écran n’apporte ni couleur ni police à lui
   });
 
   it('aucun serif : l’écran emploie les polices du produit', () => {
+    // ⚠️ La police à bannir était `font-fraunces`, le serif de l'ancienne peau
+    // de Candidatures. Elle n'existe plus depuis le 21/09/2026 : la garde
+    // porte désormais sur ce qui pourrait la ramener — une famille serif
+    // déclarée à la main. `font-display` est le sans-serif du produit et a
+    // toute sa place ici.
     for (const f of SOURCES) {
       expect(f.code, f.chemin).not.toContain('font-fraunces');
       expect(f.code, f.chemin).not.toContain('serif');

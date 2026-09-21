@@ -17,23 +17,12 @@
 
 import type { ReactNode } from 'react';
 
-import { DASH, type ListSkin } from './list-skin';
+import { DASH } from './list-skin';
 
 /** 40 px : la hauteur des champs du produit (cf. `FIELD_BOX`). */
-const BOITE = 'h-10 rounded-[10px] border bg-white px-3.5';
+const BOITE = 'orqa-field h-10 rounded-[10px] border bg-white px-3.5 font-body text-[13.5px]';
 
-const POLICE: Record<ListSkin, string> = {
-  orqa: 'font-inter text-[13.5px] text-orqa-encre',
-  dash: 'font-body text-[13.5px]',
-};
-
-const BORDURE: Record<ListSkin, string> = {
-  orqa: 'border-orqa-ligne',
-  dash: '',
-};
-
-const styleBoite = (skin: ListSkin) =>
-  skin === 'dash' ? { borderColor: DASH.bordure, color: DASH.texte } : undefined;
+const styleBoite = () => ({ borderColor: DASH.bordure, color: DASH.texte });
 
 export function Toolbar({ children }: { children: ReactNode }) {
   return <div className="flex flex-wrap items-center gap-2.5">{children}</div>;
@@ -48,13 +37,11 @@ export function ToolbarSearch({
   value,
   onChange,
   placeholder,
-  skin = 'dash',
   className = 'min-w-[200px] max-w-[280px] flex-1',
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
-  skin?: ListSkin;
   className?: string;
 }) {
   return (
@@ -63,8 +50,8 @@ export function ToolbarSearch({
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.currentTarget.value)}
-      style={styleBoite(skin)}
-      className={`orqa-field ${BOITE} ${BORDURE[skin]} ${POLICE[skin]} ${className}`}
+      style={styleBoite()}
+      className={`${BOITE} ${className}`}
     />
   );
 }
@@ -75,14 +62,12 @@ export function ToolbarSelect({
   children,
   ariaLabel,
   testId,
-  skin = 'dash',
 }: {
   value: string;
   onChange: (next: string) => void;
   children: ReactNode;
   ariaLabel: string;
   testId?: string;
-  skin?: ListSkin;
 }) {
   return (
     <select
@@ -90,8 +75,8 @@ export function ToolbarSelect({
       data-toolbar-select={testId}
       value={value}
       onChange={(e) => onChange(e.currentTarget.value)}
-      style={styleBoite(skin)}
-      className={`orqa-field cursor-pointer ${BOITE} ${BORDURE[skin]} ${POLICE[skin]}`}
+      style={styleBoite()}
+      className={`${BOITE} cursor-pointer`}
     >
       {children}
     </select>
@@ -103,38 +88,17 @@ export function ToolbarSegment({
   active,
   onClick,
   children,
-  skin = 'dash',
 }: {
   active: boolean;
   onClick: () => void;
   children: ReactNode;
-  skin?: ListSkin;
 }) {
-  const base = `rounded-full border px-3.5 py-2 transition ${
-    skin === 'orqa' ? 'font-inter' : 'font-body'
-  } text-[12.5px]`;
-  if (skin === 'orqa') {
-    return (
-      <button
-        type="button"
-        aria-pressed={active}
-        onClick={onClick}
-        className={`${base} ${
-          active
-            ? 'border-orqa-nuit bg-orqa-nuit text-white'
-            : 'border-orqa-ligne bg-white text-orqa-gris hover:border-orqa-ciel hover:text-orqa-encre'
-        }`}
-      >
-        {children}
-      </button>
-    );
-  }
   return (
     <button
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`${base} font-semibold`}
+      className="rounded-full border px-3.5 py-2 font-body text-[12.5px] font-semibold transition"
       style={{
         borderColor: active ? DASH.texte : DASH.bordure,
         background: active ? DASH.texte : '#fff',

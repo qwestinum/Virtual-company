@@ -667,6 +667,30 @@ suivante plus facile à justifier.
 - **Aucune ombre portée** sur un élément du flux ; la sélection se marque par la bordure et le
   fond. Une ombre n'informe que sur une couche flottante (dialogue, liste déroulante).
 
+### Le socle de jetons (lot 7, 21/09/2026)
+
+Un fichier : **`src/components/ui/tokens.ts`**. Il ne dessine rien — il NOMME ce que les
+écrans sains employaient déjà : **trois niveaux typographiques** (`font-display` ·
+`font-body` · `font-data`, cette dernière réservée aux chiffres et aux références), une
+**échelle d'espacement** en multiples de 4, les **rôles de couleur**, les **trois
+profondeurs** (carte · sous-bloc · rangée) et leurs bornes de contraste.
+
+**Candidatures a pris la peau du produit.** Sa palette `orqa-*` (marine `#0a1f3f`,
+bleu-gris `#64748b`, brume `#f4f7fb`) et ses deux polices (Fraunces, Inter) ont été
+retirées : elles n'existaient que là, sur un seul écran, et se chargeaient sur toutes les
+pages. **Sa structure, elle, ne bouge pas** — c'est elle qui a servi de modèle aux autres.
+
+⚠️ **Deux familles de couleur, et il ne faut pas les confondre.** Les couleurs de marque
+(`--dash-green`…) sont des **repères** : mesurées sur leur propre fond clair elles donnent
+2,83 à 3,44:1 — assez pour un élément non textuel (WCAG 1.4.11 : 3:1), **sous AA pour du
+texte**. Le texte d'une pastille d'état prend les teintes `--dash-*-text` (4,56 · 6,95 ·
+4,59 · 5,68:1, mesurées).
+
+**Garde structurelle** : `src/components/ui/__tests__/socle-jetons.test.ts` — aucune
+couleur en dur, aucune famille de police déclarée à la main, la palette retirée ne revient
+pas. Et `stage-ui.test.ts` **résout les jetons dans `globals.css`** avant de mesurer le
+contraste : une teinte changée en CSS fait rougir la suite sans qu'on touche au code.
+
 **Garde structurelle** : `src/components/ui/__tests__/interface-sobre.test.ts` — aucune bascule de
 vue définie hors de `DotTabs` (`role="tablist"`, `aria-selected`, onglets soulignés), et le type
 `CounterItem` borné aux champs d'une carte à deux rangs. Sondée dans les deux sens.

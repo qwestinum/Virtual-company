@@ -81,7 +81,7 @@ export function ScheduledList({
                 {section.hint}
               </p>
             ) : null}
-            <ul className="mt-1.5 flex flex-col gap-1.5">
+            <ul className="mt-2 flex flex-col gap-3">
               {items.map((row) => (
                 <li key={row.briefId}>
                   {/* ⚠️ LA LIGNE DE CANDIDATURES, importée : pavé d'initiales,

@@ -263,7 +263,7 @@ export function CampaignReportList({ tabs }: { tabs: ReactNode }) {
           Aucune campagne clôturée ne correspond aux filtres.
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {paged.map((s) => (
             <CampaignReportCard
               key={s.campaignId}

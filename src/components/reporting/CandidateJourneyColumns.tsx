@@ -40,7 +40,10 @@ export function CandidateJourneyColumns({
                 style={
                   col.reached
                     ? { backgroundColor: JOURNEY_TONE_COLORS[col.tone], color: '#fff' }
-                    : { backgroundColor: '#f5f5f4', color: '#a8a29e' }
+                    : {
+                        backgroundColor: 'var(--dash-warm)',
+                        color: 'var(--dash-text-tertiary)',
+                      }
                 }
               >
                 {col.label}

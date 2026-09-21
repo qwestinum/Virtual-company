@@ -35,21 +35,21 @@ export function CandidatureRow({
       type="button"
       data-candidature-row={item.id}
       onClick={onClick}
-      className={`grid w-full grid-cols-[auto_1fr_auto_auto] items-center gap-4 rounded-[14px] border bg-white px-4 py-3.5 text-left transition hover:border-orqa-ciel hover:shadow-orqa ${
-        selected ? 'border-orqa-nuit shadow-orqa' : 'border-orqa-ligne'
+      className={`grid w-full grid-cols-[auto_1fr_auto_auto] items-center gap-4 rounded-[14px] border bg-white px-4 py-3.5 text-left transition hover:border-dash-blue ${
+        selected ? 'border-dash-text' : 'border-dash-border'
       }`}
     >
-      <span className="grid h-10 w-10 place-items-center rounded-[11px] bg-gradient-to-br from-orqa-nuit to-orqa-nuit2 font-inter text-[13px] font-semibold tracking-wide text-white">
+      <span className="grid h-10 w-10 place-items-center rounded-[11px] bg-gradient-to-br from-dash-text to-dash-blue font-body text-[13px] font-semibold tracking-wide text-white">
         {initials(item.candidateName)}
       </span>
 
       <span className="min-w-0">
         <span className="flex items-center gap-2">
-          <span className="truncate font-inter text-[14.5px] font-semibold text-orqa-encre">
+          <span className="truncate font-body text-[14.5px] font-semibold text-dash-text">
             {item.candidateName}
           </span>
           {item.fromVivier ? (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#d6ccf5] bg-orqa-violet-bg px-1.5 py-0.5 font-data text-[10px] uppercase tracking-wide text-orqa-violet">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[color-mix(in srgb, var(--dash-purple) 35%, transparent)] bg-dash-purple-light px-1.5 py-0.5 font-data text-[10px] uppercase tracking-wide text-dash-purple">
               ★ Vivier
             </span>
           ) : null}
@@ -58,13 +58,13 @@ export function CandidatureRow({
           // Poste en chip (lecture rapide multi-campagnes) + méta en gris.
           <span className="mt-1 flex min-w-0 items-center gap-2">
             <JobTitleChip title={jobTitle} />
-            <span className="shrink-0 truncate font-inter text-[12px] text-orqa-gris">
+            <span className="shrink-0 truncate font-body text-[12px] text-dash-text-secondary">
               {item.campaignId ?? 'Sans campagne'} ·{' '}
               {formatSmartDate(item.receivedAt)}
             </span>
           </span>
         ) : (
-          <span className="mt-0.5 block truncate font-inter text-[12px] text-orqa-gris">
+          <span className="mt-0.5 block truncate font-body text-[12px] text-dash-text-secondary">
             {campaignLabel ?? (item.campaignId ?? 'Sans campagne')} ·{' '}
             {formatSmartDate(item.receivedAt)}
           </span>
@@ -74,9 +74,9 @@ export function CandidatureRow({
       <StageProgress stage={item.stage} />
 
       <span className="flex items-center gap-3.5">
-        <span className="font-data text-[15px] font-medium text-orqa-encre">
+        <span className="font-data text-[15px] font-medium text-dash-text">
           {item.totalScore}
-          <span className="text-[10px] text-orqa-gris-clair">%</span>
+          <span className="text-[10px] text-dash-text-tertiary">%</span>
         </span>
         <StagePill stage={item.stage} compact />
       </span>
@@ -91,7 +91,7 @@ function StageProgress({ stage }: { stage: CandidateStage }) {
     return (
       <span className="flex items-center gap-2">
         <span className={`h-[5px] w-[22px] rounded-[3px] ${STAGE_DOT_CLASS[stage]}`} />
-        <span className="whitespace-nowrap font-inter text-[11px] text-orqa-rouge">
+        <span className="whitespace-nowrap font-body text-[11px] text-dash-red">
           Écarté
         </span>
       </span>
@@ -104,14 +104,14 @@ function StageProgress({ stage }: { stage: CandidateStage }) {
           key={i}
           className={`h-[5px] w-[22px] rounded-[3px] ${
             i < step
-              ? 'bg-orqa-ciel'
+              ? 'bg-dash-blue'
               : i === step
-                ? 'bg-orqa-nuit'
-                : 'bg-orqa-brume2'
+                ? 'bg-dash-text'
+                : 'bg-dash-border'
           }`}
         />
       ))}
-      <span className="ml-2 whitespace-nowrap font-inter text-[11px] text-orqa-gris">
+      <span className="ml-2 whitespace-nowrap font-body text-[11px] text-dash-text-secondary">
         {CANDIDATE_STAGE_LABELS[stage]}
       </span>
     </span>

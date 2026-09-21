@@ -47,28 +47,46 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 
-  /* ── Palette ORQA (menu Candidatures) ───────────────────────────────────
-     Tokens enregistrés dans @theme → utilitaires Tailwind `bg-orqa-*`,
-     `text-orqa-*`, `border-orqa-*`. Source unique, jamais de hex dispersé. */
-  --color-orqa-nuit: #0a1f3f;
-  --color-orqa-nuit2: #0e2a52;
-  --color-orqa-ciel: #2b9fd8;
-  --color-orqa-ciel-clair: #5fbdec;
-  --color-orqa-cielbg: #e6f4fb;
-  --color-orqa-brume: #f4f7fb;
-  --color-orqa-brume2: #e9eef5;
-  --color-orqa-encre: #16263b;
-  --color-orqa-gris: #64748b;
-  --color-orqa-gris-clair: #94a3b8;
-  --color-orqa-ligne: #e2e9f1;
-  --color-orqa-rouge: #e5484d;
-  --color-orqa-rouge-bg: #fdecec;
-  --color-orqa-ambre: #e08700;
-  --color-orqa-ambre-bg: #fcf3e3;
-  --color-orqa-vert: #16a34a;
-  --color-orqa-vert-bg: #e8f6ed;
-  --color-orqa-violet: #7c5cd6;
-  --color-orqa-violet-bg: #f0ecfb;
+  /* ── LA PALETTE DU PRODUIT, exposée à Tailwind ─────────────────────────
+     Les valeurs vivent plus bas, en `:root` (`--dash-*`) : ici on ne fait que
+     les enregistrer dans @theme pour obtenir `bg-dash-*`, `text-dash-*`,
+     `border-dash-*`. Une seule source, et le thème sombre continue de
+     fonctionner sans rien dupliquer.
+
+     ⚠️ La palette `orqa-*` (marine #0a1f3f, bleu-gris #64748b, brume
+     #f4f7fb) a été RETIRÉE le 21/09/2026 : elle n'existait que sur le menu
+     Candidatures, avec Fraunces en titre, et ne se retrouvait sur aucun autre
+     écran. Deux vocabulaires pour un seul produit, et aucune façon de voir la
+     divergence. */
+  --color-dash-bg: var(--dash-bg);
+  --color-dash-surface: var(--dash-surface);
+  --color-dash-warm: var(--dash-warm);
+  --color-dash-hover: var(--dash-hover);
+  --color-dash-border: var(--dash-border);
+  --color-dash-border-strong: var(--dash-border-strong);
+  --color-dash-field-border: var(--dash-field-border);
+  --color-dash-text: var(--dash-text);
+  --color-dash-text-secondary: var(--dash-text-secondary);
+  --color-dash-text-tertiary: var(--dash-text-tertiary);
+  --color-dash-blue: var(--dash-blue);
+  --color-dash-blue-light: var(--dash-blue-light);
+  --color-dash-purple: var(--dash-purple);
+  --color-dash-purple-light: var(--dash-purple-light);
+  --color-dash-green: var(--dash-green);
+  --color-dash-green-light: var(--dash-green-light);
+  --color-dash-orange: var(--dash-orange);
+  --color-dash-orange-light: var(--dash-orange-light);
+  --color-dash-red: var(--dash-red);
+  --color-dash-red-light: var(--dash-red-light);
+  --color-dash-teal: var(--dash-teal);
+  --color-dash-teal-light: var(--dash-teal-light);
+  --color-dash-yellow: var(--dash-yellow);
+  --color-dash-yellow-light: var(--dash-yellow-light);
+  /* Teintes de TEXTE des étapes — les seules à passer AA sur fond clair. */
+  --color-dash-green-text: var(--dash-green-text);
+  --color-dash-indigo-text: var(--dash-indigo-text);
+  --color-dash-orange-text: var(--dash-orange-text);
+  --color-dash-red-text: var(--dash-red-text);
 
   /* ── SOCLE DE JETONS — NOMMÉ, PAS INVENTÉ ───────────────────────────────
      L'audit du 20/09/2026 a mesuré 22 à 25 niveaux typographiques sur un seul
@@ -81,7 +99,8 @@
        .font-display  15 à 22 px / 700-800  — ce qui porte (titres, noms, boutons)
        .font-body     13 à 14 px / 400-600  — ce qui se lit (phrases)
        .font-body     11 à 12 px / 400-600  — ce qui se survole (états, dates)
-     Aucun serif hors du menu Candidatures, qui porte sa propre identité.
+     AUCUN serif : le menu Candidatures portait le sien (Fraunces), il a été
+       retiré le 21/09/2026 — un produit, une famille.
 
      UNE échelle d'espacement : 4 · 8 · 12 · 16 · 24 (Tailwind 1/2/3/4/6).
 
@@ -238,6 +257,19 @@
   --dash-indigo: #3e63dd;
   --dash-indigo-light: #ecf0ff;
   --dash-yellow: #d5a000;
+
+  /* ── TEINTES DE TEXTE DES ÉTAPES ────────────────────────────────────────
+     ⚠️ Les couleurs de marque ci-dessus sont des REPÈRES (pastilles, points,
+     soulignements) : mesurées sur leur propre fond clair, elles donnent 2,83
+     à 3,44:1 — SOUS AA. Elles ne peuvent donc pas porter du texte.
+     Ces quatre-ci sont les mêmes familles, assombries jusqu'à passer 4,5:1
+     sur les fonds `-light` du produit (mesuré : 4,56 · 6,95 · 4,59 · 5,68).
+     C'est la palette d'étapes que portait le menu Candidatures ; elle est
+     conservée POUR ÇA et nommée ici. */
+  --dash-green-text: #15803d;
+  --dash-indigo-text: #4338ca;
+  --dash-orange-text: #b45309;
+  --dash-red-text: #b91c1c;
   --dash-yellow-light: #fff8e1;
 }
 
@@ -430,14 +462,9 @@
     Menlo, Consolas, monospace;
   font-feature-settings: "tnum", "ss01";
 }
-/* Identité ORQA (menu Candidatures) : titres + corps. `.font-data` (JetBrains)
-   reste la police des données/scores/références. */
-.font-fraunces {
-  font-family: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
-}
-.font-inter {
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-}
+/* ⚠️ Fraunces (serif) et Inter ont été RETIRÉES le 21/09/2026 avec la peau
+   divergente du menu Candidatures. `.font-data` (JetBrains) reste la police
+   des chiffres, des notes et des références — et d'elles seules. */
 
 /*
  * Le motif de points du bureau (`.bg-grid-dots`) et les taches floutées

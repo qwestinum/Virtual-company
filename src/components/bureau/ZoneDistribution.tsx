@@ -25,26 +25,26 @@ type ZoneRow = {
 // ZoneCounts doit être ajoutée ici À LA MAIN, sinon elle compile mais
 // n'apparaît jamais (les % ne somment plus à 100).
 const ZONES: ZoneRow[] = [
-  { key: 'autoReject', label: 'Refusés', dot: 'bg-orqa-rouge', text: 'text-orqa-rouge' },
-  { key: 'autoAccept', label: 'Retenus automatiquement', dot: 'bg-orqa-vert', text: 'text-orqa-vert' },
-  { key: 'humanValidated', label: 'Tranchés par un humain', dot: 'bg-orqa-ciel', text: 'text-orqa-ciel' },
-  { key: 'pending', label: 'À valider', dot: 'bg-orqa-ambre', text: 'text-orqa-ambre' },
+  { key: 'autoReject', label: 'Refusés', dot: 'bg-dash-red', text: 'text-dash-red' },
+  { key: 'autoAccept', label: 'Retenus automatiquement', dot: 'bg-dash-green', text: 'text-dash-green' },
+  { key: 'humanValidated', label: 'Tranchés par un humain', dot: 'bg-dash-blue', text: 'text-dash-blue' },
+  { key: 'pending', label: 'À valider', dot: 'bg-dash-orange', text: 'text-dash-orange' },
   { key: 'sansSuite', label: 'Sans suite', dot: 'bg-stone-400', text: 'text-stone-500' },
 ];
 
 export function ZoneDistribution({ zones }: { zones: ZoneCounts }) {
   const { total } = zones;
   return (
-    <section className="rounded-[14px] border border-orqa-ligne bg-white p-4 shadow-orqa">
+    <section className="rounded-[14px] border border-dash-border bg-white p-4">
       <div className="mb-0.5 flex items-baseline justify-between gap-2">
-        <h3 className="font-fraunces text-[16px] font-semibold text-orqa-nuit">
+        <h3 className="font-display text-[16px] font-semibold text-dash-text">
           Répartition
         </h3>
-        <span className="font-data text-[11px] text-orqa-gris-clair">
+        <span className="font-data text-[11px] text-dash-text-tertiary">
           {total} candidature{total > 1 ? 's' : ''}
         </span>
       </div>
-      <p className="mb-3 font-inter text-[11.5px] text-orqa-gris">
+      <p className="mb-3 font-body text-[11.5px] text-dash-text-secondary">
         Ce que la solution traite pour vous.
       </p>
 
@@ -55,7 +55,7 @@ export function ZoneDistribution({ zones }: { zones: ZoneCounts }) {
           return (
             <li key={z.key}>
               <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 font-inter text-[12.5px] text-orqa-encre">
+                <span className="flex items-center gap-2 font-body text-[12.5px] text-dash-text">
                   <span className={`h-2 w-2 shrink-0 rounded-full ${z.dot}`} />
                   {z.label}
                 </span>
@@ -64,14 +64,14 @@ export function ZoneDistribution({ zones }: { zones: ZoneCounts }) {
                     {n}
                   </span>
                   {total > 0 ? (
-                    <span className="font-data text-[10.5px] text-orqa-gris-clair">
+                    <span className="font-data text-[10.5px] text-dash-text-tertiary">
                       {pct}%
                     </span>
                   ) : null}
                 </span>
               </div>
               {/* Barre de proportion — pleine seulement si total > 0. */}
-              <div className="mt-1 h-1 overflow-hidden rounded-full bg-orqa-brume2">
+              <div className="mt-1 h-1 overflow-hidden rounded-full bg-dash-border">
                 <div
                   className={`h-full rounded-full ${z.dot}`}
                   style={{ width: total > 0 ? `${pct}%` : '0%' }}
@@ -83,7 +83,7 @@ export function ZoneDistribution({ zones }: { zones: ZoneCounts }) {
       </ul>
 
       {total === 0 ? (
-        <p className="mt-3 font-inter text-[11.5px] italic text-orqa-gris-clair">
+        <p className="mt-3 font-body text-[11.5px] italic text-dash-text-tertiary">
           Aucune candidature analysée pour l&apos;instant — la répartition
           s&apos;affichera dès les premiers CV traités.
         </p>

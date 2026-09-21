@@ -17,7 +17,7 @@
 
 import type { ReactNode } from 'react';
 
-import { DASH, SKINS, type ListSkin } from './list-skin';
+import { DASH, SKIN } from './list-skin';
 
 export function ListRow({
   initials,
@@ -29,7 +29,6 @@ export function ListRow({
   right,
   selected = false,
   onClick,
-  skin = 'dash',
   testId,
 }: {
   /**
@@ -50,16 +49,15 @@ export function ListRow({
   right?: ReactNode;
   selected?: boolean;
   onClick?: () => void;
-  skin?: ListSkin;
   testId?: string;
 }) {
-  const s = SKINS[skin];
+  const s = SKIN;
   const contenu = (
     <>
       {initials ? (
         <span
           className={`grid h-10 w-10 place-items-center ${s.avatar}`}
-          style={skin === 'dash' ? { background: avatarColor ?? 'var(--dash-blue)' } : undefined}
+          style={{ background: avatarColor ?? 'var(--dash-blue)' }}
         >
           {initials}
         </span>
@@ -68,7 +66,7 @@ export function ListRow({
       <span className="min-w-0">
         <span
           className={`block truncate ${s.titre}`}
-          style={skin === 'dash' ? { color: DASH.texte } : undefined}
+          style={{ color: DASH.texte }}
         >
           {title}
         </span>
@@ -76,11 +74,11 @@ export function ListRow({
           {pill ? (
             <span
               className={`inline-flex min-w-0 max-w-full shrink items-center truncate px-2 py-0.5 ${s.puce}`}
-              style={
-                skin === 'dash'
-                  ? { borderColor: DASH.bordureForte, background: DASH.chaud, color: DASH.texte }
-                  : undefined
-              }
+              style={{
+                borderColor: DASH.bordureForte,
+                background: DASH.chaud,
+                color: DASH.texte,
+              }}
             >
               {pill}
             </span>
@@ -88,7 +86,7 @@ export function ListRow({
           {reference || meta ? (
             <span
               className={`shrink-0 truncate ${s.meta}`}
-              style={skin === 'dash' ? { color: DASH.secondaire } : undefined}
+              style={{ color: DASH.secondaire }}
             >
               {reference ? <span className="font-data">{reference}</span> : null}
               {reference && meta ? ' · ' : null}
@@ -104,13 +102,8 @@ export function ListRow({
 
   const classe = `grid w-full ${
     initials ? 'grid-cols-[auto_1fr_auto]' : 'grid-cols-[1fr_auto]'
-  } items-center gap-4 px-4 py-3.5 text-left transition ${s.carte} ${
-    selected && skin === 'orqa' ? s.carteSelection : ''
-  }`;
-  const style =
-    skin === 'dash'
-      ? { borderColor: selected ? 'var(--dash-blue)' : DASH.bordure }
-      : undefined;
+  } items-center gap-4 px-4 py-3.5 text-left transition ${s.carte}`;
+  const style = { borderColor: selected ? 'var(--dash-blue)' : DASH.bordure };
 
   if (!onClick) {
     return (

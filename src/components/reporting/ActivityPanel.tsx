@@ -30,7 +30,7 @@ export function ActivityPanel() {
         <ActivityCard activity={data?.activity ?? []} />
       </div>
 
-      <section className="relative h-[520px] overflow-hidden rounded-[14px] border border-orqa-ligne bg-white">
+      <section className="relative h-[520px] overflow-hidden rounded-[14px] border border-dash-border bg-white">
         <HRDepartmentView />
         <AgentDetailsPanel />
       </section>

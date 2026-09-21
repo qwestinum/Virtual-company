@@ -26,7 +26,7 @@
  */
 
 import { CountBadge } from './CountBadge';
-import { DASH, SKINS, type ListSkin } from './list-skin';
+import { DASH, SKIN } from './list-skin';
 
 export type CounterItem = {
   key: string;
@@ -58,15 +58,13 @@ export function CounterRibbon({
   items,
   active,
   onSelect,
-  skin = 'dash',
 }: {
   items: readonly CounterItem[];
   active: string | null;
   /** `null` quand on déselectionne — le ruban est un filtre, pas un onglet. */
   onSelect: (key: string | null) => void;
-  skin?: ListSkin;
 }) {
-  const s = SKINS[skin];
+  const s = SKIN;
   return (
     // ⚠️ GRILLE À COLONNES ÉGALES, quel que soit le nombre de compteurs :
     // trois cartes = trois tiers, huit cartes = huit huitièmes. En `flex`,
@@ -86,22 +84,16 @@ export function CounterRibbon({
             data-counter={item.key}
             aria-pressed={selected}
             onClick={() => onSelect(selected ? null : item.key)}
-            className={`relative overflow-hidden px-4 py-3.5 text-left transition ${s.carte} ${
-              selected && skin === 'orqa' ? s.carteSelection : ''
-            }`}
-            style={
-              skin === 'dash'
-                ? {
-                    borderColor: selected ? teinte : DASH.bordure,
-                    background: selected ? DASH.chaud : DASH.surface,
-                  }
-                : undefined
-            }
+            className={`relative overflow-hidden px-4 py-3.5 text-left transition ${s.carte}`}
+            style={{
+              borderColor: selected ? teinte : DASH.bordure,
+              background: selected ? DASH.chaud : DASH.surface,
+            }}
           >
             {item.count === undefined ? null : (
             <span
               className={`block ${s.chiffre}`}
-              style={skin === 'dash' ? { color: DASH.texte } : undefined}
+              style={{ color: DASH.texte }}
             >
               {item.count}
               {item.total !== undefined && item.total !== item.count ? (
@@ -119,7 +111,7 @@ export function CounterRibbon({
                 suite du libellé, elle s'aligne au bord. */}
             <span
               className={`mt-1.5 flex items-center justify-between gap-2 ${s.libelle}`}
-              style={skin === 'dash' ? { color: DASH.secondaire } : undefined}
+              style={{ color: DASH.secondaire }}
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 <span

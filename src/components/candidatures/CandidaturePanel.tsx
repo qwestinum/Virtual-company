@@ -108,20 +108,20 @@ export function CandidaturePanel({
     // rien. Ici il ne demande qu'une chose : remplir ce qu'on lui donne.
     <aside
       data-candidature-panel={item.id}
-      className="flex h-full w-full flex-col overflow-y-auto rounded-[14px] border border-orqa-ligne bg-white shadow-orqa-lg"
+      className="flex h-full w-full flex-col overflow-y-auto rounded-[14px] border border-dash-border bg-white"
     >
       <header className="flex items-start justify-between gap-3 px-6 py-5">
         <div className="flex min-w-0 items-start gap-3.5">
-          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-orqa-nuit to-orqa-nuit2 font-inter text-[17px] font-semibold text-white">
+          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-dash-text to-dash-blue font-body text-[17px] font-semibold text-white">
             {initials(item.candidateName)}
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="truncate font-fraunces text-[21px] font-semibold tracking-tight text-orqa-nuit">
+              <h2 className="truncate font-display text-[21px] font-semibold tracking-tight text-dash-text">
                 {item.candidateName}
               </h2>
               {item.fromVivier ? (
-                <span className="shrink-0 rounded-md border border-[#d6ccf5] bg-orqa-violet-bg px-1.5 py-0.5 font-data text-[10px] uppercase tracking-wide text-orqa-violet">
+                <span className="shrink-0 rounded-md border border-[color-mix(in srgb, var(--dash-purple) 35%, transparent)] bg-dash-purple-light px-1.5 py-0.5 font-data text-[10px] uppercase tracking-wide text-dash-purple">
                   ★ Vivier
                 </span>
               ) : null}
@@ -130,27 +130,27 @@ export function CandidaturePanel({
               // Poste en chip (même mise en évidence que la ligne de liste).
               <div className="mt-1 flex min-w-0 items-center gap-2">
                 <JobTitleChip title={jobTitle} />
-                <span className="shrink-0 font-inter text-[13px] text-orqa-gris">
+                <span className="shrink-0 font-body text-[13px] text-dash-text-secondary">
                   {item.campaignId ?? 'Sans campagne'}
                   {' · '}
                   <ReferentMention referent={referent} />
                 </span>
               </div>
             ) : (
-              <p className="font-inter text-[13px] text-orqa-gris">
+              <p className="font-body text-[13px] text-dash-text-secondary">
                 {campaignLabel ?? (item.campaignId ?? 'Sans campagne')}
                 {' · '}
                 <ReferentMention referent={referent} />
               </p>
             )}
-            <p className="font-data text-[11.5px] text-orqa-ciel">{item.id}</p>
+            <p className="font-data text-[11.5px] text-dash-blue">{item.id}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Fermer"
-          className="shrink-0 rounded-md px-2 py-1 font-inter text-[13px] text-orqa-gris-clair hover:bg-orqa-brume"
+          className="shrink-0 rounded-md px-2 py-1 font-body text-[13px] text-dash-text-tertiary hover:bg-dash-bg"
         >
           ✕
         </button>
@@ -186,7 +186,7 @@ export function CandidaturePanel({
         <button
           type="button"
           onClick={onOpenFull}
-          className="mt-1 rounded-[10px] border border-dashed border-orqa-ciel py-2.5 text-center font-inter text-[13px] font-medium text-orqa-ciel hover:bg-orqa-cielbg"
+          className="mt-1 rounded-[10px] border border-dashed border-dash-blue py-2.5 text-center font-body text-[13px] font-medium text-dash-blue hover:bg-dash-blue-light"
         >
           Ouvrir le détail complet →
         </button>
@@ -198,8 +198,8 @@ export function CandidaturePanel({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <dt className="font-inter text-[11px] text-orqa-gris-clair">{label}</dt>
-      <dd className="truncate font-inter text-[13px] text-orqa-encre">{value}</dd>
+      <dt className="font-body text-[11px] text-dash-text-tertiary">{label}</dt>
+      <dd className="truncate font-body text-[13px] text-dash-text">{value}</dd>
     </div>
   );
 }

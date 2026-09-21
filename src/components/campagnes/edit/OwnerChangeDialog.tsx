@@ -110,8 +110,8 @@ export function OwnerChangeDialog({
               lineHeight: 1.5,
               borderRadius: 8,
               padding: '10px 12px',
-              background: 'var(--dash-yellow-light, #fdf6e3)',
-              color: 'var(--dash-yellow, #8a6413)',
+              background: 'var(--dash-yellow-light)',
+              color: 'var(--dash-yellow)',
             }}
           >
             ⚠ {nextName} n’a aucune disponibilité déclarée. Les liens qui
@@ -144,7 +144,7 @@ export function OwnerChangeDialog({
               padding: '7px 12px',
               borderRadius: 8,
               border: 'none',
-              background: 'var(--dash-text-primary, #292524)',
+              background: 'var(--dash-text)',
               color: 'white',
               fontSize: 13,
               fontWeight: 600,

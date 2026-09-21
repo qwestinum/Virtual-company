@@ -129,7 +129,7 @@ export function GenericJobAdPanel({ campaignId }: { campaignId: string }) {
   return (
     <div style={panelStyle}>
       <div style={headerStyle}>
-        <span style={{ fontFamily: 'var(--font-jetbrains-mono)', fontSize: 12 }}>
+        <span className="font-data" style={{ fontSize: 12 }}>
           Réf. {campaignId}
         </span>
         <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600 }}>

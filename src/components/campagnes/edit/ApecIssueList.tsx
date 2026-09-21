@@ -34,14 +34,14 @@ export function ApecIssueList({
         </ul>
       ) : null}
       {warnings.length > 0 ? (
-        <ul style={{ marginTop: 8, paddingLeft: 18, fontSize: 12, color: '#b45309' }}>
+        <ul style={{ marginTop: 8, paddingLeft: 18, fontSize: 12, color: 'var(--dash-orange)' }}>
           {warnings.map((i) => (
             <li key={`${i.field}-${i.message}`}>{i.message}</li>
           ))}
         </ul>
       ) : null}
       {verified && errors.length === 0 ? (
-        <div style={{ marginTop: 10, fontSize: 13, color: '#15803d' }}>
+        <div style={{ marginTop: 10, fontSize: 13, color: 'var(--dash-green)' }}>
           Aucune erreur — l’offre est prête à partir.
         </div>
       ) : null}

@@ -79,8 +79,9 @@ describe('aucun écran ne se refait un conteneur', () => {
   });
 
   it('aucun écran ne peint son propre fond de page', () => {
-    // Candidatures posait `bg-orqa-brume` : la page changeait de COULEUR en
-    // plus de changer de largeur.
+    // Candidatures posait `bg-orqa-brume` (un bleu-gris à elle) : la page
+    // changeait de COULEUR en plus de changer de largeur. Cette palette
+    // n'existe plus, la garde reste : un écran ne peint pas son fond.
     for (const f of ECRANS) {
       const src = sansCommentaires(lire(f));
       expect(src, `${f} peint un fond de page`).not.toMatch(

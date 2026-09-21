@@ -65,13 +65,16 @@ describe('capture des trois écrans', () => {
 
     for (const ecran of ECRANS) {
       await page.goto(`${BASE_URL}${ecran.route}`, { waitUntil: 'domcontentloaded' });
-      // On attend le TITRE de l'écran, pas un délai : une capture prise
-      // pendant le chargement montrerait trois squelettes identiques et
-      // prouverait le contraire de ce qu'on cherche.
+      // ⚠️ On attend le RÉSEAU AU REPOS, pas un délai deviné. Un délai de
+      // 2,5 s suffisait quand la page était tiède ; sur un serveur de dev qui
+      // compile, il a produit une planche entière de compteurs à ZÉRO et une
+      // liste « Aucune campagne » — une capture qui montre un écran vide
+      // prouve le contraire de ce qu'elle doit montrer.
       await page
         .waitForSelector(`text=${ecran.titre}`, { timeout: 90_000 })
         .catch(() => {});
-      await page.waitForTimeout(2_500);
+      await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => {});
+      await page.waitForTimeout(1_500);
       const png = await page.screenshot({ type: 'png' });
       writeFileSync(resolve(DOSSIER, `${ecran.nom}.png`), png);
       writeFileSync(resolve(KIT, `${ecran.nom}.png`), png);

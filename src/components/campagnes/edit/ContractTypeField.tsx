@@ -70,6 +70,7 @@ export function ContractTypeField({
               disabled={disabled}
               aria-pressed={on}
               onClick={() => emit(toggleContract(selected, opt))}
+              className="font-body"
               style={chipStyle(on, disabled)}
             >
               {opt}
@@ -81,7 +82,11 @@ export function ContractTypeField({
       {customs.length > 0 ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {customs.map((c) => (
-            <span key={c} style={{ ...chipStyle(true, disabled), cursor: 'default' }}>
+            <span
+              key={c}
+              className="font-body"
+              style={{ ...chipStyle(true, disabled), cursor: 'default' }}
+            >
               {c}
               <button
                 type="button"
@@ -116,6 +121,7 @@ export function ContractTypeField({
           onChange={(e) => setCustom(e.currentTarget.value)}
           onKeyDown={onCustomKeyDown}
           onBlur={commitCustom}
+          className="font-body"
           style={{
             flex: 1,
             border: '1px solid var(--dash-border)',
@@ -125,7 +131,6 @@ export function ContractTypeField({
             fontSize: 13,
             color: 'var(--dash-text)',
             padding: '4px 8px',
-            fontFamily: 'var(--font-nunito), system-ui, sans-serif',
           }}
         />
       </div>
@@ -133,6 +138,7 @@ export function ContractTypeField({
   );
 }
 
+/** ⚠️ La police vient de la classe `font-body`, posée sur la puce. */
 function chipStyle(active: boolean, disabled?: boolean) {
   return {
     display: 'inline-flex',
@@ -140,11 +146,10 @@ function chipStyle(active: boolean, disabled?: boolean) {
     borderRadius: 999,
     padding: '3px 10px',
     fontSize: 12,
-    fontFamily: 'var(--font-nunito), system-ui, sans-serif',
     cursor: disabled ? 'default' : 'pointer',
-    border: `1px solid ${active ? 'var(--dash-accent, #b45309)' : 'var(--dash-border-strong)'}`,
-    background: active ? 'var(--dash-accent-soft, #fef3c7)' : 'transparent',
-    color: active ? 'var(--dash-accent-strong, #92400e)' : 'var(--dash-text)',
+    border: `1px solid ${active ? 'var(--dash-orange)' : 'var(--dash-border-strong)'}`,
+    background: active ? 'var(--dash-orange-light)' : 'transparent',
+    color: active ? 'var(--dash-orange)' : 'var(--dash-text)',
     opacity: disabled ? 0.6 : 1,
   } as const;
 }

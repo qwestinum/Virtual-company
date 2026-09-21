@@ -35,14 +35,14 @@ export function CandidaturesRibbon({
             type="button"
             aria-pressed={selected}
             onClick={() => onSelect(selected ? null : stage)}
-            className={`relative min-w-[120px] flex-1 rounded-[14px] border bg-white px-4 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-orqa-ciel hover:shadow-orqa-lg ${
-              selected ? 'border-orqa-nuit shadow-orqa-lg' : 'border-orqa-ligne'
+            className={`relative min-w-[120px] flex-1 rounded-[14px] border bg-white px-4 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-dash-blue ${
+              selected ? 'border-dash-text' : 'border-dash-border'
             }`}
           >
-            <span className="block font-fraunces text-[26px] font-semibold leading-none text-orqa-nuit">
+            <span className="block font-display text-[26px] font-semibold leading-none text-dash-text">
               {counts[stage]}
             </span>
-            <span className="mt-1.5 flex items-center gap-1.5 font-inter text-[11.5px] text-orqa-gris">
+            <span className="mt-1.5 flex items-center gap-1.5 font-body text-[11.5px] text-dash-text-secondary">
               <span
                 className={`h-[7px] w-[7px] shrink-0 rounded-full ${STAGE_DOT_CLASS[stage]}`}
               />

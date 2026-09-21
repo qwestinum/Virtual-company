@@ -64,7 +64,7 @@ export function ApecPublishedCard({
   if (phase === 'uncertain') {
     return (
       <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-        <strong style={{ color: '#b45309' }}>Publication à vérifier.</strong>
+        <strong style={{ color: 'var(--dash-orange)' }}>Publication à vérifier.</strong>
         <p style={{ margin: '6px 0' }}>
           L’envoi n’a pas abouti proprement et nous n’avons pas pu déterminer si
           l’offre existe chez l’Apec. {posting.lastErrorMessage}
@@ -84,7 +84,7 @@ export function ApecPublishedCard({
   if (phase === 'failed') {
     return (
       <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-        <strong style={{ color: '#b91c1c' }}>Publication refusée.</strong>
+        <strong style={{ color: 'var(--dash-red)' }}>Publication refusée.</strong>
         <p style={{ margin: '6px 0' }}>
           {posting.lastErrorMessage ?? 'L’Apec n’a pas accepté l’offre.'}
           {posting.lastErrorCode ? ` (code ${posting.lastErrorCode})` : ''}
@@ -99,7 +99,7 @@ export function ApecPublishedCard({
   return (
     <div style={{ fontSize: 13, lineHeight: 1.5 }}>
       {simulated ? (
-        <div style={{ color: '#b45309', marginBottom: 8 }}>
+        <div style={{ color: 'var(--dash-orange)', marginBottom: 8 }}>
           Mode simulation — rien n’a été envoyé à l’Apec.
         </div>
       ) : null}

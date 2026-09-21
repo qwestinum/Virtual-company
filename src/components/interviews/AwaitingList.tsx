@@ -52,7 +52,7 @@ export function AwaitingList({
   }
 
   return (
-    <ul className="flex flex-col gap-1.5">
+    <ul className="flex flex-col gap-3">
       {rows.map((row) => {
         const dead = row.linkStatus === 'expired' || row.linkStatus === 'revoked';
         const alerte = row.overdue || dead;
