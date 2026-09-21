@@ -46,10 +46,17 @@ export function BusinessToast({
   if (!visible || signals.length === 0) return null;
 
   return (
+    // ⚠️ `pointer-events-none` sur le CADRE, `pointer-events-auto` sur ce qui
+    // se clique dedans. Sans ça, le bandeau — posé en bas à droite sur ~230 px
+    // — AVALE les clics destinés à la page : il recouvrait le bouton
+    // « Activer la campagne » de l'assistant de création, et cliquer dessus
+    // atteignait la notification. Défaut trouvé en cliquant (S30.6), invisible
+    // à la lecture : les deux composants ne se connaissent pas. Une notice
+    // n'est pas une porte — elle informe, elle ne doit rien intercepter.
     <aside
       role="status"
       aria-label="Actions en attente"
-      className="absolute bottom-6 right-6 z-40 w-[340px] rounded-xl border border-orqa-ambre/40 bg-orqa-ambre-bg shadow-orqa-lg"
+      className="pointer-events-none absolute bottom-6 right-6 z-40 w-[340px] rounded-xl border border-orqa-ambre/40 bg-orqa-ambre-bg shadow-orqa-lg"
     >
       <header className="flex items-center justify-between gap-2 border-b border-orqa-ambre/20 px-4 py-2.5">
         <p className="font-display text-[13px] font-bold text-orqa-encre">
@@ -60,7 +67,7 @@ export function BusinessToast({
           type="button"
           onClick={() => setVisible(false)}
           aria-label="Fermer la notification"
-          className="rounded-md px-1.5 py-0.5 font-body text-[13px] text-orqa-gris hover:bg-orqa-ambre/10 hover:text-orqa-encre"
+          className="pointer-events-auto rounded-md px-1.5 py-0.5 font-body text-[13px] text-orqa-gris hover:bg-orqa-ambre/10 hover:text-orqa-encre"
         >
           ✕
         </button>
@@ -77,7 +84,7 @@ export function BusinessToast({
                 setVisible(false);
                 onNavigate(signal.target);
               }}
-              className="mt-1 font-body text-[12px] font-semibold text-orqa-nuit underline decoration-orqa-ciel/60 underline-offset-2 hover:decoration-orqa-ciel"
+              className="pointer-events-auto mt-1 font-body text-[12px] font-semibold text-orqa-nuit underline decoration-orqa-ciel/60 underline-offset-2 hover:decoration-orqa-ciel"
             >
               → {signal.ctaLabel}
             </button>

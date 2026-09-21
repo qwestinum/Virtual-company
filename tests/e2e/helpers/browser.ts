@@ -73,15 +73,19 @@ export async function assertAppIsUp(): Promise<void> {
  * sont absentes, le formulaire n'est qu'un squelette HTML — une saisie y est
  * écrasée par le premier rendu contrôlé.
  */
-async function attendreHydratation(page: Page): Promise<boolean> {
+export async function attendreHydratation(
+  page: Page,
+  selector = '#email',
+  timeout = HYDRATATION_MS,
+): Promise<boolean> {
   return page
     .waitForFunction(
-      () => {
-        const el = document.querySelector('#email');
+      (sel) => {
+        const el = document.querySelector(sel);
         return !!el && Object.keys(el).some((k) => k.startsWith('__react'));
       },
-      undefined,
-      { timeout: HYDRATATION_MS },
+      selector,
+      { timeout },
     )
     .then(() => true)
     .catch(() => false);
@@ -94,7 +98,7 @@ export async function signIn(browser: Browser, recruiter: TestRecruiter): Promis
 
   await page.goto(`${BASE_URL}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#email', { timeout: HYDRATATION_MS });
-  const vivante = await attendreHydratation(page);
+  const vivante = await attendreHydratation(page, '#email');
 
   // On resaisit tant que le bouton ne s'active pas : même hydratée, la page
   // peut avoir avalé une saisie posée une frame trop tôt.

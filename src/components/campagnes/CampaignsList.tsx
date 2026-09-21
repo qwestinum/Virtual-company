@@ -11,9 +11,11 @@
  * évite que la page devienne illisible quand il y en a plusieurs.
  */
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
 import { AddCampaignButton } from './AddCampaignButton';
+import { nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
 import { useCampaignsCounters } from './useCampaignsCounters';
 
 import { resolveCampaignFocus } from '@/lib/navigation/campaign-focus';
@@ -30,7 +32,6 @@ import {
 
 export type CampaignsListProps = {
   onEditCampaign: (campaignId: string) => void;
-  onCreateCampaign: () => void;
   /** Quadrant de carte cliqué → onglet Candidatures pré-filtré (campagne + préset). */
   /**
    * Campagne désignée par l'URL (`/campagnes?campagne=…`) — « retour à la
@@ -54,7 +55,6 @@ const STATUS_FILTERS: { id: StatusFilter; label: string; dot: string }[] = [
 
 export function CampaignsList({
   onEditCampaign,
-  onCreateCampaign,
   focusCampaignId = null,
 }: CampaignsListProps) {
   const rawCampaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
@@ -180,7 +180,7 @@ export function CampaignsList({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <AddCampaignButton onClick={onCreateCampaign} />
+          <AddCampaignButton href={nouvelleCampagneHref()} />
           <h2
             className="font-display"
             style={{
@@ -202,7 +202,6 @@ export function CampaignsList({
 
       {campaigns.length === 0 ? (
         <EmptyState
-          onCreate={onCreateCampaign}
           filter={effectiveStatusFilter}
           totalCampaigns={allCampaigns.length}
           onReset={() => selectStatus('all')}
@@ -393,12 +392,10 @@ function StatusFilterChips({
 }
 
 function EmptyState({
-  onCreate,
   filter,
   totalCampaigns,
   onReset,
 }: {
-  onCreate: () => void;
   filter: StatusFilter;
   totalCampaigns: number;
   onReset: () => void;
@@ -422,25 +419,25 @@ function EmptyState({
         <p className="font-body" style={{ margin: 0, fontSize: 14 }}>
           Aucune campagne pour l&apos;instant.
         </p>
-        <button
-          type="button"
-          onClick={onCreate}
+        <Link
+          href={nouvelleCampagneHref()}
           className="font-display"
           style={{
+            display: 'inline-block',
             marginTop: 14,
             padding: '8px 16px',
             borderRadius: 999,
             border: 'none',
-            cursor: 'pointer',
             background:
               'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
             color: '#fff',
             fontWeight: 700,
             fontSize: 12,
+            textDecoration: 'none',
           }}
         >
           + Créer la première campagne
-        </button>
+        </Link>
       </div>
     );
   }

@@ -114,6 +114,21 @@ function withParams(
   return qs ? `${base}?${qs}` : base;
 }
 
+/**
+ * La création de campagne — UNE adresse, appelée depuis Campagnes comme depuis
+ * *Aujourd'hui*. Avec un identifiant, elle REPREND ce brouillon là où il en
+ * est ; sans, elle part d'une campagne neuve.
+ *
+ * ⚠️ Deux raccourcis qui ouvriraient deux surfaces différentes seraient deux
+ * chemins de création à tenir d'accord — et l'un des deux finirait en retard
+ * sur l'autre.
+ */
+export function nouvelleCampagneHref(campaignId?: string | null): string {
+  return campaignId
+    ? `/campagnes/nouvelle?${PARAM.campagne}=${encodeURIComponent(campaignId)}`
+    : '/campagnes/nouvelle';
+}
+
 export function candidaturesHref(filter: CandidaturesFilter = {}): string {
   return withParams('/candidatures', [
     [PARAM.campagne, filter.campaignId],

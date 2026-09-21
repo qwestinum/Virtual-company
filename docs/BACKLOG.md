@@ -972,3 +972,31 @@ limite des 200 lignes (~1 690). L'étape post-création en a été SORTIE
 `EditingStage` et les bannières (`MatchBanner`, `DocumentBanner`, `NoMatchHint`,
 `JobTitleStep`) sont les prochains candidats évidents — chacun est autonome et
 ne partage que des props avec le reste du fichier.
+
+## Création de campagne — la feuille historique est morte (lot 5, 21/09/2026)
+
+L'assistant en six étapes (`/campagnes/nouvelle`) remplace `CampaignCreateSheet`.
+La feuille **n'est plus montée nulle part** : `CampaignsWorkspace` ne l'importe
+plus, `?nouvelle=1` redirige vers la route, et les deux boutons « Nouvelle
+campagne » (Campagnes, Aujourd'hui) pointent la même adresse.
+
+**Ce qui reste à faire, et ce n'est pas urgent**
+- Supprimer `CampaignCreateSheet.tsx` (~1 650 lignes) et ce qui n'a plus qu'elle
+  pour appelant : `CollapsibleSection`, `JobTitleStep`, `MatchBanner`,
+  `DocumentBanner`, `NoMatchHint`, `CampaignCreatedStep` +
+  `created-step-parts`. À vérifier appelant par appelant — `FDPInlineEditor` et
+  les éditeurs `draft/` sont au contraire TRÈS vivants (l'assistant les monte).
+- `deriveCampaignName` en est déjà SORTIE (`src/lib/campaign/derive-campaign-name.ts`) :
+  l'assistant n'avait aucune raison d'importer un helper depuis du code mort.
+
+**Deux surfaces de l'ancienne feuille à reloger avant la suppression**
+- `PostActivationPanels` (contenu d'un canal, présélection vivier après
+  activation) : l'assistant renvoie vers les trois portes de la carte campagne,
+  qui mènent aux mêmes écrans. À confirmer en recette avant de supprimer.
+- Le bloc « Cycle de vie » n'a jamais été dans la création (sans objet sur une
+  campagne qui naît) — rien à reloger.
+
+**Dette de texte, consignée par le donneur d'ordre** : `ThresholdDraftEditor`
+(monté par l'assistant ET par l'édition) dit encore « seuil bas / seuil haut »,
+mots bannis à l'écran. Non touché volontairement : la passe de langue vient
+après, et le composant sert aux deux chemins.

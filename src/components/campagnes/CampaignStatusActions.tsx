@@ -29,6 +29,7 @@ import {
   type AcknowledgmentAction,
 } from '@/lib/chat/manager-acknowledgments';
 import { triggerVivierPreselection } from '@/lib/vivier/trigger-preselection';
+import { nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 
 export type CampaignActionStatus =
@@ -116,6 +117,18 @@ export function CampaignStatusActions({
           icon="▶️"
           label="Reprendre"
           onClick={onResume}
+        />
+      ) : null}
+      {/* Un brouillon se REPREND là où il en est — c'est la contrepartie du
+          « vous pouvez fermer » de l'assistant : sans porte de retour, la
+          promesse serait vide. « Continuer la création » et non « Reprendre »,
+          déjà pris par la sortie de pause. */}
+      {status === 'draft' || status === 'in_progress' ? (
+        <ActionButton
+          variant="neutral"
+          icon="✍️"
+          label="Continuer la création"
+          href={nouvelleCampagneHref(campaignId)}
         />
       ) : null}
       {status === 'draft' || status === 'in_progress' ? (

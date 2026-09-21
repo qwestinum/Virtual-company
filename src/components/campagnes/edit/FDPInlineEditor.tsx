@@ -74,6 +74,10 @@ function FieldRow({
   const filled = field?.status === 'filled';
   return (
     <div
+      // Repère STABLE pour les tests qui cliquent (S30) : sans lui, atteindre un
+      // champ demanderait de compter les rangées — et l'ordre des champs est
+      // exactement le genre de chose qui bouge.
+      data-field={fieldKey}
       style={{
         display: 'flex',
         flexDirection: 'column',

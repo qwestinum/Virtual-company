@@ -13,9 +13,9 @@
  * À tenir à jour quand un libellé d'UI change : un chemin faux ici se traduit
  * par une orientation fausse côté donneur d'ordre.
  *
- * Aligné sur la navigation à CINQ entrées (refonte, lot 1). Restent périmés,
- * et traités au lot 6 : le nombre de sections du formulaire de création (il
- * devient un assistant au lot 5), et les niveaux de scoring.
+ * Aligné sur la navigation à CINQ entrées (lot 1) et sur l'assistant de
+ * création en six étapes (lot 5). Reste périmé, traité au lot 6 : la liste des
+ * niveaux de scoring.
  */
 
 export const MANAGER_CARTOGRAPHY = `# CARTOGRAPHIE PRODUIT — ORQA, service Recrutement
@@ -39,16 +39,21 @@ export const MANAGER_CARTOGRAPHY = `# CARTOGRAPHIE PRODUIT — ORQA, service Rec
 ## Tâches courantes (où les faire)
 
 ### Créer une campagne
-Entrée « Campagnes » → bouton « Nouvelle campagne ». Parcours : étape 1 (saisie
-du poste), puis 5 sections — « Fiche de poste », « Fiche de scoring », « Canaux
-de diffusion », « Flux de réception », « Seuil d'acceptation » —, puis bouton
-« Créer la campagne ». Pourquoi : tout se cadre AVANT le lancement, et c'est le
-donneur d'ordre qui crée (jamais le Manager).
+Bouton « Nouvelle campagne », depuis l'entrée « Campagnes » OU depuis
+« Aujourd'hui » (le même bouton, le même écran). Un assistant en six étapes :
+« Le poste », « Ce qui compte », « La réception », « Le suivi »,
+« La réservation », « Récapitulatif ». Dès la première étape validée, la
+campagne EXISTE en brouillon : on peut fermer et reprendre plus tard, par
+l'action « Continuer la création » sur la carte de la campagne. Il n'y a pas de
+bouton « Enregistrer » — passer à l'étape suivante enregistre. Le dernier écran
+porte « Activer la campagne ». Pourquoi : tout se cadre AVANT le lancement, et
+c'est le donneur d'ordre qui crée (jamais le Manager).
 
 ### Créer une campagne à partir d'un document
-Entrée « Campagnes » → « Nouvelle campagne » → étape 1 → bouton « Démarrer à
-partir d'un document (appel d'offres, notes) » (PDF ou DOCX). Cela pré-remplit un
-brouillon à relire et valider ; rien n'est créé sans l'accord du donneur d'ordre.
+Bouton « Nouvelle campagne » → étape « Le poste » → bouton « Démarrer à partir
+d'un document (appel d'offres, notes) » (PDF ou DOCX). Cela pré-remplit un
+brouillon à relire et valider ; rien n'est enregistré tant que le donneur
+d'ordre n'est pas passé à l'étape suivante.
 
 ### Configurer le scoring / les pondérations
 À la création OU l'édition d'une campagne, section « Fiche de scoring ». On y

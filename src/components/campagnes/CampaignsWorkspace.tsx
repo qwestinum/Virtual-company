@@ -23,14 +23,13 @@
  * n'ouvrirait plus rien.
  */
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
-import { PARAM } from '@/lib/navigation/workspace-routes';
+import { PARAM, nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
 
 import { CampaignsList } from './CampaignsList';
 import { UnsavedChangesBanner } from './UnsavedChangesBanner';
-import { CampaignCreateSheet } from './edit/CampaignCreateSheet';
 import type { BlockKey } from './edit/CampaignEditAccordion';
 import { CampaignEditSheet } from './edit/CampaignEditSheet';
 
@@ -50,10 +49,10 @@ export function CampaignsWorkspace({
   /** Campagne à ouvrir, désignée par l'URL (« retour à la campagne »). */
   focusCampaignId?: string | null;
   /**
-   * `/campagnes?nouvelle=1` — ouvre la création d'emblée. C'est ce qui rend le
-   * raccourci de l'accueil possible sans dupliquer la feuille, et ce qui la
-   * rendra adressable quand elle deviendra l'assistant (lot 5) : le raccourci
-   * ne changera pas.
+   * `/campagnes?nouvelle=1` — l'ANCIENNE adresse de la création. Elle ne monte
+   * plus de feuille : elle REDIRIGE vers `/campagnes/nouvelle` (l'assistant du
+   * lot 5). Un lien vieilli ou un favori doit continuer de déposer devant le
+   * bon écran, pas sur une liste.
    */
   openCreate?: boolean;
   /**
@@ -64,13 +63,13 @@ export function CampaignsWorkspace({
   openSection?: BlockKey | null;
 } = {}) {
   const pathname = usePathname();
+  const router = useRouter();
 
   // ⚠️ La section vit ICI, en état local, et n'est PAS relue de l'URL au fil
   // des rendus : on retire le paramètre une fois servi, et un bloc qui se
   // refermerait à ce moment-là refermerait précisément ce qu'on vient
   // d'ouvrir.
   const [edition, setEdition] = useState<Edition | null>(null);
-  const [creating, setCreating] = useState(false);
 
   // Nettoyage de l'adresse : `campagne` RESTE (c'est une position, on la
   // partage et on y revient), `ouvrir` et `nouvelle` partent (ce sont des
@@ -97,7 +96,6 @@ export function CampaignsWorkspace({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setEdition({ campaignId: focusCampaignId, section: openSection });
     }
-    if (openCreate) setCreating(true);
 
     // ⚠️ `history.replaceState` et NON `router.replace` : le second déclenche
     // un aller-retour serveur, et tant qu'il n'a pas abouti l'adresse porte
@@ -108,8 +106,12 @@ export function CampaignsWorkspace({
     const reste = focusCampaignId
       ? `?${PARAM.campagne}=${encodeURIComponent(focusCampaignId)}`
       : '';
+    if (openCreate) {
+      router.replace(nouvelleCampagneHref());
+      return;
+    }
     window.history.replaceState(null, '', `${pathname}${reste}`);
-  }, [focusCampaignId, openSection, openCreate, pathname]);
+  }, [focusCampaignId, openSection, openCreate, pathname, router]);
 
   return (
     <div
@@ -142,7 +144,6 @@ export function CampaignsWorkspace({
         <CampaignsList
           focusCampaignId={focusCampaignId}
           onEditCampaign={(campaignId) => setEdition({ campaignId })}
-          onCreateCampaign={() => setCreating(true)}
         />
       </div>
       {edition ? (
@@ -155,9 +156,6 @@ export function CampaignsWorkspace({
           initialSection={edition.section}
           onClose={() => setEdition(null)}
         />
-      ) : null}
-      {creating ? (
-        <CampaignCreateSheet onClose={() => setCreating(false)} />
       ) : null}
     </div>
   );

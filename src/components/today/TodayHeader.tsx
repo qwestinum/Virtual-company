@@ -15,6 +15,7 @@
  */
 
 import { AddCampaignButton } from '@/components/campagnes/AddCampaignButton';
+import { nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
 import { PHRASES } from '@/lib/lexique/phrases-ecran';
 
 export function TodayHeader({
@@ -53,7 +54,7 @@ export function TodayHeader({
         {/* LE SEUL geste que le recruteur initie depuis l'accueil : tout le
             reste de l'écran répond à ce qui est arrivé. Il reste donc seul —
             un second bouton ici et plus aucun des deux ne se voit. */}
-        <AddCampaignButton href="/campagnes?nouvelle=1" />
+        <AddCampaignButton href={nouvelleCampagneHref()} />
       </div>
       <p
         className="font-body"
