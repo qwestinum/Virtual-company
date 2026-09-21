@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { SourcingWorkspace } from '@/components/sourcing/SourcingWorkspace';
@@ -33,18 +32,6 @@ export default async function SourcingPage({
   if (!(await isSourcingEnabled())) notFound();
   const { campagne } = await searchParams;
   return (
-    <div className="flex h-full flex-col">
-      <div className="px-6 pt-4">
-        <Link
-          href="/campagnes"
-          className="inline-flex min-h-6 items-center gap-1.5 font-body text-[13px] font-semibold text-stone-500 hover:text-stone-900"
-        >
-          <span aria-hidden>←</span> Retour aux campagnes
-        </Link>
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <SourcingWorkspace initialCampaignId={campagne ?? null} />
-      </div>
-    </div>
+    <SourcingWorkspace initialCampaignId={campagne ?? null} />
   );
 }

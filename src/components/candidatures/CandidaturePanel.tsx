@@ -100,7 +100,16 @@ export function CandidaturePanel({
   };
 
   return (
-    <aside className="flex h-full w-full max-w-md flex-col border-l border-orqa-ligne bg-white">
+    // ⚠️ Le panneau ne se positionne PAS lui-même, et ne dépend pas non plus
+    // de la mise en page de son hôte : c'est le GABARIT qui l'ancre (prop
+    // `sidePanel`) et qui lui réserve sa place. Il était la seconde colonne
+    // d'un `flex h-full` ; le cadre de l'écran changé, il s'est retrouvé sous
+    // la liste, sans hauteur, et cliquer une candidature ne montrait plus
+    // rien. Ici il ne demande qu'une chose : remplir ce qu'on lui donne.
+    <aside
+      data-candidature-panel={item.id}
+      className="flex h-full w-full flex-col overflow-y-auto rounded-[14px] border border-orqa-ligne bg-white shadow-orqa-lg"
+    >
       <header className="flex items-start justify-between gap-3 px-6 py-5">
         <div className="flex min-w-0 items-start gap-3.5">
           <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] bg-gradient-to-br from-orqa-nuit to-orqa-nuit2 font-inter text-[17px] font-semibold text-white">

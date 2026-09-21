@@ -21,6 +21,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { PageShell } from '@/components/navigation/PageShell';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 
 export function CampaignFocusScreen({
@@ -38,17 +39,10 @@ export function CampaignFocusScreen({
   const charge = useCampaignsStore((s) => s.order.length > 0);
 
   return (
-    <div
-      className="font-body"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        overflowY: 'auto',
-        background: 'transparent',
-        color: 'var(--dash-text)',
-      }}
-    >
-      <div style={{ padding: '24px 28px 260px', maxWidth: 980, margin: '0 auto' }}>
+    // ⚠️ GABARIT COMMUN : l'écran posait son conteneur (980 px) et sa marge.
+    // La carte garde sa largeur de LECTURE — c'est du contenu.
+    <PageShell bottomSpace="wide">
+      <div style={{ maxWidth: 980 }}>
         <div
           data-focus={campaignId}
           style={{
@@ -140,6 +134,6 @@ export function CampaignFocusScreen({
           </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

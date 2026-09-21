@@ -20,6 +20,7 @@
 import { useState } from 'react';
 
 import { ActionButton } from '@/components/campagnes/ActionButton';
+import { PageShell } from '@/components/navigation/PageShell';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
 import { ALL_REFERENTS, type ReferentSelection } from '@/lib/referent/filter';
 import { applyReferentFilter } from '@/lib/today/referent-view';
@@ -87,11 +88,11 @@ export function TodayBoardView({
   ].filter((s) => s.n === 0);
 
   return (
-    <div className="h-full overflow-auto" style={{ padding: '24px 28px 60px' }}>
-      <div
-        className="flex flex-col gap-5"
-        style={{ maxWidth: 1400, margin: '0 auto' }}
-      >
+    // ⚠️ GABARIT COMMUN : l'écran posait sa propre marge et son propre
+    // conteneur. Mêmes valeurs qu'ici, mais écrites à un second endroit — et
+    // le titre finissait 20 px plus à gauche que sur Campagnes.
+    <PageShell>
+      <div className="flex flex-col gap-5">
         <TodayHeader
           firstName={firstName}
           chiffres={[
@@ -308,6 +309,6 @@ export function TodayBoardView({
 
         <TodayZoneStrip zones={zones} />
       </div>
-    </div>
+    </PageShell>
   );
 }

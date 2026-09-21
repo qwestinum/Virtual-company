@@ -8,6 +8,7 @@
  * « en recherche » et mentions arrivent au lot 3.
  */
 
+import { PageShell } from '@/components/navigation/PageShell';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -61,8 +62,11 @@ export function SourcingWorkspace({
   const open = data?.campaigns.find((c) => c.campaignId === openId) ?? null;
 
   return (
-    <div className="h-full overflow-auto px-6 py-6">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+    // ⚠️ GABARIT COMMUN (même constat qu'Entretiens : 896 px au lieu de 1400).
+    // Le TITRE vient du gabarit : posé dans le contenu, il tombait 20 px plus
+    // bas que sur les autres écrans.
+    <PageShell title="Sourcing">
+      <div className="flex w-full flex-col gap-5">
         {open ? (
           <SourcingCampaignView
             campaign={open}
@@ -75,11 +79,7 @@ export function SourcingWorkspace({
           <>
             <header className="flex items-end justify-between gap-4">
               <div>
-                <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-                  Recherche de profils
-                </p>
-                <h1 className="font-display text-3xl font-bold text-stone-900">Sourcing</h1>
-                <p className="mt-2 max-w-2xl font-body text-[14px] text-stone-600">
+                <p className="max-w-2xl font-body text-[14px] text-stone-600">
                   Trouvez des profils professionnels publics pour une campagne active. Vous décidez
                   qui approcher ; rien n’est envoyé à leur place.
                 </p>
@@ -112,6 +112,6 @@ export function SourcingWorkspace({
           </>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

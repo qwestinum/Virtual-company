@@ -20,6 +20,7 @@
  * deux.
  */
 
+import { PageShell } from '@/components/navigation/PageShell';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -230,27 +231,24 @@ export function InterviewsWorkspace({
   const verdictRows = filter(pipeline.verdict);
 
   return (
-    <div className="h-full overflow-auto px-6 py-6">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <header className="flex items-start justify-between gap-3">
-          <div>
-            <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-              Cycle d’entretien
-            </p>
-            <h1 className="font-display text-3xl font-bold text-stone-900">
-              Entretiens
-            </h1>
-          </div>
-          <button
-            type="button"
-            className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-stone-300 px-2.5 py-1.5 font-body text-[12px] font-semibold text-stone-600 hover:bg-stone-50"
-            onClick={() => void load()}
-          >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-            Rafraîchir
-          </button>
-        </header>
-
+    // ⚠️ GABARIT COMMUN : l'écran se bornait à 896 px (max-w-4xl), soit
+    // 504 px de moins que Campagnes — la page se rétrécissait en changeant
+    // d'onglet.
+    <PageShell
+      title="Entretiens"
+      subtitle="Le cycle d’entretien : ce qui attend une réservation, ce qui est programmé, ce qui attend un verdict."
+      actions={
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 px-2.5 py-1.5 font-body text-[12px] font-semibold text-stone-600 hover:bg-stone-50"
+          onClick={() => void load()}
+        >
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          Rafraîchir
+        </button>
+      }
+    >
+      <div className="flex w-full flex-col gap-5">
         <InterviewSignals orphans={pipeline.orphans} />
 
         <ReferentFilterBar
@@ -355,6 +353,6 @@ export function InterviewsWorkspace({
           }}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }

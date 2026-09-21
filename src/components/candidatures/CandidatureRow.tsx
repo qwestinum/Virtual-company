@@ -33,6 +33,7 @@ export function CandidatureRow({
   return (
     <button
       type="button"
+      data-candidature-row={item.id}
       onClick={onClick}
       className={`grid w-full grid-cols-[auto_1fr_auto_auto] items-center gap-4 rounded-[14px] border bg-white px-4 py-3.5 text-left transition hover:border-orqa-ciel hover:shadow-orqa ${
         selected ? 'border-orqa-nuit shadow-orqa' : 'border-orqa-ligne'

@@ -1,3 +1,4 @@
+import { PageShell } from '@/components/navigation/PageShell';
 import { ReportingHub } from '@/components/reporting/ReportingHub';
 
 export const metadata = { title: 'Pilotage — QWESTINUM' };
@@ -11,10 +12,10 @@ export const metadata = { title: 'Pilotage — QWESTINUM' };
  */
 export default function PilotagePage() {
   return (
-    <div className="h-full overflow-auto px-6 py-6">
-      <div className="mx-auto w-full max-w-4xl">
-        <ReportingHub />
-      </div>
-    </div>
+    // ⚠️ GABARIT COMMUN : la page se bornait à 896 px et n'avait AUCUN titre
+    // — seul écran de premier niveau dans ce cas.
+    <PageShell title="Pilotage" subtitle="Les rapports de campagne et la vue transverse.">
+      <ReportingHub />
+    </PageShell>
   );
 }

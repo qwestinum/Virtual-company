@@ -28,6 +28,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import { PARAM, nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
 
+import { PageShell } from '@/components/navigation/PageShell';
+
 import { CampaignsList } from './CampaignsList';
 import { UnsavedChangesBanner } from './UnsavedChangesBanner';
 import type { BlockKey } from './edit/CampaignEditAccordion';
@@ -114,38 +116,17 @@ export function CampaignsWorkspace({
   }, [focusCampaignId, openSection, openCreate, pathname, router]);
 
   return (
-    <div
-      className="font-body"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        overflowY: 'auto',
-        background: 'transparent',
-        color: 'var(--dash-text)',
-      }}
+    <PageShell
+      title="Gestion des campagnes"
+      subtitle="Vos campagnes de recrutement : création, édition, et pilotage du cycle de vie (suspendre, arrêter, reprendre)."
     >
-      <div style={{ padding: '24px 28px 60px', maxWidth: 1400, margin: '0 auto' }}>
-        <header style={{ marginBottom: 20 }}>
-          <h1
-            className="font-display"
-            style={{ fontSize: 22, fontWeight: 800, color: 'var(--dash-text)' }}
-          >
-            Gestion des campagnes
-          </h1>
-          <p
-            className="font-body"
-            style={{ marginTop: 4, fontSize: 13, color: 'var(--dash-text-secondary)' }}
-          >
-            Vos campagnes de recrutement : création, édition, et pilotage du
-            cycle de vie (suspendre, arrêter, reprendre).
-          </p>
-        </header>
+      <>
         <UnsavedChangesBanner />
         <CampaignsList
           focusCampaignId={focusCampaignId}
           onEditCampaign={(campaignId) => setEdition({ campaignId })}
         />
-      </div>
+      </>
       {edition ? (
         // `key` : changer de campagne OU de bloc demandé remonte la feuille,
         // pour que l'accordéon reparte sur le bloc nommé. Sans ça, ouvrir une
@@ -157,6 +138,6 @@ export function CampaignsWorkspace({
           onClose={() => setEdition(null)}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }

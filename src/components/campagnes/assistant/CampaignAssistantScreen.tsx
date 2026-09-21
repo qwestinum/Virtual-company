@@ -12,6 +12,8 @@ import { useSearchParams } from 'next/navigation';
 
 import { PARAM } from '@/lib/navigation/workspace-routes';
 
+import { PageShell } from '@/components/navigation/PageShell';
+
 import { CampaignAssistant } from './CampaignAssistant';
 
 export function CampaignAssistantScreen() {
@@ -19,27 +21,14 @@ export function CampaignAssistantScreen() {
   const resumeId = params?.get(PARAM.campagne) ?? null;
 
   return (
-    <div
-      className="font-body"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        overflowY: 'auto',
-        background: 'transparent',
-        color: 'var(--dash-text)',
-      }}
-    >
-      {/* ⚠️ GOUTTIÈRE BASSE de 260 px, et ce n'est pas du confort : le bandeau
-          « Des actions vous attendent » du workspace est posé en bas à droite,
-          sur ~230 px de haut, et il RECOUVRAIT le bouton « Activer la
-          campagne » — cliquer dessus atteignait la notification, pas le
-          bouton. Défaut trouvé en cliquant (S30.6) ; invisible à la lecture du
-          code, puisque les deux éléments vivent dans des composants qui ne se
-          connaissent pas. La gouttière permet de faire remonter le pied
-          au-dessus du bandeau. */}
-      <div style={{ padding: '24px 28px 260px', maxWidth: 980, margin: '0 auto' }}>
+    // ⚠️ GABARIT COMMUN. L'écran portait son propre conteneur (980 px). La
+    // carte, elle, garde sa largeur de lecture : c'est du CONTENU, pas le
+    // cadre de la page. `bottomSpace` aéré parce que le geste principal vit
+    // en bas à droite, là où le bandeau de notifications est posé.
+    <PageShell bottomSpace="wide">
+      <div style={{ maxWidth: 980 }}>
         <CampaignAssistant key={resumeId ?? 'neuve'} resumeId={resumeId} />
       </div>
-    </div>
+    </PageShell>
   );
 }

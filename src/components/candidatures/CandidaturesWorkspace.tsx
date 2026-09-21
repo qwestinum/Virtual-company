@@ -9,6 +9,7 @@
  * reste découplée et reçoit le libellé en prop).
  */
 
+import { PageShell } from '@/components/navigation/PageShell';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -204,18 +205,31 @@ export function CandidaturesWorkspace({
   const pageCount = Math.max(1, Math.ceil(listTotal / CANDIDATURES_PAGE_SIZE));
 
   return (
-    <div className="flex h-full bg-orqa-brume">
-      <div className="flex h-full flex-1 flex-col overflow-hidden">
-        <div className="border-b border-orqa-ligne px-7 py-5">
-          <div className="flex items-baseline gap-3">
-            <h1 className="font-fraunces text-[28px] font-semibold tracking-tight text-orqa-nuit">
-              Candidatures
-            </h1>
-            <span className="font-data text-[13px] text-orqa-gris">
-              {listTotal} candidature{listTotal > 1 ? 's' : ''}
-            </span>
-          </div>
-          <div className="mt-4">
+    // ⚠️ GABARIT COMMUN. L'écran posait son propre cadre : pleine largeur, pas
+    // de conteneur borné, et un fond `orqa-brume` qui n'est pas celui du
+    // workspace — en arrivant depuis Campagnes, la page s'élargissait ET
+    // changeait de couleur. Sa PEAU (Fraunces, marine) reste divergente
+    // jusqu'au lot des jetons ; son CADRE, non.
+    <PageShell
+      title="Candidatures"
+      subtitle={`${listTotal} candidature${listTotal > 1 ? 's' : ''}`}
+      sidePanel={
+        panelItem ? (
+          <CandidaturePanel
+            item={panelItem}
+            referent={referentOf(panelItem.campaignId)}
+            campaignLabel={labelOf(panelItem.campaignId)}
+            jobTitle={titleOf(panelItem.campaignId)}
+            onClose={() => setPanelItem(null)}
+            onOpenFull={() => setFullItem(panelItem)}
+            onActed={onActed}
+          />
+        ) : null
+      }
+    >
+      <div className="flex flex-col">
+        <div className="border-b border-orqa-ligne pb-5">
+          <div className="mt-1">
             <CandidaturesFilters
               campaignOptions={campaignOptions}
               activeCount={activeIds.length}
@@ -261,7 +275,7 @@ export function CandidaturesWorkspace({
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto px-7 py-5">
+        <div className="pt-5">
           {loadingList && rows.length === 0 ? (
             <p className="font-inter text-[13px] text-orqa-gris-clair">Chargement…</p>
           ) : rows.length === 0 ? (
@@ -315,18 +329,6 @@ export function CandidaturesWorkspace({
         </div>
       </div>
 
-      {panelItem ? (
-        <CandidaturePanel
-          item={panelItem}
-          referent={referentOf(panelItem.campaignId)}
-          campaignLabel={labelOf(panelItem.campaignId)}
-          jobTitle={titleOf(panelItem.campaignId)}
-          onClose={() => setPanelItem(null)}
-          onOpenFull={() => setFullItem(panelItem)}
-          onActed={onActed}
-        />
-      ) : null}
-
       {fullItem ? (
         <CandidatureFullPage
           item={fullItem}
@@ -335,6 +337,6 @@ export function CandidaturesWorkspace({
           onActed={onActed}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }
