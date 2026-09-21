@@ -34,15 +34,24 @@ export type ApecFieldRowProps = {
 export function ApecFieldRow({ label, note, counter, children }: ApecFieldRowProps) {
   return (
     <div>
-      <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
-        <span>{label}</span>
-        {counter ? (
-          <span style={{ fontWeight: 400, color: 'var(--dash-text-secondary)' }}>
-            {counter}
-          </span>
-        ) : null}
+      {/* ⚠️ Le libellé ENVELOPPE son champ — association implicite, sans
+          identifiant à tenir d'accord entre deux fichiers. Posé À CÔTÉ, il
+          n'était qu'un mot au-dessus d'une zone : on le cliquait, et rien ne
+          se passait. Ici, le cliquer donne le focus, quel que soit le contrôle
+          en dessous (champ, liste, zone de texte). */}
+      <label style={{ display: 'block', cursor: 'pointer' }}>
+        <span
+          style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}
+        >
+          <span>{label}</span>
+          {counter ? (
+            <span style={{ fontWeight: 400, color: 'var(--dash-text-secondary)' }}>
+              {counter}
+            </span>
+          ) : null}
+        </span>
+        {children}
       </label>
-      {children}
       {note?.origin === 'derived' && note.from ? (
         <div style={derivedStyle}>← déduit de {note.from}, à confirmer</div>
       ) : null}

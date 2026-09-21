@@ -147,16 +147,22 @@ export function GenericJobAdPanel({ campaignId }: { campaignId: string }) {
 
       {error && <p style={errorStyle}>{error}</p>}
 
-      <label style={labelStyle}>Titre</label>
+      <label style={labelStyle} htmlFor="annonce-titre">
+        Titre
+      </label>
       <input
+        id="annonce-titre"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         style={inputStyle}
         placeholder={busy === 'generate' ? 'Rédaction en cours…' : ''}
       />
 
-      <label style={labelStyle}>Texte de l’annonce</label>
+      <label style={labelStyle} htmlFor="annonce-texte">
+        Texte de l’annonce
+      </label>
       <textarea
+        id="annonce-texte"
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={12}

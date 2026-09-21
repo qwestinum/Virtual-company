@@ -106,6 +106,26 @@ describe('S29 — les portes de la carte campagne', () => {
     }
   }, 180_000);
 
+  it('S29.4bis — une porte PROPOSE ce qui n’est pas activé, au lieu de renvoyer', async () => {
+    // Sur une campagne qui ne retient aucun canal à contenu, « Diffuser
+    // l'annonce » offrait un lien vers les réglages : refaire le chemin pour
+    // une case à cocher. Elle propose maintenant le choix sur place.
+    await ouvrirLaCarte();
+    await porte(page, 'Diffuser l’annonce').click();
+    await page.waitForURL((u) => u.pathname.endsWith('/annonce'), { timeout: 60_000 });
+    await page.waitForSelector(`[data-focus="${campagne.id}"]`, { timeout: 60_000 });
+
+    // Deux cas, tous deux acceptables — ce qui ne l'est pas, c'est un
+    // cul-de-sac : soit l'annonce est là, soit on propose de choisir le canal.
+    const panneaux = await page.locator('[data-channel-content]').count();
+    const propose = await page.locator('[data-optin]').count();
+    expect(panneaux + propose).toBeGreaterThan(0);
+    if (propose > 0) {
+      // Le choix est offert, et il nomme les canaux réellement diffusables.
+      expect(await page.locator('[data-optin-choice]').count()).toBeGreaterThan(0);
+    }
+  }, 180_000);
+
   it('S29.5 — l’adresse collée dans la barre ouvre la même chose', async () => {
     await page.goto(`${BASE_URL}/campagnes/${encodeURIComponent(campagne.id)}/vivier`, {
       waitUntil: 'domcontentloaded',

@@ -22,10 +22,17 @@ import {
 } from '@/lib/fdp/contract-type';
 
 export function ContractTypeField({
+  id,
   value,
   onChange,
   disabled,
 }: {
+  /**
+   * Identifiant porté par la SAISIE LIBRE — c'est le seul contrôle du bloc
+   * qu'un libellé puisse désigner. Sans lui, le libellé « Type de contrat »
+   * serait un `htmlFor` qui ne pointe nulle part : un clic sans effet.
+   */
+  id?: string;
   value: unknown;
   onChange: (value: unknown) => void;
   disabled?: boolean;
@@ -101,6 +108,7 @@ export function ContractTypeField({
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input
+          id={id}
           type="text"
           value={custom}
           disabled={disabled}

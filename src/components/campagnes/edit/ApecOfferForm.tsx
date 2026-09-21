@@ -139,7 +139,9 @@ export function ApecOfferForm({
         />
       </ApecFieldRow>
 
-      <label style={labelStyle}>Candidatures reçues sur</label>
+      {/* Une adresse en lecture seule ne se clique pas : un <label> promet un
+          champ. C'est une LÉGENDE. */}
+      <p style={labelStyle}>Candidatures reçues sur</p>
       <div style={{ ...inputStyle, background: 'var(--dash-warm)' }}>
         {offer.applicationEmail || '— aucune boîte associée —'}
       </div>

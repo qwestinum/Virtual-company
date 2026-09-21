@@ -207,6 +207,16 @@
   --dash-hover: #f5f0eb;
   --dash-border: #ede8e3;
   --dash-border-strong: #d4cdc5;
+  /*
+   * BORDURE DE CHAMP DE SAISIE — un rôle à part, et il a sa raison d'être.
+   * `--dash-border` (1,22:1) et `--dash-border-strong` (1,57:1) dessinent des
+   * CARTES : leur faiblesse est un choix, une carte se lit par son fond. Un
+   * champ, lui, doit se voir comme une zone où l'on écrit — sous 3:1 on ne
+   * distingue pas le contour, et le libellé au-dessus devient le seul repère,
+   * donc la chose qu'on clique. Mesuré : 3,39:1 sur blanc, 3,20:1 sur le fond
+   * sand, 3,24:1 sur le fond chaud (test `socle-contraste`).
+   */
+  --dash-field-border: #8f8b84;
   --dash-text: #1b1b18;
   --dash-text-secondary: #65625d;
   --dash-text-tertiary: #9c9891;
@@ -497,4 +507,39 @@
 .bg-blob-3 {
   animation: blob-float 30s ease-in-out infinite;
   animation-delay: -8s;
+}
+
+/* ── CHAMPS DE SAISIE  ───────────────────────────────────────────────────────
+ *
+ * Un champ se voit, et il DIT qu'il a le focus. La bordure seule ne suffit
+ * pas : un simple changement de teinte n'est pas perceptible pour qui
+ * distingue mal les couleurs, et disparaît sous une loupe d'écran. D'où un
+ * ANNEAU, dessiné hors du cadre pour ne pas déplacer la mise en page.
+ */
+.orqa-field {
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.orqa-field:hover:not(:disabled) {
+  border-color: var(--dash-text-secondary);
+}
+
+.orqa-field:focus,
+.orqa-field:focus-visible {
+  outline: none;
+  border-color: var(--dash-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dash-blue) 28%, transparent);
+}
+
+.orqa-field:disabled {
+  background: var(--dash-hover);
+  color: var(--dash-text-secondary);
+  cursor: not-allowed;
+}
+
+/* Le texte d'exemple vit DANS le champ, jamais au-dessus : au-dessus, il se
+ * lit comme une valeur déjà saisie. */
+.orqa-field::placeholder {
+  color: var(--dash-text-secondary);
+  opacity: 0.75;
 }

@@ -1,29 +1,34 @@
 'use client';
 
 /**
- * Éditeur inline complet d'une fiche de poste (Session 6 v2).
+ * Éditeur inline complet d'une fiche de poste.
  *
- * Réutilisé par :
- *   - `FDPEditBlock` (édition d'une campagne existante)
- *   - `CampaignCreateSheet` (création hors chat)
+ * Réutilisé par l'ÉDITION d'une campagne (`FDPEditBlock`) et par l'ASSISTANT
+ * de création (étape « Le poste ») — un seul formulaire, donc une seule
+ * correction quand quelque chose ne va pas.
  *
- * Chaque champ devient un input adapté à son type — texte, select,
- * textarea (missions, compétences). Les arrays sont saisis sur des
- * lignes séparées dans une textarea pour rester simple en démo.
+ * ⚠️ Il monte le champ PARTAGÉ (`FormField` + contrôles) et ne dessine plus le
+ * sien. Avant : un libellé en petites capitales grises au-dessus d'une zone
+ * sans bordure — le mot était la seule chose visible, donc la chose qu'on
+ * cliquait, et le clic ne faisait rien. Le libellé est maintenant lié au champ
+ * par `htmlFor` : le cliquer donne le focus.
  *
- * L'éditeur est « contrôlé » par le parent qui détient l'objet
+ * L'éditeur est « contrôlé » par le parent, qui détient l'objet
  * `FDPInProgress` et reçoit chaque patch via `onPatch`.
  */
 
-import type { ChangeEvent, FocusEvent } from 'react';
-
+import { FormField, FormStack } from '@/components/ui/FormField';
+import {
+  SelectInput,
+  TextAreaInput,
+  TextInput,
+} from '@/components/ui/FormControls';
 import {
   FIELD_KEYS,
   FIELD_LABELS,
   SenioritySchema,
   type FDPInProgress,
   type FieldKey,
-  type FieldStatus,
 } from '@/types/field-collection';
 
 import { ContractTypeField } from './ContractTypeField';
@@ -33,166 +38,122 @@ import {
   parseListInputRaw,
 } from './list-input';
 
+/** L'exemple vit DANS le champ. Vide = pas d'exemple à donner. */
+const EXEMPLES: Partial<Record<FieldKey, string>> = {
+  job_title: 'ex. Développeur back end',
+  location: 'ex. Paris, hybride 2 jours',
+  salary_range: 'ex. 45 – 55 k€',
+  start_date: 'ex. 1er juin 2026',
+  main_missions: 'Une entrée par ligne',
+  key_skills: 'Une entrée par ligne',
+};
+
+/** Aide contextuelle, sous le champ. Absente quand le libellé suffit. */
+const AIDES: Partial<Record<FieldKey, string>> = {
+  main_missions: 'Une mission par ligne — elles seront reprises telles quelles dans l’annonce.',
+  key_skills: 'Une compétence par ligne. Elles servent aussi à chercher dans le vivier.',
+};
+
 export type FDPInlineEditorProps = {
   fdp: FDPInProgress;
   onPatch: (key: FieldKey, value: unknown) => void;
   disabled?: boolean;
 };
 
-export function FDPInlineEditor({
-  fdp,
-  onPatch,
-  disabled,
-}: FDPInlineEditorProps) {
+export function FDPInlineEditor({ fdp, onPatch, disabled }: FDPInlineEditorProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {FIELD_KEYS.map((key) => (
-        <FieldRow
-          key={key}
-          fieldKey={key}
-          field={fdp.fields[key]}
-          onChange={(value) => onPatch(key, value)}
-          disabled={disabled}
-        />
-      ))}
-    </div>
+    <FormStack>
+      {FIELD_KEYS.map((key) => {
+        const field = fdp.fields[key];
+        const id = `fdp-${key}`;
+        return (
+          // `data-field` : repère STABLE pour les tests qui cliquent.
+          <div key={key} data-field={key}>
+            <FormField
+              id={id}
+              label={FIELD_LABELS[key]}
+              required={field?.required !== false}
+              hint={AIDES[key]}
+            >
+              <Controle
+                id={id}
+                fieldKey={key}
+                value={field?.value}
+                onChange={(value) => onPatch(key, value)}
+                disabled={disabled}
+              />
+            </FormField>
+          </div>
+        );
+      })}
+    </FormStack>
   );
 }
 
-function FieldRow({
+function Controle({
+  id,
   fieldKey,
-  field,
+  value,
   onChange,
   disabled,
 }: {
+  id: string;
   fieldKey: FieldKey;
-  field: FieldStatus | undefined;
+  value: unknown;
   onChange: (value: unknown) => void;
   disabled?: boolean;
 }) {
-  const label = FIELD_LABELS[fieldKey];
-  const filled = field?.status === 'filled';
-  return (
-    <div
-      // Repère STABLE pour les tests qui cliquent (S30) : sans lui, atteindre un
-      // champ demanderait de compter les rangées — et l'ordre des champs est
-      // exactement le genre de chose qui bouge.
-      data-field={fieldKey}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-        padding: '8px 12px',
-        borderRadius: 10,
-        background: 'var(--dash-warm)',
-        border: `1px solid ${filled ? 'var(--dash-border)' : 'var(--dash-border-strong)'}`,
-      }}
-    >
-      <label
-        className="font-body"
-        style={{
-          fontSize: 11,
-          color: 'var(--dash-text-tertiary)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-        }}
-      >
-        {label}
-      </label>
-      {renderInput(fieldKey, field?.value, onChange, disabled)}
-    </div>
-  );
-}
+  const texte = typeof value === 'string' ? value : '';
+  const exemple = EXEMPLES[fieldKey];
 
-function renderInput(
-  key: FieldKey,
-  value: unknown,
-  onChange: (value: unknown) => void,
-  disabled?: boolean,
-) {
-  const baseStyle = {
-    width: '100%',
-    border: 'none',
-    background: 'transparent',
-    outline: 'none',
-    fontSize: 13,
-    color: 'var(--dash-text)',
-    padding: '4px 0',
-    fontFamily: 'var(--font-nunito), system-ui, sans-serif',
-  };
-  switch (key) {
-    case 'seniority': {
-      const v = typeof value === 'string' ? value : '';
+  switch (fieldKey) {
+    case 'seniority':
       return (
-        <select
-          value={v}
+        <SelectInput
+          id={id}
+          value={texte}
           disabled={disabled}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-            onChange(e.currentTarget.value || undefined)
-          }
-          style={baseStyle}
+          onChange={(next) => onChange(next || undefined)}
         >
-          <option value="">—</option>
+          <option value="">À choisir</option>
           {SenioritySchema.options.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>
           ))}
-        </select>
+        </SelectInput>
       );
-    }
-    case 'contract_type': {
-      // Multi-sélection + saisie libre (composant dédié). Valeur = string[].
-      return (
-        <ContractTypeField value={value} onChange={onChange} disabled={disabled} />
-      );
-    }
+
+    case 'contract_type':
+      // Multi-sélection + saisie libre : composant dédié, déjà conforme.
+      return <ContractTypeField id={id} value={value} onChange={onChange} disabled={disabled} />;
+
     case 'main_missions':
-    case 'key_skills': {
-      const v = listValueToText(value);
+    case 'key_skills':
       return (
-        <textarea
-          rows={key === 'main_missions' ? 4 : 3}
-          value={v}
+        <TextAreaInput
+          id={id}
+          rows={fieldKey === 'main_missions' ? 4 : 3}
+          value={listValueToText(value)}
+          placeholder={exemple}
           disabled={disabled}
-          placeholder="Une entrée par ligne"
           // Pendant la frappe on conserve le texte TEL QUEL (round-trip exact)
-          // pour que le curseur ne saute plus en fin de paragraphe ; la
+          // pour que le curseur ne saute pas en fin de paragraphe ; la
           // normalisation se fait au blur.
-          onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
-            onChange(parseListInputRaw(e.currentTarget.value))
-          }
-          onBlur={(e: FocusEvent<HTMLTextAreaElement>) =>
-            onChange(normalizeListInput(e.currentTarget.value))
-          }
-          style={{ ...baseStyle, resize: 'vertical' }}
+          onChange={(next) => onChange(parseListInputRaw(next))}
+          onBlur={() => onChange(normalizeListInput(listValueToText(value)))}
         />
       );
-    }
-    case 'start_date': {
-      const v = typeof value === 'string' ? value : '';
+
+    default:
       return (
-        <input
-          type="text"
-          value={v}
+        <TextInput
+          id={id}
+          value={texte}
+          placeholder={exemple}
           disabled={disabled}
-          placeholder="ex. 1er juin 2026 ou 2026-06-01"
-          onChange={(e) => onChange(e.currentTarget.value || undefined)}
-          style={baseStyle}
+          onChange={(next) => onChange(next || undefined)}
         />
       );
-    }
-    default: {
-      const v = typeof value === 'string' ? value : '';
-      return (
-        <input
-          type="text"
-          value={v}
-          disabled={disabled}
-          onChange={(e) => onChange(e.currentTarget.value || undefined)}
-          style={baseStyle}
-        />
-      );
-    }
   }
 }
