@@ -25,8 +25,8 @@ export const LEGACY_ROUTES = {
     why: "L'ancienne file d'arbitrage disparaît du premier niveau. Sa population, ce sont les candidatures à valider — elles se retrouvent sous leur puce, dans LA vue des candidatures.",
   },
   '/validations-vivier': {
-    to: '/campagnes/vivier',
-    why: "Les prises de contact du vivier relèvent d'une campagne. La file garde son écran jusqu'à ce que la décision se prenne sur place dans la recherche vivier (lot 4) — la supprimer maintenant rendrait invisibles les propositions déjà en attente.",
+    to: '/campagnes',
+    why: "La file différée est supprimée (lot 4) : la décision se prend SUR PLACE, dans la recherche vivier d'une campagne. Les propositions qui y attendaient n'ont pas bougé d'un octet — elles ont été relocalisées et tracées au journal (`npm run relocate:vivier`), et réapparaissent sous leur campagne.",
   },
   '/reporting': {
     to: '/pilotage',

@@ -25,9 +25,11 @@ import { ScoringEditBlock } from './ScoringEditBlock';
 export type CampaignEditAccordionProps = {
   campaign: ActiveCampaign;
   onClose: () => void;
+  /** Bloc à ouvrir d'emblée (défaut : les seuils). */
+  initialSection?: BlockKey;
 };
 
-type BlockKey =
+export type BlockKey =
   | 'fdp'
   | 'scoring'
   | 'channels'
@@ -41,8 +43,15 @@ type BlockKey =
 export function CampaignEditAccordion({
   campaign,
   onClose,
+  initialSection,
 }: CampaignEditAccordionProps) {
-  const [expanded, setExpanded] = useState<BlockKey | null>('threshold');
+  // Section d'ouverture portée par l'URL (`/campagnes?campagne=…&ouvrir=vivier`).
+  // C'est ce qui permet au bouton « Chercher dans le vivier » de la carte
+  // d'ouvrir le vivier, et non le bloc des seuils : un bouton qui nomme un
+  // geste doit déposer devant ce geste.
+  const [expanded, setExpanded] = useState<BlockKey | null>(
+    initialSection ?? 'threshold',
+  );
 
   const toggle = (key: BlockKey) =>
     setExpanded(expanded === key ? null : key);

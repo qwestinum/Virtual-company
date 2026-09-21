@@ -123,7 +123,9 @@ describe('anciennes adresses', () => {
   it('chacune mène à sa nouvelle place, filtre compris', () => {
     expect(legacyTarget('/rh/recrutement')).toBe('/aujourdhui');
     expect(legacyTarget('/validations')).toBe('/candidatures?statut=a_valider');
-    expect(legacyTarget('/validations-vivier')).toBe('/campagnes/vivier');
+    // La file différée a disparu (lot 4) : la décision se prend dans la
+    // recherche vivier d'une campagne, donc l'ancienne adresse mène à la liste.
+    expect(legacyTarget('/validations-vivier')).toBe('/campagnes');
     expect(legacyTarget('/reporting')).toBe('/pilotage');
     expect(legacyTarget('/candidatures-apercu')).toBe('/candidatures');
   });

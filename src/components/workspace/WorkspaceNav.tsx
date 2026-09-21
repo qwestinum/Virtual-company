@@ -28,7 +28,11 @@ import { SettingsGearLink } from './SettingsGearLink';
 export type WorkspaceNavBadges = {
   /** Volume : combien de dossiers attendent une décision. */
   pendingValidations: number;
-  /** Volume : prises de contact vivier en attente. */
+  /**
+   * Volume : profils du vivier qui attendent une décision. Posé sur
+   * « Campagnes » depuis que la file différée a disparu — la décision se prend
+   * dans la recherche vivier d'une campagne, donc c'est là qu'on envoie.
+   */
   pendingVivier: number;
   /** Signal « ça traîne » : dossiers en attente depuis trop longtemps. */
   overdueValidations: number;
@@ -61,7 +65,7 @@ function badgesFor(
             {
               count: b.pendingVivier,
               tone: 'vivier' as const,
-              title: `${b.pendingVivier} ${plural(b.pendingVivier, 'prise de contact vivier en attente', 'prises de contact vivier en attente')}`,
+              title: `${b.pendingVivier} ${plural(b.pendingVivier, 'profil du vivier à examiner', 'profils du vivier à examiner')}`,
             },
           ]
         : [];

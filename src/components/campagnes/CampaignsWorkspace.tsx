@@ -18,11 +18,13 @@ import { useState } from 'react';
 import { CampaignsList } from './CampaignsList';
 import { UnsavedChangesBanner } from './UnsavedChangesBanner';
 import { CampaignCreateSheet } from './edit/CampaignCreateSheet';
+import type { BlockKey } from './edit/CampaignEditAccordion';
 import { CampaignEditSheet } from './edit/CampaignEditSheet';
 
 export function CampaignsWorkspace({
   focusCampaignId = null,
   openCreate = false,
+  openSection = null,
 }: {
   /**
    * Navigation croisée : un quadrant de carte campagne (« CV reçus »,
@@ -38,9 +40,17 @@ export function CampaignsWorkspace({
    * ne changera pas.
    */
   openCreate?: boolean;
+  /**
+   * Bloc d'édition à ouvrir (`?ouvrir=vivier`). C'est ce qui fait que
+   * « Chercher dans le vivier », depuis la carte, dépose devant le vivier —
+   * un bouton qui nomme un geste doit déposer devant ce geste.
+   */
+  openSection?: BlockKey | null;
 } = {}) {
+  // Une section demandée par l'URL implique d'OUVRIR la campagne : sans ça le
+  // lien déposerait sur la liste, et le geste nommé resterait à chercher.
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
-    null,
+    openSection ? (focusCampaignId ?? null) : null,
   );
   const [creating, setCreating] = useState(openCreate);
 
@@ -82,6 +92,7 @@ export function CampaignsWorkspace({
       {editingCampaignId ? (
         <CampaignEditSheet
           campaignId={editingCampaignId}
+          initialSection={openSection ?? undefined}
           onClose={() => setEditingCampaignId(null)}
         />
       ) : null}

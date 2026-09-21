@@ -246,6 +246,27 @@
   animation: dash-fade-in 0.35s ease both;
 }
 
+/* ── Mouvement réduit — une préférence système, pas une option ────────────
+   Le produit anime beaucoup : apparitions en cascade, pulsations d'état,
+   flux le long des liens. Aucune de ces animations ne PORTE d'information ;
+   elles décorent. Sous `prefers-reduced-motion: reduce`, elles s'arrêtent —
+   et le contenu s'affiche d'emblée plutôt que de se révéler.
+
+   ⚠️ `animation: none` et pas une durée nulle : une durée nulle laisse
+   l'élément à son état INITIAL (opacité 0) quand l'animation porte un
+   `both` — le contenu resterait invisible. */
+@media (prefers-reduced-motion: reduce) {
+  .dash-fade-in,
+  .pulse-glow,
+  .status-dot-pulse,
+  .work-bounce {
+    animation: none !important;
+  }
+  .msg-rise {
+    animation: none !important;
+  }
+}
+
 @keyframes pulse-glow {
   0%,
   100% {

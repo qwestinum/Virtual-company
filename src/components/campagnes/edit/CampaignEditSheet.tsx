@@ -20,16 +20,22 @@ import { useCampaignsStore } from '@/stores/campaigns-store';
 
 import { StatusPill, type PillKind } from '@/components/dashboard/StatusPill';
 
-import { CampaignEditAccordion } from './CampaignEditAccordion';
+import {
+  CampaignEditAccordion,
+  type BlockKey,
+} from './CampaignEditAccordion';
 
 export type CampaignEditSheetProps = {
   campaignId: string;
   onClose: () => void;
+  /** Bloc à ouvrir d'emblée, porté par l'URL. */
+  initialSection?: BlockKey;
 };
 
 export function CampaignEditSheet({
   campaignId,
   onClose,
+  initialSection,
 }: CampaignEditSheetProps) {
   const campaign = useCampaignsStore((s) => s.byId[campaignId] ?? null);
 
