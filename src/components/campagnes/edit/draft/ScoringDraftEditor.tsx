@@ -104,10 +104,14 @@ export function ScoringDraftEditor({
             gap: 10,
             flexWrap: 'wrap',
             padding: '10px 14px',
-            borderRadius: '10px 10px 0 0',
+            // Un bandeau fermé sur ses quatre côtés, et quatre angles
+            // identiques : accolé à la liste par le bas, il se lisait comme
+            // l'en-tête d'un tableau, alors qu'il commande des blocs qui ont
+            // chacun leur propre cadre arrondi. C'est le filet en dessous qui
+            // dit le rattachement, pas une arête partagée.
+            borderRadius: 10,
             background: 'var(--dash-purple-light)',
             border: '1px solid var(--dash-purple)',
-            borderBottom: 'none',
           }}
         >
           <span
@@ -150,8 +154,9 @@ export function ScoringDraftEditor({
           gap: 8,
           // Rentrée + filet : la liste est le CONTENU du bandeau, pas sa suite.
           marginLeft: untreated > 0 ? 14 : 0,
+          marginTop: untreated > 0 ? 8 : 0,
           paddingLeft: untreated > 0 ? 12 : 0,
-          paddingTop: untreated > 0 ? 12 : 0,
+          paddingTop: untreated > 0 ? 10 : 0,
           borderLeft:
             untreated > 0
               ? '2px solid color-mix(in srgb, var(--dash-purple) 45%, transparent)'
