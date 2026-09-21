@@ -159,12 +159,18 @@ export function TodayBoardView({
         {pending.validation ? (
           <TodaySkeleton titre="Candidatures à valider" />
         ) : board.validation.total > 0 ? (
+          // ⚠️ TEINTE INVERSÉE sur les DEUX PREMIERS blocs : l'en-tête porte
+          // la teinte dense, le corps redevient blanc, les sous-blocs prennent
+          // la nuance légère. Le troisième bloc (« à régler ») garde la teinte
+          // normale — il n'a pas de sous-bloc, l'inversion n'y dirait rien.
           <TodayCard
             accent="purple"
+            teinte="inversee"
             title={PHRASES.validation.titre(board.validation.total)}
           >
             <TodaySubBlock
               accent="purple"
+              teinte="inversee"
               id="validation.aLire"
               count={board.validation.aLire.total}
               title={surTotal(
@@ -191,6 +197,7 @@ export function TodayBoardView({
                 ligne à laquelle s'accrocher. */}
             <TodaySubBlock
               accent="purple"
+              teinte="inversee"
               id="validation.aEcarter"
               count={board.validation.aEcarter.total}
               title={PHRASES.aEcarter.titre(board.validation.aEcarter.total)}
@@ -222,10 +229,12 @@ export function TodayBoardView({
         ) : board.entretiens.total > 0 ? (
           <TodayCard
             accent="teal"
+            teinte="inversee"
             title={PHRASES.entretiens.titre(board.entretiens.total)}
           >
             <TodaySubBlock
               accent="teal"
+              teinte="inversee"
               id="entretiens.aConfirmer"
               count={board.entretiens.aConfirmer.total}
               title={surTotal(
@@ -255,6 +264,7 @@ export function TodayBoardView({
 
             <TodaySubBlock
               accent="teal"
+              teinte="inversee"
               id="entretiens.aDecider"
               count={board.entretiens.aDecider.total}
               title={surTotal(

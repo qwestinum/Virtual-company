@@ -7,6 +7,16 @@
  *   ② le SOUS-BLOC  — même teinte, un cran plus dense (14 %), repliable
  *   ③ la RANGÉE     — blanc franc, bordure fine, coins arrondis
  *
+ * ── TEINTE INVERSÉE (`teinte="inversee"`) ───────────────────────────────────
+ * Les deux niveaux ÉCHANGENT leur place : l'en-tête prend la teinte dense, le
+ * corps de la carte redevient blanc, et les sous-blocs prennent la nuance
+ * légère. Le relief reste à trois niveaux et dans le même ordre de densité —
+ * c'est l'ACCENT qui se déplace, du contenu vers le titre.
+ *
+ * Les deux teintes restent celles qui existent : aucune valeur nouvelle, donc
+ * le contraste AA déjà mesuré sur chacune reste valable (cf.
+ * `socle-contraste.test.ts`, qui les vérifie toutes les deux).
+ *
  * L'écart entre les trois doit se lire à 50 % de zoom SANS texte : c'est lui
  * qui dit « ceci contient cela » sans qu'on ait à le comprendre. Un trait fin
  * comme seul séparateur ne le disait pas — il séparait sans hiérarchiser.
@@ -30,30 +40,44 @@ export const SUBTINT_PERCENT = 14;
 const tint = (accent: DashColor, pct: number): string =>
   `color-mix(in srgb, ${DASH_COLORS[accent].solid} ${pct}%, var(--dash-surface))`;
 
+/**
+ * Où porte la teinte. `normale` : le corps est teinté, l'en-tête le suit.
+ * `inversee` : l'en-tête porte la teinte dense, le corps redevient blanc.
+ */
+export type TeinteCarte = 'normale' | 'inversee';
+
 export function TodayCard({
   accent,
   title,
   subtitle,
+  teinte = 'normale',
   children,
 }: {
   accent: DashColor;
   title: string;
   subtitle?: string;
+  teinte?: TeinteCarte;
   children: React.ReactNode;
 }) {
+  const inversee = teinte === 'inversee';
   return (
     <section
       style={{
         borderRadius: 14,
         border: '1px solid var(--dash-border)',
         borderLeft: `3px solid ${DASH_COLORS[accent].solid}`,
-        background: tint(accent, TINT_PERCENT),
+        // Inversée, le corps redevient blanc : sans ça les sous-blocs, passés
+        // à la nuance légère, se confondraient avec lui.
+        background: inversee ? 'var(--dash-surface)' : tint(accent, TINT_PERCENT),
         overflow: 'hidden',
       }}
     >
       <header
         className="flex items-start gap-2.5 px-4 py-3"
-        style={{ borderBottom: '1px solid var(--dash-border)' }}
+        style={{
+          borderBottom: '1px solid var(--dash-border)',
+          background: inversee ? tint(accent, SUBTINT_PERCENT) : undefined,
+        }}
       >
         <span
           aria-hidden
@@ -127,9 +151,12 @@ export function TodaySubBlock({
   subtitle,
   count,
   action,
+  teinte = 'normale',
   children,
 }: {
   accent: DashColor;
+  /** Doit suivre celle de la carte qui le contient. */
+  teinte?: TeinteCarte;
   /** Clé de mémorisation du repli, stable d'un rendu à l'autre. */
   id: string;
   title: string;
@@ -154,7 +181,10 @@ export function TodaySubBlock({
     <div
       style={{
         borderRadius: 10,
-        background: tint(accent, SUBTINT_PERCENT),
+        background: tint(
+          accent,
+          teinte === 'inversee' ? TINT_PERCENT : SUBTINT_PERCENT,
+        ),
       }}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
