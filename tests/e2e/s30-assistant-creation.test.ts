@@ -18,6 +18,7 @@ import { BASE_URL } from './setup';
 import { assertAppIsUp, launchBrowser, signIn } from './helpers/browser';
 import {
   ASSISTANT_URL,
+  bouchonnerLesPropositions,
   ouvrirAssistant,
   bandeEnregistrement,
   cliquerSuivant,
@@ -41,6 +42,8 @@ let recruiter: TestRecruiter;
 let db: SupabaseClient;
 /** Identifiant de la campagne créée par le test — effacée en fin de fichier. */
 let campaignId: string | null = null;
+/** Second brouillon, créé par le scénario d'abandon — effacé comme le premier. */
+let abandonne: string | null = null;
 
 async function ligne(): Promise<{ status: string; name: string } | null> {
   if (!campaignId) return null;
@@ -68,7 +71,9 @@ afterAll(async () => {
   await browser?.close().catch(() => {});
   // La campagne d'essai ne reste PAS : elle compterait dans les écrans de
   // demain, et un test qui laisse des traces finit par se tester lui-même.
-  if (campaignId) await db.from('campaigns').delete().eq('id', campaignId).then(() => {});
+  for (const id of [campaignId, abandonne]) {
+    if (id) await db.from('campaigns').delete().eq('id', id).then(() => {});
+  }
   if (recruiter) await deleteTestRecruiter(recruiter);
 });
 
@@ -103,6 +108,36 @@ describe('S30 — l’assistant de création', () => {
     expect(await suivant(page).isEnabled()).toBe(true);
   }, 180_000);
 
+  it('S30.2bis — « Proposer le reste de la fiche » ne remplit QUE les vides', async () => {
+    await bouchonnerLesPropositions(page);
+    // Une valeur déjà saisie ne doit pas bouger : ce que le recruteur a écrit
+    // prime sur ce que le modèle propose, toujours.
+    const localisation = page
+      .locator('[data-field="location"] input, [data-field="location"] textarea')
+      .first();
+    await localisation.fill('Paris (hybride)');
+    await localisation.blur();
+    const salaire = page
+      .locator('[data-field="salary_range"] input, [data-field="salary_range"] textarea')
+      .first();
+    await salaire.fill('');
+    await salaire.blur();
+    await page.waitForTimeout(300);
+
+    await page.locator('[data-role="propose-fdp"]').click();
+    await expect
+      .poll(() => salaire.inputValue(), { timeout: 30_000 })
+      .toContain('proposé');
+    expect(await localisation.inputValue()).toBe('Paris (hybride)');
+
+    // On remet ce que le scénario suivant attend.
+    await localisation.fill('Paris (hybride)');
+    await salaire.fill('45 – 55 k€');
+    await salaire.blur();
+    await page.waitForTimeout(300);
+    expect(await suivant(page).isEnabled()).toBe(true);
+  }, 180_000);
+
   it('S30.3 — le premier « Suivant » fait EXISTER la campagne en base', async () => {
     await cliquerSuivant(page, 'criteres');
     expect(await bandeEnregistrement(page).getAttribute('data-saved')).toBe('true');
@@ -122,6 +157,33 @@ describe('S30 — l’assistant de création', () => {
     const titre = await page.locator('h1').first().textContent();
     expect(titre).toContain(INTITULE);
     expect(titre).toContain(campaignId!);
+  }, 180_000);
+
+  it('S30.3bis — « Proposer la grille » remplace les critères, sous un bandeau MAÎTRE', async () => {
+    // L'étape « Ce qui compte » est à l'écran depuis S30.3.
+    await page.locator('[data-role="propose-grid"]').click();
+    await expect
+      .poll(
+        () =>
+          page
+            .locator('input[type="text"]')
+            .first()
+            .inputValue()
+            .catch(() => ''),
+        { timeout: 30_000 },
+      )
+      .toContain('proposé');
+
+    // Une pondération suggérée fait apparaître le bandeau qui COMMANDE tous
+    // les critères — et « Suivant » attend qu'elle soit traitée.
+    const maitre = page.locator('[data-role="suggestions-master"]');
+    if ((await maitre.count()) > 0) {
+      expect(await raison(page).textContent()).toContain('proposée');
+      await maitre.locator('text=Tout confirmer').click();
+      await page.waitForTimeout(400);
+      expect(await maitre.count()).toBe(0);
+    }
+    expect(await suivant(page).isEnabled()).toBe(true);
   }, 180_000);
 
   it('S30.4 — le rail ramène en arrière, et la saisie est toujours là', async () => {
@@ -192,6 +254,9 @@ describe('S30 — l’assistant de création', () => {
     expect(await suivant(page).isEnabled()).toBe(true);
     await cliquerSuivant(page, 'suivi');
     await cliquerSuivant(page, 'reservation');
+    // La réservation native est le régime par défaut : c'est le seul qu'on
+    // installe, et une campagne créée sans y penser partait sur l'autre.
+    expect(await page.locator('[data-role="scheduling-native"]').isChecked()).toBe(true);
     await cliquerSuivant(page, 'recapitulatif');
 
     // Le récapitulatif porte le geste, et il le NOMME.
@@ -217,6 +282,40 @@ describe('S30 — l’assistant de création', () => {
     await page.waitForTimeout(1500);
     const row = await ligne();
     expect(row?.status).toBe('active');
+  }, 180_000);
+
+  it('S30.6bis — « Fermer » demande, puis CONFIRME que le brouillon est gardé', async () => {
+    // Nouveau brouillon : on s'arrête juste après la première étape.
+    await ouvrirAssistant(page);
+    await remplirLePoste(page, `${INTITULE} (abandon)`);
+    await page.waitForTimeout(400);
+    await cliquerSuivant(page, 'criteres');
+    const brouillon = (await bandeEnregistrement(page).textContent())?.match(
+      /CAMP-\d{4}-\d{3}/,
+    )?.[0];
+    expect(brouillon).toBeTruthy();
+    abandonne = brouillon ?? null;
+
+    // ① On DEMANDE avant de fermer — quitter une saisie en silence laisse
+    //    partir avec le doute.
+    await page.locator('text=Fermer').first().click();
+    await page.waitForSelector('[data-dialog="leave-ask"]', { timeout: 30_000 });
+    await page.locator('[data-role="leave-cancel"]').click();
+    await page.waitForSelector('[data-dialog="leave-ask"]', { state: 'detached', timeout: 30_000 });
+    expect(await etapeCourante(page)).toBe('criteres');
+
+    // ② On CONFIRME que le brouillon est gardé, et on dit où le reprendre.
+    await page.locator('text=Fermer').first().click();
+    await page.locator('[data-role="leave-confirm"]').click();
+    const confirmation = page.locator('[data-dialog="leave-confirmed"]');
+    await confirmation.waitFor({ timeout: 30_000 });
+    expect(await confirmation.textContent()).toContain(brouillon!);
+    await page.locator('[data-role="leave-done"]').click();
+    await page.waitForURL((u) => u.pathname === '/campagnes', { timeout: 60_000 });
+
+    // Le brouillon existe VRAIMENT, et il n'est pas lancé.
+    const { data } = await db.from('campaigns').select('status').eq('id', brouillon!).maybeSingle();
+    expect(data?.status).toBe('draft');
   }, 180_000);
 
   it('S30.7 — l’assistant REFUSE de rouvrir une campagne lancée', async () => {

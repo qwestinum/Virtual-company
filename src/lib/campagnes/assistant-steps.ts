@@ -150,13 +150,14 @@ export function validateStep(step: AssistantStep, f: AssistantFacts): StepVerdic
             `La note basse (${f.thresholdLow}) dépasse la note haute (${f.thresholdHigh}).`,
           );
     case 'reservation':
-      // ⚠️ `null` (on ne sait pas) ne bloque jamais : on n'oppose pas une
-      // ignorance à quelqu'un qui essaie d'avancer.
-      if (f.schedulingNative && f.ownerHasAvailability === false) {
-        return ko(
-          'Le référent n’a pas encore de disponibilités : renseignez-les dans ses réglages, ou choisissez Cal.com.',
-        );
-      }
+      // ⚠️ UN AGENDA VIDE N'EMPÊCHE PAS DE CRÉER. Il a bloqué cette étape le
+      // temps d'une livraison, et c'était disproportionné : la réservation
+      // native étant désormais le régime par DÉFAUT, toute campagne dont le
+      // référent n'a pas encore configuré son agenda butait ici — et la seule
+      // sortie offerte était de basculer sur Cal.com, le régime qu'on quitte.
+      // Le vrai garde-fou est en aval, à l'invitation (`native_link_unavailable`,
+      // qui refuse d'envoyer un lien mort) ; ici l'écran AVERTIT, il n'interdit
+      // pas. Un agenda se remplit après, une campagne se crée maintenant.
       if (!f.meetingLocationComplete) {
         return ko('Le lieu de l’entretien est commencé mais incomplet.');
       }

@@ -84,18 +84,25 @@ export function ScoringDraftEditor({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* ⚠️ LE BANDEAU EST UN CRAN AU-DESSUS, et ça doit se VOIR : il commande
+          TOUS les critères d'en dessous. Posé à plat, à la même largeur et
+          dans le même ton qu'eux, il se lisait comme une ligne de plus — on ne
+          savait pas sur quoi « Tout confirmer » agissait. D'où le ton
+          SOUTENU (fond violet plein, texte blanc), la pleine largeur, et la
+          liste des critères RENTRÉE en dessous, rattachée par un filet. */}
       {untreated > 0 ? (
         <div
           role="status"
+          data-role="suggestions-master"
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 10,
             flexWrap: 'wrap',
-            padding: '8px 10px',
-            borderRadius: 10,
-            background: 'var(--dash-purple-light)',
+            padding: '10px 14px',
+            borderRadius: '10px 10px 0 0',
+            background: 'var(--dash-purple)',
             border: '1px solid var(--dash-purple)',
           }}
         >
@@ -104,19 +111,21 @@ export function ScoringDraftEditor({
             style={{
               fontSize: 12,
               fontWeight: 700,
-              color: 'var(--dash-purple)',
+              color: '#fff',
               flex: 1,
               minWidth: 160,
             }}
           >
             ✨ {untreated} pondération{untreated > 1 ? 's' : ''} suggérée
-            {untreated > 1 ? 's' : ''} par l’IA à traiter avant le lancement.
+            {untreated > 1 ? 's' : ''} par l’IA, sur les {criteria.length} critère
+            {criteria.length > 1 ? 's' : ''} ci-dessous — à traiter avant le
+            lancement.
           </span>
           <button
             type="button"
             onClick={confirmAll}
             className="font-body"
-            style={massBtnStyle('var(--dash-green)')}
+            style={massBtnStyle('#fff', 'rgba(255,255,255,0.16)')}
           >
             Tout confirmer
           </button>
@@ -124,12 +133,24 @@ export function ScoringDraftEditor({
             type="button"
             onClick={rejectAll}
             className="font-body"
-            style={massBtnStyle('var(--dash-red)')}
+            style={massBtnStyle('#fff', 'rgba(255,255,255,0.16)')}
           >
             Tout rejeter
           </button>
         </div>
       ) : null}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          // Rentrée + filet : la liste est le CONTENU du bandeau, pas sa suite.
+          marginLeft: untreated > 0 ? 14 : 0,
+          paddingLeft: untreated > 0 ? 12 : 0,
+          paddingTop: untreated > 0 ? 12 : 0,
+          borderLeft: untreated > 0 ? '2px solid var(--dash-purple)' : 'none',
+        }}
+      >
       {criteria.map((c) => {
         const suggested = c.suggere === true;
         const method: VerificationMethod =
@@ -328,17 +349,18 @@ export function ScoringDraftEditor({
       >
         + Ajouter un critère
       </button>
+      </div>
     </div>
   );
 }
 
 /** Style partagé des boutons « confirmer / rejeter » (unitaire + en masse). */
-function massBtnStyle(color: string): React.CSSProperties {
+function massBtnStyle(color: string, background = 'var(--dash-surface)'): React.CSSProperties {
   return {
     padding: '4px 10px',
     borderRadius: 8,
     border: `1px solid ${color}`,
-    background: 'var(--dash-surface)',
+    background,
     color,
     fontSize: 11,
     fontWeight: 700,

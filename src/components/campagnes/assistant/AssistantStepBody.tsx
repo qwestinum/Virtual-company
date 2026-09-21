@@ -12,31 +12,9 @@
 
 import type { RecruiterOption } from '@/lib/campaign/use-recruiter-options';
 import type { AssistantStep } from '@/lib/campagnes/assistant-steps';
-import { CV_SOURCE_LABELS, CV_SOURCE_OPERATIONAL, CV_SOURCES } from '@/types/cv-source';
-import {
-  PUBLICATION_CHANNEL_LABELS,
-  PUBLICATION_CHANNEL_ORDER,
-  type PublicationChannel,
-} from '@/types/publication-channel';
+import { CV_SOURCE_LABELS } from '@/types/cv-source';
+import { PUBLICATION_CHANNEL_LABELS } from '@/types/publication-channel';
 
-/**
- * ⚠️ On ne propose à la CRÉATION que ce qui fonctionne vraiment. Un flux inerte
- * offert à quelqu'un qui monte sa campagne, c'est lui promettre des
- * candidatures qui n'arriveront pas. La liste vient de `CV_SOURCE_OPERATIONAL`
- * et non d'une copie : le jour où un flux devient opérationnel, il apparaît
- * ici sans qu'on y touche.
- */
-const FLUX_OFFERTS = CV_SOURCES.filter((s) => CV_SOURCE_OPERATIONAL[s]);
-
-/** Les deux canaux réellement diffusables aujourd'hui. */
-const CANAUX_ACTIFS: readonly PublicationChannel[] = ['apec', 'generic'];
-/**
- * LinkedIn est RETIRÉ de la création (rien ne le publie), les autres sont
- * montrés avec « bientôt » : masquer une destination qu'on prépare laisserait
- * croire qu'elle n'existera jamais.
- */
-const CANAUX_OFFERTS = PUBLICATION_CHANNEL_ORDER.filter((c) => c !== 'linkedin');
-const CANAUX_BIENTOT = CANAUX_OFFERTS.filter((c) => !CANAUX_ACTIFS.includes(c));
 
 import { FDPInlineEditor } from '../edit/FDPInlineEditor';
 import { ChannelsDraftEditor } from '../edit/draft/ChannelsDraftEditor';
@@ -45,83 +23,12 @@ import { OwnerDraftEditor } from '../edit/draft/OwnerDraftEditor';
 import { SchedulingDraftEditor } from '../edit/draft/SchedulingDraftEditor';
 import { ScoringDraftEditor } from '../edit/draft/ScoringDraftEditor';
 import { ThresholdDraftEditor } from '../edit/draft/ThresholdDraftEditor';
-import { AssistantDocumentStart } from './AssistantDocumentStart';
+import { AssistantProposeGrid } from './AssistantProposeGrid';
+import { CANAUX_BIENTOT, CANAUX_OFFERTS, FLUX_OFFERTS } from './assistant-offres';
+import { Note, Partie, SousTitre } from './AssistantStepParts';
+import { AssistantStart } from './AssistantStart';
 import { AssistantRecap, buildRecapLines } from './AssistantRecap';
 import type { AssistantDraft } from './useAssistantDraft';
-
-function Note({ children }: { children: React.ReactNode }) {
-  return (
-    <p
-      className="font-body"
-      style={{ fontSize: 12, color: 'var(--dash-text-secondary)', marginTop: 14, lineHeight: 1.5 }}
-    >
-      {children}
-    </p>
-  );
-}
-
-/**
- * Une PARTIE d'étape : un titre, un sous-titre, un contenu. `accent` marque
- * celle qui engage quelque chose — deux parties de même poids se lisent comme
- * une seule.
- */
-function Partie({
-  titre,
-  sousTitre,
-  accent,
-  children,
-}: {
-  titre: string;
-  sousTitre: string;
-  accent?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      style={{
-        marginBottom: 18,
-        padding: accent ? '16px 16px 14px' : '2px 0 0',
-        borderRadius: accent ? 12 : 0,
-        border: accent ? '1px solid var(--dash-purple)' : 'none',
-        background: accent ? 'var(--dash-purple-light)' : 'transparent',
-      }}
-    >
-      <h3
-        className="font-display"
-        style={{
-          fontSize: 14,
-          fontWeight: 700,
-          color: accent ? 'var(--dash-purple)' : 'var(--dash-text-secondary)',
-          margin: 0,
-        }}
-      >
-        {titre}
-      </h3>
-      <p
-        className="font-body"
-        style={{
-          fontSize: 12,
-          color: 'var(--dash-text-secondary)',
-          margin: '3px 0 10px',
-        }}
-      >
-        {sousTitre}
-      </p>
-      {children}
-    </section>
-  );
-}
-
-function SousTitre({ children }: { children: React.ReactNode }) {
-  return (
-    <h3
-      className="font-display"
-      style={{ fontSize: 13, fontWeight: 700, color: 'var(--dash-text)', margin: '18px 0 8px' }}
-    >
-      {children}
-    </h3>
-  );
-}
 
 export function AssistantStepBody({
   step,
@@ -141,11 +48,19 @@ export function AssistantStepBody({
     case 'poste':
       return (
         <>
-          {/* ⚠️ EN TÊTE, avant les champs : déposer un appel d'offres change
-              TOUT l'écran d'un coup. Proposé après huit champs, on l'aurait vu
+          {/* ⚠️ EN TÊTE, avant les champs : ces trois raccourcis changent TOUT
+              l'écran d'un coup. Proposés après huit champs, on les aurait vus
               une fois la saisie faite — c'est-à-dire trop tard. */}
-          <AssistantDocumentStart campaignId={campaignId} onPrefill={draft.applyPrefill} />
-          <div style={{ height: 18 }} />
+          <AssistantStart
+            campaignId={campaignId}
+            fdp={draft.fdp}
+            jobTitle={draft.facts.jobTitle}
+            onPrefill={draft.applyPrefill}
+            onFillEmpty={draft.fillEmptyFields}
+            onComparable={draft.applyComparable}
+            onReset={draft.resetExceptTitle}
+            prefilled={draft.prefillExtraction !== null || draft.facts.missingFdpLabels.length < 7}
+          />
           <FDPInlineEditor fdp={draft.fdp} onPatch={draft.patchField} />
           <Note>
             Le nom de la campagne suit l’intitulé : une seule source de vérité,
@@ -157,6 +72,7 @@ export function AssistantStepBody({
     case 'criteres':
       return (
         <>
+          <AssistantProposeGrid fdp={draft.fdp} onPropose={draft.setCriteria} />
           <ScoringDraftEditor criteria={draft.criteria} onChange={draft.setCriteria} />
           <Note>
             Une pondération proposée par l’IA se confirme ou s’écarte — elle ne

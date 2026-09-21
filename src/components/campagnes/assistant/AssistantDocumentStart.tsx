@@ -28,8 +28,11 @@ import type { FDPInProgress } from '@/types/field-collection';
 export function AssistantDocumentStart({
   campaignId,
   onPrefill,
+  inline = false,
 }: {
   campaignId: string;
+  /** Posé dans la rangée du bloc de démarrage : pas de marge propre. */
+  inline?: boolean;
   onPrefill: (input: {
     fdp: FDPInProgress;
     criteria: ScoringCriterion[];
@@ -72,7 +75,7 @@ export function AssistantDocumentStart({
   }
 
   return (
-    <div style={{ marginTop: 16 }}>
+    <div style={{ marginTop: inline ? 0 : 16 }}>
       <input
         ref={input}
         type="file"

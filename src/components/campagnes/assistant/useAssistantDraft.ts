@@ -32,12 +32,7 @@ import {
   type ScoringCriterion,
 } from '@/types/scoring';
 
-/** Grille de départ d'une campagne neuve — la même qu'à la création historique. */
-const MODELE: Omit<ScoringCriterion, 'id'>[] = [
-  { label: 'Expérience pertinente sur le poste', level: 'critique', weight: 8 },
-  { label: 'Compétences techniques clés', level: 'tres_important', weight: 6 },
-  { label: 'Localisation / mobilité', level: 'important', weight: 4 },
-];
+import { MODELE, rempli } from './draft-defauts';
 
 export type AssistantDraft = ReturnType<typeof useAssistantDraft>;
 
@@ -69,7 +64,11 @@ export function useAssistantDraft({
   );
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
   const [ownerChoice, setOwnerChoice] = useState<string | null | undefined>(undefined);
-  const [schedulingNative, setSchedulingNative] = useState(false);
+  // ⚠️ Réservation NATIVE par défaut : c'est le seul régime qu'on installe
+  // désormais (Cal.com est en extinction). Le laisser décoché obligeait à
+  // cocher à chaque campagne ce qu'on veut toujours — et une campagne créée
+  // sans y penser partait sur le régime qu'on quitte.
+  const [schedulingNative, setSchedulingNative] = useState(true);
   const [meetingLocation, setMeetingLocation] = useState<MeetingLocation | null>(null);
   const [thresholdLow, setThresholdLow] = useState(10);
   const [thresholdHigh, setThresholdHigh] = useState(90);
@@ -87,20 +86,26 @@ export function useAssistantDraft({
     setChannels(stored.publishedChannels);
     setSources(stored.sources);
     setOwnerChoice(stored.ownerUserId);
-    setSchedulingNative(stored.schedulingNative);
+    // ⚠️ Sur un BROUILLON, `scheduling_native` en base ne porte AUCUNE
+    // intention : le flag ne voyage jamais dans un snapshot (invariant du
+    // module de réservation), il n'est écrit que par le PATCH ciblé, à
+    // l'activation. Une campagne pas encore lancée porte donc toujours le
+    // défaut de la base — `false`. Le relire comme un choix ramenait
+    // silencieusement une reprise de brouillon sur Cal.com, le régime qu'on
+    // quitte. On ne redescend jamais : on garde le natif.
+    if (stored.schedulingNative) setSchedulingNative(true);
     setThresholdLow(stored.thresholdLow);
     setThresholdHigh(stored.thresholdHigh);
   }
 
   const patchField = (key: FieldKey, value: unknown) => {
     setFdp((current) => {
-      const rempli = value != null && value !== '' && !(Array.isArray(value) && value.length === 0);
       const fields = {
         ...current.fields,
         [key]: {
           ...current.fields[key]!,
           value,
-          status: (rempli ? 'filled' : 'empty') as 'filled' | 'empty',
+          status: (rempli(value) ? 'filled' : 'empty') as 'filled' | 'empty',
         },
       };
       return { ...current, fields, isComplete: computeIsComplete(fields) };
@@ -133,6 +138,61 @@ export function useAssistantDraft({
 
   return {
     prefillExtraction,
+    /**
+     * Complète les champs ENCORE VIDES (proposition du modèle sur l'intitulé).
+     * ⚠️ N'écrase JAMAIS une saisie : ce que le recruteur a écrit prime sur ce
+     * que le modèle propose, toujours.
+     */
+    fillEmptyFields: (fields: Partial<Record<FieldKey, unknown>>) => {
+      setFdp((current) => {
+        const next = { ...current.fields };
+        for (const key of Object.keys(fields) as FieldKey[]) {
+          const champ = next[key];
+          if (!champ || (champ.status === 'filled' && rempli(champ.value))) continue;
+          const valeur = fields[key];
+          if (!rempli(valeur)) continue;
+          next[key] = { ...champ, value: valeur, status: 'filled' };
+        }
+        return { ...current, fields: next, isComplete: computeIsComplete(next) };
+      });
+    },
+    /**
+     * Reprend une campagne COMPARABLE : sa fiche, et ce qu'on a pu en lire de
+     * plus (grille, canaux, flux). L'intitulé saisi PRIME sur celui de
+     * l'archive — c'est lui qu'on est en train de recruter.
+     */
+    applyComparable: (input: {
+      fdp: FDPInProgress;
+      criteria?: ScoringCriterion[];
+      channels?: PublicationChannel[];
+      sources?: CVSource[];
+    }) => {
+      setFdp(input.fdp);
+      if (input.criteria && input.criteria.length > 0) setCriteria(input.criteria);
+      if (input.channels && input.channels.length > 0) setChannels(input.channels);
+      if (input.sources && input.sources.length > 0) setSources(input.sources);
+    },
+    /**
+     * « Repartir à zéro » — parité avec le chat Manager : une fiche préremplie
+     * offre TOUJOURS une sortie pour repartir vierge. On garde l'intitulé (on
+     * recrute toujours le même poste), on remet le reste à son état d'origine.
+     */
+    resetExceptTitle: () => {
+      const titreCourant = fdp.fields.job_title?.value;
+      setFdp(() => {
+        const vierge = buildEmptyFDP(resumeId ?? 'CAMP-BROUILLON');
+        if (!rempli(titreCourant)) return vierge;
+        const fields = {
+          ...vierge.fields,
+          job_title: { ...vierge.fields.job_title!, value: titreCourant, status: 'filled' as const },
+        };
+        return { ...vierge, fields, isComplete: computeIsComplete(fields) };
+      });
+      setCriteria(MODELE.map((c, i) => buildCriterion({ id: `crit_${i}`, ...c })));
+      setChannels([]);
+      setSources(CV_SOURCES.filter((x) => CV_SOURCE_OPERATIONAL[x]));
+      setPrefillExtraction(null);
+    },
     /**
      * Pré-remplissage par document : il POSE le brouillon, il n'enregistre
      * rien. Les pondérations arrivent marquées « suggéré par l'IA » ; une

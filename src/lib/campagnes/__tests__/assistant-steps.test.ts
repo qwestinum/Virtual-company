@@ -93,12 +93,11 @@ describe('quand une étape bloque, elle DIT quoi', () => {
       validateStep('reception', faits({ sourceCount: 0 })),
       validateStep('reception', faits({ mailboxCount: 0 })),
       validateStep('suivi', faits({ thresholdLow: 90, thresholdHigh: 10 })),
-      validateStep('reservation', faits({ ownerHasAvailability: false })),
       validateStep('reservation', faits({ meetingLocationComplete: false })),
     ]
       .filter((v): v is { ok: false; reason: string } => !v.ok)
       .map((v) => v.reason.toLowerCase());
-    expect(raisons).toHaveLength(9);
+    expect(raisons).toHaveLength(8);
     for (const r of raisons) {
       for (const mot of MOTS_BANNIS_A_L_ECRAN) {
         expect(r, `« ${mot} » dans « ${r} »`).not.toContain(mot);
@@ -115,21 +114,22 @@ describe('quand une étape bloque, elle DIT quoi', () => {
   });
 });
 
-describe('une ignorance ne bloque JAMAIS', () => {
-  it('disponibilités inconnues (module injoignable) laissent passer', () => {
-    // Opposer « je ne sais pas » à quelqu'un qui avance, c'est l'arrêter sur
-    // une panne qui n'est pas la sienne.
+describe('un agenda vide AVERTIT, il n’interdit pas de créer', () => {
+  it('référent sans disponibilités : l’étape passe quand même', () => {
+    // Bloquer ici serait disproportionné : la réservation native est le régime
+    // par défaut, donc toute campagne dont le référent n'a pas encore réglé son
+    // agenda buterait — et la seule sortie offerte serait de revenir au régime
+    // qu'on quitte. Le vrai garde-fou est à l'invitation, qui refuse d'envoyer
+    // un lien mort. Un agenda se remplit après ; une campagne se crée
+    // maintenant.
     expect(
-      validateStep('reservation', faits({ ownerHasAvailability: null })).ok,
+      validateStep('reservation', faits({ ownerHasAvailability: false })).ok,
     ).toBe(true);
   });
 
-  it('en Cal.com, les disponibilités du référent ne regardent personne', () => {
+  it('disponibilités inconnues (module injoignable) : idem', () => {
     expect(
-      validateStep(
-        'reservation',
-        faits({ schedulingNative: false, ownerHasAvailability: false }),
-      ).ok,
+      validateStep('reservation', faits({ ownerHasAvailability: null })).ok,
     ).toBe(true);
   });
 });

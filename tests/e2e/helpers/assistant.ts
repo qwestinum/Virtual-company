@@ -85,3 +85,38 @@ export async function cliquerSuivant(p: Page, attendue: string): Promise<void> {
     { timeout: 60_000 },
   );
 }
+
+/**
+ * Bouchonne les DEUX propositions du modèle, AU NIVEAU DU NAVIGATEUR.
+ *
+ * ⚠️ On ne bouchonne pas pour éviter un test difficile : on bouchonne la
+ * FRONTIÈRE externe, comme la suite de régression le fait pour le LLM. Ce qui
+ * est vérifié reste entier — le clic, la requête réellement partie, et ce que
+ * l'écran en fait. Laisser partir l'appel réel ferait payer un appel au modèle
+ * à chaque exécution, et rendrait le verdict dépendant d'un service tiers.
+ */
+export async function bouchonnerLesPropositions(p: Page): Promise<void> {
+  await p.route('**/api/manager/fdp-proposal', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        fields: {
+          location: 'Lyon (proposé)',
+          salary_range: '48 – 58 k€ (proposé)',
+        },
+      }),
+    }),
+  );
+  await p.route('**/api/manager/scoring', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        criteria: [
+          { id: 'prop_1', label: 'Critère proposé par le modèle', level: 'critique', weight: 8 },
+        ],
+      }),
+    }),
+  );
+}
