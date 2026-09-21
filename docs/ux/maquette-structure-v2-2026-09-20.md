@@ -675,7 +675,7 @@ l'urgence, ni le score : tout cela est déjà écrit sur la ligne, en toutes let
 
 | Objet | Pastille | Écrans |
 |---|---|---|
-| Une **personne** | **orange** (`--dash-orange`), sans exception | Entretiens · Candidatures · Audit |
+| Une **personne** | pastille **`#ffcb60`**, initiales **`#ff7f00`**, sans exception | Entretiens · Candidatures · Audit |
 | Une **campagne** | **bleu ciel** (`--dash-sky`) et son éclair | Campagnes · Pilotage → Rapport de campagne |
 
 **Pourquoi.** Un candidat était orange sur *Entretiens* quand il était en retard, turquoise
@@ -689,12 +689,17 @@ qu'il servait ailleurs à marquer les candidats retenus.
 « brouillon » (gris) gardent leurs teintes : elles distinguent trois cartes côte à côte
 dans une même liste, ce qui est un autre problème. Seule l'icône **active** change.
 
-⚠️ **Mesure.** Les initiales en blanc sur `--dash-orange` donnent **3,09:1** — au-delà des
-3:1 d'un élément non textuel, **sous les 4,5:1 d'un texte**. C'est tenable parce que les
-initiales sont **redondantes** (le nom complet est à côté, en contraste AA). Pour le plein
-AA sans changer de famille : `--dash-orange-text`, à 5,02:1. Le bleu ciel donne **4,10:1**
-avec son glyphe blanc, qui est décoratif (`aria-hidden`) — l'issue de la campagne est
-écrite dans la pastille à droite.
+⚠️ **Mesure, et elle est basse.** Les initiales `#ff7f00` sur la pastille `#ffcb60`
+donnent **1,68:1**, et la pastille se détache de **1,42:1** du fond sand — très en dessous
+des 3:1 d'un élément non textuel. Ce n'est tenable QUE parce que les initiales sont
+**redondantes** : le nom complet est à côté, en contraste AA, et aucune information ne
+dépend de leur lecture. Ce sont les teintes choisies par le donneur d'ordre, et
+l'arbitrage lui appartient ; dans la même famille, `#9a3412` donnerait 4,86:1 sur la même
+pastille.
+
+Côté campagne, le ciel `#d7e6ff` est lui aussi **pâle** : le glyphe ne peut pas être blanc
+(1,26:1) et prend `--dash-blue` (**3,66:1**, au-delà des 3:1 d'un élément non textuel) ; la
+pastille porte un filet, car elle ne se détache que de 1,19:1 du fond.
 
 **Garde** : `socle-jetons.test.ts` — un `avatarColor` qui n'est pas `PASTILLE.candidat`,
 ou un fond posé à la main derrière des initiales, fait rougir la suite. Sondée.

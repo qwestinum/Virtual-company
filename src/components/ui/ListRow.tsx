@@ -66,7 +66,10 @@ export function ListRow({
         initials ? (
           <span
             className={`grid h-10 w-10 place-items-center ${s.avatar}`}
-            style={{ background: avatarColor ?? PASTILLE.candidat }}
+            style={{
+            background: avatarColor ?? PASTILLE.candidat,
+            color: PASTILLE.candidatEncre,
+          }}
           >
             {initials}
           </span>

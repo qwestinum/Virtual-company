@@ -40,8 +40,8 @@ export function CandidatureRow({
         selected ? 'border-dash-text' : 'border-dash-border'
       }`}
     >
-      <span className="grid h-10 w-10 place-items-center rounded-[11px] font-body text-[13px] font-semibold tracking-wide text-white"
-        style={{ background: PASTILLE.candidat }}>
+      <span className="grid h-10 w-10 place-items-center rounded-[11px] font-body text-[13px] font-semibold tracking-wide"
+        style={{ background: PASTILLE.candidat, color: PASTILLE.candidatEncre }}>
         {initials(item.candidateName)}
       </span>
 

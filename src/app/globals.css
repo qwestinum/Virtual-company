@@ -266,6 +266,14 @@
      élément non textuel). Et la pastille ne se détache que de 1,19:1 du fond
      sand : elle porte donc un filet, sinon elle flotterait sans contour. */
   --dash-sky: #d7e6ff;
+  /* La pastille des PERSONNES et son encre, posées le 21/09/2026.
+     ⚠️ Mesuré : l'encre donne 1,68:1 sur la pastille, et la pastille 1,42:1
+     sur le fond sand. C'est TRÈS en dessous des 3:1 d'un élément non textuel.
+     Tenable seulement parce que les initiales sont REDONDANTES — le nom
+     complet est à côté, en contraste AA — et parce que c'est la teinte
+     demandée. Dans la même famille : #9a3412 donnerait 4,86:1. */
+  --dash-candidat: #ffcb60;
+  --dash-candidat-encre: #ff7f00;
 
   /* ── TEINTES DE TEXTE DES ÉTAPES ────────────────────────────────────────
      ⚠️ Les couleurs de marque ci-dessus sont des REPÈRES (pastilles, points,

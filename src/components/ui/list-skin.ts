@@ -30,7 +30,9 @@ export const SKIN = {
   /** Ligne secondaire, en gris. */
   meta: 'font-body text-[12px]',
   /** Pavé d'initiales. */
-  avatar: 'rounded-[11px] font-data text-[13px] font-semibold tracking-wide text-white',
+  /** ⚠️ Sans couleur de texte : l'encre vient de `PASTILLE.candidatEncre`.
+      La pastille est CLAIRE — du blanc dessus serait illisible. */
+  avatar: 'rounded-[11px] font-data text-[13px] font-semibold tracking-wide',
   /** Puce d'intitulé. */
   puce: 'rounded-md border font-body text-[12px] font-semibold',
 } as const;

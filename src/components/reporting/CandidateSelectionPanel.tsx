@@ -198,8 +198,8 @@ export function CandidateSelectionPanel({
                   className={`${AUDIT_GRID} w-full rounded-lg border border-stone-200 bg-white px-4 py-3 text-left hover:border-amber-300 hover:bg-amber-50/40`}
                 >
                   <span
-                    className="grid h-10 w-10 place-items-center rounded-[11px] font-data text-[13px] font-semibold tracking-wide text-white"
-                    style={{ background: PASTILLE.candidat }}
+                    className="grid h-10 w-10 place-items-center rounded-[11px] font-data text-[13px] font-semibold tracking-wide"
+                    style={{ background: PASTILLE.candidat, color: PASTILLE.candidatEncre }}
                   >
                     {initials(it.candidateName)}
                   </span>

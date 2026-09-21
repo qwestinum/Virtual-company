@@ -153,15 +153,21 @@ export const ETAPE = {
  * où il ne signifiait rien de tel, pendant qu'il servait ailleurs à marquer
  * les candidats retenus.
  *
- * ⚠️ MESURE. Les initiales en blanc sur `--dash-orange` donnent **3,09:1** —
- * au-delà des 3:1 d'un élément non textuel, SOUS les 4,5:1 d'un texte. C'est
- * tenable parce que les initiales sont REDONDANTES (le nom complet est à
- * côté, en contraste AA) et c'est la teinte demandée. Si on veut le plein AA
- * sans changer de famille : `--dash-orange-text` monte à 5,02:1.
+ * ⚠️ MESURE, et elle est basse. L'encre `#ff7f00` sur la pastille `#ffcb60`
+ * donne **1,68:1**, et la pastille se détache de **1,42:1** du fond sand —
+ * très en dessous des 3:1 d'un élément non textuel.
+ *
+ * Ce n'est tenable QUE parce que les initiales sont REDONDANTES : le nom
+ * complet est à côté, en contraste AA, et aucune information ne dépend de
+ * leur lecture. Ce sont les teintes demandées, et l'arbitrage appartient au
+ * donneur d'ordre. Dans la même famille, si le plein AA était visé :
+ * `#9a3412` donnerait 4,86:1 sur la même pastille.
  */
 export const PASTILLE = {
   /** Le pavé d'initiales d'une PERSONNE. Une seule couleur, sans exception. */
-  candidat: 'var(--dash-orange)',
+  candidat: 'var(--dash-candidat)',
+  /** L'encre des initiales. Jamais blanche : la pastille est claire. */
+  candidatEncre: 'var(--dash-candidat-encre)',
   /** Le fond de l'icône d'une CAMPAGNE active. */
   campagne: 'var(--dash-sky)',
 } as const;

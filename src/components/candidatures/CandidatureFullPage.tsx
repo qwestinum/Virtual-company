@@ -198,7 +198,7 @@ function Body({
       {/* Identité + score */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
-          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] font-body text-[17px] font-semibold text-white" style={{ background: PASTILLE.candidat }}>
+          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] font-body text-[17px] font-semibold" style={{ background: PASTILLE.candidat, color: PASTILLE.candidatEncre }}>
             {initials(candidate.candidateName)}
           </span>
           <div>
