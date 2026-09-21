@@ -18,6 +18,7 @@
 import { useState } from 'react';
 
 import { postFdpProposal } from '@/lib/chat/api-client';
+import { markAsSuggested } from '@/lib/campagnes/suggested-criteria';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 import type { CampaignPrefill } from '@/types/campaign-prefill';
 import { computeIsComplete, type FDPInProgress, type FieldKey } from '@/types/field-collection';
@@ -93,9 +94,13 @@ export function AssistantStart({
       };
     }
     const archive = getCampaign(source.id);
+    const grille = archive?.scoringSheet?.criteria;
     onComparable({
       fdp: { ...fdp, fields, isComplete: computeIsComplete(fields) },
-      criteria: archive?.scoringSheet?.criteria,
+      // ⚠️ Repris ≠ acquis. Une grille héritée arrive À CONFIRMER, même si
+      // elle était confirmée sur la campagne d'origine : c'était un autre
+      // poste, et c'est elle qui décidera qui est écarté sur celui-ci.
+      criteria: grille ? markAsSuggested(grille) : undefined,
     });
     setRepris(source.id);
   }

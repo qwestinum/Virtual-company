@@ -7,11 +7,16 @@
  * ⚠️ Il REMPLACE la grille courante, et c'est dit avant de cliquer. Fusionner
  * silencieusement laisserait des critères d'une proposition précédente mêlés à
  * la nouvelle, sans qu'on sache lesquels viennent d'où.
+ *
+ * ⚠️ Ce qu'il pose arrive À CONFIRMER (`markAsSuggested`) : le bandeau qui les
+ * chapeaute apparaît, chaque critère porte ses deux boutons, et l'étape
+ * n'avance pas tant qu'il en reste un de non tranché.
  */
 
 import { useState } from 'react';
 
 import { postManagerScoring } from '@/lib/chat/api-client';
+import { markAsSuggested } from '@/lib/campagnes/suggested-criteria';
 import type { FDPInProgress } from '@/types/field-collection';
 import type { ScoringCriterion } from '@/types/scoring';
 
@@ -30,7 +35,10 @@ export function AssistantProposeGrid({
     setError(null);
     try {
       const { criteria } = await postManagerScoring({ fdp });
-      if (criteria.length > 0) onPropose(criteria);
+      // ⚠️ Une grille venue du modèle ARRIVE À CONFIRMER, comme celle d'un
+      // document déposé. Elle décide qui est écarté : elle ne s'installe pas
+      // sans un regard.
+      if (criteria.length > 0) onPropose(markAsSuggested(criteria));
       else setError('Le modèle n’a rien proposé sur cette fiche. Éditez la grille à la main.');
     } catch {
       setError(

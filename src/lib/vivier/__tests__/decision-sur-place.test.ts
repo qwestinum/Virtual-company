@@ -65,16 +65,25 @@ describe('la file différée n’existe plus', () => {
 });
 
 describe('le bouton qui nomme un geste dépose devant ce geste', () => {
-  it('« Chercher dans le vivier » ouvre le bloc vivier, pas les seuils', () => {
+  /**
+   * ⚠️ CE TEST NE PROUVE PAS QUE LA PORTE S'OUVRE. Il a longtemps prétendu le
+   * faire, en vérifiant que la chaîne « ouvrir=vivier » figurait dans le lien
+   * et que les mots du câblage apparaissaient dans les fichiers — les deux
+   * étaient vrais pendant que la porte ne menait nulle part. Le clic est dans
+   * S29 (`tests/e2e/`), et c'est LUI le verdict.
+   *
+   * Ce qui reste ici est l'invariant STRUCTUREL, celui qu'un clic ne dit pas :
+   * la porte mène à un écran DÉDIÉ, pas à la feuille d'édition — un accordéon
+   * de neuf blocs pour trancher trois profils n'est pas « déposer devant le
+   * geste ».
+   */
+  it('« Chercher dans le vivier » mène à un écran à elle, pas à l’accordéon', () => {
     const detail = lire('src/lib/campagnes/card-detail.ts');
-    expect(detail).toContain('ouvrir=vivier');
-    // Et la chaîne qui l'honore existe de bout en bout.
-    expect(lire('src/components/campagnes/CampaignsScreen.tsx')).toContain('ouvrir');
-    expect(lire('src/components/campagnes/CampaignsWorkspace.tsx')).toContain(
-      'openSection',
-    );
-    expect(lire('src/components/campagnes/edit/CampaignEditAccordion.tsx')).toContain(
-      'initialSection',
+    expect(detail).toContain('/vivier');
+    expect(detail).not.toContain('ouvrir=vivier');
+    // L'écran existe, et il monte le panneau de présélection.
+    expect(lire('src/components/campagnes/CampaignVivierScreen.tsx')).toContain(
+      'VivierPreselectionPanel',
     );
   });
 

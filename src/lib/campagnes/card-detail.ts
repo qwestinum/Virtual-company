@@ -191,7 +191,11 @@ export function buildCardSources(
       icon: '📣',
       color: 'var(--dash-blue)',
       state: facts.annonce,
-      href: bloque ? null : `/campagnes?campagne=${encodeURIComponent(campaignId)}&ouvrir=channels`,
+      // ⚠️ Un ÉCRAN, plus un bloc d'accordéon : « Diffuser l'annonce » ouvrait
+      // la feuille d'édition sur neuf blocs dont un seul était demandé. Le
+      // geste nommé occupe l'écran, et il a sa propre adresse (partageable,
+      // rechargeable, atteignable par un signal).
+      href: bloque ? null : `/campagnes/${encodeURIComponent(campaignId)}/annonce`,
       reason: bloque,
     },
     {
@@ -200,7 +204,7 @@ export function buildCardSources(
       icon: '🗂️',
       color: 'var(--dash-green)',
       state: facts.vivier,
-      href: bloque ? null : `/campagnes?campagne=${encodeURIComponent(campaignId)}&ouvrir=vivier`,
+      href: bloque ? null : `/campagnes/${encodeURIComponent(campaignId)}/vivier`,
       reason: bloque,
     },
     {

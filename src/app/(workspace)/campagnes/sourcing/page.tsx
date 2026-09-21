@@ -25,8 +25,13 @@ export const dynamic = 'force-dynamic';
  * ⇒ 404, jamais un écran grisé — un écran grisé confirmerait une surface qui
  * n'existe pas.
  */
-export default async function SourcingPage() {
+export default async function SourcingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ campagne?: string }>;
+}) {
   if (!(await isSourcingEnabled())) notFound();
+  const { campagne } = await searchParams;
   return (
     <div className="flex h-full flex-col">
       <div className="px-6 pt-4">
@@ -38,7 +43,7 @@ export default async function SourcingPage() {
         </Link>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <SourcingWorkspace />
+        <SourcingWorkspace initialCampaignId={campagne ?? null} />
       </div>
     </div>
   );

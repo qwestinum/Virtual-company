@@ -1,20 +1,16 @@
 /**
- * S29 — LES PORTES DE LA CARTE CAMPAGNE S'OUVRENT VRAIMENT.
+ * S29 — LES PORTES DE LA CARTE CAMPAGNE MÈNENT LÀ OÙ ELLES DISENT.
  *
- * « Chercher dans le vivier » et « Diffuser l'annonce » sont des liens vers
- * `/campagnes?campagne=…&ouvrir=vivier|channels`. Deux livraisons les ont
- * annoncés branchés alors qu'ils ne l'étaient pas : les tests de l'époque
- * lisaient la CHAÎNE du lien et la PRÉSENCE des mots dans le code — aucun ne
- * pouvait voir ce que le navigateur en faisait. Ils cliquent ici.
+ * Trois portes, trois gestes : chercher dans le vivier, diffuser l'annonce,
+ * approcher des profils. Deux livraisons les ont annoncées branchées alors
+ * qu'elles ne l'étaient pas : les tests de l'époque lisaient la CHAÎNE du lien
+ * et la PRÉSENCE des mots dans le code — aucun ne pouvait voir ce que le
+ * navigateur en faisait. Ils cliquent ici.
  *
- * Le défaut réel : `CampaignsWorkspace` décidait d'ouvrir la feuille dans
- * l'initialiseur d'un `useState`, qui ne s'exécute qu'AU MONTAGE. Or ces liens
- * mènent à la page DÉJÀ affichée : Next ne remonte rien, l'initialiseur ne
- * repasse jamais, la feuille ne s'ouvrait pas. Le même lien ouvert depuis
- * *Aujourd'hui* marchait — parce que là, c'est un changement d'écran.
- *
- * D'où les trois cas ci-dessous, et le troisième n'est pas du luxe : une fois
- * l'URL consommée, re-cliquer la MÊME porte doit continuer de fonctionner.
+ * Chaque porte ouvre désormais UN ÉCRAN À ELLE, à son adresse. Elles
+ * déposaient avant sur la feuille d'édition, ouverte sur un accordéon de neuf
+ * blocs dont un seul était demandé : on arrivait devant un formulaire complet
+ * pour écrire un texte, ou pour trancher trois profils.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser, Page } from 'playwright-core';
@@ -32,17 +28,6 @@ let browser: Browser;
 let page: Page;
 let recruiter: TestRecruiter;
 let campagne: E2ECampaign;
-
-/**
- * Le bouton d'un bloc de l'accordéon, repéré par son titre visible.
- *
- * ⚠️ SCOPÉ À LA FEUILLE : les cartes campagne de la liste portent elles aussi
- * `aria-expanded`. Chercher dans toute la page ferait passer une carte dépliée
- * pour un bloc ouvert.
- */
-function blocDeLAccordeon(p: Page, titre: string) {
-  return p.locator('[role="dialog"] button[aria-expanded]', { hasText: titre }).first();
-}
 
 /** La tuile-porte de la carte campagne, repérée par son libellé. */
 function porte(p: Page, libelle: string) {
@@ -63,11 +48,6 @@ async function ouvrirLaCarte(): Promise<void> {
   await porte(page, 'Chercher dans le vivier').waitFor({ timeout: 60_000 });
 }
 
-async function fermerLaFeuille(): Promise<void> {
-  await page.keyboard.press('Escape');
-  await page.waitForSelector('[role="dialog"]', { state: 'detached', timeout: 15_000 });
-}
-
 beforeAll(async () => {
   await assertAppIsUp();
   campagne = await pickCampaign();
@@ -82,70 +62,57 @@ afterAll(async () => {
 });
 
 describe('S29 — les portes de la carte campagne', () => {
-  it('S29.1 — « Chercher dans le vivier » ouvre le vivier, pas la liste', async () => {
+  it('S29.1 — « Chercher dans le vivier » ouvre le vivier, seul à l’écran', async () => {
     await ouvrirLaCarte();
     await porte(page, 'Chercher dans le vivier').click();
+    await page.waitForURL((u) => u.pathname.endsWith('/vivier'), { timeout: 60_000 });
+    await page.waitForSelector(`[data-focus="${campagne.id}"]`, { timeout: 60_000 });
 
-    // La feuille d'édition s'ouvre…
-    await page.waitForSelector('[role="dialog"]', { timeout: 20_000 });
-    // …et c'est bien le VIVIER qui est déplié, pas le bloc par défaut.
-    const vivier = blocDeLAccordeon(page, 'Vivier');
-    await expect.poll(() => vivier.getAttribute('aria-expanded'), { timeout: 20_000 }).toBe('true');
-
-    // Le panneau est RÉELLEMENT rendu — un accordéon ouvert sur du vide serait
-    // la même porte morte sous un autre nom.
+    // Le panneau est RÉELLEMENT rendu — un écran ouvert sur du vide serait la
+    // même porte morte sous un autre nom.
     await page
       .locator('text=Relancer la recherche vivier')
-      .waitFor({ state: 'visible', timeout: 20_000 });
+      .waitFor({ state: 'visible', timeout: 60_000 });
     if (campagne.hasVivierProposal) {
-      await page
-        .locator('text=à examiner')
-        .first()
-        .waitFor({ state: 'visible', timeout: 20_000 });
+      await page.locator('text=à examiner').first().waitFor({ state: 'visible', timeout: 30_000 });
     }
 
-    // Aucun autre bloc de la feuille n'est ouvert en même temps — un
-    // accordéon qui ouvrirait tout n'aurait rien déposé devant rien.
-    expect(
-      await page.locator('[role="dialog"] button[aria-expanded="true"]').count(),
-    ).toBe(1);
+    // Et RIEN d'autre : pas de feuille d'édition, pas d'accordéon.
+    expect(await page.locator('[role="dialog"]').count()).toBe(0);
   }, 180_000);
 
-  it('S29.2 — « Diffuser l’annonce » ouvre les canaux de diffusion', async () => {
-    await fermerLaFeuille();
-    await porte(page, 'Diffuser l’annonce').click();
-
-    await page.waitForSelector('[role="dialog"]', { timeout: 20_000 });
-    const canaux = blocDeLAccordeon(page, 'Canaux de diffusion');
-    await expect.poll(() => canaux.getAttribute('aria-expanded'), { timeout: 20_000 }).toBe('true');
-  }, 180_000);
-
-  it('S29.3 — la même porte, une seconde fois, ouvre encore', async () => {
-    await fermerLaFeuille();
-    await porte(page, 'Chercher dans le vivier').click();
-    await page.waitForSelector('[role="dialog"]', { timeout: 20_000 });
-    await expect
-      .poll(() => blocDeLAccordeon(page, 'Vivier').getAttribute('aria-expanded'), { timeout: 20_000 })
-      .toBe('true');
-
-    await fermerLaFeuille();
-    await porte(page, 'Chercher dans le vivier').click();
-    await page.waitForSelector('[role="dialog"]', { timeout: 20_000 });
-    await expect
-      .poll(() => blocDeLAccordeon(page, 'Vivier').getAttribute('aria-expanded'), { timeout: 20_000 })
-      .toBe('true');
-  }, 180_000);
-
-  it('S29.4 — le lien collé dans la barre d’adresse ouvre la même chose', async () => {
-    // Le chemin qui, lui, marchait déjà : un MONTAGE. Il reste vert — on n'a
-    // pas échangé un défaut contre l'autre.
-    await page.goto(
-      `${BASE_URL}/campagnes?campagne=${encodeURIComponent(campagne.id)}&ouvrir=vivier`,
-      { waitUntil: 'domcontentloaded' },
+  it('S29.2 — « Fermer » ramène À LA CAMPAGNE, pas à la liste nue', async () => {
+    await page.locator('[data-focus] >> text=Fermer').click();
+    await page.waitForURL(
+      (u) => u.pathname === '/campagnes' && u.searchParams.get('campagne') === campagne.id,
+      { timeout: 60_000 },
     );
-    await page.waitForSelector('[role="dialog"]', { timeout: 30_000 });
-    await expect
-      .poll(() => blocDeLAccordeon(page, 'Vivier').getAttribute('aria-expanded'), { timeout: 20_000 })
-      .toBe('true');
+  }, 180_000);
+
+  it('S29.3 — « Diffuser l’annonce » ouvre l’annonce, seule à l’écran', async () => {
+    await ouvrirLaCarte();
+    await porte(page, 'Diffuser l’annonce').click();
+    await page.waitForURL((u) => u.pathname.endsWith('/annonce'), { timeout: 60_000 });
+    await page.waitForSelector(`[data-focus="${campagne.id}"]`, { timeout: 60_000 });
+    expect(await page.locator('[role="dialog"]').count()).toBe(0);
+  }, 180_000);
+
+  it('S29.4 — la même porte, une seconde fois, ouvre encore', async () => {
+    for (let i = 0; i < 2; i += 1) {
+      await ouvrirLaCarte();
+      await porte(page, 'Chercher dans le vivier').click();
+      await page.waitForURL((u) => u.pathname.endsWith('/vivier'), { timeout: 60_000 });
+      await page.waitForSelector(`[data-focus="${campagne.id}"]`, { timeout: 60_000 });
+    }
+  }, 180_000);
+
+  it('S29.5 — l’adresse collée dans la barre ouvre la même chose', async () => {
+    await page.goto(`${BASE_URL}/campagnes/${encodeURIComponent(campagne.id)}/vivier`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.waitForSelector(`[data-focus="${campagne.id}"]`, { timeout: 90_000 });
+    await page
+      .locator('text=Relancer la recherche vivier')
+      .waitFor({ state: 'visible', timeout: 60_000 });
   }, 180_000);
 });

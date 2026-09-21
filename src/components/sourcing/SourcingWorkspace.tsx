@@ -18,11 +18,23 @@ import { SourcingCampaignView } from './SourcingCampaignView';
 
 type Payload = { campaigns: SourcingCampaignSummary[]; myApproachesThisMonth: number };
 
-export function SourcingWorkspace() {
+export function SourcingWorkspace({
+  initialCampaignId = null,
+}: {
+  /**
+   * Campagne sur laquelle DÉPOSER d'emblée (`?campagne=…`).
+   *
+   * ⚠️ « Approcher des profils » depuis une carte de campagne nomme UNE
+   * campagne : atterrir sur la liste de toutes les campagnes actives
+   * obligerait à la retrouver dans une liste qu'on vient de quitter. La porte
+   * dépose devant le geste ; la liste reste à un clic, au-dessus.
+   */
+  initialCampaignId?: string | null;
+} = {}) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialCampaignId);
 
   const load = useCallback(async () => {
     setLoading(true);

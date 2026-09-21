@@ -31,7 +31,8 @@ export function SourcingCampaignView({
           onClick={onBack}
           className="inline-flex w-fit items-center gap-1 font-body text-[12px] font-semibold text-stone-500 hover:text-stone-800"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Campagnes actives
+          <ArrowLeft className="h-3.5 w-3.5" /> Voir le sourcing de toutes les
+          campagnes actives
         </button>
         <h1 className="font-display text-2xl font-bold text-stone-900">
           {sourced ? 'Sourcing' : 'Sourcer'} — <span className="font-data text-stone-600">{campaign.campaignId}</span> {campaign.name}

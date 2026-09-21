@@ -88,9 +88,12 @@ export function ScoringDraftEditor({
       {/* ⚠️ LE BANDEAU EST UN CRAN AU-DESSUS, et ça doit se VOIR : il commande
           TOUS les critères d'en dessous. Posé à plat, à la même largeur et
           dans le même ton qu'eux, il se lisait comme une ligne de plus — on ne
-          savait pas sur quoi « Tout confirmer » agissait. D'où le ton
-          SOUTENU (fond violet plein, texte blanc), la pleine largeur, et la
-          liste des critères RENTRÉE en dessous, rattachée par un filet. */}
+          savait pas sur quoi « Tout confirmer » agissait.
+          La hiérarchie se joue sur la STRUCTURE (pleine largeur, liste rentrée
+          et rattachée par un filet), pas sur la saturation : un aplat violet
+          plein criait plus fort que les critères qu'il commande. Il reprend
+          donc le ton des blocs, et les blocs s'allègent d'un cran — ce qui
+          distingue le chapeau de son contenu, c'est la place, pas le bruit. */}
       {untreated > 0 ? (
         <div
           role="status"
@@ -102,8 +105,9 @@ export function ScoringDraftEditor({
             flexWrap: 'wrap',
             padding: '10px 14px',
             borderRadius: '10px 10px 0 0',
-            background: 'var(--dash-purple)',
+            background: 'var(--dash-purple-light)',
             border: '1px solid var(--dash-purple)',
+            borderBottom: 'none',
           }}
         >
           <span
@@ -111,7 +115,7 @@ export function ScoringDraftEditor({
             style={{
               fontSize: 12,
               fontWeight: 700,
-              color: '#fff',
+              color: 'var(--dash-purple)',
               flex: 1,
               minWidth: 160,
             }}
@@ -125,7 +129,7 @@ export function ScoringDraftEditor({
             type="button"
             onClick={confirmAll}
             className="font-body"
-            style={massBtnStyle('#fff', 'rgba(255,255,255,0.16)')}
+            style={massBtnStyle('var(--dash-green)')}
           >
             Tout confirmer
           </button>
@@ -133,7 +137,7 @@ export function ScoringDraftEditor({
             type="button"
             onClick={rejectAll}
             className="font-body"
-            style={massBtnStyle('#fff', 'rgba(255,255,255,0.16)')}
+            style={massBtnStyle('var(--dash-red)')}
           >
             Tout rejeter
           </button>
@@ -148,7 +152,10 @@ export function ScoringDraftEditor({
           marginLeft: untreated > 0 ? 14 : 0,
           paddingLeft: untreated > 0 ? 12 : 0,
           paddingTop: untreated > 0 ? 12 : 0,
-          borderLeft: untreated > 0 ? '2px solid var(--dash-purple)' : 'none',
+          borderLeft:
+            untreated > 0
+              ? '2px solid color-mix(in srgb, var(--dash-purple) 45%, transparent)'
+              : 'none',
         }}
       >
       {criteria.map((c) => {
@@ -167,11 +174,13 @@ export function ScoringDraftEditor({
               gap: 8,
               padding: '8px 10px',
               borderRadius: 10,
+              // Un cran plus transparent que le chapeau : c'est lui qui les
+              // commande, ils n'ont pas à peser autant.
               background: suggested
-                ? 'var(--dash-purple-light)'
+                ? 'color-mix(in srgb, var(--dash-purple-light) 45%, var(--dash-surface))'
                 : 'var(--dash-warm)',
               border: suggested
-                ? '1px solid var(--dash-purple)'
+                ? '1px solid color-mix(in srgb, var(--dash-purple) 35%, transparent)'
                 : '1px solid var(--dash-border)',
             }}
           >
