@@ -23,6 +23,10 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { buildTodayBoard, type TodayBoard } from '@/lib/today/board';
 import type { ValidationCoherence } from '@/lib/hitl/queue-coherence';
+import type {
+  ReferentByCampaign,
+  ReferentInfo,
+} from '@/lib/referent/filter';
 import type { BusinessSignal } from '@/types/notifications';
 import type { DecisionZone, PendingValidation } from '@/types/hitl';
 
@@ -30,12 +34,16 @@ type ValidationsResponse = {
   validations?: PendingValidation[];
   zoneByValidation?: Record<string, DecisionZone | null>;
   coherenceByValidation?: Record<string, ValidationCoherence>;
+  /** Référent par campagne — sert le filtre de LECTURE, jamais un droit. */
+  referentByCampaign?: ReferentByCampaign;
+  currentUserId?: string | null;
 };
 
 type InterviewsResponse = {
   scheduled?: {
     briefId: string;
     uid: string | null;
+    referent?: ReferentInfo | null;
     candidateName: string;
     campaignId: string | null;
     jobTitle: string | null;
@@ -45,6 +53,7 @@ type InterviewsResponse = {
   verdict?: {
     briefId: string;
     uid: string | null;
+    referent?: ReferentInfo | null;
     candidateName: string;
     campaignId: string | null;
     jobTitle: string | null;
@@ -64,7 +73,13 @@ async function readJson<T>(url: string): Promise<T | null> {
 
 export type TodayState =
   | { kind: 'loading' }
-  | { kind: 'ready'; board: TodayBoard; partial: boolean };
+  | {
+      kind: 'ready';
+      board: TodayBoard;
+      partial: boolean;
+      /** Identité du lecteur — sert le raccourci « Mes campagnes ». */
+      currentUserId: string | null;
+    };
 
 export function useTodayBoard(): TodayState & { reload: () => void } {
   const [state, setState] = useState<TodayState>({ kind: 'loading' });
@@ -80,6 +95,7 @@ export function useTodayBoard(): TodayState & { reload: () => void } {
       kind: 'ready',
       // Une lecture tombée est DITE à l'écran : un « rien ne vous attend »
       // produit par une panne réseau serait le pire mensonge de cet écran.
+      currentUserId: validations?.currentUserId ?? null,
       partial:
         validations === null || interviews === null || notifications === null,
       board: buildTodayBoard({
@@ -89,6 +105,7 @@ export function useTodayBoard(): TodayState & { reload: () => void } {
         scheduled: interviews?.scheduled ?? [],
         verdict: interviews?.verdict ?? [],
         signals: notifications?.signals ?? [],
+        referentByCampaign: validations?.referentByCampaign ?? {},
         nowMs: Date.now(),
       }),
     });

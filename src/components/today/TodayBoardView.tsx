@@ -17,7 +17,12 @@
  * de lui.
  */
 
+import { useState } from 'react';
+
 import { ActionButton } from '@/components/campagnes/ActionButton';
+import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
+import { ALL_REFERENTS, type ReferentSelection } from '@/lib/referent/filter';
+import { applyReferentFilter } from '@/lib/today/referent-view';
 import { formatSmartDate } from '@/components/candidatures/stage-ui';
 import { PHRASES } from '@/lib/lexique/phrases-ecran';
 import type { TodayBoard } from '@/lib/today/board';
@@ -33,6 +38,7 @@ import { TodayZoneStrip, type TodayZoneCounts } from './TodayZoneStrip';
 
 export type TodayBoardViewProps = {
   board: TodayBoard;
+  currentUserId: string | null;
   firstName: string | null;
   agentCounts: Record<string, number>;
   zones: TodayZoneCounts | null;
@@ -41,6 +47,16 @@ export type TodayBoardViewProps = {
   onReload: () => void;
 };
 
+/**
+ * « 2 à lire et décider » devient « 2 à lire et décider · 3 masqués ».
+ *
+ * Le total non filtré reste ÉCRIT : un dossier caché reste compté. Sans ça, un
+ * filtre oublié ferait croire à une journée vide.
+ */
+function surTotal(titre: string, masques: number): string {
+  return masques > 0 ? `${titre} · ${masques} masqué${masques > 1 ? 's' : ''}` : titre;
+}
+
 /** « en attente depuis 0 jour » ne veut rien dire — elle est arrivée ce matin. */
 function attente(jours: number): string {
   if (jours <= 0) return 'reçue aujourd’hui';
@@ -48,7 +64,8 @@ function attente(jours: number): string {
 }
 
 export function TodayBoardView({
-  board,
+  board: brut,
+  currentUserId,
   firstName,
   agentCounts,
   zones,
@@ -56,6 +73,13 @@ export function TodayBoardView({
   partial,
   onReload,
 }: TodayBoardViewProps) {
+  // Filtre de LECTURE, volontairement NON persisté (ni URL, ni stockage) : un
+  // filtre oublié qui masque des dossiers est pire que pas de filtre.
+  const [referentFilter, setReferentFilter] =
+    useState<ReferentSelection>(ALL_REFERENTS);
+  const vue = applyReferentFilter(brut, referentFilter, currentUserId);
+  const board = vue.board;
+
   const vides = [
     { id: 'validation', n: board.validation.total, vide: PHRASES.validation.vide },
     { id: 'entretiens', n: board.entretiens.total, vide: PHRASES.entretiens.vide },
@@ -84,7 +108,38 @@ export function TodayBoardView({
           onReload={onReload}
         />
 
+        {/* ⚠️ Une LECTURE, jamais un droit : tout reste consultable et
+            actionnable par tout le monde. Les compteurs disent « n sur N », et
+            « À vérifier » n'est JAMAIS filtré — ce sont des alertes. */}
+        <ReferentFilterBar
+          options={vue.options}
+          selection={referentFilter}
+          onChange={setReferentFilter}
+          myCount={vue.myCount}
+          currentUserId={currentUserId}
+        />
+
         <TodayTeamBand counts={agentCounts} />
+
+        {vue.emptiedByFilter ? (
+          <p
+            className="font-body"
+            style={{ fontSize: 13, color: 'var(--dash-text-secondary)' }}
+          >
+            Rien ne vous attend pour ce référent —{' '}
+            {vue.masked.validation + vue.masked.entretiens} dossier
+            {vue.masked.validation + vue.masked.entretiens > 1 ? 's' : ''}{' '}
+            attend{vue.masked.validation + vue.masked.entretiens > 1 ? 'ent' : ''}{' '}
+            ailleurs.{' '}
+            <button
+              type="button"
+              onClick={() => setReferentFilter(ALL_REFERENTS)}
+              className="font-semibold underline"
+            >
+              Voir tout
+            </button>
+          </p>
+        ) : null}
 
         {/* SUJET : les candidatures qui attendent une validation.
             Deux verbes en dessous — lire et décider · passer en revue. */}
@@ -97,7 +152,10 @@ export function TodayBoardView({
               accent="purple"
               id="validation.aLire"
               count={board.validation.aLire.total}
-              title={PHRASES.aLire.titre(board.validation.aLire.total)}
+              title={surTotal(
+              PHRASES.aLire.titre(board.validation.aLire.total),
+              vue.masked.validation,
+            )}
               subtitle={PHRASES.aLire.sousTitre}
             >
               {board.validation.aLire.items.map((item) => (
@@ -153,7 +211,10 @@ export function TodayBoardView({
               accent="teal"
               id="entretiens.aConfirmer"
               count={board.entretiens.aConfirmer.total}
-              title={PHRASES.aConfirmer.titre(board.entretiens.aConfirmer.total)}
+              title={surTotal(
+                PHRASES.aConfirmer.titre(board.entretiens.aConfirmer.total),
+                brut.entretiens.aConfirmer.total - board.entretiens.aConfirmer.total,
+              )}
               subtitle={PHRASES.aConfirmer.sousTitre}
             >
               {board.entretiens.aConfirmer.items.map((item) => (
@@ -179,7 +240,10 @@ export function TodayBoardView({
               accent="teal"
               id="entretiens.aDecider"
               count={board.entretiens.aDecider.total}
-              title={PHRASES.aDecider.titre(board.entretiens.aDecider.total)}
+              title={surTotal(
+                PHRASES.aDecider.titre(board.entretiens.aDecider.total),
+                brut.entretiens.aDecider.total - board.entretiens.aDecider.total,
+              )}
               subtitle={PHRASES.aDecider.sousTitre}
             >
               {board.entretiens.aDecider.items.map((item) => (

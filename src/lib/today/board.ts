@@ -28,6 +28,11 @@ import {
   interviewsHref,
   signalHref,
 } from '@/lib/navigation/workspace-routes';
+import {
+  activeReferentOf,
+  type ReferentByCampaign,
+  type ReferentInfo,
+} from '@/lib/referent/filter';
 import type { BusinessSignal, BusinessSignalAction } from '@/types/notifications';
 import { BUSINESS_SIGNAL_SURFACES } from '@/types/notifications';
 import type { DecisionZone, PendingValidation } from '@/types/hitl';
@@ -37,6 +42,8 @@ export const TODAY_SECTION_LIMIT = 5;
 
 export type DecisionItem = {
   id: string;
+  /** Référent de la campagne — porté par la ligne, pour le filtre de lecture. */
+  referent: ReferentInfo | null;
   candidateName: string;
   score: number | null;
   campaignId: string;
@@ -48,6 +55,8 @@ export type DecisionItem = {
 
 export type InterviewItem = {
   id: string;
+  /** Recruteur affiché — celui qui TIENT le rendez-vous, pas toujours le référent. */
+  referent: ReferentInfo | null;
   /** Identité de candidature — nécessaire pour confirmer depuis l'accueil. */
   uid: string | null;
   candidateName: string;
@@ -120,6 +129,7 @@ export type TodayInput = {
   coherenceByValidation: Record<string, ValidationCoherence | undefined>;
   scheduled: {
     briefId: string;
+    referent?: ReferentInfo | null;
     uid: string | null;
     candidateName: string;
     campaignId: string | null;
@@ -129,6 +139,7 @@ export type TodayInput = {
   }[];
   verdict: {
     briefId: string;
+    referent?: ReferentInfo | null;
     uid: string | null;
     candidateName: string;
     campaignId: string | null;
@@ -136,6 +147,8 @@ export type TodayInput = {
     interviewStartAt: string | null;
   }[];
   signals: BusinessSignal[];
+  /** Référent par campagne — sert le filtre de lecture, jamais un droit. */
+  referentByCampaign?: ReferentByCampaign;
   nowMs: number;
 };
 
@@ -176,6 +189,7 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
     .slice(0, TODAY_SECTION_LIMIT)
     .map((v) => ({
       id: v.id,
+      referent: activeReferentOf(v.campaignId, input.referentByCampaign ?? {}),
       candidateName: v.candidateName,
       score: v.score,
       campaignId: v.campaignId,
@@ -199,6 +213,9 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
     .filter((row) => row.section === 'a_pointer')
     .map((row) => ({
       id: row.briefId,
+      // ⚠️ Sur un RDV pris, le recruteur affiché est celui qui le TIENT : la
+      // ressource est figée à la confirmation et ne suit pas un re-pointage.
+      referent: row.referent ?? null,
       uid: row.uid ?? null,
       candidateName: row.candidateName,
       campaignId: row.campaignId,
@@ -209,6 +226,7 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
     }));
   const verdicts: InterviewItem[] = input.verdict.map((row) => ({
     id: row.briefId,
+    referent: row.referent ?? null,
     uid: row.uid ?? null,
     candidateName: row.candidateName,
     campaignId: row.campaignId,

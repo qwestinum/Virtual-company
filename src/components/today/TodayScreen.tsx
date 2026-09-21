@@ -54,6 +54,7 @@ export function TodayScreen() {
   return (
     <TodayBoardView
       board={state.board}
+      currentUserId={state.currentUserId}
       firstName={team.firstName}
       agentCounts={team.agentCounts}
       zones={data?.zones ?? null}
