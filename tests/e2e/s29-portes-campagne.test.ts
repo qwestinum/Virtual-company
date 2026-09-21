@@ -53,11 +53,14 @@ async function ouvrirLaCarte(): Promise<void> {
   await page.goto(`${BASE_URL}/campagnes?campagne=${encodeURIComponent(campagne.id)}`, {
     waitUntil: 'domcontentloaded',
   });
-  await page.waitForSelector('text=Gestion des campagnes', { timeout: 30_000 });
+  // Généreux EXPRÈS : sur un serveur de dev à froid, /campagnes se compile au
+  // premier passage. Un budget serré ferait passer une compilation pour une
+  // porte cassée.
+  await page.waitForSelector('text=Gestion des campagnes', { timeout: 90_000 });
   // Le bloc « Trouver des candidats » n'apparaît qu'une fois la carte dépliée
   // ET ses états chargés (trois lectures qui tombent séparément).
-  await page.waitForSelector('text=Trouver des candidats', { timeout: 30_000 });
-  await porte(page, 'Chercher dans le vivier').waitFor({ timeout: 30_000 });
+  await page.waitForSelector('text=Trouver des candidats', { timeout: 60_000 });
+  await porte(page, 'Chercher dans le vivier').waitFor({ timeout: 60_000 });
 }
 
 async function fermerLaFeuille(): Promise<void> {
@@ -106,7 +109,7 @@ describe('S29 — les portes de la carte campagne', () => {
     expect(
       await page.locator('[role="dialog"] button[aria-expanded="true"]').count(),
     ).toBe(1);
-  }, 90_000);
+  }, 180_000);
 
   it('S29.2 — « Diffuser l’annonce » ouvre les canaux de diffusion', async () => {
     await fermerLaFeuille();
@@ -115,7 +118,7 @@ describe('S29 — les portes de la carte campagne', () => {
     await page.waitForSelector('[role="dialog"]', { timeout: 20_000 });
     const canaux = blocDeLAccordeon(page, 'Canaux de diffusion');
     await expect.poll(() => canaux.getAttribute('aria-expanded'), { timeout: 20_000 }).toBe('true');
-  }, 90_000);
+  }, 180_000);
 
   it('S29.3 — la même porte, une seconde fois, ouvre encore', async () => {
     await fermerLaFeuille();
@@ -131,7 +134,7 @@ describe('S29 — les portes de la carte campagne', () => {
     await expect
       .poll(() => blocDeLAccordeon(page, 'Vivier').getAttribute('aria-expanded'), { timeout: 20_000 })
       .toBe('true');
-  }, 90_000);
+  }, 180_000);
 
   it('S29.4 — le lien collé dans la barre d’adresse ouvre la même chose', async () => {
     // Le chemin qui, lui, marchait déjà : un MONTAGE. Il reste vert — on n'a
@@ -144,5 +147,5 @@ describe('S29 — les portes de la carte campagne', () => {
     await expect
       .poll(() => blocDeLAccordeon(page, 'Vivier').getAttribute('aria-expanded'), { timeout: 20_000 })
       .toBe('true');
-  }, 90_000);
+  }, 180_000);
 });

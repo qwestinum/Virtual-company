@@ -23,7 +23,10 @@ export default defineConfig({
     include: ['tests/e2e/**/*.test.ts'],
     fileParallelism: false,
     sequence: { concurrent: false },
-    testTimeout: 90_000,
-    hookTimeout: 120_000,
+    // ⚠️ Le premier passage compile l'application : la connexion seule peut
+    // demander deux minutes sur un `next dev` démarré à froid. Un budget serré
+    // ferait rendre « la connexion ne marche pas » à un serveur qui compilait.
+    testTimeout: 180_000,
+    hookTimeout: 300_000,
   },
 });
