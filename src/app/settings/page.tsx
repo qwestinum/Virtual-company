@@ -48,7 +48,7 @@ export default async function SettingsPage() {
       <WorkspaceBackground />
       <TopBanner
         breadcrumb={[
-          { label: 'Lobby', href: '/app' },
+          { label: 'Aujourd’hui', href: '/aujourdhui' },
           { label: 'Paramètres' },
         ]}
       />

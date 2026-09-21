@@ -1,15 +1,17 @@
-import { Lobby } from '@/components/lobby/Lobby';
+import { redirect } from 'next/navigation';
 
-export const metadata = {
-  title: 'Lobby — QWESTINUM',
-};
+import { legacyTarget } from '@/lib/navigation/legacy-routes';
 
 /**
- * Lobby des départements (route protégée).
+ * ANCIENNE ADRESSE du lobby des départements, conservée — elle ne rendra
+ * jamais 404 : des favoris et des captures de démonstration la portent.
  *
- * Accessible après authentification. Le middleware s'occupe de rediriger
- * vers `/login` si la session est absente, donc on rend directement.
+ * L'application s'ouvre désormais sur « Aujourd'hui » (lot 8 bis). Le lobby
+ * était un écran qu'on traversait sans le lire : un clic de plus, pas une
+ * orientation. La cible est LUE dans `legacy-routes.ts` (source unique,
+ * testée) : la recopier ici ferait deux tableaux qui divergeraient en
+ * silence.
  */
-export default function AppLobbyPage() {
-  return <Lobby />;
+export default function LobbyRedirectPage() {
+  redirect(legacyTarget('/app'));
 }

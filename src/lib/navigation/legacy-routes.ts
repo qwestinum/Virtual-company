@@ -16,6 +16,14 @@
  */
 
 export const LEGACY_ROUTES = {
+  '/app': {
+    to: '/aujourdhui',
+    why: "Le lobby des départements disparaît du chemin quotidien (lot 8 bis) : l'application s'ouvre sur ce qui attend une action, et le logo y ramène. Un lobby qu'on traverse sans le lire est un clic de plus, pas une orientation.",
+  },
+  '/rh': {
+    to: '/aujourdhui',
+    why: "Le portail du département RH n'avait qu'une porte — Recrutement — et celle-ci n'a plus de page d'accueil à elle. On atterrit directement sur le travail du jour.",
+  },
   '/rh/recrutement': {
     to: '/aujourdhui',
     why: "Le workspace n'est plus une page unique à onglets : chaque entrée a son adresse. On atterrit sur ce qui attend une action.",

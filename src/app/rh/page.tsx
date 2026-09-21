@@ -1,63 +1,13 @@
-import { DepartmentView } from '@/components/department/DepartmentView';
-import type { ServiceCardProps } from '@/components/department/ServiceCard';
+import { redirect } from 'next/navigation';
 
-export const metadata = {
-  title: 'Département RH — QWESTINUM',
-};
+import { legacyTarget } from '@/lib/navigation/legacy-routes';
 
-const RH_SERVICES: ServiceCardProps[] = [
-  {
-    id: 'recrutement',
-    name: 'Recrutement',
-    description:
-      'Cadrage, diffusion, analyse des CV, entretiens, validation. Le service le plus mature, opérationnel sur démos clients.',
-    icon: '🎯',
-    accent: 'linear-gradient(135deg, #FFB000, #FF8A00)',
-    status: 'active',
-    href: '/aujourdhui',
-  },
-  {
-    id: 'vivier',
-    name: 'Vivier de candidats',
-    description:
-      'Votre stock interne de CV, indexé et réutilisable d’une campagne à l’autre. Dépôt manuel, déduplication par email, recherche à venir.',
-    icon: '🗂️',
-    accent: 'linear-gradient(135deg, #15A364, #0E7C6B)',
-    status: 'active',
-    href: '/vivier',
-  },
-  {
-    id: 'admin-personnel',
-    name: 'Administration du personnel',
-    description:
-      'Contrats, paie, congés, mobilité interne. Cadrage en cours — sortie après stabilisation du recrutement.',
-    icon: '📋',
-    accent: 'linear-gradient(135deg, #15A364, #12A594)',
-    status: 'coming',
-  },
-  {
-    id: 'formation',
-    name: 'Formation',
-    description:
-      "Plans de développement, parcours métier, suivi des compétences. À l'étude.",
-    icon: '🎓',
-    accent: 'linear-gradient(135deg, #FFB000, #E8710A)',
-    status: 'coming',
-  },
-];
-
-export default function RHDepartmentPage() {
-  return (
-    <DepartmentView
-      meta={{
-        id: 'rh',
-        name: 'Ressources humaines',
-        tagline:
-          'Le département RH virtuel — Manager RH au centre, agents spécialisés autour. Sélectionnez un service pour entrer.',
-        icon: '🧑‍💼',
-        accent: 'linear-gradient(135deg, #FFB000, #FF8A00)',
-      }}
-      services={RH_SERVICES}
-    />
-  );
+/**
+ * ANCIENNE ADRESSE du portail RH, conservée — jamais 404.
+ *
+ * Le département n'avait qu'une porte, Recrutement, et celle-ci n'a plus de
+ * page d'accueil à elle : on atterrit sur le travail du jour.
+ */
+export default function RhRedirectPage() {
+  redirect(legacyTarget('/rh'));
 }

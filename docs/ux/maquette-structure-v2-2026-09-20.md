@@ -697,6 +697,39 @@ famille : `#e8a33a` donnerait 2,2:1, `--dash-orange` 3,09:1.
 défaut et en tête, la colonne tombe au même pixel sur les cinq, elle se replie à 1 000 px
 sans emporter la largeur du contenu, et les flèches déplacent le focus.
 
+### La barre du haut : atterrissage direct + espaces transverses (lot 8 bis, 21/09/2026)
+
+**Plus de « Lobby / RH / Recrutement ».** Le fil d'Ariane décrivait une hiérarchie que
+personne ne parcourait : trois clics pour atteindre le travail du jour. L'application
+s'ouvre sur *Aujourd'hui*, le **logo y ramène**, et `/app`, `/rh`, `/rh/recrutement`
+**redirigent** — jamais 404.
+
+À sa place, **trois espaces de gestion TRANSVERSES**, en liens texte discrets (pas des
+onglets : la colonne garde ce rendu) :
+
+| Espace | Ce qu'il porte | Ce qu'il ne porte PAS |
+|---|---|---|
+| **Vivier** | l'écran existant, ré-atteignable directement (déposer, parcourir, rechercher) | — |
+| **Sourcing** | vue transverse : approches en cours toutes campagnes, réponses, oppositions, coût mensuel (carte admin) | **aucun lancement de recherche** — le gate reste la campagne, qui porte la fiche, les critères et le budget |
+| **Diffusion** | toutes les annonces publiées, tous canaux, toutes campagnes : état, date, jours restants avant que republier soit refusé | aucun geste — chaque ligne mène à la campagne |
+
+Puis le compte / *Se déconnecter* à l'extrême droite.
+
+⚠️ **PAS de « Validations » en haut.** Sa population vit sous la puce « À valider » de
+*Candidatures* et dans la section d'*Aujourd'hui* ; une troisième porte recréerait l'onglet
+que la refonte a supprimé. Les **règles** de validation (seuils par défaut, gabarits de
+refus) sont dans *Réglages*.
+
+⚠️ **L'état d'une annonce est un CACHE.** Un consultant Apec peut valider, un recruteur
+peut modifier sur apec.fr : ORQA ne l'apprend qu'en demandant. Chaque ligne de *Diffusion*
+dit donc **quand l'état a été lu**. Et « J+30 » n'est pas une expiration qu'ORQA
+connaîtrait : c'est la borne au-delà de laquelle l'Apec **refuse une republication** — on
+affiche donc « N jours pour republier », jamais « expire le ».
+
+**Garde** : S37 (5 cas) — les trois liens ouvrent leur page (colonne comprise), le logo
+ramène à *Aujourd'hui*, les trois anciennes adresses redirigent, la barre ne porte que ces
+trois espaces, et *Sourcing* ne propose aucun lancement de recherche.
+
 ### Une couleur par NATURE d'objet (21/09/2026)
 
 **Règle.** La couleur d'un pavé d'initiales ou d'une icône de ligne ne code ni l'étape, ni

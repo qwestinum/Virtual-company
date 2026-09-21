@@ -26,14 +26,11 @@ export default function WorkspaceLayout({
   return (
     <main className="relative flex h-[100svh] w-full flex-col overflow-hidden">
       <WorkspaceBackground />
-      <TopBanner
-        breadcrumb={[
-          { label: 'Lobby', href: '/app' },
-          { label: 'RH', href: '/rh' },
-          { label: 'Recrutement' },
-        ]}
-        showSettings={false}
-      />
+      {/* ⚠️ Plus de fil d'Ariane : « Lobby / RH / Recrutement » décrivait une
+          hiérarchie que personne ne parcourait. Le logo ramène à Aujourd'hui,
+          et les trois espaces transverses (Vivier · Sourcing · Diffusion)
+          prennent sa place. Les Paramètres sont en bas de la colonne. */}
+      <TopBanner showSettings={false} />
       <div className="relative flex min-h-0 w-full flex-1">
         <HydrationGate />
         <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden">

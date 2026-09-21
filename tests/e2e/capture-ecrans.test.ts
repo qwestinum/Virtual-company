@@ -19,7 +19,12 @@ import type { Browser, Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 
 import { BASE_URL } from './setup';
-import { assertAppIsUp, launchBrowser, signIn } from './helpers/browser';
+import {
+  assertAppIsUp,
+  attendreHydratation,
+  launchBrowser,
+  signIn,
+} from './helpers/browser';
 import { createTestRecruiter, deleteTestRecruiter, type TestRecruiter } from './helpers/session';
 
 /** Une largeur de colonne, et la même pour les trois. */
@@ -167,10 +172,14 @@ describe('capture des trois écrans', () => {
     // donc la troisième à devoir porter le même pavé orange.
     await page.goto(`${BASE_URL}/pilotage`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-counter="audit"]', { timeout: 90_000 });
+    // ⚠️ ON ATTEND L'HYDRATATION. Le bouton existe en HTML avant que React ne
+    // le reprenne : cliqué là, le clic tombe dans le vide, sans erreur et sans
+    // trace. Mesuré : `aria-pressed` restait à `false` après le clic. C'est le
+    // même piège que S29 au début du chantier, et le helper existe pour ça.
+    await attendreHydratation(page, '[data-counter="audit"]');
     await page.click('[data-counter="audit"]');
-    // ⚠️ On ATTEND la vue, on ne devine pas : la première version tirait la
-    // capture 2 s après le clic et rendait l'écran PRÉCÉDENT. Le clic, lui,
-    // marchait — mesuré : `aria-pressed` passe bien à `true`.
+    // Puis on attend la VUE, on ne devine pas : une version antérieure tirait
+    // la capture 2 s après le clic et rendait l'écran précédent.
     await page.waitForSelector('text=Audit candidat', { timeout: 60_000 });
     await page.click('text=Audit candidat');
     await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
@@ -193,5 +202,13 @@ describe('capture des trois écrans', () => {
       resolve(KIT, 'carte-campagne.png'),
       await page.screenshot({ type: 'png' }),
     );
+
+    // LE VIVIER — un espace TRANSVERSE : il garde la barre du haut et la
+    // colonne, mais n'est pas une entrée de celle-ci.
+    await page.goto(`${BASE_URL}/vivier`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-workspace-sidebar]', { timeout: 90_000 });
+    await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(1_500);
+    writeFileSync(resolve(KIT, 'vivier.png'), await page.screenshot({ type: 'png' }));
   }, 300_000);
 });
