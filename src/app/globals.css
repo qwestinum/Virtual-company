@@ -316,12 +316,13 @@
      confortablement (5,38). */
   --dash-ambre-action: #ac7c02;
 
-  /* L'ACCUEIL — la teinte UNIQUE des trois blocs pliables d'Aujourd'hui, et
-     sa nuance (45 % sur le blanc, posée par `TodayCard`). Mesuré : texte
-     13,56:1 et texte secondaire 4,77:1 sur la teinte pleine, 15,48 et 5,45
-     sur la nuance — AA partout. Les icônes prennent `--dash-beige-encre`
-     (5,65:1), de la même famille. */
-  --dash-accueil-bloc: #ffe0ab;
+  /* LE BANDEAU du haut — et, EXACTEMENT la même valeur, l'en-tête des trois
+     blocs pliables d'Aujourd'hui (22/09/2026). UN jeton lu aux deux endroits :
+     deux copies de la même couleur finissent par diverger.
+     ⚠️ Translucide : sur blanc il rend ≈ #ffd880. Mesuré dessus : texte
+     12,65:1 ; texte SECONDAIRE 4,45:1, SOUS AA — d'où l'encre beige (5,27:1)
+     pour un sous-titre posé sur cette teinte. */
+  --dash-bandeau: rgba(255, 176, 0, 0.5);
   --dash-yellow-light: #fff8e1;
 }
 

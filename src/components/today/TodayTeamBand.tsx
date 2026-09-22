@@ -111,8 +111,11 @@ export function TodayTeamBand({
         })}
       </div>
     </Link>
-      {/* LA FENÊTRE, hors du lien — voir l'en-tête du fichier. */}
-      <div className="mt-2 flex items-center justify-center gap-1">
+      {/* LA FENÊTRE, hors du lien — voir l'en-tête du fichier.
+          Deux boutons SOBRES : une bordure, pas de fond. L'actif se marque
+          par une bordure plus soutenue et le gras, jamais par un aplat — la
+          bande rend compte, rien ici ne doit ressembler à une action forte. */}
+      <div className="mt-3 flex items-center justify-center gap-2">
         {(
           [
             ['semaine', PHRASES.equipe.fenetre],
@@ -127,11 +130,14 @@ export function TodayTeamBand({
               data-band-window={cle}
               aria-pressed={actif}
               onClick={() => onFenetre(cle)}
-              className="rounded-full px-2.5 py-1 font-body text-[11px] transition"
+              className="font-body text-[12px] transition"
               style={{
-                fontWeight: actif ? 700 : 400,
+                padding: '4px 12px',
+                borderRadius: 8,
+                background: 'transparent',
+                border: `1px solid ${actif ? 'var(--dash-text-secondary)' : 'var(--dash-border-strong)'}`,
+                fontWeight: actif ? 700 : 500,
                 color: actif ? 'var(--dash-text)' : 'var(--dash-text-secondary)',
-                background: actif ? 'var(--dash-warm)' : 'transparent',
               }}
             >
               {libelle}

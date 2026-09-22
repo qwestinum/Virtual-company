@@ -34,7 +34,8 @@ import { dedupeFetch } from '@/lib/net/dedupe-fetch';
 import { Breadcrumb, type BreadcrumbItem } from './Breadcrumb';
 import { OrqaLogo } from './OrqaLogo';
 
-const BANNER_FILL = 'rgba(255, 176, 0, 0.5)';
+/** Le jeton est partagé avec l'en-tête des blocs d'Aujourd'hui. */
+const BANNER_FILL = 'var(--dash-bandeau)';
 
 /**
  * Les espaces de gestion TRANSVERSES — ceux qui ne sont pas une étape du
@@ -114,6 +115,7 @@ export function TopBanner({
   const enAttente = useValidationsEnAttente(showEspaces);
   return (
     <header
+      data-top-banner
       className="sticky top-0 z-50 flex items-center gap-6 px-6 py-2 shadow-[0_1px_0_rgba(255,176,0,0.35)]"
       style={{ background: BANNER_FILL, backdropFilter: 'blur(6px)' }}
     >

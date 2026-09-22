@@ -1,40 +1,34 @@
 'use client';
 
 /**
- * Carte de section — TROIS NIVEAUX DE RELIEF, UNE SEULE COULEUR.
+ * Carte de section — TRANSPARENTE, BORDÉE DE GRIS.
  *
- *   ① l'EN-TÊTE     — la teinte d'accueil `#ffe0ab`, en dégradé vers sa nuance
- *   ② le SOUS-BLOC  — la nuance (45 % sur le blanc), repliable
- *   ③ la RANGÉE     — blanc franc, bordure fine, coins arrondis
+ *   ① la CARTE      — aucun fond ; bordure et filet gauche gris
+ *   ② le SOUS-BLOC  — aucun fond non plus ; même bordure, plus fine, repliable
+ *   ③ la RANGÉE     — blanc franc, bordure fine : le seul aplat, c'est le contenu
  *
- * Le corps de la carte est blanc : c'est lui qui fait ressortir les sous-blocs.
+ * ⚠️ Historique du 22/09/2026 (demandes successives du donneur d'ordre) : les
+ * trois blocs ont porté la teinte de leur registre, puis `#ffe0ab`, puis la
+ * teinte du bandeau ; ils sont désormais TRANSPARENTS, bordés de gris. Le
+ * sujet reste dit par l'icône et le titre — l'icône porte une couleur PROPRE à
+ * chaque sujet (`iconColor`).
  *
- * ⚠️ UNE COULEUR POUR LES TROIS BLOCS (22/09/2026, demande du donneur
- * d'ordre). Chaque bloc portait la teinte de son registre — violet, turquoise,
- * orange. L'écran d'accueil se lisait comme trois sujets de trois natures ; il
- * n'en a qu'une : ce qui vous attend. Le SUJET reste dit par l'icône et le
- * titre, jamais par la couleur.
- *
- * Contrastes mesurés (texte et texte secondaire AA sur les deux niveaux) :
- * voir `--dash-accueil-bloc` dans `globals.css` et `socle-contraste.test.ts`.
+ * ⚠️ Le gris SOUTENU du produit (`--dash-border-strong`), pas le gris de carte
+ * (`--dash-border`) : sans fond, le bloc n'est délimité QUE par sa bordure, et
+ * le gris clair ne se détache presque pas du fond sable de la page.
  */
 
 import { ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 
-/** La nuance du sous-bloc : la teinte d'accueil à ce pourcentage sur le blanc. */
-export const SUBTINT_PERCENT = 45;
-
-const TEINTE = 'var(--dash-accueil-bloc)';
-const NUANCE = `color-mix(in srgb, ${TEINTE} ${SUBTINT_PERCENT}%, var(--dash-surface))`;
-/** L'en-tête : la teinte, qui se fond dans sa nuance. */
-const DEGRADE = `linear-gradient(90deg, ${TEINTE}, ${NUANCE})`;
-/** L'encre des icônes — même famille, 5,65:1 sur la teinte pleine. */
+const BORDURE = 'var(--dash-border-strong)';
+/** L'encre par défaut des icônes, quand un sujet n'en fixe pas. */
 const ENCRE = 'var(--dash-beige-encre)';
 
 export function TodayCard({
   id,
   icon: Icone,
+  iconColor = ENCRE,
   title,
   subtitle,
   children,
@@ -43,6 +37,8 @@ export function TodayCard({
   id?: string;
   /** L'icône du SUJET, devant le titre. Toujours la même pour un sujet. */
   icon?: LucideIcon;
+  /** La couleur de l'icône — une par sujet ; ≥ 3:1 sur la teinte (mesuré). */
+  iconColor?: string;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
@@ -69,7 +65,7 @@ export function TodayCard({
         <Icone
           aria-hidden
           className="mt-0.5 h-[18px] w-[18px] shrink-0"
-          style={{ color: ENCRE }}
+          style={{ color: iconColor }}
         />
       ) : (
         <span
@@ -80,7 +76,7 @@ export function TodayCard({
             height: 8,
             borderRadius: 999,
             flexShrink: 0,
-            background: ENCRE,
+            background: iconColor,
           }}
         />
       )}
@@ -119,11 +115,9 @@ export function TodayCard({
     <section
       style={{
         borderRadius: 14,
-        border: '1px solid var(--dash-border)',
-        borderLeft: `3px solid ${TEINTE}`,
-        // Le corps est blanc : sans ça les sous-blocs, à la nuance, se
-        // confondraient avec lui.
-        background: 'var(--dash-surface)',
+        border: `1px solid ${BORDURE}`,
+        borderLeft: `3px solid ${BORDURE}`,
+        background: 'transparent',
         overflow: 'hidden',
       }}
     >
@@ -136,8 +130,7 @@ export function TodayCard({
           data-today-card={id}
           className="flex w-full items-start gap-2.5 px-4 py-3 text-left"
           style={{
-            borderBottom: ouvert ? '1px solid var(--dash-border)' : 'none',
-            background: DEGRADE,
+            borderBottom: ouvert ? `1px solid ${BORDURE}` : 'none',
           }}
         >
           {entete}
@@ -146,8 +139,7 @@ export function TodayCard({
         <header
           className="flex items-start gap-2.5 px-4 py-3"
           style={{
-            borderBottom: '1px solid var(--dash-border)',
-            background: DEGRADE,
+            borderBottom: `1px solid ${BORDURE}`,
           }}
         >
           {entete}
@@ -221,7 +213,8 @@ export function TodaySubBlock({
     <div
       style={{
         borderRadius: 10,
-        background: NUANCE,
+        border: `1px solid ${BORDURE}`,
+        background: 'transparent',
       }}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">

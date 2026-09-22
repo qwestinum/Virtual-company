@@ -3,8 +3,6 @@ import { join, relative, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { SUBTINT_PERCENT } from '@/components/today/TodayCard';
-
 /**
  * SOCLE — il NOMME ce qui existe, il n'invente rien.
  *
@@ -65,46 +63,22 @@ describe('les rôles employés par l’écran tiennent leur contraste', () => {
   });
 });
 
-describe('la teinte UNIQUE des blocs d’Aujourd’hui', () => {
-  // Les trois blocs portaient chacun la teinte de leur registre ; ils portent
-  // désormais la même (`--dash-accueil-bloc`) et sa nuance (22/09/2026).
-  const surface = dash('surface');
-  const teinte = dash('accueil-bloc');
+describe('les blocs d’Aujourd’hui : transparents, bordés de gris', () => {
+  // Les blocs n'ont plus de fond (22/09/2026) : texte et icônes se posent sur
+  // le fond de PAGE.
+  const fond = dash('bg');
 
-  /** Mélange `pct` % de `couleur` dans `fond` — ce que fait `color-mix`. */
-  const melange = (couleur: string, fond: string, pct: number): string => {
-    const canal = (h: string, i: number) => parseInt(h.slice(i, i + 2), 16);
-    const out = [1, 3, 5].map((i) =>
-      Math.round((canal(couleur, i) * pct + canal(fond, i) * (100 - pct)) / 100),
-    );
-    return `#${out.map((n) => n.toString(16).padStart(2, '0')).join('')}`;
-  };
-  const nuance = melange(teinte, surface, SUBTINT_PERCENT);
-
-  it('le texte garde son AA sur la teinte pleine (en-tête)', () => {
-    expect(ratio(dash('text'), teinte)).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(dash('text-secondary'), teinte)).toBeGreaterThanOrEqual(4.5);
+  it('le texte et le texte secondaire gardent leur AA sur le fond de page', () => {
+    expect(ratio(dash('text'), fond)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(dash('text-secondary'), fond)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('le texte garde son AA sur la nuance (sous-bloc)', () => {
-    expect(ratio(dash('text'), nuance)).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(dash('text-secondary'), nuance)).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it('les icônes passent le 3:1 des éléments non textuels, sur les deux niveaux', () => {
-    expect(ratio(dash('beige-encre'), teinte)).toBeGreaterThanOrEqual(3);
-    expect(ratio(dash('beige-encre'), nuance)).toBeGreaterThanOrEqual(3);
-  });
-
-  it('trois niveaux lisibles sans texte : teinte ≠ nuance ≠ rangée blanche', () => {
-    expect(ratio(teinte, nuance)).toBeGreaterThan(1.05);
-    expect(ratio(surface, nuance)).toBeGreaterThan(1.05);
-  });
-
-  it('la sonde : du texte secondaire sur une teinte trop dense serait détecté', () => {
-    const trop = melange(dash('orange'), surface, 60);
-    expect(ratio(dash('text-secondary'), trop)).toBeLessThan(4.5);
-  });
+  it.each(['purple', 'blue', 'orange-text'])(
+    'l’icône %s passe le 3:1 des éléments non textuels sur le fond de page',
+    (role) => {
+      expect(ratio(dash(role), fond)).toBeGreaterThanOrEqual(3);
+    },
+  );
 });
 
 // ── Garde « ZÉRO INVENTION » ────────────────────────────────────────────────

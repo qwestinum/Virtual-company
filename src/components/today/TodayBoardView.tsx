@@ -131,9 +131,10 @@ export function TodayBoardView({
           currentUserId={currentUserId}
         />
 
-        {/* Un espace de plus sous la bande : elle rend compte, les blocs
-            qui suivent attendent un geste — ils ne se lisent pas d'un trait. */}
-        <div style={{ marginBottom: 16 }}>
+        {/* De l'air sous la bande (32 px en plus de l'écart commun) : elle
+            rend compte, les blocs qui suivent attendent un geste — ils ne se
+            lisent pas d'un trait. */}
+        <div style={{ marginBottom: 32 }}>
           <TodayTeamBand counts={agentCounts} fenetre={fenetre} onFenetre={onFenetre} />
         </div>
 
@@ -162,11 +163,15 @@ export function TodayBoardView({
         {pending.validation ? (
           <TodaySkeleton titre="Candidatures à valider" />
         ) : board.validation.total > 0 ? (
-          // Les trois blocs portent la MÊME teinte (`TodayCard`) : le sujet se
-          // dit par l'icône et le titre, pas par la couleur.
+          // Les trois blocs portent la MÊME teinte (`TodayCard`, celle du
+          // bandeau) ; seule l'ICÔNE change de couleur d'un sujet à l'autre.
+          // Mesuré sur la teinte, ≥ 3:1 exigé d'un élément non textuel :
+          // violet 3,24 · bleu 3,38 · orange foncé 3,68. Le turquoise et
+          // l'orange de marque (2,25) n'y tiennent pas.
           <TodayCard
             id="validation"
             icon={ShieldCheck}
+            iconColor="var(--dash-purple)"
             title={PHRASES.validation.titre(board.validation.total)}
           >
             <TodaySubBlock
@@ -227,6 +232,7 @@ export function TodayBoardView({
           <TodayCard
             id="entretiens"
             icon={CalendarCheck}
+            iconColor="var(--dash-blue)"
             title={PHRASES.entretiens.titre(board.entretiens.total)}
           >
             <TodaySubBlock
@@ -288,6 +294,7 @@ export function TodayBoardView({
           <TodayCard
             id="regler"
             icon={Bell}
+            iconColor="var(--dash-orange-text)"
             title={PHRASES.regler.titre(board.verify.total)}
             subtitle={PHRASES.regler.sousTitre}
           >

@@ -1,16 +1,19 @@
 /**
- * S41 — AUJOURD'HUI : UNE SEULE TEINTE, PAS DE RÉCAP, DE L'AIR SOUS LA BANDE.
+ * S41 — AUJOURD'HUI : BLOCS TRANSPARENTS BORDÉS DE GRIS, PAS DE RÉCAP, DE L'AIR.
  *
  * Trois demandes du 22/09/2026, vérifiées sur le RENDU (styles calculés) et
  * non sur le code : une couleur écrite juste mais écrasée ailleurs, ou un
  * jeton mal nommé qui fait tomber la déclaration, passerait une lecture du
  * source.
  *
- *   1. les trois blocs pliables ont le MÊME fond d'en-tête, et c'est un
- *      dégradé partant de #ffe0ab ;
+ *   1. les trois blocs pliables sont TRANSPARENTS, bordés du gris soutenu
+ *      du produit (`--dash-border-strong`, #d4cdc5) ;
+ *      chaque icône de titre a sa PROPRE couleur ;
  *   2. ni la date ni la ligne « n à valider · n à conclure » sous le titre ;
  *   3. un écart plus grand entre la bande d'équipe et le premier bloc
- *      qu'entre les autres blocs de la page.
+ *      qu'entre les autres blocs de la page ;
+ *   4. « cette semaine » / « ce mois-ci » sont des boutons SOBRES : une
+ *      bordure, aucun fond.
  */
 import type { Browser, Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -41,14 +44,37 @@ describe('S41 — teinte unique d’Aujourd’hui', () => {
     if (recruiter) await deleteTestRecruiter(recruiter);
   });
 
-  it('S41.1 — les blocs partagent le même dégradé #ffe0ab', async () => {
-    const fonds = await page.$$eval('[data-today-card]', (ns) =>
-      ns.map((n) => getComputedStyle(n).backgroundImage),
+  it('S41.1 — blocs transparents, bordure grise', async () => {
+    const blocs = await page.$$eval('[data-today-card]', (ns) =>
+      ns.map((n) => {
+        const section = n.closest('section')!;
+        const c = getComputedStyle(section);
+        return {
+          fondBloc: c.backgroundColor,
+          fondEntete: getComputedStyle(n).backgroundColor,
+          bordure: c.borderTopColor,
+          filet: c.borderLeftColor,
+          largeurFilet: c.borderLeftWidth,
+        };
+      }),
     );
-    expect(fonds.length, 'aucun bloc sur Aujourd’hui').toBeGreaterThan(0);
-    expect(new Set(fonds).size, fonds.join('\n')).toBe(1);
-    // #ffe0ab = rgb(255, 224, 171).
-    expect(fonds[0]).toMatch(/^linear-gradient\(.*rgb\(255, 224, 171\)/);
+    expect(blocs.length, 'aucun bloc sur Aujourd’hui').toBeGreaterThan(0);
+    for (const b of blocs) {
+      const d = JSON.stringify(b);
+      expect(b.fondBloc, d).toBe('rgba(0, 0, 0, 0)');
+      expect(b.fondEntete, d).toBe('rgba(0, 0, 0, 0)');
+      // #d4cdc5 = --dash-border-strong.
+      expect(b.bordure, d).toBe('rgb(212, 205, 197)');
+      expect(b.filet, d).toBe('rgb(212, 205, 197)');
+      expect(b.largeurFilet, d).toBe('3px');
+    }
+  });
+
+  it('S41.1 bis — chaque icône de titre a sa propre couleur', async () => {
+    const couleurs = await page.$$eval('[data-today-card] svg:first-child', (ns) =>
+      ns.map((n) => getComputedStyle(n).color),
+    );
+    expect(new Set(couleurs).size, couleurs.join(' · ')).toBe(couleurs.length);
   });
 
   it('S41.2 — ni date ni ligne de récap sous le titre', async () => {
@@ -73,10 +99,25 @@ describe('S41 — teinte unique d’Aujourd’hui', () => {
       };
     });
     expect(ecarts, 'bande ou bloc introuvable').not.toBeNull();
-    // gap-5 (20 px) + la marge ajoutée (16 px).
-    expect(ecarts!.sousBande, JSON.stringify(ecarts)).toBeGreaterThanOrEqual(36);
+    // gap-5 (20 px) + la marge ajoutée (32 px).
+    expect(ecarts!.sousBande, JSON.stringify(ecarts)).toBeGreaterThanOrEqual(52);
     if (ecarts!.entreBlocs !== null) {
       expect(ecarts!.sousBande).toBeGreaterThan(ecarts!.entreBlocs);
+    }
+  });
+
+  it('S41.4 — les deux fenêtres sont des boutons sobres : bordure, aucun fond', async () => {
+    const styles = await page.$$eval('[data-band-window]', (ns) =>
+      ns.map((n) => {
+        const c = getComputedStyle(n);
+        return { bordure: c.borderTopWidth, style: c.borderTopStyle, fond: c.backgroundColor };
+      }),
+    );
+    expect(styles.length).toBe(2);
+    for (const s of styles) {
+      expect(s.style, JSON.stringify(s)).toBe('solid');
+      expect(s.bordure, JSON.stringify(s)).toBe('1px');
+      expect(s.fond, JSON.stringify(s)).toBe('rgba(0, 0, 0, 0)');
     }
   });
 });
