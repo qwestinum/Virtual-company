@@ -24,14 +24,29 @@ export type SectionToggles = {
   openCount: number;
 };
 
-export function useSectionToggles(allIds: string[]): SectionToggles {
-  const [open, setOpen] = useState<string[]>([]);
+/**
+ * @param allIds les identifiants qui existent — une préférence portant sur un
+ *   identifiant disparu est ignorée.
+ * @param cle la clé de stockage. Les FAMILLES ont la leur : mélangées aux
+ *   sections, elles fausseraient le « n sur N » de la barre d'outils et
+ *   « Tout ouvrir » replierait les familles en croyant ouvrir des sections.
+ * @param ouvertesParDefaut l'état de départ. Les sections partent REPLIÉES
+ *   (la page devient une liste qu'on parcourt) ; les familles partent
+ *   DÉPLIÉES — les replier toutes d'emblée cacherait la page entière derrière
+ *   quatre titres.
+ */
+export function useSectionToggles(
+  allIds: string[],
+  cle: string = STORAGE_KEY,
+  ouvertesParDefaut = false,
+): SectionToggles {
+  const [open, setOpen] = useState<string[]>(ouvertesParDefaut ? allIds : []);
 
   // Lecture au montage seulement : `localStorage` n'existe pas au rendu
   // serveur, et lire pendant le rendu produirait une hydratation divergente.
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(cle);
       if (!raw) return;
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
@@ -45,8 +60,12 @@ export function useSectionToggles(allIds: string[]): SectionToggles {
       // distinguer. Un initialiseur paresseux ne convient pas — il
       // s'exécuterait aussi au rendu serveur, où `window` n'existe pas, et
       // produirait une hydratation divergente.
+      // ⚠️ On applique la préférence MÊME VIDE quand le défaut est « tout
+      // ouvert » : sinon, quelqu'un qui a tout replié retrouverait tout
+      // déplié au rechargement — sa préférence serait prise pour une absence
+      // de préférence.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (known.length > 0) setOpen(known);
+      if (known.length > 0 || ouvertesParDefaut) setOpen(known);
     } catch {
       // Préférence illisible : on repart de « tout replié », sans bruit.
     }
@@ -57,12 +76,12 @@ export function useSectionToggles(allIds: string[]): SectionToggles {
   const persist = useCallback((next: string[]) => {
     setOpen(next);
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      window.localStorage.setItem(cle, JSON.stringify(next));
     } catch {
       // Stockage refusé (navigation privée) : l'écran marche quand même,
       // la préférence ne survit simplement pas au rechargement.
     }
-  }, []);
+  }, [cle]);
 
   return {
     isOpen: useCallback((id: string) => open.includes(id), [open]),

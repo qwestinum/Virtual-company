@@ -217,5 +217,11 @@ describe('capture des trois écrans', () => {
     await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
     await page.waitForTimeout(1_500);
     writeFileSync(resolve(KIT, 'sourcing.png'), await page.screenshot({ type: 'png' }));
+
+    // RÉGLAGES — les quatre familles, repliables.
+    await page.goto(`${BASE_URL}/settings`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-settings-group]', { timeout: 90_000 });
+    await page.waitForTimeout(1_500);
+    writeFileSync(resolve(KIT, 'reglages.png'), await page.screenshot({ type: 'png' }));
   }, 300_000);
 });

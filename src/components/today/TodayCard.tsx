@@ -27,8 +27,8 @@
  * passe inaperçu et casse l'accessibilité.
  */
 
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
+import { useId, useState } from 'react';
 
 import { DASH_COLORS, type DashColor } from '@/components/dashboard/tokens';
 
@@ -48,18 +48,92 @@ export type TeinteCarte = 'normale' | 'inversee';
 
 export function TodayCard({
   accent,
+  id,
+  icon: Icone,
   title,
   subtitle,
   teinte = 'normale',
   children,
 }: {
   accent: DashColor;
+  /** Clé de mémorisation du repli. Sans elle, la carte ne se replie pas. */
+  id?: string;
+  /** L'icône du SUJET, devant le titre. Toujours la même pour un sujet. */
+  icon?: LucideIcon;
   title: string;
   subtitle?: string;
   teinte?: TeinteCarte;
   children: React.ReactNode;
 }) {
   const inversee = teinte === 'inversee';
+  const panneau = useId();
+  // ⚠️ DÉPLIÉE PAR DÉFAUT, contrairement aux sous-blocs. Une carte repliée
+  // n'affiche que son titre — « 14 candidatures attendent votre validation » —
+  // et c'est exactement ce qu'on veut POUVOIR faire, pas ce qu'on veut
+  // trouver en arrivant : l'écran existe pour montrer ce qui attend.
+  const [replie, setReplie] = useState<boolean | null>(null);
+  const memorise = id ? (replie ?? lireRepli(`carte.${id}`)) : null;
+  const ouvert = memorise === null ? true : !memorise;
+  const pliable = id !== undefined;
+
+  const basculer = (): void => {
+    if (!id) return;
+    setReplie(ouvert);
+    ecrireRepli(`carte.${id}`, ouvert);
+  };
+
+  const entete = (
+    <>
+      {Icone ? (
+        <Icone
+          aria-hidden
+          className="mt-0.5 h-[18px] w-[18px] shrink-0"
+          style={{ color: DASH_COLORS[accent].solid }}
+        />
+      ) : (
+        <span
+          aria-hidden
+          style={{
+            marginTop: 5,
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            flexShrink: 0,
+            background: DASH_COLORS[accent].solid,
+          }}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <h2
+          className="font-display"
+          style={{ fontSize: 15, fontWeight: 700, color: 'var(--dash-text)' }}
+        >
+          {title}
+        </h2>
+        {subtitle && ouvert ? (
+          <p
+            className="font-body"
+            style={{
+              marginTop: 2,
+              fontSize: 12,
+              color: 'var(--dash-text-secondary)',
+              lineHeight: 1.45,
+            }}
+          >
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+      {pliable ? (
+        ouvert ? (
+          <ChevronDown aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-stone-500" />
+        ) : (
+          <ChevronRight aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-stone-500" />
+        )
+      ) : null}
+    </>
+  );
+
   return (
     <section
       style={{
@@ -72,47 +146,37 @@ export function TodayCard({
         overflow: 'hidden',
       }}
     >
-      <header
-        className="flex items-start gap-2.5 px-4 py-3"
-        style={{
-          borderBottom: '1px solid var(--dash-border)',
-          background: inversee ? tint(accent, SUBTINT_PERCENT) : undefined,
-        }}
-      >
-        <span
-          aria-hidden
+      {pliable ? (
+        <button
+          type="button"
+          onClick={basculer}
+          aria-expanded={ouvert}
+          aria-controls={panneau}
+          data-today-card={id}
+          className="flex w-full items-start gap-2.5 px-4 py-3 text-left"
           style={{
-            marginTop: 5,
-            width: 8,
-            height: 8,
-            borderRadius: 999,
-            flexShrink: 0,
-            background: DASH_COLORS[accent].solid,
+            borderBottom: ouvert ? '1px solid var(--dash-border)' : 'none',
+            background: inversee ? tint(accent, SUBTINT_PERCENT) : undefined,
           }}
-        />
-        <div className="min-w-0">
-          <h2
-            className="font-display"
-            style={{ fontSize: 15, fontWeight: 700, color: 'var(--dash-text)' }}
-          >
-            {title}
-          </h2>
-          {subtitle ? (
-            <p
-              className="font-body"
-              style={{
-                marginTop: 2,
-                fontSize: 12,
-                color: 'var(--dash-text-secondary)',
-                lineHeight: 1.45,
-              }}
-            >
-              {subtitle}
-            </p>
-          ) : null}
+        >
+          {entete}
+        </button>
+      ) : (
+        <header
+          className="flex items-start gap-2.5 px-4 py-3"
+          style={{
+            borderBottom: '1px solid var(--dash-border)',
+            background: inversee ? tint(accent, SUBTINT_PERCENT) : undefined,
+          }}
+        >
+          {entete}
+        </header>
+      )}
+      {ouvert ? (
+        <div id={panneau} className="flex flex-col gap-2 p-2">
+          {children}
         </div>
-      </header>
-      <div className="flex flex-col gap-2 p-2">{children}</div>
+      ) : null}
     </section>
   );
 }

@@ -200,6 +200,35 @@ const INTEGRATION_SOURCES = CV_SOURCES.filter(
  * clé à la préférence mémorisée : renommer une section ne doit pas rouvrir ce
  * que l'utilisateur avait replié.
  */
+/**
+ * Les FAMILLES et les sections qu'elles contiennent.
+ *
+ * ⚠️ SOURCE UNIQUE. Le compte affiché sur l'intertitre replié (« 4 réglages »)
+ * en vient : le calculer à la main ferait un second tableau, et il finirait
+ * par annoncer cinq réglages là où la famille en cache trois.
+ */
+const FAMILLES = (isAdmin: boolean): { label: string; ids: string[] }[] => [
+  {
+    label: 'Décision & candidats',
+    ids: ['hitl', 'vivier', 'entretiens', ...(isAdmin ? ['comptes-rendus'] : [])],
+  },
+  {
+    label: 'Identité & équipe',
+    ids: [
+      'identite',
+      'agendas',
+      ...(isAdmin ? ['recruteurs', 'sourcing'] : []),
+      'donneurs',
+      'sites',
+    ],
+  },
+  {
+    label: 'Réception & envoi des mails',
+    ids: ['boites', 'synthese', 'expediteur', 'resend'],
+  },
+  { label: 'Intégrations', ids: ['flux', 'canaux'] },
+];
+
 const SECTION_IDS = (isAdmin: boolean): string[] => [
   'hitl',
   'vivier',
@@ -275,6 +304,27 @@ export function SettingsHub({
   // l'autre, et React perd l'association état ↔ hook.
   const sectionIds = useMemo(() => SECTION_IDS(isAdmin), [isAdmin]);
   const toggles = useSectionToggles(sectionIds);
+
+  // ⚠️ Les FAMILLES ont leur propre clé de stockage et leur propre défaut
+  // (dépliées). Mélangées aux sections, elles fausseraient le « n sur N » de
+  // la barre d'outils, et « Tout ouvrir » replierait des familles en croyant
+  // ouvrir des sections.
+  const familles = useMemo(() => FAMILLES(isAdmin), [isAdmin]);
+  const familleIds = useMemo(() => familles.map((f) => f.label), [familles]);
+  const groupes = useSectionToggles(
+    familleIds,
+    'orqa.settings.openGroups',
+    true,
+  );
+  const familleProps = (label: string) => {
+    const f = familles.find((x) => x.label === label);
+    return {
+      label,
+      open: groupes.isOpen(label),
+      onToggle: () => groupes.toggle(label),
+      count: f?.ids.length,
+    };
+  };
 
   if (state.kind === 'loading') {
     return (
@@ -406,7 +456,7 @@ export function SettingsHub({
         onCloseAll={toggles.closeAll}
       />
 
-      <SettingsGroup label="Décision & candidats" />
+      <SettingsGroup {...familleProps('Décision & candidats')}>
 
       <SettingsSection
         {...sectionProps('hitl')}
@@ -472,7 +522,9 @@ export function SettingsHub({
         </SettingsSection>
       ) : null}
 
-      <SettingsGroup label="Identité & équipe" />
+      </SettingsGroup>
+
+      <SettingsGroup {...familleProps('Identité & équipe')}>
 
       <SettingsSection
         {...sectionProps('identite', states.identite)}
@@ -546,7 +598,9 @@ export function SettingsHub({
         <SitesManager />
       </SettingsSection>
 
-      <SettingsGroup label="Réception & envoi des mails" />
+      </SettingsGroup>
+
+      <SettingsGroup {...familleProps('Réception & envoi des mails')}>
 
       <SettingsSection
         {...sectionProps('boites')}
@@ -666,7 +720,9 @@ export function SettingsHub({
         />
       </SettingsSection>
 
-      <SettingsGroup label="Intégrations" />
+      </SettingsGroup>
+
+      <SettingsGroup {...familleProps('Intégrations')}>
 
       <SettingsSection
         {...sectionProps('flux', states.flux)}
@@ -755,6 +811,7 @@ export function SettingsHub({
           )}
         </div>
       </SettingsSection>
+      </SettingsGroup>
     </div>
   );
 }

@@ -19,6 +19,7 @@
 
 
 import { ActionButton } from '@/components/campagnes/ActionButton';
+import { Bell, CalendarCheck, ShieldCheck } from 'lucide-react';
 import { PageShell } from '@/components/navigation/PageShell';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
 import { ALL_REFERENTS } from '@/lib/referent/filter';
@@ -166,6 +167,8 @@ export function TodayBoardView({
           <TodayCard
             accent="purple"
             teinte="inversee"
+            id="validation"
+            icon={ShieldCheck}
             title={PHRASES.validation.titre(board.validation.total)}
           >
             <TodaySubBlock
@@ -230,6 +233,8 @@ export function TodayBoardView({
           <TodayCard
             accent="teal"
             teinte="inversee"
+            id="entretiens"
+            icon={CalendarCheck}
             title={PHRASES.entretiens.titre(board.entretiens.total)}
           >
             <TodaySubBlock
@@ -294,6 +299,8 @@ export function TodayBoardView({
         ) : board.verify.total > 0 ? (
           <TodayCard
             accent="orange"
+            id="regler"
+            icon={Bell}
             title={PHRASES.regler.titre(board.verify.total)}
             subtitle={PHRASES.regler.sousTitre}
           >
