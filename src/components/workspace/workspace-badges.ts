@@ -3,10 +3,15 @@
  * lecteur avant que la navigation passe en colonne.
  *
  * Les badges ne changent pas de SENS, seulement de porte : la file de
- * validation vit sous « Candidatures », les prises de contact du vivier sous
- * « Campagnes ». Deux tableaux parallèles finiraient par diverger, et la
- * divergence serait muette — un badge posé sur une entrée qui ne mène nulle
- * part ne fait rougir aucun compilateur.
+ * validation vit sous « Candidatures ». Deux tableaux parallèles finiraient
+ * par diverger, et la divergence serait muette — un badge posé sur une entrée
+ * qui ne mène nulle part ne fait rougir aucun compilateur.
+ *
+ * ⚠️ RETIRÉ le 22/09/2026 : le compteur des prises de contact du vivier, qui
+ * vivait sous « Campagnes ». Il ne servait plus (demande du donneur d'ordre)
+ * et il ne s'éteignait pas de lui-même — son décompte ignorait l'état de la
+ * campagne, donc un profil présélectionné sur une campagne clôturée le tenait
+ * allumé pour toujours. La file elle-même reste à `/validations-vivier`.
  *
  * Fonctions PURES : aucun rendu, aucun accès réseau.
  */
@@ -16,12 +21,6 @@ import type { WorkspaceEntryId } from '@/lib/navigation/workspace-routes';
 export type WorkspaceNavBadges = {
   /** Volume : combien de dossiers attendent une décision. */
   pendingValidations: number;
-  /**
-   * Volume : profils du vivier qui attendent une décision. Posé sur
-   * « Campagnes » depuis que la file différée a disparu — la décision se prend
-   * dans la recherche vivier d'une campagne, donc c'est là qu'on envoie.
-   */
-  pendingVivier: number;
   /** Signal « ça traîne » : dossiers en attente depuis trop longtemps. */
   overdueValidations: number;
   /** Signal : entretiens réalisés sans verdict. */
@@ -34,7 +33,7 @@ export type WorkspaceNavBadges = {
 export function badgesFor(
   id: WorkspaceEntryId,
   b: WorkspaceNavBadges,
-): { count: number; tone: 'volume' | 'vivier'; title: string }[] {
+): { count: number; tone: 'volume'; title: string }[] {
   const plural = (n: number, s: string, p: string) => (n > 1 ? p : s);
   switch (id) {
     case 'candidatures':
@@ -44,16 +43,6 @@ export function badgesFor(
               count: b.pendingValidations,
               tone: 'volume' as const,
               title: `${b.pendingValidations} ${plural(b.pendingValidations, 'candidature à valider', 'candidatures à valider')}`,
-            },
-          ]
-        : [];
-    case 'campagnes':
-      return b.pendingVivier > 0
-        ? [
-            {
-              count: b.pendingVivier,
-              tone: 'vivier' as const,
-              title: `${b.pendingVivier} ${plural(b.pendingVivier, 'profil du vivier à examiner', 'profils du vivier à examiner')}`,
             },
           ]
         : [];

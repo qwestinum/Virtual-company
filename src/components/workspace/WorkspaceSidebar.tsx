@@ -228,7 +228,7 @@ function Entree({
         {volume.map((v) => (
           <CountBadge
             key={v.tone}
-            tone={v.tone === 'vivier' ? 'vivier' : 'alert'}
+            tone="alert"
             title={v.title}
           >
             {v.count}

@@ -61,10 +61,6 @@ export function WorkspaceChrome({ children }: { children: React.ReactNode }) {
       ? ((json as { validations: unknown[] }).validations.length ?? 0)
       : 0,
   );
-  const pendingVivier = useCount(
-    '/api/vivier/validations',
-    (json) => (json as { total?: number }).total ?? 0,
-  );
 
   return (
     // ⚠️ La colonne est À CÔTÉ du contenu, pas au-dessus : c'est ce qui rend
@@ -74,7 +70,6 @@ export function WorkspaceChrome({ children }: { children: React.ReactNode }) {
       <WorkspaceSidebar
         badges={{
           pendingValidations,
-          pendingVivier,
           overdueValidations: signalCount(signals, 'pending_validations_overdue'),
           interviewsAwaiting: signalCount(signals, 'interviews_awaiting_decision'),
           interviewsToPoint: signalCount(signals, 'interviews_awaiting_pointing'),
