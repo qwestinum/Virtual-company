@@ -1,12 +1,16 @@
 'use client';
 
 /**
- * Ouverture/fermeture des sections de réglages, MÉMORISÉE.
+ * Ouverture/fermeture des sections de réglages, MÉMORISÉE LE TEMPS DE LA
+ * SESSION.
  *
- * Toutes repliées au premier passage : la page devient une liste qu'on
- * parcourt des yeux. Ensuite, ce qu'on a ouvert le reste d'une visite à
- * l'autre — quelqu'un qui revient trois fois dans la même journée sur les
- * boîtes de réception ne doit pas les rouvrir trois fois.
+ * Tout replié à l'ouverture de l'application : la page devient une liste
+ * qu'on parcourt des yeux. Ce qu'on ouvre reste ouvert d'une page à l'autre
+ * de la même session (`sessionStorage`) — revenir trois fois sur les boîtes de
+ * réception ne demande pas de les rouvrir trois fois — mais une NOUVELLE
+ * ouverture de l'application repart fermée (demande du donneur d'ordre,
+ * 22/09/2026 ; c'était `localStorage` avant, et la page rouvrait ce qu'on
+ * avait laissé ouvert la veille).
  *
  * Plusieurs sections peuvent être ouvertes en même temps (ce n'est PAS un
  * accordéon) : comparer deux réglages est un geste courant, et fermer l'un
@@ -42,11 +46,11 @@ export function useSectionToggles(
 ): SectionToggles {
   const [open, setOpen] = useState<string[]>(ouvertesParDefaut ? allIds : []);
 
-  // Lecture au montage seulement : `localStorage` n'existe pas au rendu
+  // Lecture au montage seulement : `sessionStorage` n'existe pas au rendu
   // serveur, et lire pendant le rendu produirait une hydratation divergente.
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(cle);
+      const raw = window.sessionStorage.getItem(cle);
       if (!raw) return;
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
@@ -76,7 +80,7 @@ export function useSectionToggles(
   const persist = useCallback((next: string[]) => {
     setOpen(next);
     try {
-      window.localStorage.setItem(cle, JSON.stringify(next));
+      window.sessionStorage.setItem(cle, JSON.stringify(next));
     } catch {
       // Stockage refusé (navigation privée) : l'écran marche quand même,
       // la préférence ne survit simplement pas au rechargement.

@@ -305,17 +305,14 @@ export function SettingsHub({
   const sectionIds = useMemo(() => SECTION_IDS(isAdmin), [isAdmin]);
   const toggles = useSectionToggles(sectionIds);
 
-  // ⚠️ Les FAMILLES ont leur propre clé de stockage et leur propre défaut
-  // (dépliées). Mélangées aux sections, elles fausseraient le « n sur N » de
-  // la barre d'outils, et « Tout ouvrir » replierait des familles en croyant
-  // ouvrir des sections.
+  // ⚠️ Les FAMILLES ont leur propre clé de stockage. Mélangées aux sections,
+  // elles fausseraient le « n sur N » de la barre d'outils, et « Tout
+  // ouvrir » replierait des familles en croyant ouvrir des sections.
+  // REPLIÉES au départ comme les sections (22/09/2026) : la page s'ouvre sur
+  // les quatre titres de famille, colorés pour rester repérables.
   const familles = useMemo(() => FAMILLES(isAdmin), [isAdmin]);
   const familleIds = useMemo(() => familles.map((f) => f.label), [familles]);
-  const groupes = useSectionToggles(
-    familleIds,
-    'orqa.settings.openGroups',
-    true,
-  );
+  const groupes = useSectionToggles(familleIds, 'orqa.settings.openGroups');
   const familleProps = (label: string) => {
     const f = familles.find((x) => x.label === label);
     return {

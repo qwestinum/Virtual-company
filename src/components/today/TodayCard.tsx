@@ -44,14 +44,15 @@ export function TodayCard({
   children: React.ReactNode;
 }) {
   const panneau = useId();
-  // ⚠️ DÉPLIÉE PAR DÉFAUT, contrairement aux sous-blocs. Une carte repliée
-  // n'affiche que son titre — « 14 candidatures attendent votre validation » —
-  // et c'est exactement ce qu'on veut POUVOIR faire, pas ce qu'on veut
-  // trouver en arrivant : l'écran existe pour montrer ce qui attend.
+  const pliable = id !== undefined;
+  // ⚠️ REPLIÉE PAR DÉFAUT à l'ouverture de l'application (demande du donneur
+  // d'ordre, 22/09/2026) : l'écran s'ouvre sur la liste des titres, et le
+  // titre dit déjà le volume (« 14 candidatures attendent votre
+  // validation »). Ce qu'on ouvre reste ouvert le temps de la session
+  // (`sessionStorage`) ; une nouvelle ouverture repart fermée.
   const [replie, setReplie] = useState<boolean | null>(null);
   const memorise = id ? (replie ?? lireRepli(`carte.${id}`)) : null;
-  const ouvert = memorise === null ? true : !memorise;
-  const pliable = id !== undefined;
+  const ouvert = pliable ? (memorise === null ? false : !memorise) : true;
 
   const basculer = (): void => {
     if (!id) return;

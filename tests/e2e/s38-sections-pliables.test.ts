@@ -59,15 +59,24 @@ describe('S38 — sections pliables', () => {
 
     for (const famille of FAMILLES) {
       const bouton = `[data-settings-group="${famille}"]`;
-      // Dépliées au départ : replier les quatre cacherait la page entière
-      // derrière quatre titres.
-      expect(await page.getAttribute(bouton, 'aria-expanded'), famille).toBe('true');
+      // REPLIÉES au départ (22/09/2026) : la page s'ouvre sur quatre titres.
+      expect(await page.getAttribute(bouton, 'aria-expanded'), famille).toBe('false');
+      // …posés sur le bandeau jaune qui les garde repérables.
+      expect(
+        await page.$eval(bouton, (b) => getComputedStyle(b).backgroundColor),
+        famille,
+      ).toBe('rgb(235, 187, 88)');
 
       const panneau = await page.getAttribute(bouton, 'aria-controls');
       expect(panneau, `${famille} : pas de panneau`).toBeTruthy();
       const visible = () =>
         page.evaluate((id) => !!document.getElementById(id), panneau!);
-      expect(await visible(), `${famille} : panneau absent avant le clic`).toBe(true);
+      expect(await visible(), `${famille} : panneau présent avant le clic`).toBe(false);
+
+      await page.click(bouton);
+      await page.waitForTimeout(250);
+      expect(await page.getAttribute(bouton, 'aria-expanded'), famille).toBe('true');
+      expect(await visible(), `${famille} : ne s’ouvre pas`).toBe(true);
 
       await page.click(bouton);
       await page.waitForTimeout(250);
@@ -77,9 +86,6 @@ describe('S38 — sections pliables', () => {
       // …et le titre RESTE : sinon il n'y a plus rien où re-cliquer.
       expect(await page.locator(bouton).count(), `${famille} : titre perdu`).toBe(1);
 
-      await page.click(bouton);
-      await page.waitForTimeout(250);
-      expect(await visible(), `${famille} : ne se rouvre pas`).toBe(true);
     }
   }, 400_000);
 
@@ -107,10 +113,17 @@ describe('S38 — sections pliables', () => {
       const titre = await page.textContent(`${bouton} h2`);
       expect(titre?.trim(), `${id} : pas de titre`).toBeTruthy();
 
-      expect(await page.getAttribute(bouton, 'aria-expanded'), id).toBe('true');
+      // REPLIÉE à l'ouverture de l'application (22/09/2026).
+      expect(await page.getAttribute(bouton, 'aria-expanded'), id).toBe('false');
       const panneau = await page.getAttribute(bouton, 'aria-controls');
       const visible = () =>
         page.evaluate((p) => !!document.getElementById(p), panneau!);
+      expect(await visible(), `${id} : contenu visible avant le clic`).toBe(false);
+
+      await page.click(bouton);
+      await page.waitForTimeout(250);
+      expect(await page.getAttribute(bouton, 'aria-expanded'), id).toBe('true');
+      expect(await visible(), `${id} : ne s’ouvre pas`).toBe(true);
 
       await page.click(bouton);
       await page.waitForTimeout(250);
@@ -118,10 +131,6 @@ describe('S38 — sections pliables', () => {
       expect(await visible(), `${id} : le contenu est resté`).toBe(false);
       // Repliée, la carte n'affiche QUE son titre — et c'est le même.
       expect((await page.textContent(`${bouton} h2`))?.trim(), id).toBe(titre?.trim());
-
-      await page.click(bouton);
-      await page.waitForTimeout(250);
-      expect(await visible(), `${id} : ne se rouvre pas`).toBe(true);
     }
   }, 400_000);
 });
