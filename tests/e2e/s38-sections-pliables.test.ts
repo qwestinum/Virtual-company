@@ -89,6 +89,26 @@ describe('S38 — sections pliables', () => {
     }
   }, 400_000);
 
+  it('S38.3 — les campagnes arrivent toutes pliées', async () => {
+    await page.goto(`${BASE_URL}/campagnes`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-campaign-card]', { timeout: 90_000 });
+    await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(1_500);
+
+    const etats = await page.$$eval('[data-campaign-card] [aria-expanded]', (ns) =>
+      ns.map((n) => n.getAttribute('aria-expanded')),
+    );
+    expect(etats.length, 'aucune campagne dans le jeu de dev').toBeGreaterThan(0);
+    // Aucune dépliée d'office — pas même la première de la page.
+    expect(etats.filter((e) => e === 'true'), etats.join(' · ')).toHaveLength(0);
+
+    // …et elles s'ouvrent toujours au clic.
+    const entete = page.locator('[data-campaign-card] [aria-expanded="false"]').first();
+    await entete.click();
+    await page.waitForTimeout(500);
+    expect(await entete.getAttribute('aria-expanded')).toBe('true');
+  }, 300_000);
+
   it('S38.2 — les sections d’Aujourd’hui se replient sur leur titre', async () => {
     await page.goto(`${BASE_URL}/aujourdhui`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-page-container]', { timeout: 90_000 });

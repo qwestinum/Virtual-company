@@ -7,8 +7,10 @@
  * DRH). Les métriques par campagne arrivent du dashboard global puis
  * sont mémorisées dans une Map.
  *
- * Une seule campagne dépliée à la fois — cohérent avec la maquette et
- * évite que la page devienne illisible quand il y en a plusieurs.
+ * Une seule campagne dépliée à la fois — cohérent avec la maquette et évite
+ * que la page devienne illisible quand il y en a plusieurs. Et AUCUNE à
+ * l'arrivée (22/09/2026) : la seule exception est la campagne désignée par
+ * l'URL, où l'on revient justement pour elle.
  */
 
 import Link from 'next/link';
@@ -134,10 +136,11 @@ export function CampaignsList({
 
   const [openedId, setOpenedId] = useState<string | null>(null);
   // Déplié : le choix de l'utilisateur s'il a cliqué, sinon la campagne de
-  // l'URL, sinon la première de la page (comportement d'origine).
-  const expandedId = touched
-    ? openedId
-    : (focus.expandedId ?? pageCampaigns[0]?.id ?? null);
+  // l'URL (« retour à la campagne »). Sinon RIEN : toutes les campagnes
+  // arrivent pliées (22/09/2026, demande du donneur d'ordre) — la page se lit
+  // comme une liste, et déplier d'office la première lui donnait un rang
+  // qu'elle n'a pas.
+  const expandedId = touched ? openedId : (focus.expandedId ?? null);
   const setExpandedId = (id: string | null) => {
     setTouched(true);
     setOpenedId(id);
