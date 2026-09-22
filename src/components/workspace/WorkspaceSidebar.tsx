@@ -186,13 +186,19 @@ function Entree({
         // l'atténuer rendait l'icône quasi invisible — or c'est la SEULE
         // chose qui désigne cette entrée, elle n'a pas de libellé. Le poids du
         // trait suffit à marquer l'état, et l'infobulle porte le nom.
-        className="flex items-center justify-center rounded-[10px] px-3 py-2 transition max-[1099px]:px-0"
+        className="flex items-center justify-center rounded-[10px] px-3 py-1 transition max-[1099px]:px-0"
         style={{ color: COULEUR_ACCUEIL }}
       >
+        {/* ⚠️ VOLUME TRIPLÉ, donc côté × √3 : 24 px → 42 px. Tripler le CÔTÉ
+            (72 px) ne tiendrait pas — la colonne repliée fait 64 px de large,
+            48 une fois ses marges ôtées.
+            Le trait s'affine à mesure que l'icône grandit : gardé à 2,8, il
+            aurait épaissi avec elle et l'aurait transformée en pictogramme
+            plein. */}
         <Icone
           aria-hidden
-          className="h-[24px] w-[24px] shrink-0"
-          strokeWidth={actif ? 2.8 : 2}
+          className="h-[42px] w-[42px] shrink-0"
+          strokeWidth={actif ? 1.9 : 1.5}
         />
       </Link>
     );
