@@ -21,7 +21,7 @@
  */
 
 import { PageShell } from '@/components/navigation/PageShell';
-import { CounterRibbon } from '@/components/ui/CounterRibbon';
+import { DotTabs } from '@/components/ui/DotTabs';
 
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -264,14 +264,14 @@ export function InterviewsWorkspace({
         />
       }
       counters={
-        /* ⚠️ LE RUBAN DE CANDIDATURES, importé. Il avait été remplacé par de
-           grandes tuiles à emoji, ombre portée et bordure épaisse : elles
-           n'existaient sur aucun autre écran, fabriquaient du vide et un
-           relief que rien ne porte ailleurs. */
-        <CounterRibbon
-          active={tab}
-          onSelect={(k) => setTab((k ?? 'scheduled') as InterviewTabKey)}
-          items={[
+        /* ⚠️ LES PUCES À POINT COLORÉ, celles de Diffusion et de « Revue de
+           candidature » (essai du 22/09/2026). Elles portent le même « n sur
+           N » et la même alerte que le ruban qu'elles remplacent. */
+        <DotTabs
+          ariaLabel="Choisir les entretiens à voir"
+          current={tab}
+          onChange={setTab}
+          tabs={[
             {
               key: 'scheduled',
               label: 'Programmés',
@@ -282,21 +282,21 @@ export function InterviewsWorkspace({
               // dossier en souffrance.
               alert: pipeline.counts.toPoint,
               alertLabel: 'à confirmer',
-              color: 'var(--dash-teal)',
+              dot: 'var(--dash-teal)',
             },
             {
               key: 'awaiting',
               label: 'En attente de réservation',
               count: awaiting.length,
               total: pipeline.counts.awaiting,
-              color: 'var(--dash-purple)',
+              dot: 'var(--dash-purple)',
             },
             {
               key: 'verdict',
               label: 'En attente de verdict',
               count: verdictRows.length,
               total: pipeline.counts.verdict,
-              color: 'var(--dash-yellow)',
+              dot: 'var(--dash-yellow)',
             },
           ]}
         />

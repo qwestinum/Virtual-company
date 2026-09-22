@@ -145,36 +145,26 @@ describe('S34 — un seul rythme de page', () => {
     expect(fautifs, fautifs.join('\n')).toEqual([]);
   });
 
-  it('S34.5 — une carte-compteur a DEUX rangs, et les colonnes sont égales', async () => {
-    // ⚠️ On compte les RANGS, pas la hauteur. Première version de ce test :
-    // « toutes les cartes ont la même hauteur » — sondée, elle est restée
-    // VERTE avec un sous-texte rétabli, parce que la grille étire ses cellules
-    // à la hauteur de la plus grande. Toutes devenaient hautes ensemble : la
-    // mesure ne pouvait pas voir le défaut qu'elle devait attraper.
-    //
-    // Ce qui se voit, c'est le nombre de rangs de contenu : le chiffre, puis
-    // la ligne libellé + pastille. Un troisième en ajoute un.
+  it('S34.5 — les puces d’Entretiens tiennent chacune sur UNE ligne, à la même hauteur', async () => {
+    // Essai du 22/09/2026 : les cartes-compteurs d'Entretiens, Candidatures
+    // et Pilotage cèdent la place aux puces à point coloré. Le test des
+    // « deux rangs » d'une carte n'a plus d'objet ; ce qui se voit sur une
+    // puce, c'est qu'elle ne passe pas à la ligne — le « n sur N » et
+    // l'alerte « à confirmer » vivent DANS la puce, pas dessous.
     await page.goto(`${BASE_URL}/entretiens`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('[data-counter]', { timeout: 90_000 });
+    await page.waitForSelector('[data-dot-tab]', { timeout: 90_000 });
     await page.waitForTimeout(2_500);
-    const cartes = await page.evaluate(() =>
-      [...document.querySelectorAll('[data-counter]')].map((e) => ({
-        cle: e.getAttribute('data-counter'),
-        // Les enfants directs qui portent du CONTENU. Le soulignement coloré
-        // est décoratif (`aria-hidden`) et ne compte pas.
-        rangs: [...e.children].filter((c) => c.getAttribute('aria-hidden') === null)
-          .length,
-        largeur: Math.round(e.getBoundingClientRect().width),
+    const puces = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-dot-tab]')].map((e) => ({
+        cle: e.getAttribute('data-dot-tab'),
+        hauteur: Math.round(e.getBoundingClientRect().height),
       })),
     );
-    expect(cartes.length, 'aucune carte-compteur trouvée').toBeGreaterThan(1);
-    const detail = JSON.stringify(cartes);
-    for (const c of cartes) {
-      expect(c.rangs, `${c.cle} : ${detail}`).toBe(2);
-    }
-    // Et des colonnes égales : la grille remplit la largeur quel qu'en soit le
-    // nombre — trois cartes = trois tiers.
-    expect(new Set(cartes.map((c) => c.largeur)).size, detail).toBe(1);
+    const detail = JSON.stringify(puces);
+    expect(puces.map((p) => p.cle), detail).toEqual(['scheduled', 'awaiting', 'verdict']);
+    expect(new Set(puces.map((p) => p.hauteur)).size, detail).toBe(1);
+    // Une ligne de 12 px avec son rembourrage : bien en deçà de deux lignes.
+    expect(puces[0]!.hauteur, detail).toBeLessThan(40);
   }, 200_000);
 
   it('S34.4 — fond de page UNI, sans dégradé ni pointillé', () => {

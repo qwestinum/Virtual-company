@@ -184,13 +184,13 @@ describe('capture des trois écrans', () => {
     // L'AUDIT CANDIDAT — la troisième surface qui liste des personnes, et
     // donc la troisième à devoir porter le même pavé orange.
     await page.goto(`${BASE_URL}/pilotage`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('[data-counter="audit"]', { timeout: 90_000 });
+    await page.waitForSelector('[data-dot-tab="audit"]', { timeout: 90_000 });
     // ⚠️ ON ATTEND L'HYDRATATION. Le bouton existe en HTML avant que React ne
     // le reprenne : cliqué là, le clic tombe dans le vide, sans erreur et sans
-    // trace. Mesuré : `aria-pressed` restait à `false` après le clic. C'est le
+    // trace. Mesuré : `aria-selected` restait à `false` après le clic. C'est le
     // même piège que S29 au début du chantier, et le helper existe pour ça.
-    await attendreHydratation(page, '[data-counter="audit"]');
-    await page.click('[data-counter="audit"]');
+    await attendreHydratation(page, '[data-dot-tab="audit"]');
+    await page.click('[data-dot-tab="audit"]');
     // Puis on attend la VUE, on ne devine pas : une version antérieure tirait
     // la capture 2 s après le clic et rendait l'écran précédent.
     await page.waitForSelector('text=Audit candidat', { timeout: 60_000 });

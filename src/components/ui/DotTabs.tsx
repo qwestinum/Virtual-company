@@ -20,13 +20,30 @@
  * `0 1px 4px rgba(0,0,0,0.06)` ; c'est le relief dont on sort.
  */
 
+import { CountBadge } from './CountBadge';
+
 export type DotTab<K extends string> = {
   key: K;
   label: string;
   /** La couleur du point. Un repère, pas une décoration. */
-  dot: string;
+  dot?: string;
+  /** Ou sa classe, quand la teinte est déjà nommée ailleurs (étapes). */
+  dotClass?: string;
   /** Compte facultatif : une bascule de vue n'en a pas toujours un. */
   count?: number;
+  /**
+   * Total hors filtre — écrit seulement s'il diffère (« 5 sur 18 ») : un
+   * dossier masqué par un filtre reste compté.
+   */
+  total?: number;
+  /**
+   * Précision en pastille, après le compte. TOUJOURS calculée sur l'ensemble,
+   * jamais sur la vue filtrée : c'est une alerte, et un filtre de confort ne
+   * masque jamais un dossier en souffrance.
+   */
+  alert?: number;
+  /** Ce que la précision veut dire. Sans lui, le nombre ne dit rien. */
+  alertLabel?: string;
 };
 
 export function DotTabs<K extends string>({
@@ -84,7 +101,13 @@ export function DotTabs<K extends string>({
           >
             <span
               aria-hidden
-              style={{ width: 8, height: 8, borderRadius: '50%', background: tab.dot }}
+              className={tab.dotClass}
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: tab.dotClass ? undefined : tab.dot,
+              }}
             />
             {tab.label}
             {tab.count !== undefined ? (
@@ -99,7 +122,21 @@ export function DotTabs<K extends string>({
                 }}
               >
                 {tab.count}
+                {tab.total !== undefined && tab.total !== tab.count
+                  ? ` sur ${tab.total}`
+                  : null}
               </span>
+            ) : null}
+            {tab.alert && tab.alert > 0 ? (
+              <CountBadge
+                tone="waiting"
+                title={`${tab.alert} ${tab.alertLabel ?? ''}`.trim()}
+              >
+                {tab.alert}
+                {tab.alertLabel ? (
+                  <span className="font-body font-semibold">{tab.alertLabel}</span>
+                ) : null}
+              </CountBadge>
             ) : null}
           </button>
         );

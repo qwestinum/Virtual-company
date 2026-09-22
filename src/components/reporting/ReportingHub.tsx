@@ -17,7 +17,7 @@
 
 import { useState } from 'react';
 
-import { CounterRibbon } from '@/components/ui/CounterRibbon';
+import { DotTabs } from '@/components/ui/DotTabs';
 
 import { AuditCandidatView } from './AuditCandidatView';
 import { AuditHome } from './AuditHome';
@@ -45,16 +45,16 @@ export function ReportingHub() {
   // Sous-vue de l'onglet Audit : accueil (3 cartes) ou audit candidat.
   const [auditView, setAuditView] = useState<'home' | 'candidat'>('home');
 
-  // ⚠️ LE RUBAN DE CARTES-COMPTEURS, celui d'Entretiens et de Candidatures —
-  // même carte, même soulignement coloré, même état sélectionné, même hauteur,
-  // étirées sur la largeur. Cet écran s'était fabriqué une barre segmentée,
-  // puis des puces : deux formes de plus pour le même geste. Sans chiffre ici,
-  // parce qu'il n'y en a pas — le composant l'accepte, il n'est pas recopié.
+  // ⚠️ LES PUCES À POINT COLORÉ, celles de Diffusion et de « Revue de
+  // candidature » (essai du 22/09/2026, à la demande du donneur d'ordre) :
+  // trois vues sans chiffre, c'est une navigation — la puce le dit mieux
+  // qu'une carte-compteur, qui promet un volume à comparer.
   const tabs = (
-    <CounterRibbon
-      active={tab}
-      onSelect={(k) => setTab((k ?? 'campaign') as SubTab)}
-      items={TABS.map((t) => ({ key: t.key, label: t.label, color: t.dot }))}
+    <DotTabs
+      ariaLabel="Choisir le rapport"
+      current={tab}
+      onChange={setTab}
+      tabs={TABS}
     />
   );
 

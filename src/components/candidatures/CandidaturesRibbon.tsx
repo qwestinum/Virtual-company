@@ -1,12 +1,19 @@
 'use client';
 
 /**
- * Ruban-pipeline (ossature). Chaque carte = une étape + son volume EXHAUSTIF
+ * Bascule par étape. Chaque puce = une étape + son volume EXHAUSTIF
  * (périmètre campagne+période) ; cliquer filtre la liste par étape. Compteurs
  * de `/api/candidatures/counters` (jamais du journal tronqué), figés à la
  * recherche texte.
+ *
+ * ⚠️ LES PUCES À POINT COLORÉ, celles de Diffusion et de « Revue de
+ * candidature » (essai du 22/09/2026, à la demande du donneur d'ordre), à la
+ * place des cartes-compteurs. Une puce ne se désélectionne pas : d'où
+ * « Toutes » en tête, qui rend ce que le second clic sur une carte rendait —
+ * aucune étape, donc aucun filtre.
  */
 
+import { DotTabs } from '@/components/ui/DotTabs';
 import {
   CANDIDATE_STAGE_LABELS,
   CANDIDATE_STAGE_RIBBON_ORDER,
@@ -15,6 +22,9 @@ import {
 } from '@/lib/reporting/candidate-stage';
 
 import { STAGE_DOT_CLASS } from './stage-ui';
+
+const TOUTES = 'toutes' as const;
+type Puce = CandidateStage | typeof TOUTES;
 
 export function CandidaturesRibbon({
   counts,
@@ -25,35 +35,22 @@ export function CandidaturesRibbon({
   active: CandidateStage | null;
   onSelect: (stage: CandidateStage | null) => void;
 }) {
+  // Les étapes forment une PARTITION (invariant S6) : leur somme est le total.
+  const total = CANDIDATE_STAGE_RIBBON_ORDER.reduce((n, s) => n + counts[s], 0);
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1">
-      {CANDIDATE_STAGE_RIBBON_ORDER.map((stage) => {
-        const selected = active === stage;
-        return (
-          <button
-            key={stage}
-            type="button"
-            aria-pressed={selected}
-            onClick={() => onSelect(selected ? null : stage)}
-            className={`relative min-w-[120px] flex-1 rounded-[14px] border bg-white px-4 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-dash-blue ${
-              selected ? 'border-dash-text' : 'border-dash-border'
-            }`}
-          >
-            <span className="block font-display text-[26px] font-semibold leading-none text-dash-text">
-              {counts[stage]}
-            </span>
-            <span className="mt-1.5 flex items-center gap-1.5 font-body text-[11.5px] text-dash-text-secondary">
-              <span
-                className={`h-[7px] w-[7px] shrink-0 rounded-full ${STAGE_DOT_CLASS[stage]}`}
-              />
-              {CANDIDATE_STAGE_LABELS[stage]}
-            </span>
-            <span
-              className={`absolute inset-x-0 bottom-0 h-[3px] rounded-b-[14px] opacity-85 ${STAGE_DOT_CLASS[stage]}`}
-            />
-          </button>
-        );
-      })}
-    </div>
+    <DotTabs<Puce>
+      ariaLabel="Filtrer les candidatures par étape"
+      current={active ?? TOUTES}
+      onChange={(k) => onSelect(k === TOUTES ? null : k)}
+      tabs={[
+        { key: TOUTES, label: 'Toutes', dot: 'var(--dash-text-secondary)', count: total },
+        ...CANDIDATE_STAGE_RIBBON_ORDER.map((stage) => ({
+          key: stage,
+          label: CANDIDATE_STAGE_LABELS[stage],
+          dotClass: STAGE_DOT_CLASS[stage],
+          count: counts[stage],
+        })),
+      ]}
+    />
   );
 }
