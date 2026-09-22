@@ -36,6 +36,8 @@ export function AssistantStepBody({
   campaignId,
   recruiterOptions,
   onGo,
+  reading,
+  onReadingChange,
 }: {
   step: AssistantStep;
   draft: AssistantDraft;
@@ -43,14 +45,17 @@ export function AssistantStepBody({
   recruiterOptions: RecruiterOption[] | null;
   currentUserId: string | null;
   onGo: (step: AssistantStep) => void;
+  /** Document en cours de lecture (étape « Le poste »), `null` sinon. */
+  reading: string | null;
+  onReadingChange: (fileName: string | null) => void;
 }) {
   switch (step) {
     case 'poste':
       return (
         <>
-          {/* ⚠️ EN TÊTE, avant les champs : ces trois raccourcis changent TOUT
-              l'écran d'un coup. Proposés après huit champs, on les aurait vus
-              une fois la saisie faite — c'est-à-dire trop tard. */}
+          {/* ⚠️ EN TÊTE, avant les champs : l'intitulé et le document changent
+              TOUT l'écran d'un coup. Proposés après huit champs, on les aurait
+              vus une fois la saisie faite — c'est-à-dire trop tard. */}
           <AssistantStart
             campaignId={campaignId}
             fdp={draft.fdp}
@@ -59,9 +64,19 @@ export function AssistantStepBody({
             onFillEmpty={draft.fillEmptyFields}
             onComparable={draft.applyComparable}
             onReset={draft.resetExceptTitle}
+            onPatch={draft.patchField}
+            reading={reading}
+            onReadingChange={onReadingChange}
             prefilled={draft.prefillExtraction !== null || draft.facts.missingFdpLabels.length < 7}
           />
-          <FDPInlineEditor fdp={draft.fdp} onPatch={draft.patchField} />
+          {/* L'intitulé est rendu au-dessus ; le reste est gelé pendant une
+              lecture de document, qui va justement le remplir. */}
+          <FDPInlineEditor
+            fdp={draft.fdp}
+            onPatch={draft.patchField}
+            omit={['job_title']}
+            disabled={reading !== null}
+          />
           <Note>
             Le nom de la campagne suit l’intitulé : une seule source de vérité,
             jamais deux champs à tenir d’accord.

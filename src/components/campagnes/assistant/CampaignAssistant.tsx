@@ -44,6 +44,7 @@ import { AssistantLeaveDialog } from './AssistantLeaveDialog';
 import { AssistantRail } from './AssistantRail';
 import { AssistantStepBody } from './AssistantStepBody';
 import { useAssistantDraft } from './useAssistantDraft';
+import { useScrollToTopOnStep } from './useScrollToTopOnStep';
 
 export function CampaignAssistant({ resumeId }: { resumeId: string | null }) {
   const router = useRouter();
@@ -68,6 +69,10 @@ export function CampaignAssistant({ resumeId }: { resumeId: string | null }) {
   const [notice, setNotice] = useState<string | null>(null);
   /** « Fermer » demande AVANT de fermer : on ne quitte pas une saisie en silence. */
   const [quitting, setQuitting] = useState(false);
+  /** Document en cours de lecture : « Suivant » attend, et le dit. */
+  const [reading, setReading] = useState<string | null>(null);
+
+  const carte = useScrollToTopOnStep<HTMLDivElement>(step);
 
   // Reprise : on dépose sur la première étape encore incomplète, une fois que
   // le brouillon stocké est arrivé. Calculé PENDANT le rendu — un effet
@@ -77,7 +82,9 @@ export function CampaignAssistant({ resumeId }: { resumeId: string | null }) {
     setStep(resumeStep(facts));
   }
 
-  const verdict = validateStep(step, facts);
+  const verdict = reading
+    ? ({ ok: false, reason: 'Lecture du document en cours…' } as const)
+    : validateStep(step, facts);
   const dernier = step === 'recapitulatif';
 
   async function onNext() {
@@ -147,6 +154,7 @@ export function CampaignAssistant({ resumeId }: { resumeId: string | null }) {
   const headings = STEP_HEADINGS[step];
   return (
     <div
+      ref={carte}
       // Repère de la carte entière — les tests et les captures la désignent
       // sans avoir à deviner un ancêtre par son style.
       data-assistant={step}
@@ -172,6 +180,8 @@ export function CampaignAssistant({ resumeId }: { resumeId: string | null }) {
           recruiterOptions={recruiterOptions}
           currentUserId={currentUserId}
           onGo={setStep}
+          reading={reading}
+          onReadingChange={setReading}
         />
         {error ? (
           <p role="alert" className="font-body" style={{ marginTop: 14, fontSize: 12, color: 'var(--dash-red)' }}>

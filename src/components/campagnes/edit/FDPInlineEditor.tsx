@@ -58,35 +58,56 @@ export type FDPInlineEditorProps = {
   fdp: FDPInProgress;
   onPatch: (key: FieldKey, value: unknown) => void;
   disabled?: boolean;
+  /**
+   * Champs rendus AILLEURS par l'appelant (l'assistant remonte l'intitulé en
+   * tête d'étape, à côté du démarrage par document). Ils le sont alors avec
+   * `FDPField` — le même champ, jamais une copie.
+   */
+  omit?: readonly FieldKey[];
 };
 
-export function FDPInlineEditor({ fdp, onPatch, disabled }: FDPInlineEditorProps) {
+export function FDPInlineEditor({ fdp, onPatch, disabled, omit = [] }: FDPInlineEditorProps) {
   return (
     <FormStack>
-      {FIELD_KEYS.map((key) => {
-        const field = fdp.fields[key];
-        const id = `fdp-${key}`;
-        return (
-          // `data-field` : repère STABLE pour les tests qui cliquent.
-          <div key={key} data-field={key}>
-            <FormField
-              id={id}
-              label={FIELD_LABELS[key]}
-              required={field?.required !== false}
-              hint={AIDES[key]}
-            >
-              <Controle
-                id={id}
-                fieldKey={key}
-                value={field?.value}
-                onChange={(value) => onPatch(key, value)}
-                disabled={disabled}
-              />
-            </FormField>
-          </div>
-        );
-      })}
+      {FIELD_KEYS.filter((key) => !omit.includes(key)).map((key) => (
+        <FDPField key={key} fdp={fdp} fieldKey={key} onPatch={onPatch} disabled={disabled} />
+      ))}
     </FormStack>
+  );
+}
+
+/** UN champ de la fiche, tel que l'éditeur le rend. */
+export function FDPField({
+  fdp,
+  fieldKey,
+  onPatch,
+  disabled,
+}: {
+  fdp: FDPInProgress;
+  fieldKey: FieldKey;
+  onPatch: (key: FieldKey, value: unknown) => void;
+  disabled?: boolean;
+}) {
+  const field = fdp.fields[fieldKey];
+  const id = `fdp-${fieldKey}`;
+  return (
+    // `data-field` : repère STABLE pour les tests qui cliquent.
+    <div data-field={fieldKey}>
+      <FormField
+        id={id}
+        label={FIELD_LABELS[fieldKey]}
+        required={field?.required !== false}
+        hint={AIDES[fieldKey]}
+      >
+        <Controle
+          id={id}
+          fieldKey={fieldKey}
+          value={field?.value}
+          onChange={(value) => onPatch(fieldKey, value)}
+          disabled={disabled}
+        />
+      </FormField>
+    </div>
   );
 }
 

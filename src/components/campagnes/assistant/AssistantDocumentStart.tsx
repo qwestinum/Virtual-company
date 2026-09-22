@@ -15,6 +15,7 @@
  * jamais un barème.
  */
 
+import { Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import {
@@ -28,11 +29,19 @@ import type { FDPInProgress } from '@/types/field-collection';
 export function AssistantDocumentStart({
   campaignId,
   onPrefill,
+  onReadingChange,
   inline = false,
 }: {
   campaignId: string;
   /** Posé dans la rangée du bloc de démarrage : pas de marge propre. */
   inline?: boolean;
+  /**
+   * Nom du fichier en cours de lecture, `null` à la fin. L'appelant s'en sert
+   * pour DIRE que l'opération tourne et geler ce qu'elle va remplir — une
+   * lecture dure plusieurs dizaines de secondes, et un écran immobile pendant
+   * ce temps fait cliquer partout.
+   */
+  onReadingChange?: (fileName: string | null) => void;
   onPrefill: (input: {
     fdp: FDPInProgress;
     criteria: ScoringCriterion[];
@@ -45,6 +54,7 @@ export function AssistantDocumentStart({
 
   async function lire(file: File) {
     setBusy(true);
+    onReadingChange?.(file.name);
     setError(null);
     try {
       const form = new FormData();
@@ -71,6 +81,7 @@ export function AssistantDocumentStart({
       setError('Le document n’a pas pu être lu (réseau). Réessayez.');
     } finally {
       setBusy(false);
+      onReadingChange?.(null);
     }
   }
 
@@ -91,22 +102,38 @@ export function AssistantDocumentStart({
         type="button"
         data-role="document"
         disabled={busy}
+        aria-busy={busy}
         onClick={() => input.current?.click()}
         className="font-body"
+        // Mis en EXERGUE (teinte indigo, filet pointillé de dépôt) : c'est le
+        // raccourci qui remplit toute la fiche d'un coup, et un bouton gris à
+        // côté d'un champ blanc passait pour une option secondaire. Même
+        // hauteur que le champ voisin (40 px), pleine largeur de sa colonne.
         style={{
-          padding: '7px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          width: inline ? '100%' : undefined,
+          minHeight: 40,
+          padding: '8px 14px',
           borderRadius: 8,
-          border: '1px dashed var(--dash-border-strong)',
-          background: 'var(--dash-surface)',
-          color: 'var(--dash-text-secondary)',
-          fontSize: 12,
-          fontWeight: 600,
+          border: '1.5px dashed var(--dash-indigo)',
+          background: 'var(--dash-indigo-light)',
+          color: 'var(--dash-indigo-text)',
+          fontSize: 13,
+          fontWeight: 700,
           cursor: busy ? 'progress' : 'pointer',
         }}
       >
-        {busy
-          ? 'Lecture du document…'
-          : '📄 Démarrer à partir d’un document (appel d’offres, notes)'}
+        {busy ? (
+          <>
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            Lecture en cours…
+          </>
+        ) : (
+          '📄 Démarrer à partir d’un document (appel d’offres, notes)'
+        )}
       </button>
       {error ? (
         <p role="alert" className="font-body" style={{ marginTop: 8, fontSize: 12, color: 'var(--dash-red)' }}>

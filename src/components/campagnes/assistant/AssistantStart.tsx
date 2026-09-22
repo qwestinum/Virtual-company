@@ -1,20 +1,19 @@
 'use client';
 
 /**
- * LES TROIS FAÇONS DE NE PAS PARTIR D'UNE PAGE BLANCHE, réunies en tête de la
- * première étape — parce qu'elles changent TOUT l'écran, et qu'offertes après
- * huit champs elles arrivent trop tard.
+ * LE DÉPART DE L'ÉTAPE « Le poste » : deux entrées CONCURRENTES sur une même
+ * ligne, juste sous « De quel poste s'agit-il ? » —
  *
- *   ① un document (appel d'offres, notes) → on en tire un brouillon ;
- *   ② une campagne COMPARABLE déjà passée → on reprend ses réglages ;
- *   ③ l'intitulé seul → le modèle propose le reste de la fiche.
+ *   ① rédiger l'intitulé (à gauche) ;
+ *   ② démarrer à partir d'un document (à droite) → on en tire un brouillon.
  *
- * Les trois PROPOSENT, aucune n'impose : rien n'est enregistré ici, et tout
- * reste modifiable. La (②) ne s'applique plus d'office comme dans l'ancienne
- * feuille — un écran qui se remplit tout seul fait douter de ce qu'on vient de
- * taper.
+ * Les aides qui DÉPENDENT de l'intitulé n'apparaissent qu'une fois celui-ci
+ * saisi, juste en dessous : « Proposer le reste de la fiche », et le bandeau
+ * « une campagne comparable existe » quand l'intitulé en rappelle une. Offertes
+ * avant, elles parlaient d'un poste qu'on n'avait pas encore nommé.
+ *
+ * Tout PROPOSE, rien n'impose ; la comparable ne s'applique jamais d'office.
  */
-
 import { useState } from 'react';
 
 import { postFdpProposal } from '@/lib/chat/api-client';
@@ -24,8 +23,9 @@ import type { CampaignPrefill } from '@/types/campaign-prefill';
 import { computeIsComplete, type FDPInProgress, type FieldKey } from '@/types/field-collection';
 import type { ScoringCriterion } from '@/types/scoring';
 
+import { FDPField } from '../edit/FDPInlineEditor';
 import { AssistantDocumentStart } from './AssistantDocumentStart';
-import { BOUTON, Bandeau, champsRenseignes } from './AssistantStartParts';
+import { BOUTON, Bandeau, LectureEnCours, champsRenseignes } from './AssistantStartParts';
 import { useComparableCampaign } from './useComparableCampaign';
 
 export function AssistantStart({
@@ -36,9 +36,16 @@ export function AssistantStart({
   onFillEmpty,
   onComparable,
   onReset,
+  onPatch,
+  reading,
+  onReadingChange,
   prefilled,
 }: {
   campaignId: string;
+  onPatch: (key: FieldKey, value: unknown) => void;
+  /** Nom du document en cours de lecture, `null` sinon. */
+  reading: string | null;
+  onReadingChange: (fileName: string | null) => void;
   fdp: FDPInProgress;
   jobTitle: string;
   onPrefill: (input: {
@@ -57,8 +64,7 @@ export function AssistantStart({
   const [error, setError] = useState<string | null>(null);
   const [repris, setRepris] = useState<string | null>(null);
 
-  // On ne cherche plus une comparable une fois qu'on en a repris une : le
-  // bandeau réapparaîtrait sur la fiche qu'il vient de poser.
+  // Plus de recherche une fois une comparable reprise (le bandeau reviendrait).
   const comparable = useComparableCampaign(jobTitle, repris === null);
 
   async function proposerLeReste() {
@@ -105,65 +111,61 @@ export function AssistantStart({
     setRepris(source.id);
   }
 
-  return (
-    <section
-      style={{
-        border: '1px solid var(--dash-border)',
-        borderRadius: 12,
-        padding: '14px 16px',
-        background: 'var(--dash-warm)',
-        marginBottom: 20,
-      }}
-    >
-      <h3
-        className="font-display"
-        style={{ fontSize: 13, fontWeight: 700, color: 'var(--dash-text)', margin: 0 }}
-      >
-        Ne partez pas d’une page blanche
-      </h3>
-      <p
-        className="font-body"
-        style={{ fontSize: 12, color: 'var(--dash-text-secondary)', margin: '3px 0 10px' }}
-      >
-        Trois raccourcis. Chacun propose, aucun n’impose — tout reste modifiable.
-      </p>
+  const titreSaisi = jobTitle.trim().length > 0;
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-        <AssistantDocumentStart campaignId={campaignId} onPrefill={onPrefill} inline />
-        <button
-          type="button"
-          data-role="propose-fdp"
-          disabled={busy || jobTitle.trim().length === 0}
-          onClick={proposerLeReste}
-          className="font-body"
-          title={
-            jobTitle.trim().length === 0
-              ? 'Saisissez d’abord l’intitulé du poste.'
-              : undefined
-          }
-          style={{
-            ...BOUTON,
-            cursor: busy ? 'progress' : jobTitle.trim() ? 'pointer' : 'not-allowed',
-            opacity: jobTitle.trim() ? 1 : 0.5,
-          }}
-        >
-          {busy ? 'Rédaction…' : '✨ Proposer le reste de la fiche'}
-        </button>
-        {prefilled ? (
-          <button
-            type="button"
-            data-role="reset-draft"
-            onClick={() => {
-              setRepris(null);
-              onReset();
-            }}
-            className="font-body"
-            style={{ ...BOUTON, border: 'none', textDecoration: 'underline' }}
-          >
-            Repartir à zéro
-          </button>
-        ) : null}
+  return (
+    <section data-role="poste-start" style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+        {/* Deux entrées CONCURRENTES, donc de même largeur : aucune n'est la
+            voie « normale » dont l'autre serait le détour. */}
+        <div style={{ flex: '1 1 0', minWidth: 260 }}>
+          <FDPField fdp={fdp} fieldKey="job_title" onPatch={onPatch} disabled={reading !== null} />
+        </div>
+        <span aria-hidden className="font-body" style={{ fontSize: 12, color: 'var(--dash-text-secondary)', paddingBottom: 11 }}>
+          ou
+        </span>
+        <div style={{ flex: '1 1 0', minWidth: 260 }}>
+          <AssistantDocumentStart
+            campaignId={campaignId}
+            onPrefill={onPrefill}
+            onReadingChange={onReadingChange}
+            inline
+          />
+        </div>
       </div>
+
+      {reading ? <LectureEnCours fileName={reading} /> : null}
+
+      {!reading && (titreSaisi || prefilled) ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 12 }}>
+          {titreSaisi ? (
+            <button
+              type="button"
+              data-role="propose-fdp"
+              disabled={busy}
+              onClick={proposerLeReste}
+              className="font-body"
+              style={{ ...BOUTON, cursor: busy ? 'progress' : 'pointer' }}
+            >
+              {busy ? 'Rédaction…' : '✨ Proposer le reste de la fiche'}
+            </button>
+          ) : null}
+          {prefilled ? (
+            <button
+              type="button"
+              data-role="reset-draft"
+              onClick={() => {
+                setRepris(null);
+                onReset();
+              }}
+              className="font-body"
+              style={{ ...BOUTON, border: 'none', textDecoration: 'underline' }}
+            >
+              Repartir à zéro
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {error ? (
         <p role="alert" className="font-body" style={{ marginTop: 8, fontSize: 12, color: 'var(--dash-red)' }}>
@@ -171,12 +173,12 @@ export function AssistantStart({
         </p>
       ) : null}
 
-      {repris ? (
+      {reading ? null : repris ? (
         <Bandeau ton="green">
           Réglages repris de <strong>{repris}</strong>. Modifiez ce qui doit
           l’être — rien n’est encore enregistré.
         </Bandeau>
-      ) : comparable ? (
+      ) : comparable && titreSaisi ? (
         <Bandeau ton="blue">
           <strong>Une campagne comparable existe</strong> : {comparable.source.id} — «{' '}
           {comparable.source.title} ». Reprendre sa fiche et sa grille vous évitera
