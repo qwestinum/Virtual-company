@@ -297,14 +297,24 @@
      de 13 px, fût-il gras (le seuil « grand texte » commence à 18,66 px gras).
      Celui-ci donne 5,19:1. */
   --dash-green-bandeau: #166534;
-  /* BEIGE SOBRE — la surbrillance d'une ligne déjà sourcée, et la teinte des
-     boutons qui étaient noirs. Mesuré : 1,22:1 sur le blanc et 1,15 sur le
-     sand — une NUANCE, pas une couleur, exactement comme les teintes de
-     registre d'Aujourd'hui. Le texte du produit y garde 14,20:1, et l'encre
-     beige 5,91:1 : les deux passent AA largement. */
+  /* BEIGE — la teinte des boutons qui étaient noirs (« Détail »,
+     « Relancer », « Lancer »). Encre à 5,91:1 dessus : AA largement. */
   --dash-beige: #f2e8d5;
   --dash-beige-bord: #d9c9a8;
   --dash-beige-encre: #6b5426;
+
+  /* SURBRILLANCE d'une ligne déjà traitée. Mesuré : 1,11:1 contre la carte
+     blanche voisine — c'est une NUANCE, la plus discrète du produit, et c'est
+     ce qui est demandé. Le texte y garde 15,62:1. */
+  --dash-surbrillance: #f5f4e9;
+
+  /* L'AMBRE du bouton « Sourcer » — le seul geste qui ENGAGE une dépense sur
+     cet écran, d'où un aplat plein là où tout le reste est en nuance.
+     ⚠️ Mesuré : blanc dessus = 3,72:1, sous les 4,5:1 d'un texte de 12 px
+     semi-gras (le seuil « grand texte » commence à 18,66 px gras). C'est la
+     teinte demandée ; #9a6f02 passerait tout juste (4,52) et #8a6402
+     confortablement (5,38). */
+  --dash-ambre-action: #ac7c02;
   --dash-yellow-light: #fff8e1;
 }
 

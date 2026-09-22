@@ -234,6 +234,38 @@ describe('campagnes déjà sourcées', () => {
     expect(fresh).toContain('>Sourcer<');
   });
 
+  it('les deux gestes ne pèsent pas pareil, et leur couleur le dit', () => {
+    // ⚠️ « Détail » est une CONSULTATION : beige, secondaire. « Sourcer »
+    // ENGAGE UNE DÉPENSE (un appel au moteur de profils, facturé) : c'est le
+    // seul aplat PLEIN de l'écran. Deux gestes au même poids visuel feraient
+    // cliquer sur le second en croyant ouvrir le premier.
+    const html = renderToStaticMarkup(
+      <SourcingCampaignList
+        campaigns={[
+          { ...base, campaignId: 'CAMP-1', lastSearchAt: '2026-09-12T10:00:00Z' },
+          { ...base, campaignId: 'CAMP-2', lastSearchAt: null },
+        ]}
+        myApproachesThisMonth={0}
+        onSource={() => {}}
+      />,
+    );
+    const [sourced, fresh] = html.split('<li').slice(1);
+    // La ligne déjà sourcée est en surbrillance, et son bouton reste beige.
+    expect(sourced).toContain('var(--dash-surbrillance)');
+    expect(sourced).toContain('var(--dash-beige)');
+    // Sa pastille d'état est VERTE, pas beige.
+    expect(sourced).toContain('var(--dash-green-text)');
+    // La campagne vierge n'est pas en surbrillance, et son bouton est PLEIN.
+    //
+    // ⚠️ On vérifie le FOND, pas la présence du jeton. Première version :
+    // `toContain('var(--dash-ambre-action)')` — elle est restée VERTE quand
+    // j'ai remplacé le fond par du beige, parce que la bordure portait encore
+    // le même jeton. Une garde qui cherche un mot n'importe où ne garde rien.
+    expect(fresh).toContain('background:var(--dash-ambre-action)');
+    expect(fresh).toContain('color:#fff');
+    expect(sourced).toContain('background:var(--dash-beige)');
+  });
+
   it('on atterrit sur les résultats : « Relancer une recherche », sans écran de requête (qui rédigerait une requête pour rien)', () => {
     const sourced = renderToStaticMarkup(<SourcingCampaignView campaign={{ ...base, campaignId: 'CAMP-1', lastSearchAt: '2026-09-12T10:00:00Z' }} onBack={() => {}} />);
     expect(sourced).toContain('Relancer une recherche');

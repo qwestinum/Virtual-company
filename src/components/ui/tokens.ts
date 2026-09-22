@@ -86,12 +86,18 @@ export const COULEUR = {
   /** Une surface tiède : sélection, zone de réglage, en-tête de groupe. */
   surfaceTiede: 'var(--dash-warm)',
   /**
-   * BEIGE — une ligne déjà traitée, ou une zone qu'on met en évidence sans
-   * l'alarmer. 1,22:1 sur le blanc : une nuance, pas une couleur.
+   * BEIGE — la teinte des boutons secondaires qui étaient noirs, et des zones
+   * qu'on met en évidence sans les alarmer. 1,22:1 sur le blanc.
    */
   beige: 'var(--dash-beige)',
   beigeBord: 'var(--dash-beige-bord)',
   beigeEncre: 'var(--dash-beige-encre)',
+  /**
+   * SURBRILLANCE d'une ligne déjà traitée — la nuance la plus discrète du
+   * produit (1,11:1 contre la carte blanche voisine). Elle marque un GROUPE,
+   * jamais un état individuel.
+   */
+  surbrillance: 'var(--dash-surbrillance)',
   /** Le survol d'une surface. */
   survol: 'var(--dash-hover)',
   texte: 'var(--dash-text)',

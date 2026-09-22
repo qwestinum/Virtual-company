@@ -3,11 +3,15 @@
 /**
  * LES CAMPAGNES ACTIVES, et ce que le sourcing y a déjà fait.
  *
- * ⚠️ SURBRILLANCE BEIGE pour les campagnes déjà sourcées. Elles portaient un
- * aplat AMBRE avec un filet de 3 px : l'ambre est la couleur des alertes du
- * produit, et une campagne sourcée n'a rien d'alarmant. Le beige est une
- * NUANCE — 1,22:1 sur le blanc, comme les teintes de registre d'Aujourd'hui :
- * on voit le groupe sans que la ligne crie.
+ * ⚠️ SURBRILLANCE pour les campagnes déjà sourcées. Elles portaient un aplat
+ * AMBRE avec un filet de 3 px : l'ambre est la couleur des alertes du produit,
+ * et une campagne sourcée n'a rien d'alarmant. `--dash-surbrillance` est la
+ * nuance la plus discrète du produit — 1,11:1 contre la carte blanche
+ * voisine : on voit le groupe sans que la ligne crie.
+ *
+ * ⚠️ Les deux gestes ne pèsent pas pareil, et leur couleur le dit : « Détail »
+ * est une consultation (beige, secondaire), « Sourcer » ENGAGE UNE DÉPENSE
+ * (aplat ambre plein, texte blanc) — c'est le seul aplat plein de l'écran.
  *
  * ⚠️ Le geste diffère aussi : une campagne déjà sourcée propose « Détail »
  * (on y revient pour voir, pas pour relancer), une campagne vierge propose
@@ -102,7 +106,7 @@ export function SourcingCampaignList({
                   testId={c.campaignId}
                   // La LIGNE est teintée, pas un liseré autour : posé en
                   // bordure d'un pixel, le beige ne se voyait pas.
-                  tint={sourcee ? 'var(--dash-beige)' : undefined}
+                  tint={sourcee ? 'var(--dash-surbrillance)' : undefined}
                   // Une CAMPAGNE : l'icône de campagne, pas un pavé
                   // d'initiales — il n'y a personne sur cette ligne.
                   avatar={<CampaignIcon kind="active" taille={40} />}
@@ -118,11 +122,13 @@ export function SourcingCampaignList({
                         <ReferentMention referent={c.referent} />
                       </span>
                       {sourcee ? (
+                        // La pastille d'état du produit : fond clair, encre
+                        // sombre de la même famille. Mesuré 4,56:1 — AA.
                         <span
                           className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 font-body text-[11px] font-semibold"
                           style={{
-                            background: 'var(--dash-beige)',
-                            color: 'var(--dash-beige-encre)',
+                            background: 'var(--dash-green-light)',
+                            color: 'var(--dash-green-text)',
                           }}
                         >
                           Sourcée
@@ -133,11 +139,19 @@ export function SourcingCampaignList({
                         data-sourcing-action={sourcee ? 'detail' : 'sourcer'}
                         onClick={() => onSource(c.campaignId)}
                         className="rounded-lg border px-2.5 py-1.5 font-body text-[12px] font-semibold"
-                        style={{
-                          borderColor: 'var(--dash-beige-bord)',
-                          background: 'var(--dash-beige)',
-                          color: 'var(--dash-beige-encre)',
-                        }}
+                        style={
+                          sourcee
+                            ? {
+                                borderColor: 'var(--dash-beige-bord)',
+                                background: 'var(--dash-beige)',
+                                color: 'var(--dash-beige-encre)',
+                              }
+                            : {
+                                borderColor: 'var(--dash-ambre-action)',
+                                background: 'var(--dash-ambre-action)',
+                                color: '#fff',
+                              }
+                        }
                       >
                         {sourcee ? 'Détail' : 'Sourcer'}
                       </button>
