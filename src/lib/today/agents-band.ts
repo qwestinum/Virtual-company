@@ -88,19 +88,44 @@ export function agentCountLabel(entry: AgentBandEntry, count: number): string {
   return `${count} ${count > 1 ? entry.unit.many : entry.unit.one}`;
 }
 
-/** La fenêtre de la bande d'équipe, en jours. FIXE. */
-export const BAND_WINDOW_DAYS = 7;
+/**
+ * Les deux fenêtres d'activité proposées sous la bande.
+ *
+ * ⚠️ DEUX, et pas un curseur. Le point de la fenêtre fixe reste entier : deux
+ * chiffres ne se comparent que si l'on sait sur quoi ils portent. Offrir un
+ * CHOIX entre deux fenêtres NOMMÉES ne casse pas ça — ce qui le casserait,
+ * c'est une fenêtre qui bouge sans qu'on l'ait demandé, comme l'ancienne
+ * « depuis votre dernière visite ».
+ *
+ * Les LIBELLÉS vivent dans le lexique (`PHRASES.equipe`), pas ici : une
+ * seconde copie finirait par dire autre chose que l'écran.
+ */
+export const BAND_WINDOWS = {
+  semaine: { jours: 7 },
+  mois: { jours: 30 },
+} as const;
+
+export type BandWindow = keyof typeof BAND_WINDOWS;
+
+/** Une valeur venue de l'URL n'est pas une fenêtre : on la vérifie. */
+export function parseBandWindow(brut: string | null): BandWindow {
+  return brut === 'mois' ? 'mois' : 'semaine';
+}
 
 /**
- * Début de la fenêtre d'activité — les SEPT DERNIERS JOURS, toujours.
+ * Début de la fenêtre d'activité — 7 ou 30 jours glissants, selon la fenêtre
+ * CHOISIE (défaut : la semaine).
  *
  * ⚠️ Elle était indexée sur la dernière visite du recruteur. Deux défauts, et
  * le second est le vrai : la fenêtre vivait dans le navigateur (donc une par
  * machine), et surtout elle CHANGEAIT d'une visite à l'autre — « 12 CV
  * analysés » un jour et « 3 » le lendemain ne se comparent pas, et rien à
- * l'écran ne disait pourquoi. Une fenêtre fixe se lit, se compare, et se dit
- * en trois mots sous la bande.
+ * l'écran ne disait pourquoi. Une fenêtre nommée se lit, se compare, et se
+ * dit en trois mots sous la bande.
  */
-export function bandWindowStart(nowMs: number): string {
-  return new Date(nowMs - BAND_WINDOW_DAYS * 86_400_000).toISOString();
+export function bandWindowStart(
+  nowMs: number,
+  fenetre: BandWindow = 'semaine',
+): string {
+  return new Date(nowMs - BAND_WINDOWS[fenetre].jours * 86_400_000).toISOString();
 }

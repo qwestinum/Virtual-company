@@ -181,9 +181,10 @@ describe('chaque titre est une phrase complète, du point de vue du recruteur', 
     expect(PHRASES.regler.titre(1)).toBe('1 point à régler');
   });
 
-  it('la fenêtre de l’équipe est FIXE et dite', () => {
+  it('les fenêtres de l’équipe sont NOMMÉES et dites', () => {
     // Plus de « depuis votre dernière visite » : une fenêtre qui change d'un
     // jour à l'autre rend deux chiffres incomparables sans qu'on sache pourquoi.
     expect(PHRASES.equipe.fenetre).toBe('cette semaine');
+    expect(PHRASES.equipe.fenetreMois).toBe('ce mois-ci');
   });
 });

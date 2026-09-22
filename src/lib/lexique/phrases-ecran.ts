@@ -103,9 +103,10 @@ export const PHRASES = {
     resume: (n: number) => `${n} point${s(n)} à régler`,
   },
 
-  /** L'équipe : fenêtre FIXE, dite sous la bande. */
+  /** L'équipe : les deux fenêtres NOMMÉES proposées sous la bande. */
   equipe: {
     fenetre: 'cette semaine',
+    fenetreMois: 'ce mois-ci',
   },
 
   /** Rien nulle part. Une phrase, centrée, et on s'arrête là. */

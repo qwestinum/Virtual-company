@@ -93,6 +93,19 @@ describe('capture des trois écrans', () => {
         .waitForSelector(`text=${ecran.titre}`, { timeout: 90_000 })
         .catch(() => {});
       await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => {});
+      // ⚠️ ON ATTEND LES IMAGES. Changer la taille d'un `next/image`
+      // invalide tout le cache d'images optimisées : les variantes doivent
+      // être régénérées à la demande, et sur des PNG de 1,6 Mo cela prend
+      // plusieurs secondes. Une capture tirée avant montrait QUATRE avatars
+      // vides sur six — et j'ai d'abord cru à un défaut du composant.
+      await page
+        .waitForFunction(
+          () =>
+            [...document.images].every((i) => i.complete && i.naturalWidth > 0),
+          undefined,
+          { timeout: 60_000 },
+        )
+        .catch(() => {});
       await page.waitForTimeout(1_500);
       const png = await page.screenshot({ type: 'png' });
       writeFileSync(resolve(DOSSIER, `${ecran.nom}.png`), png);

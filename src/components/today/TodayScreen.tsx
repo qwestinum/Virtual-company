@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 /**
  * *Aujourd'hui* — l'écran d'arrivée : ce qui vous attend, et rien d'autre.
  *
@@ -16,13 +18,18 @@ import { useShallow } from 'zustand/react/shallow';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { selectActiveCampaigns, useCampaignsStore } from '@/stores/campaigns-store';
 
+import type { BandWindow } from '@/lib/today/agents-band';
+
 import { TodayBoardView } from './TodayBoardView';
 import { useTodayBoard } from './useTodayBoard';
 import { useTodayTeam } from './useTodayTeam';
 
 export function TodayScreen() {
   const state = useTodayBoard();
-  const team = useTodayTeam();
+  // La fenêtre d'activité de la bande — « cette semaine » ou « ce mois-ci ».
+  // Elle vit ICI parce qu'elle décide de la REQUÊTE, pas seulement du texte.
+  const [fenetre, setFenetre] = useState<BandWindow>('semaine');
+  const team = useTodayTeam(fenetre);
   // On ne sonde PAS depuis ici : seule la bande de répartition vient de cette
   // route, et elle ne bouge pas entre deux clics. Rechargée à chaque affichage.
   const { data } = useDashboardData({ poll: false });
@@ -46,6 +53,8 @@ export function TodayScreen() {
   // chaque carte porte son propre squelette jusqu'à ce que SA donnée arrive.
   return (
     <TodayBoardView
+      fenetre={fenetre}
+      onFenetre={setFenetre}
       board={state.board}
       pending={state.pending}
       currentUserId={state.currentUserId}

@@ -20,6 +20,8 @@
 
 import { ActionButton } from '@/components/campagnes/ActionButton';
 import { Bell, CalendarCheck, ShieldCheck } from 'lucide-react';
+
+import type { BandWindow } from '@/lib/today/agents-band';
 import { PageShell } from '@/components/navigation/PageShell';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
 import { ALL_REFERENTS } from '@/lib/referent/filter';
@@ -47,6 +49,9 @@ export type TodayBoardViewProps = {
   currentUserId: string | null;
   firstName: string | null;
   agentCounts: Record<string, number>;
+  /** Fenêtre d'activité de la bande d'équipe, et son sélecteur. */
+  fenetre: BandWindow;
+  onFenetre: (next: BandWindow) => void;
   zones: TodayZoneCounts | null;
   campaignLabel: (id: string | null, jobTitle?: string | null) => string;
   partial: boolean;
@@ -75,6 +80,8 @@ export function TodayBoardView({
   currentUserId,
   firstName,
   agentCounts,
+  fenetre,
+  onFenetre,
   zones,
   campaignLabel,
   partial,
@@ -133,7 +140,7 @@ export function TodayBoardView({
           currentUserId={currentUserId}
         />
 
-        <TodayTeamBand counts={agentCounts} />
+        <TodayTeamBand counts={agentCounts} fenetre={fenetre} onFenetre={onFenetre} />
 
         {vue.emptiedByFilter ? (
           <p
