@@ -8,8 +8,13 @@
  * LinkedIn — ouvrir le profil ET copier le message ; email — ouvrir la
  * messagerie du recruteur. Puis il confirme l'approche au serveur. Si la copie
  * est refusée, le texte reste sélectionnable : jamais d'échec muet.
+ *
+ * Il vit DANS `SourcingApproachDialog` (fenêtre centrée). Pendant une
+ * nouvelle rédaction (changement de format), il reste affiché : le format
+ * choisi est coché TOUT DE SUITE, le texte est grisé et l'attente est dite.
  */
 
+import { Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 export type PreparedApproach = {
@@ -27,11 +32,17 @@ export type PreparedApproach = {
 
 export function SourcingApproachPanel({
   prepared,
+  formatShown,
+  redrafting,
   onConfirm,
   onCancel,
   onFormatChange,
 }: {
   prepared: PreparedApproach;
+  /** Le format COCHÉ — celui demandé, sans attendre la nouvelle rédaction. */
+  formatShown: PreparedApproach['format'];
+  /** Une nouvelle rédaction est en cours (changement de format). */
+  redrafting: boolean;
   onConfirm: (message: string) => Promise<string | null>;
   onCancel: () => void;
   onFormatChange: (format: 'connection_note' | 'inmail') => void;
@@ -77,16 +88,22 @@ export function SourcingApproachPanel({
   };
 
   return (
-    <div role="dialog" aria-label="Message d’approche" className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-xl flex-col gap-3 rounded-lg border border-stone-300 bg-white p-4 shadow-lg">
+    <>
       <p className="font-body text-[13px] font-semibold text-stone-800">
         {prepared.channel === 'linkedin' ? 'Message pour l’invitation LinkedIn' : `Email à ${prepared.email ?? ''}`}
       </p>
       {prepared.subject ? <p className="font-body text-[12.5px] text-stone-600">Objet : {prepared.subject}</p> : null}
+      {redrafting ? (
+        <p data-approach-redrafting className="flex items-center gap-2 font-body text-[12.5px] text-stone-600">
+          <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
+          Rédaction au format {formatShown === 'inmail' ? 'InMail' : 'note de connexion'}…
+        </p>
+      ) : null}
       <textarea
         ref={area}
-        rows={prepared.format === 'connection_note' ? 5 : 9}
+        rows={formatShown === 'connection_note' ? 5 : 9}
         value={text}
-        disabled={done !== null}
+        disabled={done !== null || redrafting}
         onChange={(e) => setText(e.target.value)}
         className="w-full resize-y rounded-md border border-stone-300 px-3 py-2 font-body text-[13px] text-stone-800"
       />
@@ -99,7 +116,7 @@ export function SourcingApproachPanel({
             Format
             {(['connection_note', 'inmail'] as const).map((f) => (
               <label key={f} className="flex items-center gap-1">
-                <input type="radio" name="approach-format" checked={prepared.format === f} onChange={() => onFormatChange(f)} />
+                <input type="radio" name="approach-format" data-approach-format={f} checked={formatShown === f} onChange={() => onFormatChange(f)} />
                 {f === 'connection_note' ? 'Note de connexion' : 'InMail'}
               </label>
             ))}
@@ -119,7 +136,7 @@ export function SourcingApproachPanel({
             </button>
             <button
               type="button"
-              disabled={tooLong || linkMissing}
+              disabled={tooLong || linkMissing || redrafting}
               onClick={() => void act()}
               className="rounded-md border border-stone-800 bg-stone-900 px-3 py-1.5 font-body text-[12.5px] font-semibold text-white hover:bg-stone-800 disabled:opacity-40"
             >
@@ -137,6 +154,6 @@ export function SourcingApproachPanel({
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }

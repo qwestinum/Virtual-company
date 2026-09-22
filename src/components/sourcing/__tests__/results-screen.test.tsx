@@ -201,6 +201,8 @@ describe('lot 3 — repères de ligne et actions', () => {
     const html = renderToStaticMarkup(
       <SourcingApproachPanel
         prepared={{ approachId: 'a1', channel: 'linkedin', format: 'connection_note', limit: 300, url, profileUrl: 'https://www.linkedin.com/in/p1', subject: null, message: `Bonjour Claire ${url}`, mailto: null, email: null }}
+        formatShown="connection_note"
+        redrafting={false}
         onConfirm={async () => null}
         onCancel={() => {}}
         onFormatChange={() => {}}

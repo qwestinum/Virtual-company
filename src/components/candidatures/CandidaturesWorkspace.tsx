@@ -11,7 +11,7 @@
 
 import { PageShell } from '@/components/navigation/PageShell';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import type { CandidateStage } from '@/lib/reporting/candidate-stage';
@@ -36,6 +36,7 @@ import { CandidaturePanel } from './CandidaturePanel';
 import { CandidatureRow } from './CandidatureRow';
 import { CandidaturesFilters, type PeriodKey } from './CandidaturesFilters';
 import { CandidaturesRibbon } from './CandidaturesRibbon';
+import { useVisibleHeight } from './useVisibleHeight';
 import {
   CANDIDATURES_PAGE_SIZE,
   NO_CAMPAIGN_IDS,
@@ -165,6 +166,21 @@ export function CandidaturesWorkspace({
   const [panelItem, setPanelItem] = useState<CandidateListItem | null>(null);
   const [fullItem, setFullItem] = useState<CandidateListItem | null>(null);
   const [period, setPeriod] = useState<PeriodKey>('all');
+
+  // ⚠️ LA VUE CHANGE, LE PANNEAU SE REFERME. Changer d'étape, de campagne, de
+  // période ou de page affiche une AUTRE liste : le panneau restait ouvert
+  // sur un dossier qui n'y figurait plus (bug du 22/09/2026). Remis à zéro
+  // PENDANT LE RENDU, pas dans un effet — sinon il survivrait une frame à
+  // la liste qui ne le contient plus. Une action sur le dossier (`onActed`)
+  // ne change pas la vue : le panneau reste, et montre le résultat.
+  const cleVue = JSON.stringify([filters, page, period]);
+  const [vueDuPanneau, setVueDuPanneau] = useState(cleVue);
+  if (cleVue !== vueDuPanneau) {
+    setVueDuPanneau(cleVue);
+    if (panelItem) setPanelItem(null);
+  }
+  const colonnePanneau = useRef<HTMLDivElement>(null);
+  const hauteurPanneau = useVisibleHeight(colonnePanneau, panelItem !== null);
   // L'utilisateur a touché au sélecteur de campagne : la vue par défaut
   // (campagnes actives) cesse de s'imposer.
   const [campaignTouched, setCampaignTouched] = useState(false);
@@ -370,14 +386,16 @@ export function CandidaturesWorkspace({
 
           {panelItem ? (
             <div
+              ref={colonnePanneau}
               data-candidature-panel-column
               className="sticky top-6 w-[420px] shrink-0 self-start"
               // ⚠️ HAUTEUR IMPOSÉE, pas un plafond : avec un simple
               // `max-height`, le panneau gardait sa hauteur de contenu
               // (1 371 px mesurés pour une fenêtre de 900) et débordait sous
-              // le pli. Il occupe exactement la hauteur visible et fait
-              // défiler son propre contenu.
-              style={{ height: 'calc(100vh - 150px)' }}
+              // le pli. Il occupe exactement l'espace VISIBLE sous lui —
+              // mesuré, pas deviné (`useVisibleHeight`) — et fait défiler son
+              // propre contenu.
+              style={{ height: hauteurPanneau ?? 'calc(100vh - 150px)' }}
             >
               <CandidaturePanel
                 item={panelItem}
