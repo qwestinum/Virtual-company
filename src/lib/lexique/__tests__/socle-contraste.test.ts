@@ -3,7 +3,7 @@ import { join, relative, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { SUBTINT_PERCENT, TINT_PERCENT } from '@/components/today/TodayCard';
+import { SUBTINT_PERCENT } from '@/components/today/TodayCard';
 
 /**
  * SOCLE — il NOMME ce qui existe, il n'invente rien.
@@ -65,8 +65,11 @@ describe('les rôles employés par l’écran tiennent leur contraste', () => {
   });
 });
 
-describe('les teintes de registre restent des NUANCES', () => {
+describe('la teinte UNIQUE des blocs d’Aujourd’hui', () => {
+  // Les trois blocs portaient chacun la teinte de leur registre ; ils portent
+  // désormais la même (`--dash-accueil-bloc`) et sa nuance (22/09/2026).
   const surface = dash('surface');
+  const teinte = dash('accueil-bloc');
 
   /** Mélange `pct` % de `couleur` dans `fond` — ce que fait `color-mix`. */
   const melange = (couleur: string, fond: string, pct: number): string => {
@@ -76,53 +79,31 @@ describe('les teintes de registre restent des NUANCES', () => {
     );
     return `#${out.map((n) => n.toString(16).padStart(2, '0')).join('')}`;
   };
+  const nuance = melange(teinte, surface, SUBTINT_PERCENT);
 
-  it.each(['teal', 'purple', 'orange'])(
-    'la teinte %s laisse la page blanche à l’œil',
-    (role) => {
-      const teinte = melange(dash(role), surface, TINT_PERCENT);
-      // Moins de 1,10:1 du blanc : c'est une nuance, pas une couleur.
-      expect(ratio(teinte, surface)).toBeLessThan(1.1);
-    },
-  );
+  it('le texte garde son AA sur la teinte pleine (en-tête)', () => {
+    expect(ratio(dash('text'), teinte)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(dash('text-secondary'), teinte)).toBeGreaterThanOrEqual(4.5);
+  });
 
-  it.each(['teal', 'purple', 'orange'])(
-    'le texte garde son AA sur la teinte %s',
-    (role) => {
-      const teinte = melange(dash(role), surface, TINT_PERCENT);
-      expect(ratio(dash('text'), teinte)).toBeGreaterThanOrEqual(4.5);
-      expect(ratio(dash('text-secondary'), teinte)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  it('le texte garde son AA sur la nuance (sous-bloc)', () => {
+    expect(ratio(dash('text'), nuance)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(dash('text-secondary'), nuance)).toBeGreaterThanOrEqual(4.5);
+  });
 
-  it.each(['teal', 'purple', 'orange'])(
-    'le SOUS-BLOC %s se distingue de sa carte, sans cesser d’être une nuance',
-    (role) => {
-      const carte = melange(dash(role), surface, TINT_PERCENT);
-      const sousBloc = melange(dash(role), surface, SUBTINT_PERCENT);
-      // Les trois niveaux doivent se lire à 50 % de zoom SANS texte : il faut
-      // donc un écart réel entre carte et sous-bloc…
-      expect(ratio(sousBloc, carte)).toBeGreaterThan(1.02);
-      // …et la rangée blanche doit trancher sur le sous-bloc.
-      expect(ratio(surface, sousBloc)).toBeGreaterThan(1.05);
-      // …sans que le sous-bloc devienne une couleur.
-      expect(ratio(sousBloc, surface)).toBeLessThan(1.25);
-    },
-  );
+  it('les icônes passent le 3:1 des éléments non textuels, sur les deux niveaux', () => {
+    expect(ratio(dash('beige-encre'), teinte)).toBeGreaterThanOrEqual(3);
+    expect(ratio(dash('beige-encre'), nuance)).toBeGreaterThanOrEqual(3);
+  });
 
-  it.each(['teal', 'purple', 'orange'])(
-    'le texte garde son AA sur le SOUS-BLOC %s',
-    (role) => {
-      const sousBloc = melange(dash(role), surface, SUBTINT_PERCENT);
-      expect(ratio(dash('text'), sousBloc)).toBeGreaterThanOrEqual(4.5);
-      expect(ratio(dash('text-secondary'), sousBloc)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  it('trois niveaux lisibles sans texte : teinte ≠ nuance ≠ rangée blanche', () => {
+    expect(ratio(teinte, nuance)).toBeGreaterThan(1.05);
+    expect(ratio(surface, nuance)).toBeGreaterThan(1.05);
+  });
 
-  it('la sonde : une teinte trop forte serait détectée', () => {
-    // 25 % de teal : la page cesserait d'être blanche.
-    const trop = melange(dash('teal'), surface, 25);
-    expect(ratio(trop, surface)).toBeGreaterThan(1.1);
+  it('la sonde : du texte secondaire sur une teinte trop dense serait détecté', () => {
+    const trop = melange(dash('orange'), surface, 60);
+    expect(ratio(dash('text-secondary'), trop)).toBeLessThan(4.5);
   });
 });
 

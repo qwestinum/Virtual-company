@@ -36,7 +36,6 @@ export const PHRASES = {
     titre: (n: number) =>
       `${n} candidature${s(n)} attend${n > 1 ? 'ent' : ''} votre validation`,
     vide: 'Aucune candidature n’attend votre validation',
-    resume: (n: number) => `${n} candidature${s(n)} à valider`,
   },
 
   /** Verbe : lire le dossier et trancher, un par un. */
@@ -64,7 +63,6 @@ export const PHRASES = {
   entretiens: {
     titre: (n: number) => `${n} entretien${s(n)} à conclure`,
     vide: 'Aucun entretien à conclure',
-    resume: (n: number) => `${n} entretien${s(n)} à conclure`,
   },
 
   /**
@@ -100,7 +98,6 @@ export const PHRASES = {
     sousTitre:
       'Vos campagnes et vos réglages — rien ici ne concerne un candidat en particulier.',
     vide: 'Rien à régler',
-    resume: (n: number) => `${n} point${s(n)} à régler`,
   },
 
   /** L'équipe : les deux fenêtres NOMMÉES proposées sous la bande. */

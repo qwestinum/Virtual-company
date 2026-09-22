@@ -1,71 +1,52 @@
 'use client';
 
 /**
- * Carte de section — TROIS NIVEAUX DE RELIEF, aucun inventé.
+ * Carte de section — TROIS NIVEAUX DE RELIEF, UNE SEULE COULEUR.
  *
- *   ① la CARTE      — teinte du registre à 6 % sur le blanc, filet gauche
- *   ② le SOUS-BLOC  — même teinte, un cran plus dense (14 %), repliable
+ *   ① l'EN-TÊTE     — la teinte d'accueil `#ffe0ab`, en dégradé vers sa nuance
+ *   ② le SOUS-BLOC  — la nuance (45 % sur le blanc), repliable
  *   ③ la RANGÉE     — blanc franc, bordure fine, coins arrondis
  *
- * ── TEINTE INVERSÉE (`teinte="inversee"`) ───────────────────────────────────
- * Les deux niveaux ÉCHANGENT leur place : l'en-tête prend la teinte dense, le
- * corps de la carte redevient blanc, et les sous-blocs prennent la nuance
- * légère. Le relief reste à trois niveaux et dans le même ordre de densité —
- * c'est l'ACCENT qui se déplace, du contenu vers le titre.
+ * Le corps de la carte est blanc : c'est lui qui fait ressortir les sous-blocs.
  *
- * Les deux teintes restent celles qui existent : aucune valeur nouvelle, donc
- * le contraste AA déjà mesuré sur chacune reste valable (cf.
- * `socle-contraste.test.ts`, qui les vérifie toutes les deux).
+ * ⚠️ UNE COULEUR POUR LES TROIS BLOCS (22/09/2026, demande du donneur
+ * d'ordre). Chaque bloc portait la teinte de son registre — violet, turquoise,
+ * orange. L'écran d'accueil se lisait comme trois sujets de trois natures ; il
+ * n'en a qu'une : ce qui vous attend. Le SUJET reste dit par l'icône et le
+ * titre, jamais par la couleur.
  *
- * L'écart entre les trois doit se lire à 50 % de zoom SANS texte : c'est lui
- * qui dit « ceci contient cela » sans qu'on ait à le comprendre. Un trait fin
- * comme seul séparateur ne le disait pas — il séparait sans hiérarchiser.
- *
- * ⚠️ Les teintes restent des NUANCES : la page demeure blanche à l'œil et le
- * texte garde son contraste AA sur les deux niveaux. Vérifié par test, parce
- * qu'une teinte « juste un peu plus visible » est exactement l'ajustement qui
- * passe inaperçu et casse l'accessibilité.
+ * Contrastes mesurés (texte et texte secondaire AA sur les deux niveaux) :
+ * voir `--dash-accueil-bloc` dans `globals.css` et `socle-contraste.test.ts`.
  */
 
 import { ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 
-import { DASH_COLORS, type DashColor } from '@/components/dashboard/tokens';
+/** La nuance du sous-bloc : la teinte d'accueil à ce pourcentage sur le blanc. */
+export const SUBTINT_PERCENT = 45;
 
-/** Teinte de la CARTE : le sujet. */
-export const TINT_PERCENT = 6;
-/** Teinte du SOUS-BLOC : le verbe. Un cran plus dense, jamais une couleur. */
-export const SUBTINT_PERCENT = 14;
-
-const tint = (accent: DashColor, pct: number): string =>
-  `color-mix(in srgb, ${DASH_COLORS[accent].solid} ${pct}%, var(--dash-surface))`;
-
-/**
- * Où porte la teinte. `normale` : le corps est teinté, l'en-tête le suit.
- * `inversee` : l'en-tête porte la teinte dense, le corps redevient blanc.
- */
-export type TeinteCarte = 'normale' | 'inversee';
+const TEINTE = 'var(--dash-accueil-bloc)';
+const NUANCE = `color-mix(in srgb, ${TEINTE} ${SUBTINT_PERCENT}%, var(--dash-surface))`;
+/** L'en-tête : la teinte, qui se fond dans sa nuance. */
+const DEGRADE = `linear-gradient(90deg, ${TEINTE}, ${NUANCE})`;
+/** L'encre des icônes — même famille, 5,65:1 sur la teinte pleine. */
+const ENCRE = 'var(--dash-beige-encre)';
 
 export function TodayCard({
-  accent,
   id,
   icon: Icone,
   title,
   subtitle,
-  teinte = 'normale',
   children,
 }: {
-  accent: DashColor;
   /** Clé de mémorisation du repli. Sans elle, la carte ne se replie pas. */
   id?: string;
   /** L'icône du SUJET, devant le titre. Toujours la même pour un sujet. */
   icon?: LucideIcon;
   title: string;
   subtitle?: string;
-  teinte?: TeinteCarte;
   children: React.ReactNode;
 }) {
-  const inversee = teinte === 'inversee';
   const panneau = useId();
   // ⚠️ DÉPLIÉE PAR DÉFAUT, contrairement aux sous-blocs. Une carte repliée
   // n'affiche que son titre — « 14 candidatures attendent votre validation » —
@@ -88,7 +69,7 @@ export function TodayCard({
         <Icone
           aria-hidden
           className="mt-0.5 h-[18px] w-[18px] shrink-0"
-          style={{ color: DASH_COLORS[accent].solid }}
+          style={{ color: ENCRE }}
         />
       ) : (
         <span
@@ -99,7 +80,7 @@ export function TodayCard({
             height: 8,
             borderRadius: 999,
             flexShrink: 0,
-            background: DASH_COLORS[accent].solid,
+            background: ENCRE,
           }}
         />
       )}
@@ -139,10 +120,10 @@ export function TodayCard({
       style={{
         borderRadius: 14,
         border: '1px solid var(--dash-border)',
-        borderLeft: `3px solid ${DASH_COLORS[accent].solid}`,
-        // Inversée, le corps redevient blanc : sans ça les sous-blocs, passés
-        // à la nuance légère, se confondraient avec lui.
-        background: inversee ? 'var(--dash-surface)' : tint(accent, TINT_PERCENT),
+        borderLeft: `3px solid ${TEINTE}`,
+        // Le corps est blanc : sans ça les sous-blocs, à la nuance, se
+        // confondraient avec lui.
+        background: 'var(--dash-surface)',
         overflow: 'hidden',
       }}
     >
@@ -156,7 +137,7 @@ export function TodayCard({
           className="flex w-full items-start gap-2.5 px-4 py-3 text-left"
           style={{
             borderBottom: ouvert ? '1px solid var(--dash-border)' : 'none',
-            background: inversee ? tint(accent, SUBTINT_PERCENT) : undefined,
+            background: DEGRADE,
           }}
         >
           {entete}
@@ -166,7 +147,7 @@ export function TodayCard({
           className="flex items-start gap-2.5 px-4 py-3"
           style={{
             borderBottom: '1px solid var(--dash-border)',
-            background: inversee ? tint(accent, SUBTINT_PERCENT) : undefined,
+            background: DEGRADE,
           }}
         >
           {entete}
@@ -209,18 +190,13 @@ function ecrireRepli(cle: string, replie: boolean): void {
  * le total de la carte ne se retrouve nulle part).
  */
 export function TodaySubBlock({
-  accent,
   id,
   title,
   subtitle,
   count,
   action,
-  teinte = 'normale',
   children,
 }: {
-  accent: DashColor;
-  /** Doit suivre celle de la carte qui le contient. */
-  teinte?: TeinteCarte;
   /** Clé de mémorisation du repli, stable d'un rendu à l'autre. */
   id: string;
   title: string;
@@ -245,10 +221,7 @@ export function TodaySubBlock({
     <div
       style={{
         borderRadius: 10,
-        background: tint(
-          accent,
-          teinte === 'inversee' ? TINT_PERCENT : SUBTINT_PERCENT,
-        ),
+        background: NUANCE,
       }}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">

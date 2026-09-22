@@ -315,6 +315,13 @@
      teinte demandée ; #9a6f02 passerait tout juste (4,52) et #8a6402
      confortablement (5,38). */
   --dash-ambre-action: #ac7c02;
+
+  /* L'ACCUEIL — la teinte UNIQUE des trois blocs pliables d'Aujourd'hui, et
+     sa nuance (45 % sur le blanc, posée par `TodayCard`). Mesuré : texte
+     13,56:1 et texte secondaire 4,77:1 sur la teinte pleine, 15,48 et 5,45
+     sur la nuance — AA partout. Les icônes prennent `--dash-beige-encre`
+     (5,65:1), de la même famille. */
+  --dash-accueil-bloc: #ffe0ab;
   --dash-yellow-light: #fff8e1;
 }
 

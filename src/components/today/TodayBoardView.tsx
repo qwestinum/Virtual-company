@@ -112,15 +112,6 @@ export function TodayBoardView({
       <div className="flex flex-col gap-5">
         <TodayHeader
           firstName={firstName}
-          chiffres={[
-            board.validation.total > 0
-              ? PHRASES.validation.resume(board.validation.total)
-              : null,
-            board.entretiens.total > 0
-              ? PHRASES.entretiens.resume(board.entretiens.total)
-              : null,
-            board.verify.total > 0 ? PHRASES.regler.resume(board.verify.total) : null,
-          ].filter((x): x is string => x !== null)}
           // ⚠️ « Tout est fait » ne s'affiche JAMAIS pendant qu'une lecture
           // est en route : sur un écran qui compte ce qui attend, l'annoncer
           // trop tôt est le seul mensonge qu'il ne peut pas se permettre.
@@ -140,7 +131,11 @@ export function TodayBoardView({
           currentUserId={currentUserId}
         />
 
-        <TodayTeamBand counts={agentCounts} fenetre={fenetre} onFenetre={onFenetre} />
+        {/* Un espace de plus sous la bande : elle rend compte, les blocs
+            qui suivent attendent un geste — ils ne se lisent pas d'un trait. */}
+        <div style={{ marginBottom: 16 }}>
+          <TodayTeamBand counts={agentCounts} fenetre={fenetre} onFenetre={onFenetre} />
+        </div>
 
         {vue.emptiedByFilter ? (
           <p
@@ -167,20 +162,14 @@ export function TodayBoardView({
         {pending.validation ? (
           <TodaySkeleton titre="Candidatures à valider" />
         ) : board.validation.total > 0 ? (
-          // ⚠️ TEINTE INVERSÉE sur les DEUX PREMIERS blocs : l'en-tête porte
-          // la teinte dense, le corps redevient blanc, les sous-blocs prennent
-          // la nuance légère. Le troisième bloc (« à régler ») garde la teinte
-          // normale — il n'a pas de sous-bloc, l'inversion n'y dirait rien.
+          // Les trois blocs portent la MÊME teinte (`TodayCard`) : le sujet se
+          // dit par l'icône et le titre, pas par la couleur.
           <TodayCard
-            accent="purple"
-            teinte="inversee"
             id="validation"
             icon={ShieldCheck}
             title={PHRASES.validation.titre(board.validation.total)}
           >
             <TodaySubBlock
-              accent="purple"
-              teinte="inversee"
               id="validation.aLire"
               count={board.validation.aLire.total}
               title={surTotal(
@@ -206,8 +195,6 @@ export function TodayBoardView({
                 le groupe, pas sur une ligne. Une revue en fournée n'a pas de
                 ligne à laquelle s'accrocher. */}
             <TodaySubBlock
-              accent="purple"
-              teinte="inversee"
               id="validation.aEcarter"
               count={board.validation.aEcarter.total}
               title={PHRASES.aEcarter.titre(board.validation.aEcarter.total)}
@@ -238,15 +225,11 @@ export function TodayBoardView({
           <TodaySkeleton titre="Entretiens" />
         ) : board.entretiens.total > 0 ? (
           <TodayCard
-            accent="teal"
-            teinte="inversee"
             id="entretiens"
             icon={CalendarCheck}
             title={PHRASES.entretiens.titre(board.entretiens.total)}
           >
             <TodaySubBlock
-              accent="teal"
-              teinte="inversee"
               id="entretiens.aConfirmer"
               count={board.entretiens.aConfirmer.total}
               title={surTotal(
@@ -275,8 +258,6 @@ export function TodayBoardView({
             </TodaySubBlock>
 
             <TodaySubBlock
-              accent="teal"
-              teinte="inversee"
               id="entretiens.aDecider"
               count={board.entretiens.aDecider.total}
               title={surTotal(
@@ -305,7 +286,6 @@ export function TodayBoardView({
           <TodaySkeleton titre="À vérifier" />
         ) : board.verify.total > 0 ? (
           <TodayCard
-            accent="orange"
             id="regler"
             icon={Bell}
             title={PHRASES.regler.titre(board.verify.total)}

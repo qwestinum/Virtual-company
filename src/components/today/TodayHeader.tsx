@@ -1,14 +1,17 @@
 'use client';
 
 /**
- * En-tête d'*Aujourd'hui* : « Bonjour [prénom] », la date, et UNE LIGNE DE
- * CHIFFRES factuelle.
+ * En-tête d'*Aujourd'hui* : « Bonjour [prénom] » et le seul geste initié
+ * depuis l'accueil.
  *
- * ⚠️ Pas de total, et pas de phrase de synthèse. Additionner deux candidatures,
- * deux entretiens et deux réglages donne « 6 », un nombre qui ne désigne rien
- * et qu'on ne peut retrouver nulle part. Quant au ton — « 6 choses vous
- * attendent » — il commente au lieu d'informer : le recruteur sait lire une
- * liste, il n'a pas besoin qu'on la lui résume avec entrain.
+ * ⚠️ NI DATE, NI LIGNE DE CHIFFRES (22/09/2026, demande du donneur d'ordre).
+ * La ligne « 14 candidatures à valider · 2 entretiens à conclure · 1 point à
+ * régler » redisait mot pour mot le titre des trois blocs juste en dessous :
+ * deux fois la même information à vingt pixels d'écart. La date, elle,
+ * n'aidait à aucune décision de l'écran.
+ *
+ * Restent : « tout est fait » quand rien n'attend (sinon la page vide ne dit
+ * pas si elle a fini de charger), et l'avertissement de lecture incomplète.
  *
  * Prénom absent (session illisible, recruteur sans nom enregistré) : « Bonjour »
  * tout court. Jamais « Bonjour null », jamais une adresse e-mail.
@@ -20,28 +23,15 @@ import { PHRASES } from '@/lib/lexique/phrases-ecran';
 
 export function TodayHeader({
   firstName,
-  chiffres,
   allClear,
   partial,
   onReload,
 }: {
   firstName: string | null;
-  /** Un élément par nature, déjà formulé. Jamais une somme. */
-  chiffres: string[];
   allClear: boolean;
   partial: boolean;
   onReload: () => void;
 }) {
-  // ⚠️ `capitalize` en CSS met une majuscule à CHAQUE mot : « Lundi 21
-  // Septembre ». En français, seule la première lettre en porte une, et les
-  // noms de mois n'en prennent jamais.
-  const brut = new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date());
-  const jour = brut.charAt(0).toUpperCase() + brut.slice(1);
-
   return (
     <header>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -56,21 +46,7 @@ export function TodayHeader({
             un second bouton ici et plus aucun des deux ne se voit. */}
         <AddCampaignButton href={nouvelleCampagneHref()} />
       </div>
-      <p
-        className="font-body"
-        style={{ marginTop: 2, fontSize: 13, color: 'var(--dash-text-secondary)' }}
-      >
-        {jour}
-      </p>
-
-      {chiffres.length > 0 ? (
-        <p
-          className="font-body"
-          style={{ marginTop: 8, fontSize: 13, color: 'var(--dash-text)' }}
-        >
-          {chiffres.join(' · ')}
-        </p>
-      ) : allClear && !partial ? (
+      {allClear && !partial ? (
         <p
           className="font-body"
           style={{ marginTop: 8, fontSize: 13, color: 'var(--dash-text-secondary)' }}
