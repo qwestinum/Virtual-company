@@ -132,10 +132,10 @@ describe('pending-validations repo', () => {
     expect(await listPendingValidations()).toEqual([]);
   });
 
-  it('upsert avec onConflict id', async () => {
-    const single = vi.fn().mockResolvedValue({ data: ROW, error: null });
-    const selectAfter = vi.fn().mockReturnValue({ single });
-    const upsert = vi.fn().mockReturnValue({ select: selectAfter });
+  it('fiche absente : insertion, sans écraser personne', async () => {
+    const upsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockResolvedValue({ data: [ROW], error: null }),
+    });
     requireServerSupabaseMock.mockReturnValue({
       from: vi.fn().mockReturnValue({ upsert }),
     } as never);
@@ -143,8 +143,51 @@ describe('pending-validations repo', () => {
     const result = await upsertPendingValidation(domain());
     const args = upsert.mock.calls[0]!;
     expect(args[0]).toMatchObject({ id: 'PV-1', campaign_id: 'CAMP-1' });
-    expect(args[1]).toEqual({ onConflict: 'id' });
-    expect(result.id).toBe('PV-1');
+    // `ignoreDuplicates` : l'insertion ne touche JAMAIS une fiche existante.
+    expect(args[1]).toEqual({ onConflict: 'id', ignoreDuplicates: true });
+    expect(result?.id).toBe('PV-1');
+  });
+
+  it('fiche existante ENCORE ouverte : mise à jour conditionnée à pending', async () => {
+    const eqStatus = vi.fn().mockReturnValue({
+      select: vi.fn().mockResolvedValue({ data: [ROW], error: null }),
+    });
+    const eqId = vi.fn().mockReturnValue({ eq: eqStatus });
+    const update = vi.fn().mockReturnValue({ eq: eqId });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        upsert: vi.fn().mockReturnValue({
+          select: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+        update,
+      }),
+    } as never);
+
+    const result = await upsertPendingValidation(domain());
+    expect(eqId).toHaveBeenCalledWith('id', 'PV-1');
+    expect(eqStatus).toHaveBeenCalledWith('status', 'pending');
+    expect(result?.id).toBe('PV-1');
+  });
+
+  it('fiche ENGAGÉE entre la lecture et l’écriture : rien n’est écrit → null', async () => {
+    // LE défaut du 22/09/2026 : une réservation d'envoi posée entre les deux
+    // était écrasée, la fiche repassait `pending`, et un second envoi
+    // devenait réservable.
+    const eqStatus = vi.fn().mockReturnValue({
+      select: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+    requireServerSupabaseMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        upsert: vi.fn().mockReturnValue({
+          select: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({ eq: eqStatus }),
+        }),
+      }),
+    } as never);
+
+    expect(await upsertPendingValidation(domain())).toBeNull();
   });
 
   it('patch ne met à jour que les champs fournis', async () => {
@@ -206,16 +249,15 @@ describe('pending-validations repo', () => {
 
   it('rowToDomain : colonnes identité NULL (enqueue / historique) → null', () => {
     // Vérifie le mapping de lecture via upsert qui renvoie une row sans identité.
-    const single = vi.fn().mockResolvedValue({ data: ROW, error: null });
     const upsert = vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({ single }),
+      select: vi.fn().mockResolvedValue({ data: [ROW], error: null }),
     });
     requireServerSupabaseMock.mockReturnValue({
       from: vi.fn().mockReturnValue({ upsert }),
     } as never);
     return upsertPendingValidation(domain()).then((v) => {
-      expect(v.decidedBy).toBeNull();
-      expect(v.decidedByUser).toBeNull();
+      expect(v?.decidedBy).toBeNull();
+      expect(v?.decidedByUser).toBeNull();
     });
   });
 });
