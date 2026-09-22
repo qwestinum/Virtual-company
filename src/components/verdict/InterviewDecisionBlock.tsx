@@ -78,19 +78,21 @@ export function InterviewDecisionBlock({
       {/* La décision, séparée des deux zones de saisie. */}
       <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 pt-3">
         <span className="font-display text-[13px] font-bold text-stone-800">Votre décision :</span>
+        {/* Le libellé dit que le clic ENREGISTRE — la décision et, s'il y en
+            a un, le commentaire au-dessus. */}
         <DecisionButton
-          tone="positive"
+          verdict="validated"
           disabled={busy !== null}
           onClick={() => void decide('validated')}
         >
-          {busy === 'validated' ? 'Enregistrement…' : 'Retenu'}
+          {busy === 'validated' ? 'Enregistrement…' : '✓ Retenir et enregistrer'}
         </DecisionButton>
         <DecisionButton
-          tone="negative"
+          verdict="rejected"
           disabled={busy !== null}
           onClick={() => void decide('rejected')}
         >
-          {busy === 'rejected' ? 'Enregistrement…' : 'Non retenu'}
+          {busy === 'rejected' ? 'Enregistrement…' : '✗ Ne pas retenir et enregistrer'}
         </DecisionButton>
       </div>
     </div>
@@ -98,23 +100,25 @@ export function InterviewDecisionBlock({
 }
 
 function DecisionButton({
-  tone,
+  verdict,
   disabled,
   onClick,
   children,
 }: {
-  tone: 'positive' | 'negative';
+  /** Repère STABLE pour les tests qui cliquent — le libellé, lui, bouge. */
+  verdict: FinalVerdict;
   disabled: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
   const cls =
-    tone === 'positive'
+    verdict === 'validated'
       ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
       : 'border-rose-300 text-rose-700 hover:bg-rose-50';
   return (
     <button
       type="button"
+      data-verdict={verdict}
       disabled={disabled}
       onClick={onClick}
       className={`rounded-lg border bg-white px-3 py-1.5 font-body text-[12.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${cls}`}

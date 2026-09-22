@@ -58,7 +58,7 @@ describe('S42 — panneau de candidature et fenêtre d’approche', () => {
     ).toBeGreaterThan(0);
 
     await page.click('[data-candidature-row]');
-    await page.waitForSelector('[data-candidature-panel] button:has-text("Retenu")', {
+    await page.waitForSelector('[data-candidature-panel] button[data-verdict="validated"]', {
       timeout: 30_000,
       state: 'attached',
     });
@@ -76,9 +76,7 @@ describe('S42 — panneau de candidature et fenêtre d’approche', () => {
       while (zone && !['auto', 'scroll'].includes(getComputedStyle(zone).overflowY)) {
         zone = zone.parentElement;
       }
-      const bouton = [...col.querySelectorAll('button')].find(
-        (b) => b.textContent?.trim() === 'Retenu',
-      )!;
+      const bouton = col.querySelector('button[data-verdict="validated"]')!;
       return {
         basBouton: Math.round(bouton.getBoundingClientRect().bottom),
         basZone: Math.round(zone ? zone.getBoundingClientRect().bottom : innerHeight),
