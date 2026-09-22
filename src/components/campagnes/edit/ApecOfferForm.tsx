@@ -63,7 +63,7 @@ export function ApecOfferForm({
     <div>
       <ApecFieldRow
         label="Intitulé du poste"
-        note={notes.positionTitle}
+        field="positionTitle" note={notes.positionTitle}
         counter={counter(sentTitle, ADEP_LIMITS.positionTitleWithMention)}
       >
         <input
@@ -80,7 +80,7 @@ export function ApecOfferForm({
 
       <ApecFieldRow
         label="Descriptif du poste"
-        note={notes.positionDescription}
+        field="positionDescription" note={notes.positionDescription}
         counter={counter(
           offer.positionDescription,
           ADEP_LIMITS.positionDescriptionMax,
@@ -104,7 +104,7 @@ export function ApecOfferForm({
         // La provenance passe par la note ordinaire, jamais par un faux
         // « déduit de rédaction en cours » : l'état de rédaction se lit sur le
         // bouton, sous le champ.
-        note={notes.profileDescription}
+        field="profileDescription" note={notes.profileDescription}
         counter={counter(
           offer.profileDescription,
           ADEP_LIMITS.profileDescriptionMax,
@@ -125,7 +125,7 @@ export function ApecOfferForm({
 
       <ApecFieldRow
         label="Description de l’entreprise"
-        note={notes.organizationDescription}
+        field="organizationDescription" note={notes.organizationDescription}
         counter={counter(
           offer.organizationDescription,
           ADEP_LIMITS.organizationDescriptionMax,

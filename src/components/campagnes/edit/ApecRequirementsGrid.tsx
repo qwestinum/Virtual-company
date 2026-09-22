@@ -62,7 +62,7 @@ export function ApecRequirementsGrid({
       <div style={sectionStyle}>Ce que l’Apec demande en plus</div>
 
       <div style={gridStyle}>
-        <ApecFieldRow label="Type de contrat" note={notes.jobType}>
+        <ApecFieldRow label="Type de contrat" field="jobType" note={notes.jobType}>
           <ApecSelect
             value={offer.jobType}
             onChange={(jobType) =>
@@ -82,7 +82,7 @@ export function ApecRequirementsGrid({
         </ApecFieldRow>
 
         {needsDuration ? (
-          <ApecFieldRow label="Durée (mois)" note={notes.durationMonths}>
+          <ApecFieldRow label="Durée (mois)" field="durationMonths" note={notes.durationMonths}>
             <input
               style={inputStyle}
               type="number"
@@ -96,7 +96,7 @@ export function ApecRequirementsGrid({
           </ApecFieldRow>
         ) : null}
 
-        <ApecFieldRow label="Statut du poste" note={notes.statusJob}>
+        <ApecFieldRow label="Statut du poste" field="statusJob" note={notes.statusJob}>
           <ApecSelect
             value={offer.statusJob}
             onChange={(statusJob) => onChange({ statusJob })}
@@ -105,7 +105,7 @@ export function ApecRequirementsGrid({
           />
         </ApecFieldRow>
 
-        <ApecFieldRow label="Expérience attendue" note={notes.experienceLevel}>
+        <ApecFieldRow label="Expérience attendue" field="experienceLevel" note={notes.experienceLevel}>
           <ApecSelect
             value={offer.experienceLevel}
             onChange={(experienceLevel) => onChange({ experienceLevel })}
@@ -114,7 +114,21 @@ export function ApecRequirementsGrid({
           />
         </ApecFieldRow>
 
-        <ApecFieldRow label="Commune (code INSEE)" note={notes.inseeCode}>
+        <ApecFieldRow
+          label="Commune (code INSEE)"
+          field="inseeCode"
+          note={notes.inseeCode}
+          hint={
+            <>
+              Code officiel de la commune (5 caractères), attribué par l’INSEE.
+              Ce n’est <strong>pas le code postal</strong> : Tours a pour code
+              INSEE 37261 et pour code postal 37000. Un code postal peut couvrir
+              plusieurs communes, un code INSEE en désigne une seule — c’est
+              pourquoi l’Apec l’exige. À trouver sur insee.fr (« code officiel
+              géographique »).
+            </>
+          }
+        >
           <input
             style={inputStyle}
             value={offer.inseeCode ?? ''}
@@ -123,7 +137,7 @@ export function ApecRequirementsGrid({
           />
         </ApecFieldRow>
 
-        <ApecFieldRow label="Zone de déplacement" note={notes.travelZone}>
+        <ApecFieldRow label="Zone de déplacement" field="travelZone" note={notes.travelZone}>
           <ApecSelect
             value={offer.travelZone}
             onChange={(travelZone) => travelZone && onChange({ travelZone })}

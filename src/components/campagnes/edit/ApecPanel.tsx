@@ -29,20 +29,19 @@
  *
  * L'état vit dans `useApecPanel` ; ce fichier n'est qu'une vue.
  */
-import { useState } from 'react';
-
+import { errorsByField } from '@/lib/jobboards/adep/draft-check';
 import { adepPhase, ADEP_IMMUTABLE_NOTICE } from '@/lib/jobboards/adep/panel-state';
 import { useApecPanel } from '@/lib/jobboards/adep/use-apec-panel';
 
+import { ApecFieldProvider } from './ApecFieldContext';
 import { ApecIssueList } from './ApecIssueList';
 import { ApecOfferForm } from './ApecOfferForm';
 import { ApecPrefillNotice } from './ApecPrefillNotice';
 import { ApecPublishedCard } from './ApecPublishedCard';
 import { ApecRequirementsGrid } from './ApecRequirementsGrid';
 import { CollapsibleSection } from './CollapsibleSection';
+import { useApecSections } from './useApecSections';
 import { errorStyle, ghostBtn, headerStyle, panelStyle, primaryBtn } from './job-ad-panel-styles';
-
-type OpenSection = 'annonce' | 'exigences' | null;
 
 /** Champs de la grille qu'ORQA ne sait pas toujours remplir — comptés repliés. */
 const GRID_FIELDS = [
@@ -56,8 +55,8 @@ const GRID_FIELDS = [
 
 export function ApecPanel({ campaignId }: { campaignId: string }) {
   const panel = useApecPanel(campaignId);
-  const [open, setOpen] = useState<OpenSection>(null);
   const { state, offer } = panel;
+  const { open, setOpen, toggle, goToField } = useApecSections(panel.issues);
 
   // Le panneau ne se retire QUE sur `absent` (aucune surface APEC pour cette
   // campagne). Un chargement en échec reste à l'écran et dit pourquoi : sinon
@@ -89,8 +88,6 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
   const toTreat = GRID_FIELDS.filter(
     (f) => (state.notes[f]?.origin ?? 'missing') === 'missing',
   ).length;
-  const toggle = (section: Exclude<OpenSection, null>) =>
-    setOpen((current) => (current === section ? null : section));
 
   return (
     <div style={panelStyle}>
@@ -136,51 +133,59 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
             </button>
           ) : null}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <CollapsibleSection
-              title="L’annonce"
-              icon="📝"
-              subtitle={
-                panel.prefill
-                  ? `repris de l’${panel.prefill.label}`
-                  : 'titre, descriptif, profil'
-              }
-              open={open === 'annonce'}
-              onToggle={() => toggle('annonce')}
-            >
-              <ApecPrefillNotice prefill={panel.prefill} />
-              <ApecOfferForm
-                offer={offer}
-                // `panel.notes` et non `state.notes` : le profil est rédigé
-                // côté client, sa provenance n'est connue que du panneau.
-                notes={panel.notes}
-                onChange={panel.patch}
-                textDrafting={panel.textDrafting}
-                textError={panel.textError}
-                onDraftText={(target) => void panel.draftOfferText(target)}
-              />
-            </CollapsibleSection>
+          {open !== null ? (
+            <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--dash-text-secondary)' }}>
+              <span style={{ color: 'var(--dash-red-text)' }}>*</span> champ obligatoire
+              pour l’Apec
+            </p>
+          ) : null}
+          <ApecFieldProvider offer={offer} errors={errorsByField(panel.issues)}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <CollapsibleSection
+                title="L’annonce"
+                icon="📝"
+                subtitle={
+                  panel.prefill
+                    ? `repris de l’${panel.prefill.label}`
+                    : 'titre, descriptif, profil'
+                }
+                open={open === 'annonce'}
+                onToggle={() => toggle('annonce')}
+              >
+                <ApecPrefillNotice prefill={panel.prefill} />
+                <ApecOfferForm
+                  offer={offer}
+                  // `panel.notes` et non `state.notes` : le profil est rédigé
+                  // côté client, sa provenance n'est connue que du panneau.
+                  notes={panel.notes}
+                  onChange={panel.patch}
+                  textDrafting={panel.textDrafting}
+                  textError={panel.textError}
+                  onDraftText={(target) => void panel.draftOfferText(target)}
+                />
+              </CollapsibleSection>
 
-            <CollapsibleSection
-              title="Ce que l’Apec demande en plus"
-              icon="📋"
-              subtitle={
-                toTreat > 0
-                  ? `${toTreat} champ${toTreat > 1 ? 's' : ''} à compléter`
-                  : 'tout est renseigné'
-              }
-              open={open === 'exigences'}
-              onToggle={() => toggle('exigences')}
-            >
-              <ApecRequirementsGrid
-                offer={offer}
-                notes={panel.notes}
-                onChange={panel.patch}
-              />
-            </CollapsibleSection>
-          </div>
+              <CollapsibleSection
+                title="Ce que l’Apec demande en plus"
+                icon="📋"
+                subtitle={
+                  toTreat > 0
+                    ? `${toTreat} champ${toTreat > 1 ? 's' : ''} à compléter`
+                    : 'tout est renseigné'
+                }
+                open={open === 'exigences'}
+                onToggle={() => toggle('exigences')}
+              >
+                <ApecRequirementsGrid
+                  offer={offer}
+                  notes={panel.notes}
+                  onChange={panel.patch}
+                />
+              </CollapsibleSection>
+            </div>
+          </ApecFieldProvider>
 
-          <ApecIssueList issues={panel.issues} verified={panel.verified} />
+          <ApecIssueList issues={panel.issues} verified={panel.verified} onSelect={goToField} />
 
           {open !== null ? (
             <>

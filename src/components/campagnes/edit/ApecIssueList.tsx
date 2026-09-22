@@ -10,16 +10,33 @@
  * du statut du poste. Annoncer « prête à partir » là-dessus serait un feu vert
  * sur une offre que personne n'a validée.
  */
+import { apecSectionOf } from '@/lib/jobboards/adep/draft-check';
 import type { AdepIssue } from '@/lib/jobboards/adep/validate';
 
 import { errorStyle } from './job-ad-panel-styles';
 
+/**
+ * Donne le focus au champ fauté. Différé : sa section vient peut-être d'être
+ * ouverte, et le champ n'existe qu'au rendu suivant.
+ */
+export function focusApecField(field: string) {
+  setTimeout(() => {
+    const row = document.querySelector(`[data-apec-field="${field}"]`);
+    const control = row?.querySelector<HTMLElement>('input, select, textarea');
+    row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    control?.focus({ preventScroll: true });
+  }, 60);
+}
+
 export function ApecIssueList({
   issues,
   verified,
+  onSelect,
 }: {
   issues: AdepIssue[] | null;
   verified: boolean;
+  /** Mène au champ d'une erreur (ouvre sa section, puis le focus). */
+  onSelect: (field: string) => void;
 }) {
   const errors = issues?.filter((i) => i.level === 'error') ?? [];
   const warnings = issues?.filter((i) => i.level === 'warning') ?? [];
@@ -29,7 +46,27 @@ export function ApecIssueList({
       {errors.length > 0 ? (
         <ul style={{ ...errorStyle, marginTop: 10, paddingLeft: 18 }}>
           {errors.map((i) => (
-            <li key={`${i.field}-${i.preventsCode}-${i.message}`}>{i.message}</li>
+            <li key={`${i.field}-${i.preventsCode}-${i.message}`}>
+              {/* Chaque erreur MÈNE à son champ : une liste qu'on lit puis
+                  qu'on cherche à retrouver dans le formulaire fait le travail
+                  à moitié. */}
+              {apecSectionOf(i.field) ? (
+                <button
+                  type="button"
+                  onClick={() => onSelect(i.field)}
+                  style={{
+                    all: 'unset',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: 2,
+                  }}
+                >
+                  {i.message}
+                </button>
+              ) : (
+                i.message
+              )}
+            </li>
           ))}
         </ul>
       ) : null}

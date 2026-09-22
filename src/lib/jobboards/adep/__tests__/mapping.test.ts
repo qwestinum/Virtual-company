@@ -87,8 +87,20 @@ describe('type de contrat', () => {
     expect(mapContractType(['apprentissage']).kind).toBe('ambiguous');
   });
 
-  it('un champ MULTI-VALEUR est toujours ambigu — l’Apec n’en publie qu’un', () => {
-    const mapping = mapContractType(['CDI', 'CDD']);
+  it('un champ MULTI-VALEUR propose le premier contrat diffusable — à confirmer', () => {
+    // L'Apec n'en publie qu'un ; laisser le champ vide faisait croire que la
+    // fiche n'avait rien dit.
+    expect(mapContractType(['CDI', 'CDD'])).toEqual({
+      kind: 'choice',
+      jobType: '1',
+      label: 'CDI',
+      all: ['CDI', 'CDD'],
+    });
+    expect(mapContractType(['freelance', 'CDD'])).toMatchObject({ kind: 'choice', jobType: '5' });
+  });
+
+  it('un champ MULTI-VALEUR sans contrat diffusable reste à trancher', () => {
+    const mapping = mapContractType(['alternance', 'apprentissage']);
     expect(mapping.kind).toBe('ambiguous');
     if (mapping.kind === 'ambiguous') expect(mapping.reason).toContain("n'en publie qu'un");
   });
@@ -229,7 +241,26 @@ describe('brouillon', () => {
     });
     expect(draft.offer.jobType).toBeNull();
     expect(draft.blockers).toEqual([]);
-    expect(draft.notes.jobType?.from).toContain('alternance');
+    expect(draft.notes.jobType?.from).toContain('« alternance »');
+    expect(draft.notes.jobType?.blocking).toBeUndefined();
+  });
+
+  it('reprend le premier contrat d’une fiche multi-contrats, en le disant', () => {
+    const draft = buildAdepDraft({
+      ...BASE_INPUT,
+      fdp: fdpWith({ contract_type: ['CDD', 'CDI'], job_title: 'Chargé de mission' }),
+    });
+    expect(draft.offer.jobType).toBe('5');
+    expect(draft.notes.jobType?.origin).toBe('derived');
+    expect(draft.notes.jobType?.from).toContain('CDD, CDI');
+  });
+
+  it('seul un contrat non diffusable porte une note BLOQUANTE (rouge)', () => {
+    const draft = buildAdepDraft({
+      ...BASE_INPUT,
+      fdp: fdpWith({ ...BASE_INPUT.fdp.fields, contract_type: ['freelance'] }),
+    });
+    expect(draft.notes.jobType?.blocking).toBe(true);
   });
 
   it('ne remplit une date de prise de poste que si elle est exploitable', () => {

@@ -41,6 +41,12 @@ export type AdepFieldNote = {
   origin: AdepFieldOrigin;
   /** D'où vient la valeur, en français — affiché sous le champ. */
   from?: string;
+  /**
+   * La note empêche la publication. Seule une note BLOQUANTE s'affiche en
+   * rouge : un champ à trancher n'est pas une erreur, et le rouge partout
+   * faisait lire « quelque chose ne va pas » là où il fallait juste choisir.
+   */
+  blocking?: boolean;
 };
 
 /**
@@ -113,6 +119,12 @@ function fold(value: string): string {
 
 export type ContractMapping =
   | { kind: 'certain'; jobType: AdepOffer['jobType']; label: string }
+  /**
+   * La fiche accepte plusieurs contrats dont au moins un est diffusable :
+   * on PROPOSE le premier (dans l'ordre de la fiche), à confirmer. Laisser le
+   * champ vide faisait croire que la fiche n'avait rien dit.
+   */
+  | { kind: 'choice'; jobType: AdepOffer['jobType']; label: string; all: string[] }
   /** Plusieurs codes Apec possibles — l'humain tranche. */
   | { kind: 'ambiguous'; reason: string }
   /** L'Apec ne diffuse pas ce contrat. Bloquant. */
@@ -139,6 +151,10 @@ export function mapContractType(value: unknown): ContractMapping {
   }
 
   if (list.length > 1) {
+    const first = list.find((c) => CERTAIN_CONTRACTS[fold(c)]);
+    if (first) {
+      return { kind: 'choice', jobType: CERTAIN_CONTRACTS[fold(first)]!, label: first, all: list };
+    }
     return {
       kind: 'ambiguous',
       reason: `La fiche de poste accepte ${list.join(', ')} ; l'Apec n'en publie qu'un.`,
@@ -153,8 +169,9 @@ export function mapContractType(value: unknown): ContractMapping {
     return {
       kind: 'ambiguous',
       reason:
-        "L'Apec distingue l'alternance en CDI ou en CDD, et l'apprentissage de " +
-        'la professionnalisation. La fiche de poste ne le précise pas.',
+        `La fiche de poste indique « ${only} ». L'Apec distingue l'alternance en ` +
+        "CDI ou en CDD, et l'apprentissage de la professionnalisation : choisissez " +
+        'la variante exacte.',
     };
   }
 
@@ -317,11 +334,20 @@ export function buildAdepDraft(input: AdepDraftInput): AdepDraft {
       jobType = contract.jobType;
       notes.jobType = { origin: 'certain', from: `« ${contract.label} » de la fiche de poste` };
       break;
+    case 'choice':
+      jobType = contract.jobType;
+      notes.jobType = {
+        origin: 'derived',
+        from:
+          `« ${contract.label} », premier des contrats de la fiche de poste ` +
+          `(${contract.all.join(', ')}) — l'Apec n'en publie qu'un`,
+      };
+      break;
     case 'ambiguous':
       notes.jobType = { origin: 'missing', from: contract.reason };
       break;
     case 'unsupported':
-      notes.jobType = { origin: 'missing', from: contract.reason };
+      notes.jobType = { origin: 'missing', from: contract.reason, blocking: true };
       blockers.push(contract.reason);
       break;
     case 'unknown':
