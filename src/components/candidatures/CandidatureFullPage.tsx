@@ -115,8 +115,14 @@ export function CandidatureFullPage({
   };
 
   const overlay = (
+    // ⚠️ Voile SOMBRE + FLOU (23/09/2026) : cet écran-ci RECOUVRE tout, et le
+    // fond y est inerte (clic = fermeture, Échap ferme) — le flou dit
+    // justement « rien à faire là-derrière ». Il ne se transpose PAS au
+    // panneau latéral de 420 px : celui-là est une seconde colonne, la liste
+    // qu'il côtoie reste le moyen de passer au dossier suivant, et la flouter
+    // la ferait passer pour désactivée.
     <div
-      className="fixed inset-0 z-[60] flex justify-end bg-dash-text/30"
+      className="fixed inset-0 z-[60] flex justify-end bg-dash-text/30 backdrop-blur-sm"
       onClick={onClose}
     >
       {/* Flex-colonne : barre fixe (shrink-0) AU-DESSUS d'une zone scrollable —
