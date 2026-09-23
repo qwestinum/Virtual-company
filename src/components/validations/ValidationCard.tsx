@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { analysisIdForValidation } from '@/lib/hitl/analysis-key';
 import type { ReferentInfo } from '@/lib/referent/filter';
 import { decideGrayValidation } from '@/lib/hitl/decide-gray-validation';
+import { openReportInline } from '@/lib/reporting/open-report-inline';
 import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import { formatDateTimeFr } from '@/lib/format/datetime';
 import {
@@ -64,6 +65,7 @@ export function ValidationCard({
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const editedRef = useRef(false);
   // Garde SYNCHRONE : `disabled={sending}` ne s'applique qu'au re-render suivant ;
@@ -120,9 +122,11 @@ export function ValidationCard({
   const cvArtifact = useArtifactsStore((s) =>
     v.cvArtifactId ? s.byId[v.cvArtifactId] : undefined,
   );
-  const reportArtifact = useArtifactsStore((s) =>
-    v.reportArtifactId ? s.byId[v.reportArtifactId] : undefined,
-  );
+  // ⚠️ Le rapport d'analyse s'ouvre par son ANALYSE, plus par son artefact
+  // markdown (23/09/2026) : c'est le MÊME PDF coloré que la fiche
+  // candidature. Deux rendus du même fait, et le plus pauvre servait ici —
+  // c'est-à-dire à l'endroit où l'on accepte ou l'on refuse.
+  const analysisId = analysisIdForValidation(v);
   const fdpArtifact = useArtifactsStore((s) =>
     Object.values(s.byId).find(
       (a) => a.campaignId === v.campaignId && a.kind === 'fdp',
@@ -193,7 +197,7 @@ export function ValidationCard({
           {summary}
         </p>
       ) : null}
-      {cvArtifact || reportArtifact || fdpArtifact ? (
+      {cvArtifact || analysisId || fdpArtifact ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {cvArtifact ? (
             <button
@@ -204,10 +208,17 @@ export function ValidationCard({
               📎 CV du candidat
             </button>
           ) : null}
-          {reportArtifact ? (
+          {analysisId ? (
             <button
               type="button"
-              onClick={() => void openArtifact(reportArtifact)}
+              onClick={() => {
+                setReportError(null);
+                void openReportInline(analysisId).then((ok) => {
+                  // Un bouton qui ne fait rien passe pour cassé : on DIT que
+                  // le rapport n'a pas pu être servi.
+                  if (!ok) setReportError('Le rapport d’analyse n’a pas pu être ouvert.');
+                });
+              }}
               className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-2 py-1 font-body text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
             >
               📄 Rapport d’analyse
@@ -223,6 +234,11 @@ export function ValidationCard({
             </button>
           ) : null}
         </div>
+      ) : null}
+      {reportError ? (
+        <p role="alert" className="mt-1.5 font-body text-[11px] text-rose-700">
+          {reportError}
+        </p>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -17,34 +17,9 @@ import {
   formatFrDateTime,
   sortByCriticality,
 } from '@/lib/reporting/audit-display';
+import { openReportInline } from '@/lib/reporting/open-report-inline';
 import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import type { CriterionDecision, LlmDecision } from '@/types/scoring';
-
-/**
- * Ouvre le rapport d'analyse (PDF d'audit) EN INLINE dans un nouvel onglet.
- * L'endpoint sert le PDF en `attachment` (téléchargement) ; on le récupère en
- * blob et on ouvre l'URL blob → la visionneuse PDF du navigateur l'AFFICHE au
- * lieu de l'enregistrer. Popup-safe : fenêtre ouverte AVANT l'await.
- */
-async function openReportInline(analysisId: string): Promise<void> {
-  if (typeof window === 'undefined') return;
-  const win = window.open('about:blank', '_blank');
-  try {
-    const res = await fetch(
-      `/api/reporting/audit/candidates/${encodeURIComponent(analysisId)}/report`,
-    );
-    if (!res.ok) {
-      win?.close();
-      return;
-    }
-    const url = URL.createObjectURL(await res.blob());
-    if (win) win.location.href = url;
-    else window.open(url, '_blank', 'noopener,noreferrer');
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch {
-    win?.close();
-  }
-}
 
 /**
  * Pièces du dossier : CV (lien signé à la demande) + Rapport d'analyse (PDF
