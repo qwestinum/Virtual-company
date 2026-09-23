@@ -61,11 +61,14 @@ describe('S38 — sections pliables', () => {
       const bouton = `[data-settings-group="${famille}"]`;
       // REPLIÉES au départ (22/09/2026) : la page s'ouvre sur quatre titres.
       expect(await page.getAttribute(bouton, 'aria-expanded'), famille).toBe('false');
-      // …posés sur le bandeau jaune qui les garde repérables.
-      expect(
-        await page.$eval(bouton, (b) => getComputedStyle(b).backgroundColor),
-        famille,
-      ).toBe('rgb(235, 187, 88)');
+      // …bordés du jaune qui les garde repérables, SANS aplat.
+      const cadre = await page.$eval(bouton, (b) => {
+        const c = getComputedStyle(b);
+        return { fond: c.backgroundColor, filet: c.borderTopColor, style: c.borderTopStyle };
+      });
+      expect(cadre.filet, famille).toBe('rgb(235, 187, 88)');
+      expect(cadre.style, famille).toBe('solid');
+      expect(cadre.fond, famille).toBe('rgba(0, 0, 0, 0)');
 
       const panneau = await page.getAttribute(bouton, 'aria-controls');
       expect(panneau, `${famille} : pas de panneau`).toBeTruthy();

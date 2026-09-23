@@ -299,10 +299,9 @@
   --dash-green-bandeau: #166534;
   /* BEIGE — la teinte des boutons qui étaient noirs (« Détail »,
      « Relancer », « Lancer »). Encre à 5,91:1 dessus : AA largement. */
-  /* Bandeau des FAMILLES de réglages (/settings) — demandé par le donneur
-     d'ordre le 22/09/2026. Un FOND, jamais une encre : l'encre du produit
-     (#1b1b18) y tient ~9:1, alors que ce jaune en texte sur fond clair
-     resterait sous 2:1. */
+  /* FILET des familles de réglages (/settings) — demandé par le donneur
+     d'ordre le 22/09, en bordure seule depuis le 23/09. Un trait, jamais une
+     encre : ce jaune en texte sur fond clair resterait sous 2:1. */
   --dash-famille: #ebbb58;
   --dash-beige: #f2e8d5;
   --dash-beige-bord: #d9c9a8;
