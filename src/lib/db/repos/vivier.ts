@@ -912,6 +912,62 @@ export async function matchVivierCandidates(
  * dossiers en silence — obligatoire après tout changement de modèle. Ordre par
  * `id` (curseur), pas `entered_at` (non unique ⇒ trous/doublons aux frontières).
  */
+/** Un dossier que le rail d'indexation peut reprendre : son id, et l'ancre du claim. */
+export type VivierIndexingClaim = { id: string; updatedAt: string };
+
+/**
+ * Dossiers restés `pending` et assez VIEUX pour être repris — les plus anciens
+ * d'abord.
+ *
+ * `before` écarte ceux qu'une passe vient de prendre : le claim touche
+ * `updated_at`, donc une indexation EN COURS (quelques secondes) n'est pas
+ * re-servie au tick suivant. Une passe tuée en plein vol, elle, redevient
+ * éligible passé ce délai — c'est ce qui fait du statut `pending` une file
+ * d'attente, sans table à créer.
+ */
+export async function listVivierCandidatesToReindex(
+  limit: number,
+  before: string,
+): Promise<VivierIndexingClaim[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('id, updated_at')
+    .eq('indexing_status', 'pending')
+    .lt('updated_at', before)
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(`listVivierCandidatesToReindex: ${error.message}`);
+  return ((data ?? []) as { id: string; updated_at: string }[]).map((r) => ({
+    id: r.id,
+    updatedAt: r.updated_at,
+  }));
+}
+
+/**
+ * RÉSERVE un dossier pour cette passe — contrôle optimiste sur `updated_at`,
+ * comme le rail sourcing (`claimAdmissionAttempt`). Deux invocations
+ * concurrentes du cron lisent la même liste ; une seule gagne, l'autre passe au
+ * suivant au lieu de payer un second appel au modèle.
+ *
+ * ⚠️ Le déclencheur `touch_updated_at` réécrit la valeur : c'est la CLAUSE qui
+ * fait le verrou, pas la valeur qu'on écrit.
+ */
+export async function claimVivierIndexing(
+  claim: VivierIndexingClaim,
+): Promise<boolean> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', claim.id)
+    .eq('indexing_status', 'pending')
+    .eq('updated_at', claim.updatedAt)
+    .select('id');
+  if (error) throw new Error(`claimVivierIndexing: ${error.message}`);
+  return (data ?? []).length > 0;
+}
+
 export async function listVivierCandidateIds(filters?: {
   status?: VivierIndexingStatus;
 }): Promise<string[]> {

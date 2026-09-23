@@ -23,6 +23,7 @@ import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { pollAllMailboxes } from '@/lib/imap/poller';
 import { runQueuedClosureDismissals } from '@/lib/candidatures/dismissal-batch';
 import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
+import { runVivierIndexingMaintenance } from '@/lib/vivier/maintenance';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 
 export const runtime = 'nodejs';
@@ -54,6 +55,10 @@ export async function GET(request: Request): Promise<NextResponse> {
     const drained = await drainSchedulingEvents();
     // Sourcing : purge des campagnes closes, reprise des admissions en panne.
     const sourcing = await runSourcingMaintenance();
+    // Vivier : dossiers dont l'indexation n'a jamais abouti (la porte email la
+    // lance en promesse flottante, et l'instance est gelée dès la réponse).
+    // Sans ce rail, ils restent invisibles à la présélection.
+    const vivier = await runVivierIndexingMaintenance();
     // Clôtures de plus de 20 dossiers mises en file (fail-soft).
     const closureBatches = await runQueuedClosureDismissals();
     return NextResponse.json({
@@ -62,6 +67,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       mailboxesPolled: outcomes.length,
       bookingEvents: drained,
       sourcing,
+      vivier,
       closureBatches,
     });
   } catch (err) {
