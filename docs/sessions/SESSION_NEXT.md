@@ -1,9 +1,10 @@
-# Brief — prochaine session (réécrit le 21/09/2026)
+# Brief — prochaine session (réécrit le 21/09/2026, complété le 23/09/2026)
 
 Le chantier **REFONTE DES INTERFACES** est **terminé côté code**, sur la branche
-`feat/ux-refonte` (**38 commits en avance sur `main`**, jamais poussés). Il reste **la
-recette de bout en bout par le donneur d'ordre** sur le jeu de démonstration, puis le
-merge.
+`feat/ux-refonte` (**70 commits en avance sur `main`**, jamais poussés). La **recette du
+donneur d'ordre a commencé** (22-23/09) : ses retours sont traités et commités ; ce qui
+en sort est consigné au § « Recette du donneur d'ordre » de
+`docs/ux/maquette-structure-v2-2026-09-20.md`. Reste à la terminer, puis le merge.
 
 Source de vérité de la refonte : **`docs/ux/maquette-structure-v2-2026-09-20.md`**
 (la v1 est supersédée ; l'audit de l'existant est dans `docs/ux/audit-ux-2026-09-20.md`).
@@ -11,15 +12,15 @@ Le lexique est publié en référence : **`docs/ux/lexique.md`**.
 
 ---
 
-## 0. ÉTAT AU 21/09/2026
+## 0. ÉTAT AU 23/09/2026
 
 | Indicateur | Valeur |
 |---|---|
-| Branche | `feat/ux-refonte`, 38 commits devant `main` |
+| Branche | `feat/ux-refonte`, 70 commits devant `main` |
 | Typecheck | propre (`npm run typecheck`) |
-| Tests unitaires | **2 954 verts**, 1 ignoré |
-| Tests de clic (E2E) | **38 verts** — S29 à S35 |
-| Régression (S1–S25) | **à relancer avant le merge** (application fermée) |
+| Tests unitaires | **2 981 verts**, 1 ignoré |
+| Tests de clic (E2E) | **à relancer** — S38 et S42 modifiés par la recette, non rejoués |
+| Régression | **verte le 23/09** (26 fichiers, 232 tests), à rejouer juste avant le merge |
 | Migration base | **aucune** dans ce chantier |
 
 > ⚠️ **Les deux suites ne se lancent jamais ensemble.** `npm run test:regression` exige
@@ -59,8 +60,15 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
 
 ### 2.1 Bloquant avant le merge
 
-1. **Recette du donneur d'ordre**, de bout en bout, sur le jeu de démonstration.
-2. **`npm run test:regression`** (application fermée) — vert exigé.
+1. **Recette du donneur d'ordre**, de bout en bout, sur le jeu de démonstration —
+   **commencée le 22-23/09**, retours traités (voir plus bas). À terminer.
+2. **`npm run test:regression`** (application fermée) — vert exigé. ⚠️ **Une seule suite
+   à la fois** : deux exécutions simultanées sur la base de dev s'effacent mutuellement
+   (chaque scénario commence par `cleanAll()`), et les échecs qui en sortent ne veulent
+   rien dire. Constaté le 23/09 — 32 suites rouges, aucun défaut réel.
+3. **`npm run test:e2e`** (application ouverte) : **S38** (sections repliées, filet des
+   familles) et **S42** (repère `data-verdict`) ont été modifiés par la recette et n'ont
+   pas été rejoués.
 3. Décider du sort de la vue **« Activité »** de *Pilotage* : elle est **masquée**
    (elle hébergeait le vieux Bureau — cartes d'agents, lignes de flux). La rouvrir est une
    ligne (`TABS` dans `ReportingHub`). Tant qu'elle est masquée, l'ancien écran d'agents
@@ -86,9 +94,9 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
 ## 3. Ordre de mise en production
 
 1. `npm run typecheck` — propre.
-2. `npm test` — 2 954 verts.
+2. `npm test` — 2 981 verts.
 3. **Fermer l'application**, `npm run test:regression` — vert.
-4. **Rouvrir** `npm run dev`, `npm run test:e2e` — 38 verts.
+4. **Rouvrir** `npm run dev`, `npm run test:e2e` — dont S38 et S42, modifiés le 23/09.
 5. Recette manuelle du donneur d'ordre sur le jeu de démonstration.
 6. `git merge --ff-only feat/ux-refonte` sur `main`, puis **le donneur d'ordre pousse**
    (`! git push origin main` — le push est gaté pour l'assistant).

@@ -990,3 +990,49 @@ Décision du donneur d'ordre après la revue §17 :
   2. « Compte rendu d'entretien » (bleu, import en bas à droite), puis
   « Votre décision : ».
 - **Supersède** : §3 (rubriques à l'écran) et l'ordre du §17.
+
+---
+
+## 19. Ajustements de recette — 23/09/2026
+
+### 19.1 Le commentaire n'a pas de bouton, et l'écran le DIT
+
+Le champ « Pourquoi cette décision ? » n'a pas de bouton d'enregistrement,
+contrairement au compte rendu qui en a deux — l'asymétrie se lisait comme un
+oubli. Elle est pourtant voulue : le commentaire **n'existe pas sans le verdict
+qu'il motive** (§14.1, une seule route, une seule écriture).
+
+Deux mots à l'écran, aucun changement de modèle :
+
+- sous le champ, une ligne : « ↓ Enregistré avec votre décision : choisissez
+  "Retenir" ou "Ne pas retenir" en bas » ;
+- les boutons deviennent **« ✓ Retenir et enregistrer »** et
+  **« ✗ Ne pas retenir et enregistrer »** — le libellé dit ce que le clic écrit.
+
+⚠️ Les boutons portent `data-verdict="validated" | "rejected"` : les tests qui
+cliquent visent ce repère, pas un libellé qui bouge.
+
+*Écarté : un bouton propre au commentaire. Il aurait demandé un brouillon en
+base (colonne + route d'écriture supplémentaire) et cassé l'arbitrage « verdict
+et commentaire par un seul chemin ».*
+
+### 19.2 Sur un dossier TRANCHÉ, le compte rendu se LIT et ne s'écrit plus
+
+Le détail d'une candidature retenue ou non retenue affichait « Dossier clôturé
+— consultation seule », puis un champ prêt à écrire et un bouton « Valider le
+compte rendu » : deux affirmations contraires au même endroit.
+
+`InterviewReportPanel` reçoit `readOnly` (posé par `CandidatureActions` sur les
+étapes terminales) :
+
+- **rien d'écrit ⇒ la zone ne s'affiche pas du tout** — c'était le bruit
+  principal, un bloc vide sur un dossier sans entretien ;
+- **quelque chose d'écrit ⇒ lecture seule**, sans « Modifier » ni import. Un
+  compte rendu est une **pièce du dossier** (PDF d'audit, droit d'accès) : le
+  cacher à la clôture serait le perdre, pas ranger l'écran. Un brouillon s'y lit
+  avec sa mention (« il ne fait pas partie du dossier »).
+
+Pour écrire après coup, le dossier se rouvre par « Corriger la décision ».
+**Le serveur n'est pas touché** : sa règle d'écriture reste « un entretien
+marqué réalisé » (§5.2) — la restriction est celle de l'écran, à l'endroit où
+l'écran promet le contraire.

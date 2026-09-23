@@ -356,6 +356,31 @@ fondre dans un total rendrait le signal inactionnable :
 > analyse : 12 attendent sans fiche de validation (non décidables), 1 garde une
 > fiche qui n'a plus lieu d'être. »
 
+### 6bis.7 L'écriture de la file est CONDITIONNELLE (23/09/2026)
+
+`enqueueValidationRow` lisait la fiche, jugeait qu'elle était encore ouverte,
+puis écrivait un `upsert` **sans condition**. Entre la lecture et l'écriture, une
+**réservation d'envoi** (`pending → sending`) pouvait se poser : l'écriture
+l'écrasait, la fiche repassait `pending` alors qu'un mail partait, et une
+**seconde réservation** devenait possible — donc un second mail au même
+candidat. La même lecture-puis-écriture existait dans `POST /api/validations`.
+
+La garde ne peut pas vivre chez l'appelant : elle est dans la primitive
+(`upsertPendingValidation`), en **deux écritures conditionnelles** —
+
+1. insertion si la fiche n'existe pas (`ignoreDuplicates`) ;
+2. sinon mise à jour **conditionnée à `status = 'pending'`**.
+
+`null` en retour = « la fiche s'est engagée entre-temps » ; l'appelant le
+traduit en `already_engaged`, un succès distinct, et la route rend l'état RÉEL
+plutôt que celui qu'elle voulait écrire. La lecture DÉCIDE, l'écriture GARANTIT.
+
+Découvert par la régression **S15** sous charge : le filet serveur de
+`/api/cv-analyzer` (qui met en file après avoir répondu) finissait après le
+sabotage du scénario et le piétinait. S15 passait SEUL — d'où un angle mort.
+Couvert par trois tests unitaires du dépôt (insertion, mise à jour
+conditionnelle, course).
+
 ---
 
 ## 7. Modèle de données

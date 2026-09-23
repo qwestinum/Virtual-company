@@ -806,3 +806,68 @@ contraste : une teinte changée en CSS fait rougir la suite sans qu'on touche au
 **Garde structurelle** : `src/components/ui/__tests__/interface-sobre.test.ts` — aucune bascule de
 vue définie hors de `DotTabs` (`role="tablist"`, `aria-selected`, onglets soulignés), et le type
 `CounterItem` borné aux champs d'une carte à deux rangs. Sondée dans les deux sens.
+
+---
+
+### Recette du donneur d'ordre — 22 et 23/09/2026
+
+Ce que la recette a changé, une fois la refonte à l'écran. Chaque point a sa
+raison : elle vaut plus que la règle qu'elle produit.
+
+**On arrive sur des titres, pas sur des murs.** *Aujourd'hui* et *Paramètres*
+s'ouvrent **repliés** ; *Campagnes* n'ouvre **aucune** carte (seule exception :
+la campagne désignée par l'URL — on y revient pour elle). Ce qu'on ouvre reste
+ouvert **le temps de la session** (`sessionStorage`) : une nouvelle ouverture de
+l'application repart fermée. Avant, les réglages ouverts la veille rouvraient
+seuls, et la première campagne de la page était dépliée d'office — un rang
+qu'elle n'a pas.
+
+**Les familles de réglages portent un FILET `--dash-famille` (#ebbb58)**, sans
+aplat. ⚠️ Le texte reste en encre du produit : ce jaune **en texte** sur fond
+clair donne 1,78:1. La couleur borde, elle n'écrit pas. (En aplat, l'encre
+#1b1b18 y tenait 9,68:1 — la première version ; le donneur d'ordre a préféré le
+trait seul.)
+
+**Le compteur du vivier quitte la colonne.** Il vivait sous « Campagnes » et ne
+s'éteignait pas de lui-même : son décompte ignore l'état de la campagne, donc un
+profil présélectionné sur une campagne clôturée le tenait allumé. La file reste
+à `/validations-vivier`.
+
+**Le flou, seulement là où le fond est INERTE.** Le détail complet d'une
+candidature (`fixed inset-0`, portail vers `body`, Échap et clic-fond ferment)
+gagne `backdrop-blur-sm` par-dessus son voile à 30 %. ⚠️ **Pas** le panneau
+latéral de 420 px : c'est une **seconde colonne**, la liste qu'il côtoie reste le
+moyen de passer au dossier suivant, et la flouter la ferait passer pour
+désactivée.
+
+**Un seul rapport d'analyse : le PDF.** Il se lisait sous deux formes selon la
+porte — le PDF d'audit depuis la fiche candidature, un markdown dépouillé depuis
+la fiche de validation, c'est-à-dire là où l'on accepte ou refuse. Le lecteur est
+unique (`src/lib/reporting/open-report-inline.ts`), la fiche de validation
+l'ouvre par l'identifiant d'analyse, et un échec est DIT plutôt que de laisser un
+bouton mort. L'artefact markdown continue d'être produit et archivé.
+
+**Assistant de création — étape « Le poste ».** L'intitulé et « Démarrer à partir
+d'un document » sont **côte à côte, à la même largeur** ; l'import est mis en
+exergue (indigo, filet de dépôt), et une lecture affiche un bandeau animé avec
+son compteur, gèle les champs et refuse « Suivant » — plusieurs dizaines de
+secondes sur un écran immobile faisaient cliquer partout. Les aides qui dépendent
+de l'intitulé (« Proposer le reste de la fiche », campagne comparable)
+n'apparaissent qu'une fois celui-ci saisi. Changer d'étape remonte en haut de la
+carte.
+
+**Assistant — l'étape « réception » ne choisit plus les canaux.** Cocher APEC à
+la création ne diffusait rien : le texte s'écrit et se publie APRÈS le lancement,
+et l'écran « Diffuser l'annonce » **propose déjà le canal** quand la campagne n'en
+a aucun. Le choix vivait à deux endroits, le premier ne servant qu'à préparer le
+second. L'état `channels` disparaît du brouillon (une campagne comparable n'en
+copie plus : des canaux activés sans écran pour les montrer), et la note de
+l'étape DIT où la diffusion se règle.
+
+**Mots de l'écran.** « Méthode » → « **Méthode de recherche** » ; « LLM » → «
+**IA** » partout où le recruteur lit (sélecteur de la grille, badges, message de
+cohérence, audit candidat).
+
+**Sur un dossier tranché, le compte rendu d'entretien se LIT** et ne s'écrit plus
+— et disparaît quand rien n'a été rédigé. Voir `docs/specs/compte-rendu-entretien.md`
+§19.2.

@@ -1552,6 +1552,55 @@ dit rien d'un poste.
 champs** (message sous le textarea) : des textes non rédigés ne sont pas une
 panne du panneau.
 
+## 6octies. Le formulaire nomme ce qui manque (23/09/2026)
+
+Avant : tant qu'un des quatre champs que la fiche ne fournit pas toujours
+(contrat, statut, expérience, code INSEE) restait vide, la vérification rendait
+UNE ligne — « Certains champs demandés par l'Apec ne sont pas encore
+renseignés ». Le recruteur devait deviner lesquels, et ne découvrait les autres
+écarts qu'après les avoir trouvés.
+
+### 6octies.1 `checkAdepDraft` — une ligne par champ, et le reste dans le même passage
+
+`src/lib/jobboards/adep/draft-check.ts` (pur, testé). `validateAdepOffer` ne sait
+lire qu'une offre COMPLÈTE : les champs vides y sont donc **bouchés par une
+valeur neutre** le temps du passage, et toute remarque qui en découle est
+écartée (les champs bouchés eux-mêmes, et ce qui dépend du contrat quand c'est
+lui qui manque). Résultat : chaque manque est NOMMÉ (« Statut du poste : champ
+obligatoire à renseigner. »), et le reste de l'offre est vérifié en même temps.
+
+### 6octies.2 À l'écran
+
+- Le champ fauté est **encadré de rouge**, son message dessous (`ApecFieldRow`,
+  repère `data-apec-field`).
+- La **section qui contient la première erreur s'ouvre** (`useApecSections`) :
+  un encadré rouge replié ne sert à rien.
+- Chaque erreur de la liste est **cliquable** : elle ouvre la bonne section,
+  fait défiler jusqu'au champ et y met le focus.
+- Chaque champ exigé porte un **astérisque** (`isApecFieldRequired`), qui suit
+  les mêmes règles que le validateur : durée selon le contrat, salaires hors
+  stage, modalité si temps partiel. Légende en tête de section.
+- **Le rouge ne sert plus qu'au BLOQUANT** (`AdepFieldNote.blocking`) : un champ
+  à compléter s'affiche en orange foncé. Un contrat que l'Apec ne diffuse pas
+  reste rouge, lui.
+
+### 6octies.3 Un contrat multi-valeurs PROPOSE le premier diffusable
+
+`mapContractType` rend un quatrième verdict `choice` : la fiche accepte
+plusieurs contrats (« CDI, CDD ») et au moins un est diffusable ⇒ le **premier
+de la fiche** est proposé, en `derived` (« déduit de « CDI », premier des
+contrats de la fiche de poste (CDI, CDD) — l'Apec n'en publie qu'un »). Laisser
+le champ vide faisait croire que la fiche n'avait rien dit. L'alternance reste
+`ambiguous` (l'Apec distingue la base CDI/CDD et le type), mais le message CITE
+désormais ce que la fiche indique.
+
+### 6octies.4 Le code INSEE s'explique
+
+Sous le champ, en permanence : code officiel de la commune (5 caractères),
+attribué par l'INSEE, **ce n'est pas le code postal** — Tours = 37261 en INSEE,
+37000 en code postal ; un code postal couvre parfois plusieurs communes, un code
+INSEE en désigne une seule, et c'est pour ça que l'Apec l'exige.
+
 ## 7. Phase 2 — lots révisés
 
 L'ordre du brief tient. Trois ajustements issus de l'étude.
