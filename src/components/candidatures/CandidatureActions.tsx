@@ -11,8 +11,9 @@
  *     proposer de classer les candidatures restantes)
  *   - toute étape OUVERTE → « Classer sans suite » (dialog motif)
  *   - sans suite         → mention terminale + « Rouvrir »
- *   - terminal           → « Corriger la décision » (le dossier est clos, mais
- *     c'est justement là qu'une erreur de manipulation se découvre)
+ *   - terminal           → compte rendu d'entretien EN LECTURE (s'il existe)
+ *     + « Corriger la décision » (le dossier est clos, mais c'est justement
+ *     là qu'une erreur de manipulation se découvre)
  *
  * « Corriger la décision » accompagne TOUTE étape portant une décision (donc
  * partout sauf `a_valider`) : le geste est le même quelle que soit la famille
@@ -67,11 +68,14 @@ export function CandidatureActions({
         <p className="font-body text-[12px] italic text-stone-400">
           Dossier clôturé — consultation seule.
         </p>
-        {/* Le compte rendu se lit (et s'écrit encore) après le verdict : on
-            rédige souvent après avoir décidé. Le panneau se tait s'il n'y a
-            eu aucun entretien. */}
+        {/* Le compte rendu se LIT ici, il ne s'y écrit plus (23/09/2026) :
+            annoncer « consultation seule » puis offrir un champ prêt à écrire
+            se contredisait. La zone disparaît quand rien n'a été rédigé — et
+            reste visible quand quelque chose l'a été, parce que c'est une
+            pièce du dossier. Pour en écrire un, le dossier se rouvre par
+            « Corriger la décision ». */}
         {item.stage === 'retenu' || item.stage === 'non_retenu' ? (
-          <InterviewReportPanel analysisId={item.id} />
+          <InterviewReportPanel analysisId={item.id} readOnly />
         ) : null}
         <div>
           <CorrectionButton item={item} onActed={onActed} />
