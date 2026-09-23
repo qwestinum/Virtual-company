@@ -3,8 +3,8 @@
 /**
  * Le CORPS de chaque étape — et rien d'autre : l'assistant ne réinvente aucun
  * éditeur, il remonte ceux qui existent déjà (`FDPInlineEditor`,
- * `ScoringDraftEditor`, `ChannelsDraftEditor`, `FluxDraftEditor`,
- * `OwnerDraftEditor`, `ThresholdDraftEditor`, `SchedulingDraftEditor`).
+ * `ScoringDraftEditor`, `FluxDraftEditor`, `OwnerDraftEditor`,
+ * `ThresholdDraftEditor`, `SchedulingDraftEditor`).
  *
  * Deux versions d'un même éditeur finiraient par diverger, et la divergence
  * serait silencieuse : on changerait le barème ici sans le changer là.
@@ -13,18 +13,15 @@
 import type { RecruiterOption } from '@/lib/campaign/use-recruiter-options';
 import type { AssistantStep } from '@/lib/campagnes/assistant-steps';
 import { CV_SOURCE_LABELS } from '@/types/cv-source';
-import { PUBLICATION_CHANNEL_LABELS } from '@/types/publication-channel';
-
 
 import { FDPInlineEditor } from '../edit/FDPInlineEditor';
-import { ChannelsDraftEditor } from '../edit/draft/ChannelsDraftEditor';
 import { FluxDraftEditor } from '../edit/draft/FluxDraftEditor';
 import { OwnerDraftEditor } from '../edit/draft/OwnerDraftEditor';
 import { SchedulingDraftEditor } from '../edit/draft/SchedulingDraftEditor';
 import { ScoringDraftEditor } from '../edit/draft/ScoringDraftEditor';
 import { ThresholdDraftEditor } from '../edit/draft/ThresholdDraftEditor';
 import { AssistantProposeGrid } from './AssistantProposeGrid';
-import { CANAUX_BIENTOT, CANAUX_OFFERTS, FLUX_OFFERTS } from './assistant-offres';
+import { FLUX_OFFERTS } from './assistant-offres';
 import { Note, Partie, SousTitre } from './AssistantStepParts';
 import { AssistantStart } from './AssistantStart';
 import { AssistantRecap, buildRecapLines } from './AssistantRecap';
@@ -107,19 +104,19 @@ export function AssistantStepBody({
             mailboxIds={draft.mailboxIds}
             onMailboxesChange={draft.setMailboxIds}
           />
-          <SousTitre>Où l’offre est diffusée</SousTitre>
-          <ChannelsDraftEditor
-            selected={draft.channels}
-            onChange={draft.setChannels}
-            channels={CANAUX_OFFERTS}
-            comingSoon={CANAUX_BIENTOT}
-          />
+          {/* ⚠️ PAS de choix de canaux ici (23/09/2026). Cocher « APEC » à la
+              création ne diffusait rien : le texte s'écrit et se publie après
+              le lancement, dans « Diffuser l'annonce » — et cet écran-là
+              PROPOSE le canal quand la campagne n'en a aucun. Le choix vivait
+              donc à deux endroits, et le premier ne servait qu'à préparer le
+              second. L'écran de fin d'assistant mène directement au geste. */}
           <Note>
-            Le texte des canaux s’écrit <strong>après le lancement</strong> : une
-            offre en ligne fait arriver de vraies candidatures, et le chemin email
-            ne traite que celles d’une campagne active. La référence{' '}
-            <strong>{campaignId}</strong> voyagera dans l’objet des mails — c’est
-            elle qui rattache une candidature à cette campagne.
+            La référence <strong>{campaignId}</strong> voyagera dans l’objet des
+            mails — c’est elle qui rattache une candidature à cette campagne. La
+            diffusion, elle, se règle <strong>après le lancement</strong> :
+            « Diffuser l’annonce » vous proposera le canal et son texte. Une
+            offre en ligne fait arriver de vraies candidatures, et le chemin
+            email ne traite que celles d’une campagne active.
           </Note>
         </>
       );
@@ -174,7 +171,6 @@ export function AssistantStepBody({
               fdp: draft.fdp,
               criteriaCount: draft.criteria.length,
               criticalCount: draft.criteria.filter((c) => c.level === 'critique').length,
-              channelLabels: draft.channels.map((c) => PUBLICATION_CHANNEL_LABELS[c]),
               sourceLabels: draft.sources.map((s) => CV_SOURCE_LABELS[s]),
               ownerLabel: draft.ownerOption?.displayName ?? 'Aucun référent',
               thresholdLow: draft.thresholdLow,

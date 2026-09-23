@@ -17,7 +17,6 @@ import { isMeetingLocationComplete, type MeetingLocation } from '@/lib/schedulin
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type { CampaignPrefill } from '@/types/campaign-prefill';
 import { CV_SOURCE_OPERATIONAL, CV_SOURCES, type CVSource } from '@/types/cv-source';
-import type { PublicationChannel } from '@/types/publication-channel';
 import {
   buildEmptyFDP,
   computeIsComplete,
@@ -53,7 +52,6 @@ export function useAssistantDraft({
   const [criteria, setCriteria] = useState<ScoringCriterion[]>(() =>
     MODELE.map((c, i) => buildCriterion({ id: `crit_${i}`, ...c })),
   );
-  const [channels, setChannels] = useState<PublicationChannel[]>([]);
   // ⚠️ Cochés D'EMBLÉE : ce sont les trois seules façons de recevoir des
   // candidatures qui marchent, et les trois sont souhaitables par défaut.
   // Partir de zéro obligeait à re-cocher à chaque campagne ce qu'on veut
@@ -83,7 +81,6 @@ export function useAssistantDraft({
     setHydratedFrom(stored.id);
     setFdp(stored.fdp);
     if (stored.scoringSheet) setCriteria(stored.scoringSheet.criteria);
-    setChannels(stored.publishedChannels);
     setSources(stored.sources);
     setOwnerChoice(stored.ownerUserId);
     // ⚠️ Sur un BROUILLON, `scheduling_native` en base ne porte AUCUNE
@@ -164,12 +161,10 @@ export function useAssistantDraft({
     applyComparable: (input: {
       fdp: FDPInProgress;
       criteria?: ScoringCriterion[];
-      channels?: PublicationChannel[];
       sources?: CVSource[];
     }) => {
       setFdp(input.fdp);
       if (input.criteria && input.criteria.length > 0) setCriteria(input.criteria);
-      if (input.channels && input.channels.length > 0) setChannels(input.channels);
       if (input.sources && input.sources.length > 0) setSources(input.sources);
     },
     /**
@@ -189,7 +184,6 @@ export function useAssistantDraft({
         return { ...vierge, fields, isComplete: computeIsComplete(fields) };
       });
       setCriteria(MODELE.map((c, i) => buildCriterion({ id: `crit_${i}`, ...c })));
-      setChannels([]);
       setSources(CV_SOURCES.filter((x) => CV_SOURCE_OPERATIONAL[x]));
       setPrefillExtraction(null);
     },
@@ -222,8 +216,6 @@ export function useAssistantDraft({
     patchField,
     criteria,
     setCriteria,
-    channels,
-    setChannels,
     sources,
     setSources,
     mailboxIds,

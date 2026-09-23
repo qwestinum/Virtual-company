@@ -236,11 +236,13 @@ describe('S30 — l’assistant de création', () => {
     // Et RIEN d'autre : un flux inerte proposé à la création promettrait des
     // candidatures qui n'arriveront pas.
     expect(await page.locator('[data-source]').count()).toBe(3);
-    // LinkedIn est retiré de la diffusion ; APEC et l'annonce générique sont
-    // les seuls canaux cochables.
-    expect(await page.locator('[data-channel="linkedin"]').count()).toBe(0);
-    expect(await page.locator('[data-channel="indeed"]').isDisabled()).toBe(true);
-    expect(await page.locator('[data-channel="apec"]').isEnabled()).toBe(true);
+    // AUCUN canal de diffusion ici (23/09/2026) : le choisir à la création ne
+    // diffusait rien — le texte s'écrit et se publie après le lancement, dans
+    // « Diffuser l'annonce », qui propose le canal au même endroit.
+    expect(await page.locator('[data-channel]').count()).toBe(0);
+    expect(await page.textContent('[data-assistant="reception"]')).toContain(
+      'Diffuser l’annonce',
+    );
 
     expect(await suivant(page).isDisabled()).toBe(true);
     expect(await raison(page).textContent()).toContain('boîte mail');

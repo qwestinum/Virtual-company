@@ -47,7 +47,7 @@ export const STEP_HEADINGS: Record<AssistantStep, { titre: string; sousTitre: st
   reception: {
     titre: 'Par où les candidatures vont-elles arriver ?',
     sousTitre:
-      'Choisissez les canaux maintenant ; vous écrirez leur contenu une fois la campagne lancée.',
+      'Les candidatures arrivent par ces chemins. La diffusion de l’offre, elle, se règle après le lancement.',
   },
   // ⚠️ L'étape porte DEUX sujets, chacun avec son propre titre dans le corps.
   // Le titre d'écran ne doit donc pas répéter le premier : il annonce les deux.

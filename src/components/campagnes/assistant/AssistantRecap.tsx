@@ -23,7 +23,6 @@ export function buildRecapLines(input: {
   fdp: FDPInProgress;
   criteriaCount: number;
   criticalCount: number;
-  channelLabels: string[];
   sourceLabels: string[];
   ownerLabel: string;
   thresholdLow: number;
@@ -37,7 +36,7 @@ export function buildRecapLines(input: {
     champ(input.fdp, 'salary_range'),
   ].filter(Boolean);
 
-  const reception = [...input.sourceLabels, ...input.channelLabels];
+  const reception = [...input.sourceLabels];
 
   return [
     { step: 'poste', titre: 'Le poste', valeur: poste.join(' · ') || 'À compléter' },

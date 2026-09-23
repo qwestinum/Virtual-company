@@ -51,7 +51,9 @@ export async function enregistrerBrouillon(input: {
     fdp,
     name: deriveCampaignName(fdp, draft.facts.jobTitle),
     scoringSheet,
-    publishedChannels: draft.channels,
+    // Aucun canal à la création : la diffusion se choisit dans « Diffuser
+    // l'annonce », qui propose le canal ET son texte au même endroit.
+    publishedChannels: [],
     sourcesConfirmed: draft.sources.length > 0,
     sources: draft.sources,
     thresholdLow: draft.thresholdLow,
