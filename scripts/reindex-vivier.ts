@@ -21,51 +21,158 @@
  *      espaces incompatibles, ce que le garde-fou refuse).
  *   2. RATTRAPAGE DES DOSSIERS EN ÉCHEC. `--only-failed` ne retraite que les
  *      dossiers `failed` (ex. coupures d'API pendant un import de masse).
+ *   3. RATTRAPAGE DES DOSSIERS RESTÉS « EN COURS ». `--only-pending` reprend
+ *      les dossiers `pending` — ceux dont l'indexation n'a JAMAIS abouti, ni en
+ *      succès ni en échec. Sur Vercel, la porte email les produit en série : le
+ *      poller lance l'alimentation du vivier en promesse FLOTTANTE et
+ *      l'instance est gelée dès que la réponse du cron part (cf. `poller.ts`,
+ *      `feedVivierFromApplication`). Le dossier existe, il n'est jamais
+ *      indexé — donc **invisible à la présélection**, qui ne lit que
+ *      `indexing_status = 'indexed'`. Ce rattrapage les remet dans le jeu ; le
+ *      correctif durable est un rail de reprise, pas ce script.
  *
  * La réindexation réutilise `indexVivierCandidate` (idempotent, repositionne le
  * statut) : aucune logique d'indexation dupliquée ici.
  *
  * Usage :
- *   npm run reindex:vivier                 # tous les dossiers
- *   npm run reindex:vivier -- --only-failed
- *   npm run reindex:vivier -- --dry-run    # liste sans rien écrire
- *   npm run reindex:vivier -- --only-failed --dry-run
+ *   npm run reindex:vivier -- --env .env.local                 # tous les dossiers
+ *   npm run reindex:vivier -- --env .env.local --only-failed
+ *   npm run reindex:vivier -- --env .env.local --only-pending
+ *   npm run reindex:vivier -- --env .env.local --only-pending --dry-run
+ *   npm run reindex:vivier -- --env .env.prod.local --only-pending --confirm-project=<ref>
  *
- * Pré-requis : .env.local renseigné (accès Supabase service_role + clé du
- * provider d'embeddings courant). Traitement SÉQUENTIEL volontaire (opération de
- * maintenance non urgente, doux pour les quotas d'API).
+ * ⚠️ `--env` est OBLIGATOIRE, sans repli : ce script ÉCRIT (statuts, titres,
+ * embeddings), et l'environnement visé se nomme — il ne se devine pas. Même
+ * règle que la purge RGPD, pour le même piège : un fichier au nom de dev peut
+ * pointer la base du client. La référence du projet RÉELLEMENT visé est
+ * imprimée, et retapée avant toute écriture (`--confirm-project=<ref>` hors
+ * terminal interactif).
+ *
+ * Pré-requis : le fichier d'environnement porte l'accès Supabase service_role et
+ * la clé du provider d'embeddings courant. Traitement SÉQUENTIEL volontaire
+ * (opération de maintenance non urgente, doux pour les quotas d'API).
  */
 
-import { loadEnvConfig } from '@next/env';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 
-type Options = { onlyFailed: boolean; dryRun: boolean };
+type Options = {
+  onlyFailed: boolean;
+  onlyPending: boolean;
+  dryRun: boolean;
+  envPath: string | null;
+  confirmProject: string | null;
+};
 
 function parseArgs(argv: string[]): Options {
-  const opts: Options = { onlyFailed: false, dryRun: false };
+  const opts: Options = {
+    onlyFailed: false,
+    onlyPending: false,
+    dryRun: false,
+    envPath: null,
+    confirmProject: null,
+  };
   for (const arg of argv) {
     if (arg === '--only-failed') opts.onlyFailed = true;
+    else if (arg === '--only-pending') opts.onlyPending = true;
     else if (arg === '--dry-run') opts.dryRun = true;
+    else if (arg.startsWith('--env=')) opts.envPath = arg.slice('--env='.length);
+    else if (arg.startsWith('--confirm-project='))
+      opts.confirmProject = arg.slice('--confirm-project='.length);
     else {
       console.error(`Option inconnue : ${arg}`);
-      console.error('Options : --only-failed, --dry-run');
+      console.error(
+        'Options : --env=<fichier> (obligatoire), --only-failed, --only-pending, --dry-run, --confirm-project=<ref>',
+      );
       process.exit(1);
     }
+  }
+  if (opts.onlyFailed && opts.onlyPending) {
+    console.error(
+      '--only-failed et --only-pending s’excluent : choisissez un périmètre, ou aucun pour tout réindexer.',
+    );
+    process.exit(1);
   }
   return opts;
 }
 
-async function main(): Promise<void> {
-  // Charger .env.local AVANT d'importer les modules qui lisent l'environnement.
-  loadEnvConfig(process.cwd());
+/** Lecture d'un fichier d'environnement — même format que la purge RGPD. */
+function loadEnvFile(path: string): void {
+  let raw: string;
+  try {
+    raw = readFileSync(resolve(process.cwd(), path), 'utf8');
+  } catch {
+    console.error(`[reindex-vivier] Fichier d'environnement introuvable : ${path}`);
+    process.exit(1);
+  }
+  for (const line of raw.split('\n')) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m) continue;
+    process.env[m[1]!] = m[2]!.trim().replace(/^["']|["']$/gu, '');
+  }
+}
 
-  const { onlyFailed, dryRun } = parseArgs(process.argv.slice(2));
+/** Référence du projet Supabase visé — imprimée, puis retapée. */
+function projectRef(url: string): string {
+  try {
+    const host = new URL(url).hostname;
+    return host.match(/^([^.]+)\.supabase\./)?.[1] ?? host;
+  } catch {
+    return url;
+  }
+}
+
+async function confirmTarget(ref: string, confirmProject: string | null): Promise<void> {
+  if (confirmProject !== null) {
+    if (confirmProject.trim() !== ref) {
+      console.error(
+        `--confirm-project="${confirmProject}" ≠ projet visé "${ref}" — écriture refusée.`,
+      );
+      process.exit(1);
+    }
+    return;
+  }
+  if (!process.stdin.isTTY) {
+    console.error(
+      `Pas de terminal interactif : ajoutez --confirm-project=${ref} pour confirmer le projet visé.`,
+    );
+    process.exit(1);
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await rl.question(`\n  Tapez la référence du projet pour confirmer l'écriture (« ${ref} ») : `);
+  rl.close();
+  if (answer.trim() !== ref) {
+    console.error('Confirmation incorrecte — aucune écriture effectuée.');
+    process.exit(1);
+  }
+}
+
+async function main(): Promise<void> {
+  const { onlyFailed, onlyPending, dryRun, envPath, confirmProject } = parseArgs(
+    process.argv.slice(2),
+  );
+  if (!envPath) {
+    console.error(
+      "[reindex-vivier] --env=<fichier> est obligatoire (ex. --env=.env.local). Aucun repli : l'environnement visé se nomme, il ne se devine pas.",
+    );
+    process.exit(1);
+  }
+  // Charger l'environnement AVANT d'importer les modules qui le lisent.
+  loadEnvFile(envPath);
+  const ref = projectRef(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '');
+  console.log(`[reindex-vivier] projet visé : ${ref} (via ${envPath})`);
 
   // Import différé : ces modules lisent l'environnement à l'import.
   const { listVivierCandidateIds } = await import('@/lib/db/repos/vivier');
   const { indexVivierCandidate } = await import('@/lib/vivier/indexing');
   const { SupabaseNotConfiguredError } = await import('@/lib/db/supabase-server');
 
-  const scope = onlyFailed ? 'dossiers en échec (failed)' : 'tous les dossiers';
+  const scope = onlyFailed
+    ? 'dossiers en échec (failed)'
+    : onlyPending
+      ? 'dossiers restés en cours (pending)'
+      : 'tous les dossiers';
   console.log(
     `[reindex-vivier] périmètre : ${scope}${dryRun ? ' — DRY RUN (aucune écriture)' : ''}`,
   );
@@ -73,7 +180,11 @@ async function main(): Promise<void> {
   let ids: string[];
   try {
     ids = await listVivierCandidateIds(
-      onlyFailed ? { status: 'failed' } : undefined,
+      onlyFailed
+        ? { status: 'failed' }
+        : onlyPending
+          ? { status: 'pending' }
+          : undefined,
     );
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
@@ -94,6 +205,13 @@ async function main(): Promise<void> {
     );
     return;
   }
+
+  // Rien à confirmer quand il n'y a rien à écrire.
+  if (ids.length === 0) {
+    console.log('[reindex-vivier] rien à faire.');
+    return;
+  }
+  await confirmTarget(ref, confirmProject);
 
   let indexed = 0;
   let failed = 0;
