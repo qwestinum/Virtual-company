@@ -22,6 +22,7 @@ import {
 import { CampaignFocusScreen } from './CampaignFocusScreen';
 import { SurfaceOptIn } from './SurfaceOptIn';
 import { activerCanal } from './useEnableSurface';
+import { useJobboardAvailable } from './useJobboardAvailable';
 import { ChannelContentPanel } from './edit/ChannelContentPanel';
 
 /** Ce que chaque canal implique, dit avant de le choisir. */
@@ -32,6 +33,9 @@ const DETAIL_CANAL: Record<string, string> = {
 };
 
 export function CampaignAnnonceScreen({ campaignId }: { campaignId: string }) {
+  const jobboard = useJobboardAvailable(campaignId);
+  // Un canal ne se PROPOSE que s'il a où paraître (cf. useJobboardAvailable).
+  const proposables = CHANNELS_WITH_CONTENT.filter((c) => c !== 'generic' || jobboard !== false);
   return (
     <CampaignFocusScreen
       campaignId={campaignId}
@@ -60,7 +64,7 @@ export function CampaignAnnonceScreen({ campaignId }: { campaignId: string }) {
             <SurfaceOptIn
               titre="Sur quel canal diffuser ?"
               explication="Aucun canal à contenu n’est encore retenu sur cette campagne. Choisissez-en un : il sera ajouté à ses canaux de diffusion, et vous pourrez rédiger l’annonce ici même."
-              choix={CHANNELS_WITH_CONTENT.map((c) => ({
+              choix={proposables.map((c) => ({
                 key: c,
                 label: PUBLICATION_CHANNEL_LABELS[c],
                 detail: DETAIL_CANAL[c],
@@ -69,6 +73,10 @@ export function CampaignAnnonceScreen({ campaignId }: { campaignId: string }) {
             />
           );
         }
+        // ⚠️ Les canaux NON retenus restent proposés sous les panneaux : sans
+        // ça, une campagne diffusée sur l'APEC ne pouvait plus jamais recevoir
+        // d'annonce générique (le choix n'apparaissait qu'à zéro canal).
+        const autres = proposables.filter((c) => !contentChannels.includes(c));
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {contentChannels.map((channel) => (
@@ -78,6 +86,18 @@ export function CampaignAnnonceScreen({ campaignId }: { campaignId: string }) {
                 <ChannelContentPanel channel={channel} campaignId={campaignId} />
               </section>
             ))}
+            {autres.length > 0 && (
+              <SurfaceOptIn
+                titre="Diffuser aussi ailleurs ?"
+                explication="Ce canal n’est pas encore retenu sur cette campagne. Le choisir l’ajoute à ses canaux de diffusion, et l’annonce se rédige ici même."
+                choix={autres.map((c) => ({
+                  key: c,
+                  label: PUBLICATION_CHANNEL_LABELS[c],
+                  detail: DETAIL_CANAL[c],
+                }))}
+                onChoisir={(key) => activerCanal(campaignId, key as PublicationChannel)}
+              />
+            )}
           </div>
         );
       }}

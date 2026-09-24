@@ -126,6 +126,32 @@ describe('S29 — les portes de la carte campagne', () => {
     }
   }, 180_000);
 
+  it('S29.4ter — AUCUN canal à contenu n’est inatteignable depuis l’annonce', async () => {
+    // Le choix du canal n'apparaissait qu'à ZÉRO canal retenu : une campagne
+    // diffusée sur l'APEC ne pouvait plus jamais recevoir l'annonce générique
+    // (jobboard de démonstration). Chaque canal doit être là, soit en
+    // panneau, soit en choix proposé.
+    await page.goto(`${BASE_URL}/campagnes/${encodeURIComponent(campagne.id)}/annonce`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.waitForSelector(`[data-focus="${campagne.id}"]`, { timeout: 90_000 });
+    await page
+      .locator('[data-channel-content], [data-optin]')
+      .first()
+      .waitFor({ timeout: 60_000 });
+    // Sans page d'offres sur l'instance, l'annonce générique n'est PAS
+    // proposée — c'est voulu (un choix qui s'enregistre puis disparaît).
+    const res = await page.request.get(
+      `${BASE_URL}/api/campaigns/${encodeURIComponent(campagne.id)}/job-post`,
+    );
+    const canaux = res.status() === 404 ? ['apec'] : ['generic', 'apec'];
+    for (const canal of canaux) {
+      const panneau = await page.locator(`[data-channel-content="${canal}"]`).count();
+      const choix = await page.locator(`[data-optin-choice="${canal}"]`).count();
+      expect(panneau + choix, `canal ${canal} inatteignable`).toBe(1);
+    }
+  }, 180_000);
+
   it('S29.5 — l’adresse collée dans la barre ouvre la même chose', async () => {
     await page.goto(`${BASE_URL}/campagnes/${encodeURIComponent(campagne.id)}/vivier`, {
       waitUntil: 'domcontentloaded',
