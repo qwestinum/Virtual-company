@@ -21,6 +21,7 @@ import { renderTurns, type NormalizedTranscript } from '@/lib/transcript/normali
 import {
   MAX_QUOTE_CHARS,
   MIN_QUOTE_CHARS,
+  quoteBudget,
   StructuringOutputSchema,
   type StructuringOutput,
 } from '@/lib/transcript/structure';
@@ -69,6 +70,9 @@ export function buildStructuringMessages(args: {
     '4. EXCLUS tout passage sans lien direct avec le poste : santé, handicap, grossesse, situation familiale, origine, religion, opinions politiques ou syndicales, vie privée. Ne les restitue pas, ne les cite pas ; compte-les dans `omittedCount`.',
     `5. ${who}`,
     '6. Une rubrique sans matière reste vide. N’invente rien, ne complète rien.',
+    // Le plafond de volume est appliqué APRÈS coup et rejette TOUT : le modèle
+    // doit le connaître, sinon il cite généreusement et rien n'est retenu.
+    `7. Le compte rendu n'est pas une transcription : l'ensemble de tes citations DISTINCTES ne dépasse pas ${Math.floor(quoteBudget(transcript.plainText.length) * 0.8)} caractères au total. Cite le passage le plus court qui prouve la restitution ; une même citation peut servir à plusieurs éléments.`,
     '',
     // ⚠️ La FORME est écrite ici, en toutes lettres. Le mode JSON d'OpenAI ne
     // transmet aucun schéma : sans ce bloc, le modèle inventait sa structure

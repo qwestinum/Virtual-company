@@ -315,8 +315,12 @@ abandonnée, dans la même requête :
    citation ⇒ élément signalé au recruteur (« formulation à vérifier »), pas
    supprimé. Un lexique est imparfait ; il signale, il ne juge pas.
 3. **Garde-fou de volume** : le CR ne doit pas devenir une transcription
-   déguisée. Somme des citations ≤ 15 % du texte source ; au-delà, refus de
-   générer.
+   déguisée. Somme des citations **distinctes** ≤ 15 % du texte source
+   (plancher 600 caractères) ; au-delà, refus de générer. Une même citation
+   réutilisée (un sujet ET un critère) ne se compte qu'une fois, et le budget
+   est **dit au modèle** dans le prompt (24/09/2026 — sans l'un ni l'autre,
+   des propositions sobres étaient rejetées : 154 caractères cités, 770
+   comptés).
 
 ### 5.5 Budget de temps
 
