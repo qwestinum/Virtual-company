@@ -36,6 +36,16 @@ export const STRUCTURING_BUDGET = {
   maxTransportRetries: 0,
 } as const;
 
+/** La forme attendue, dite au modèle. Tenue alignée sur le schéma par un test. */
+export const STRUCTURING_OUTPUT_SHAPE = JSON.stringify({
+  topics: ['<élément>'],
+  criteria: [{ criterionId: '<identifiant fourni>', addressed: true, items: ['<élément>'] }],
+  highlights: ['<élément>'],
+  reservations: ['<élément>'],
+  followUps: ['<élément>'],
+  omittedCount: 0,
+});
+
 export function buildStructuringMessages(args: {
   transcript: NormalizedTranscript;
   criteria: ReportCriterionPrompt[];
@@ -59,7 +69,15 @@ export function buildStructuringMessages(args: {
     '4. EXCLUS tout passage sans lien direct avec le poste : santé, handicap, grossesse, situation familiale, origine, religion, opinions politiques ou syndicales, vie privée. Ne les restitue pas, ne les cite pas ; compte-les dans `omittedCount`.',
     `5. ${who}`,
     '6. Une rubrique sans matière reste vide. N’invente rien, ne complète rien.',
-    'Réponds UNIQUEMENT en JSON strictement conforme au schéma demandé.',
+    '',
+    // ⚠️ La FORME est écrite ici, en toutes lettres. Le mode JSON d'OpenAI ne
+    // transmet aucun schéma : sans ce bloc, le modèle inventait sa structure
+    // (critères en objet, rubriques en chaînes) et la validation stricte
+    // rejetait TOUT, à chaque import (« La génération n'a pas abouti »).
+    'Réponds UNIQUEMENT par un objet JSON de cette forme exacte, sans aucune autre clé :',
+    STRUCTURING_OUTPUT_SHAPE,
+    'Chaque `<élément>` est : {"text": string, "quote": string, "speaker": string | null, "at": string | null}.',
+    'Chaque entrée de `criteria` reprend tel quel le `criterionId` fourni.',
   ].join('\n');
 
   const criteriaBlock =
