@@ -32,6 +32,8 @@ import { parseBookingContext } from '@/lib/scheduling-host/campaign-booking';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import type { InterviewBrief } from '@/types/interview-brief';
 
+import { buildHistoryRows, type HistoryRow } from './history-rows';
+
 import {
   organizerEmailsByBooking,
   resolveRowReferent,
@@ -59,6 +61,8 @@ export type InterviewPipeline = {
   scheduled: Decorated<ScheduledRow>[];
   /** Entretiens pointés « réalisé » : il ne manque que la décision. */
   verdict: Decorated<ScheduledRow>[];
+  /** Entretiens PASSÉS, tous verdicts confondus — qui a rencontré qui, quand. */
+  history: Decorated<HistoryRow>[];
   orphans: OrphanRow[];
   /**
    * Compteurs des LISTES RENDUES, pas des tables.
@@ -72,6 +76,7 @@ export type InterviewPipeline = {
     awaiting: number;
     scheduled: number;
     verdict: number;
+    history: number;
     toPoint: number;
     /**
      * Briefings écartés faute de candidature retrouvable — anomalie de
@@ -127,20 +132,27 @@ export async function loadInterviewPipeline(
 ): Promise<InterviewPipeline> {
   const campaignId = filter.campaignId ?? null;
 
-  const [awaitingBriefs, scheduledBriefs] = await Promise.all([
+  const [awaitingBriefs, scheduledBriefs, cancelledBriefs] = await Promise.all([
     listBriefsByStatus('awaiting_booking', { campaignId }),
     listBriefsByStatus('scheduled', { campaignId }),
+    // Pour l'HISTORIQUE seulement : un classement sans suite annule le
+    // briefing mais garde ses faits de réservation — un candidat rencontré
+    // puis classé doit rester à l'historique. Sans créneau, rien à montrer.
+    listBriefsByStatus('cancelled', { campaignId })
+      .then((briefs) => briefs.filter((b) => b.bookingUid !== null))
+      .catch(() => [] as InterviewBrief[]),
   ]);
+  const inPlay = [...awaitingBriefs, ...scheduledBriefs, ...cancelledBriefs];
 
   const uids = [
     ...new Set(
-      [...awaitingBriefs, ...scheduledBriefs]
+      inPlay
         .map((b) => b.uid)
         .filter((u): u is string => u !== null),
     ),
   ];
 
-  const briefCampaignIds = [...awaitingBriefs, ...scheduledBriefs]
+  const briefCampaignIds = inPlay
     .map((b) => b.campaignId)
     .filter((c): c is string => c !== null);
 
@@ -226,16 +238,17 @@ export async function loadInterviewPipeline(
         if (!targets) {
           return Promise.all([
             listLinksForTarget(campaign.id).catch(() => []),
-            listBookings({ targetExternalRef: campaign.id, status: 'confirmed' }).catch(
-              () => [],
-            ),
+            listBookings({ targetExternalRef: campaign.id }).catch(() => []),
           ]);
         }
         const target = targets.get(campaign.id);
         if (!target) return Promise.resolve([[], []] as const);
         return Promise.all([
           listLinksForTarget(target).catch(() => []),
-          listBookings({ target, status: 'confirmed' }).catch(() => []),
+          // TOUS statuts : un rendez-vous passé d'un dossier classé sans suite
+          // a pu être décommandé, et l'historique doit encore nommer qui le
+          // tenait. Indexé par identifiant : aucune ligne ouverte n'en change.
+          listBookings({ target }).catch(() => []),
         ]);
       }),
     );
@@ -272,7 +285,7 @@ export async function loadInterviewPipeline(
   // arrivées en phase entretien (même classe de volume que les marqueurs
   // d'étape déjà chargés), et seulement s'il reste des rendez-vous que le
   // chemin natif n'explique pas — une installation 100 % native ne paie rien.
-  const unexplained = scheduledBriefs.some(
+  const unexplained = [...scheduledBriefs, ...cancelledBriefs].some(
     (b) => b.bookingUid !== null && !holderIdByBooking.has(b.bookingUid),
   );
   const organizerByBooking = unexplained
@@ -341,6 +354,16 @@ export async function loadInterviewPipeline(
     .filter((r) => r.section === 'verdict_attendu')
     .map(decorate);
 
+  const history = buildHistoryRows(
+    [...scheduledBriefs, ...cancelledBriefs].map(toFacts),
+    {
+      nowMs,
+      stageOf,
+      interviewMarkOf: (uid) => signals?.interviewMarks.get(uid) ?? null,
+      analysisIdOf,
+    },
+  ).map(decorate);
+
   const orphans = orphanTargets
     .filter((o) => !campaignId || o.target.externalRef === campaignId)
     .map((o) => ({
@@ -353,11 +376,13 @@ export async function loadInterviewPipeline(
     awaiting,
     scheduled,
     verdict,
+    history,
     orphans,
     counts: {
       awaiting: awaiting.length,
       scheduled: scheduled.length,
       verdict: verdict.length,
+      history: history.length,
       toPoint: scheduled.filter((r) => r.section === 'a_pointer').length,
       unresolved: awaitingBuilt.unresolved + scheduledBuilt.unresolved,
     },

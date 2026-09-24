@@ -39,6 +39,7 @@ import {
 import type { FinalVerdict } from '@/types/verdict-comment';
 
 import { AwaitingList, type AwaitingItem } from './AwaitingList';
+import { HistoryList } from './HistoryList';
 import { InterviewSignals } from './InterviewSignals';
 import { NoShowDialog, type NoShowChoice } from './NoShowDialog';
 import { ScheduledList, type ScheduledItem } from './ScheduledList';
@@ -48,13 +49,14 @@ const EMPTY: InterviewPipeline = {
   awaiting: [],
   scheduled: [],
   verdict: [],
+  history: [],
   orphans: [],
-  counts: { awaiting: 0, scheduled: 0, verdict: 0, toPoint: 0, unresolved: 0 },
+  counts: { awaiting: 0, scheduled: 0, verdict: 0, history: 0, toPoint: 0, unresolved: 0 },
 };
 
 type Row = AwaitingItem | ScheduledItem;
-/** Les trois vues de l'onglet. */
-type InterviewTabKey = 'scheduled' | 'awaiting' | 'verdict';
+/** Les quatre vues de l'onglet. */
+type InterviewTabKey = 'scheduled' | 'awaiting' | 'verdict' | 'history';
 
 type PageTab = InterviewTabKey;
 
@@ -70,7 +72,7 @@ export function InterviewsWorkspace({
   campaignId = null,
 }: {
   /** Cible d'un signal métier : ouvre directement le bon onglet. */
-  initialSection?: 'a_pointer' | 'awaiting' | null;
+  initialSection?: 'a_pointer' | 'awaiting' | 'historique' | null;
   /**
    * Filtre campagne porté par l'URL (`/entretiens?campagne=…`), typiquement
    * posé depuis une carte campagne.
@@ -93,7 +95,11 @@ export function InterviewsWorkspace({
   // regarder en ouvrant la page ; les invitations en attente sont une file
   // qu'on traite, pas ce qu'on consulte en premier.
   const [tab, setTab] = useState<PageTab>(
-    initialSection === 'awaiting' ? 'awaiting' : 'scheduled',
+    initialSection === 'awaiting'
+      ? 'awaiting'
+      : initialSection === 'historique'
+        ? 'history'
+        : 'scheduled',
   );
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -221,6 +227,7 @@ export function InterviewsWorkspace({
     ...pipeline.awaiting,
     ...pipeline.scheduled,
     ...pipeline.verdict,
+    ...pipeline.history,
   ];
   const options = buildReferentOptionsBy(allRows, referentOfRow);
   const myCount = myReferentCountBy(allRows, referentOfRow, currentUserId);
@@ -233,6 +240,7 @@ export function InterviewsWorkspace({
   const awaiting = filter(pipeline.awaiting);
   const scheduled = filter(pipeline.scheduled);
   const verdictRows = filter(pipeline.verdict);
+  const historyRows = filter(pipeline.history);
 
   return (
     // ⚠️ GABARIT COMMUN : l'écran se bornait à 896 px (max-w-4xl), soit
@@ -240,7 +248,7 @@ export function InterviewsWorkspace({
     // d'onglet.
     <PageShell
       title="Entretiens"
-      subtitle="Le cycle d’entretien : ce qui attend une réservation, ce qui est programmé, ce qui attend un verdict."
+      subtitle="Le cycle d’entretien : ce qui attend une réservation, ce qui est programmé, ce qui attend un verdict, et ce qui a eu lieu."
       actions={
         <button
           type="button"
@@ -298,6 +306,13 @@ export function InterviewsWorkspace({
               total: pipeline.counts.verdict,
               dot: 'var(--dash-yellow)',
             },
+            {
+              key: 'history',
+              label: 'Historique',
+              count: historyRows.length,
+              total: pipeline.counts.history,
+              dot: 'var(--dash-text-secondary)',
+            },
           ]}
         />
       }
@@ -326,6 +341,8 @@ export function InterviewsWorkspace({
             <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" aria-hidden />
             Chargement…
           </p>
+        ) : tab === 'history' ? (
+          <HistoryList rows={historyRows} />
         ) : tab === 'awaiting' ? (
           <AwaitingList
             rows={awaiting}

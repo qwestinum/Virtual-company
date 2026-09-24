@@ -26,6 +26,7 @@ import { InterviewsWorkspace } from './InterviewsWorkspace';
 const SECTION_LABEL = {
   a_pointer: 'Entretiens à pointer',
   awaiting: 'En attente de réservation',
+  historique: 'Historique',
 } as const;
 
 export function InterviewsScreen() {

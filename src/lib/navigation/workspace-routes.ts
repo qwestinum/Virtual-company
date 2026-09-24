@@ -98,7 +98,7 @@ export type CandidaturesFilter = {
 
 export type InterviewsFilter = {
   campaignId?: string | null;
-  section?: 'a_pointer' | 'awaiting' | null;
+  section?: 'a_pointer' | 'awaiting' | 'historique' | null;
 };
 
 /** Construit une URL en n'écrivant QUE les paramètres réellement posés. */
@@ -184,7 +184,9 @@ export function readInterviewsFilter(params: URLSearchParams): InterviewsFilter 
   return {
     campaignId: params.get(PARAM.campagne) || null,
     section:
-      rawSection === 'a_pointer' || rawSection === 'awaiting'
+      rawSection === 'a_pointer' ||
+      rawSection === 'awaiting' ||
+      rawSection === 'historique'
         ? rawSection
         : null,
   };
