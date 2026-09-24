@@ -78,7 +78,10 @@ export function InterviewsScreen() {
             : null
         }
       />
-      <div className="min-h-0 flex-1 overflow-hidden">
+      {/* ⚠️ `relative` : le gabarit de page est en `position: absolute; inset: 0`.
+          Sans ancêtre positionné ICI, il se cale sur le cadre du workspace et
+          passe SOUS le bandeau des filtres (titre à cheval sur la barre). */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         <InterviewsWorkspace
           key={canonical}
           initialSection={filter.section ?? null}

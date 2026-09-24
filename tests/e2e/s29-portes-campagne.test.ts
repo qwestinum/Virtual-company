@@ -152,6 +152,23 @@ describe('S29 — les portes de la carte campagne', () => {
     }
   }, 180_000);
 
+  it('S29.4quater — filtré sur une campagne, la page ne passe pas SOUS le bandeau', async () => {
+    // Le gabarit est en `position: absolute` : sans ancêtre positionné, il se
+    // calait sur le cadre du workspace et le titre chevauchait « Filtré sur ».
+    for (const ecran of ['candidatures', 'entretiens']) {
+      await page.goto(`${BASE_URL}/${ecran}?campagne=${encodeURIComponent(campagne.id)}`, {
+        waitUntil: 'domcontentloaded',
+      });
+      const barre = page.locator('[data-active-filters]');
+      await barre.waitFor({ timeout: 90_000 });
+      const titre = page.locator('[data-page-shell] h1').first();
+      await titre.waitFor({ timeout: 60_000 });
+      const b = (await barre.boundingBox())!;
+      const t = (await titre.boundingBox())!;
+      expect(t.y, `${ecran} : titre sous le bandeau`).toBeGreaterThanOrEqual(b.y + b.height);
+    }
+  }, 180_000);
+
   it('S29.5 — l’adresse collée dans la barre ouvre la même chose', async () => {
     await page.goto(`${BASE_URL}/campagnes/${encodeURIComponent(campagne.id)}/vivier`, {
       waitUntil: 'domcontentloaded',
