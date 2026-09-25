@@ -240,6 +240,67 @@ Lecture :
   rétrogradé ; sur le dev, 1 sur 4. À surveiller avant fusion : c'est le taux du dev qui ferait
   baisser des scores, s'il se retrouvait sur d'autres clients.
 
+## 6quinquies. Diagnostic des citations et hybride sur 195 CV client (25/09/2026)
+
+**Décisions reçues.** Garde « aucun oui sans preuve » : NE PAS fusionner avant le diagnostic — elle
+ne doit jamais rétrograder un verdict à cause de l'extraction d'un PDF. Diagnostic des 25 % du dev.
+Hybride sur tous les CV du client, lecture seule ; si (e) reste dans le bruit, l'hybride devient le
+mode par défaut, activable par variable, le script servant de non-régression. Haiku : refusé, clos.
+
+**Diagnostic (gpt-4o seul, 20 CV de recette, deux passages, ≈ 1,80 $).** Pour chaque citation
+rejetée, la citation d'origine (désormais recopiée dans la justification) est confrontée au CV et
+au relevé de faits vu par les verdicts (désormais enregistré par le script) :
+
+| cause | 1er passage | 2e passage (prompt corrigé) |
+|---|---:|---:|
+| Ponctuation différente entre des mots identiques et contigus | 3 | — (tolérée) |
+| Mots du RELEVÉ absents du CV (vocabulaire normalisé recopié) | 9 | 7 |
+| Mots absents du CV ET du relevé (reformulation) | 0 | 4 |
+| Mêmes mots, autre ordre ou dispersés (recomposition) | 1 | 3 |
+| **Taux de verdicts positifs rejetés** | **17,3 %** | **17,7 %** |
+
+- **Pas l'extraction PDF** : aucun mot coupé en fin de ligne, aucun accent perdu ; le seul cas
+  « dans l'ordre mais dispersé » l'est sur plus de 1 000 mots (recomposition, pas des colonnes).
+  Sur les deux passages, **25 des 29 mots absents du CV figurent au relevé**.
+- **Correctif du vérificateur** (commit `70edfc2`) : la même suite de mots, contiguë, est retrouvée
+  quelle que soit la ponctuation entre eux. L'ordre et chaque mot comptent toujours.
+- **Correctif du prompt SANS EFFET** (commit `82849cd`, isolé pour être annulé) : la consigne
+  « le relevé dit où regarder, jamais quoi citer » ne fait pas bouger le taux.
+- **Le mode hybride règle la cause** : avec un relevé produit par gpt-4o-mini, les mêmes CV de
+  recette tombent à **4,3 %** (run du 25/09) — c'est le relevé de gpt-4o, plus normalisé, qui
+  contamine les citations.
+
+**Hybride sur 195 CV client** (lecture seule, comptes du client, ≈ 11 $ réels) :
+
+| | gpt-4o contre lui-même (20 CV) | hybride contre gpt-4o (195 CV) |
+|---|---:|---:|
+| Accord de zone | **90,0 %** | 89,2 % |
+| Δscore moyen absolu | 3,6 | 4,6 (plafond 6,6) |
+| Basculements accepté ↔ refus | 0 | 0 |
+| Rédhibitoires | 100 % | 100 % |
+| « Non vérifiable » → « non » | 0 | 0 |
+| Positifs sans preuve (référence) | 4,4 % (6,3 %) | **1,9 % (2,6 %)** |
+| Coût par CV | 0,030 $ | **0,022 $** (gpt-4o : 0,032 $) |
+
+**(e) est dans le bruit : la condition de bascule est remplie.** Le verdict proposé reste
+« REFUSÉ » par le seul (b) : 89,2 % d'accord de zone contre un seuil ABSOLU de 95 %, que gpt-4o
+n'atteint pas contre lui-même (90 %). C'est le même défaut de règle que l'ancien (e) — à redéfinir
+relativement au bruit, à décider. Les 21 dossiers qui changent de zone passent tous entre « à
+décider » et « refus proposé » (7 dans un sens, 14 dans l'autre) : deux files HUMAINES, aucun
+envoi automatique concerné, aucune acceptation dans l'échantillon.
+
+**Mise en œuvre** (`src/lib/ai/ledger-model.ts`) : `CV_ANALYZER_LEDGER_MODEL=gpt-4o-mini` ⇒ le
+relevé de faits part sur ce modèle, tout le reste inchangé. Absente ⇒ rien ne change. Ignorée en
+mode Anthropic. Le script de comparaison la RETIRE de l'environnement de chaque bras (sinon la
+référence deviendrait hybride en silence) et pose le modèle du relevé lui-même.
+**Non-régression** avant tout changement de ce réglage :
+`npm run compare:models -- --env=<fichier> --confirm-project=<ref> --candidate=hybride,model=gpt-4o,ledger=<modèle>`.
+
+**Garde « aucun oui sans preuve » : toujours NON fusionnée.** Elle ne rejette plus pour une
+ponctuation, et aucun rejet restant ne vient de l'extraction PDF. En gpt-4o seul, elle rétrograde
+2,6 % des verdicts positifs sur les CV client et ~17 % sur les CV de recette ; en mode hybride,
+1,9 % et 4,3 %.
+
 ## 7. Outil voisin
 
 `scripts/bench-cv-analyzer.ts` (`npm run bench:cv`) mesure la **variance** d'un modèle sur
