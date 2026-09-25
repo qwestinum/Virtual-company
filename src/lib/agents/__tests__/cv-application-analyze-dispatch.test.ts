@@ -313,8 +313,34 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
 
 describe('analyzeCVApplication — « aucun oui sans preuve » (25/09/2026)', () => {
   beforeEach(() => chatCompleteJsonMock.mockReset());
+  afterEach(() => {
+    delete process.env.CV_ANALYZER_LEDGER_MODEL;
+  });
 
-  it('un « satisfait » dont la citation ne se retrouve pas dans le CV sort NON VÉRIFIABLE, et le dit', async () => {
+  const runWithBadQuote = async () => {
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-T',
+      isValidated: true,
+      criteria: [buildCriterion({ id: 'a', label: 'Développement web', level: 'important' })],
+    };
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(
+        jsonResult({ verdicts: [{ criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Pile web.', llmCVQuote: 'Angular et Node' }] }),
+      )
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet });
+    return out.application.scoringResult.breakdown[0]!;
+  };
+
+  it('garde JAMAIS seule : sans mode hybride, le verdict du modèle reste tel quel', async () => {
+    expect(await runWithBadQuote()).toMatchObject({ llmDecision: 'satisfait', llmCVQuote: 'Angular et Node' });
+  });
+
+  it('un « satisfait » dont la citation ne se retrouve pas dans le CV sort NON VÉRIFIABLE, et le dit (mode hybride)', async () => {
+    process.env.CV_ANALYZER_LEDGER_MODEL = 'gpt-4o-mini';
     const sheet: ScoringSheet = {
       campaignId: 'CAMP-T',
       isValidated: true,

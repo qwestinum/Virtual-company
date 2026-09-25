@@ -11,6 +11,9 @@
  * citations non tenables tombent de ~17-25 % à ~4 % — le relevé de gpt-4o,
  * normalisé, était recopié dans les citations.
  *
+ * Allume AUSSI la garde « aucun oui sans preuve » (`quote-evidence.ts`) : les
+ * deux vont ensemble, jamais la garde seule (décision du 25/09/2026).
+ *
  * ⚠️ Ne vaut que pour le fournisseur OpenAI : en mode Anthropic, un nom de
  * modèle OpenAI partirait chez Anthropic et échouerait. On l'ignore alors.
  * ⚠️ Changer ce réglage change des verdicts : se valider d'abord par
