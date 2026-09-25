@@ -37,6 +37,16 @@ describe('citation retrouvée dans le CV', () => {
     expect(quoteFoundInCv('- Rédaction des spéciﬁcations fonctionnelles détaillées', CV)).toBe(true);
     expect(quoteFoundInCv('Anglais   courant', CV)).toBe(true);
   });
+  it('ponctuation différente ENTRE des mots identiques et contigus : pas un écart (diagnostic du 25/09)', () => {
+    const cv2 = 'Langues : Anglais / courant — Espagnol : notions\nOutils • Jira • Confluence';
+    expect(quoteFoundInCv('Anglais courant', cv2)).toBe(true);
+    expect(quoteFoundInCv('Outils : Jira, Confluence', cv2)).toBe(true);
+    // …mais l'ordre, un mot ajouté ou retiré comptent toujours.
+    expect(quoteFoundInCv('Confluence, Jira', cv2)).toBe(false);
+    expect(quoteFoundInCv('Anglais très courant', cv2)).toBe(false);
+    expect(quoteFoundInCv('Jira Confluence Xray', cv2)).toBe(false);
+  });
+
   it('un mot changé, deux lignes NON voisines recollées : des écarts', () => {
     expect(quoteFoundInCv('Conception de parcours utilisateurs sur une application bancaire mobile', CV)).toBe(false);
     expect(quoteFoundInCv('Rédaction des spécifications fonctionnelles détaillées. Anglais courant', CV)).toBe(false);
