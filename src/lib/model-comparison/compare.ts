@@ -307,7 +307,7 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
   2: 'Changement de zone',
   3: 'Désaccord sur un rédhibitoire',
   4: '« Non vérifiable » devenu « non »',
-  5: 'Citation introuvable dans le CV',
+  5: 'Verdict positif sans preuve tenable (citation absente ou introuvable)',
 };
 
 export function severityOf(p: CvComparison): Severity | null {
@@ -315,7 +315,9 @@ export function severityOf(p: CvComparison): Severity | null {
   if (!p.zoneSame) return 2;
   if (!p.knockoutsAgree) return 3;
   if (p.nonVerifiableToNon > 0) return 4;
-  if (p.quotesInvalid > 0) return 5;
+  // Depuis la garde « aucun oui sans preuve », la citation rejetée est vidée :
+  // c'est la RÉTROGRADATION qui porte le signal, pas la citation restante.
+  if (p.otherUnproven > 0) return 5;
   return null;
 }
 

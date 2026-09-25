@@ -427,9 +427,11 @@ mais touche le chemin critique de tous les agents. Tester d'abord `gpt-4o`
 (20 CV distincts — trop peu pour conclure seul). Protocole et arbitrages :
 [`docs/ops/comparaison-modeles-scoring.md`](ops/comparaison-modeles-scoring.md). Prérequis (coût
 à 0 sur les noms datés) réglé. **Point d'arrêt** : le rapport, avant toute bascule du modèle en
-service. **Reste ouvert** : élargir l'échantillon (base de production en lecture, ou CV de recette),
-et vérifier un fournisseur « compatible OpenAI » (Mistral / OVHcloud / Scaleway) avant de le
-rejouer.
+service. Second run (25/09) : **hybride** (relevé sur gpt-4o-mini) acceptable sur le dev, à un
+verdict près chez le client ; **Haiku** refusé. **Reste ouvert** : trancher l'hybride (échantillon
+plus large chez le client, en lecture) ; comprendre les 25 % de citations non tenables de gpt-4o
+sur les CV de recette (contre 2,2 % chez le client) ; Mistral / OVHcloud / Scaleway sur le jeu
+synthétique uniquement (chantier du jeu de démonstration).
 
 ---
 

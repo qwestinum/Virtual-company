@@ -16,7 +16,10 @@ service.
 ## 2. Script
 
 ```
-npm run compare:models -- --env=.env.local [--sample=N|all] [--noise=20]
+npm run compare:models -- --env=<fichier> --confirm-project=<ref> [--sample=N|all] [--noise=20]
+    [--candidate=<nom>,provider=openai|anthropic,model=<m>[,ledger=<m>][,base-url=https://…]]…
+    [--include=<id>,…] [--out=<répertoire hors dépôt>] [--max-cost=6] [--yes]
+    [--estimate-only] [--report-only]
 ```
 
 - **`--env` obligatoire, sans repli**, comme `purge:candidate` et `reindex:vivier` : un fichier
@@ -65,7 +68,8 @@ npm run compare:models -- --env=.env.local [--sample=N|all] [--noise=20]
   - (b) accord de zone ≥ 95 % **et** Δscore moyen ≤ plancher de bruit + 3 ;
   - (c) rédhibitoires : 100 % d'accord ;
   - (d) zéro `non_verifiable` → `non` ;
-  - (e) citations invalides < 1 %.
+  - (e) ~~citations invalides < 1 %~~ → **verdicts positifs sans preuve tenable ≤ taux de la
+    référence + 2 points** (redéfini le 25/09/2026 : gpt-4o lui-même était à 17 %).
 
   Sinon **REFUSÉ**, avec le critère qui échoue. Le verdict est une proposition ; la décision se
   prend sur la liste des désaccords.
@@ -191,6 +195,50 @@ Lecture, avant relecture des désaccords à la main :
   + 2 points »), ou à traiter comme un défaut du prompt commun aux deux modèles — à décider.
 - **20 CV ne suffisent pas à conclure** : l'écart est net (19 points contre un bruit de 4,6), mais
   l'échantillon est petit et ne contient aucun des cas sentinelles.
+
+## 6quater. Décisions du 25/09/2026 et second run — hybride et Haiku
+
+**Décisions.** gpt-4o-mini REFUSÉ pour les verdicts. Deux corrections PRODUIT (branche
+`fix/scoring-preuves`) : (1) garde « aucun oui sans preuve » — un satisfait/partiel du modèle sans
+citation retrouvée dans le CV devient `non_verifiable`, pour tout modèle
+(`src/lib/scoring/quote-evidence.ts`, tracé par `evidenceDowngrade`, citation rejetée recopiée dans
+la justification que la purge efface) ; (2) citations exactes exigées par le prompt, vérifiées
+après normalisation (NFKC, espaces, ponctuation de bord). Critère (e) redéfini : **≤ taux de la
+référence + 2 points**. Aucun CV réel vers Mistral / OVHcloud / Scaleway (jeu synthétique, chantier
+du jeu de démonstration). Runs sur deux bras : **hybride** (gpt-4o-mini pour le relevé de faits,
+gpt-4o pour le reste) et **claude-haiku-4-5**. `--confirm-project` désormais obligatoire.
+
+**Échantillons.** Dev : **20 CV distincts** (et non 50 — il n'y en a pas davantage). Client, en
+LECTURE SEULE sur ses propres comptes de fournisseurs : **19 sentinelles** rejouables (dossiers du
+§3-5 de `reparation-scoring-2026-08-21.md`, désignés par identifiant d'analyse ; 1 sans CV conservé,
+1 doublon). Coût réel : ≈ 2,70 $ (dev) + ≈ 1,97 $ (client).
+
+| | dev — hybride | dev — Haiku | client — hybride | client — Haiku |
+|---|---:|---:|---:|---:|
+| Verdict proposé | **ACCEPTABLE** | REFUSÉ | REFUSÉ (e, à 1 verdict) | REFUSÉ |
+| Accord de zone (bruit) | 100 % (100 %) | 55 % | 100 % (94,7 %) | 73,7 % |
+| Δscore moyen (plafond) | 7,5 (8,3) | 25,1 | 2,7 (4,2) | 18,7 |
+| Basculements accepté ↔ refus | 0 | **1** | 0 | 0 |
+| « Non vérifiable » → « non » | 0 | 0 | 0 | **1** |
+| Positifs sans preuve (référence) | 4,3 % (25,0 %) | 21,4 % (25,0 %) | 4,3 % (2,2 %) | 3,8 % (2,2 %) |
+| Coût par CV (référence) | 0,030 $ (0,046) | 0,029 $ | 0,021 $ (0,030) | 0,022 $ |
+
+Lecture :
+- **Hybride** : aucun changement de zone sur 39 CV, écart de score dans le bruit, −30 à −35 % de
+  coût. Son seul échec (e, côté client) tient à UN verdict : 2/46 contre 1/45 — l'effectif ne
+  permet pas de conclure dans un sens ou dans l'autre.
+- **Haiku** : écarte trop de dossiers de leur zone sur les deux bases, un basculement accepté →
+  refus sur le dev, un « non vérifiable » devenu « non » chez le client.
+- **Mesure « 17 % de gpt-4o sous 3 % »** : atteinte sur les CV RÉELS du client (**2,2 %**), PAS sur
+  le dev (**25 %**, bruit 19,7 %). Le prompt seul n'explique pas l'écart : ce sont les mêmes
+  prompts. Pistes, non vérifiées : mise en page des CV de recette (colonnes entrelacées à
+  l'extraction : une phrase logique n'est plus contiguë dans le texte), et le relevé de faits de
+  gpt-4o recopié comme citation (le bras hybride, qui ne diffère que par son relevé, tombe à
+  4,3 % sur les mêmes CV). La citation rejetée étant désormais recopiée dans la justification, un
+  prochain run permet de trancher.
+- **Effet de la garde en production** : sur les sentinelles du client, 1 verdict positif sur 45
+  rétrogradé ; sur le dev, 1 sur 4. À surveiller avant fusion : c'est le taux du dev qui ferait
+  baisser des scores, s'il se retrouvait sur d'autres clients.
 
 ## 7. Outil voisin
 

@@ -80,10 +80,15 @@ export function enforceQuotedEvidence(verdicts: LlmCriterionVerdict[], cvText: s
     const found = quoteFoundInCv(v.llmCVQuote, cvText);
     if (found === true) return v;
     const reason: EvidenceDowngradeReason = found === null ? 'missing_quote' : 'quote_not_found';
+    // La citation rejetée est RECOPIÉE dans la justification : le recruteur
+    // voit ce que le modèle affirmait (et peut juger), et la purge RGPD
+    // l'efface avec la justification (`marker`) — jamais dans un champ à part
+    // qui échapperait à la liste blanche.
+    const cited = reason === 'quote_not_found' ? ` : « ${v.llmCVQuote.trim()} »` : '';
     return {
       ...v,
       llmDecision: 'non_verifiable',
-      llmJustification: `Verdict « ${v.llmDecision} » non retenu : ${REASON_TEXT[reason]}. (${v.llmJustification})`,
+      llmJustification: `Verdict « ${v.llmDecision} » non retenu : ${REASON_TEXT[reason]}${cited}. (${v.llmJustification})`,
       // Une chaîne qui n'est pas dans le CV n'est pas une citation du CV.
       llmCVQuote: '',
       evidenceDowngrade: { from: v.llmDecision, reason },

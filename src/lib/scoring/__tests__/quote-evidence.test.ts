@@ -60,6 +60,8 @@ describe('enforceQuotedEvidence', () => {
     expect(a).toMatchObject({ llmDecision: 'non_verifiable', llmCVQuote: '', evidenceDowngrade: { from: 'satisfait', reason: 'missing_quote' } });
     expect(a!.llmJustification).toMatch(/non retenu : aucune citation/);
     expect(b).toMatchObject({ llmDecision: 'non_verifiable', llmCVQuote: '', evidenceDowngrade: { from: 'partiel', reason: 'quote_not_found' } });
+    // La citation rejetée reste lisible — dans la justification, que la purge efface.
+    expect(b!.llmJustification).toContain('« Animation d’ateliers avec les utilisateurs »');
     expect(c).toMatchObject({ llmDecision: 'satisfait' });
     expect(c!.evidenceDowngrade).toBeUndefined();
   });
