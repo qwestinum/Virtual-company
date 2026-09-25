@@ -394,6 +394,27 @@ export async function countersForCampaigns(
 const EMPTY_COUNTER_ROWS = { shownProfiles: [], declinedExclusions: [], approaches: [], searches: [] };
 
 /** Coûts du moteur par recherche depuis une date — donnée d'ADMINISTRATION. */
+/**
+ * La charge utile de l'entrée `sourcing_search_run` d'une recherche — seul
+ * endroit où vivent ses compteurs d'inexploitables et d'écartés (la ligne de
+ * recherche ne porte que « renvoyés » et « gardés »). Lue par l'identifiant de
+ * recherche : une ligne, jamais un balayage du journal. `null` si absente.
+ */
+export async function getSearchRunPayload(
+  campaignId: string,
+  searchId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await requireServerSupabase()
+    .from('journal')
+    .select('payload')
+    .eq('campaign_id', campaignId)
+    .eq('action', 'sourcing_search_run')
+    .eq('payload->>searchId', searchId)
+    .limit(1);
+  if (error) throw new Error(`getSearchRunPayload: ${error.message}`);
+  return ((data ?? [])[0] as { payload: Record<string, unknown> } | undefined)?.payload ?? null;
+}
+
 export async function listSearchCostsSince(sinceIso: string): Promise<{ createdAt: string; exaCostUsd: number | null }[]> {
   const db = requireServerSupabase();
   const rows = await fetchAllKeyset<{ id: string; created_at: string; exa_cost_usd: number | string | null }>({

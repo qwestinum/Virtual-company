@@ -9,6 +9,7 @@
 import { coverageOf, isInZone, zoneTerms } from '@/lib/sourcing/selection';
 import { cleanLocation } from '@/lib/sourcing/query-deterministic';
 import type { SourcingSearch, StoredSourcingProfile } from '@/lib/db/repos/sourcing';
+import type { SearchYield } from '@/lib/sourcing/search-yield';
 import type { CoverageVerdict, SourcingProfileView } from '@/types/sourcing';
 
 export type SearchGroupView = {
@@ -23,6 +24,11 @@ export type ProfilesView = {
   /** La recherche la plus récente a montré tout ce qu'elle avait. */
   exhausted: boolean;
   coverage: CoverageVerdict;
+  /**
+   * Bilan de la recherche la plus récente (renvoyés, illisibles, écartés,
+   * gardés). Posé par la route, qui le lit au journal ; `null` si inconnu.
+   */
+  latestYield?: SearchYield | null;
 };
 
 export function buildProfilesView(
