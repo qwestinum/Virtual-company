@@ -397,6 +397,13 @@ export async function analyzeCVApplication(
   // rattraper en silence.
   assertNoUnprovenNegative(deterministicVerdicts);
 
+  // MODE HYBRIDE (25/09/2026) : le relevé part sur un autre modèle (réglage
+  // `CV_ANALYZER_LEDGER_MODEL`, ou `phaseModels.ledger` pour la comparaison
+  // de modèles, qui prime) — cf. `src/lib/ai/ledger-model.ts`. Il ALLUME
+  // aussi la garde « aucun oui sans preuve » plus bas : les deux vont
+  // ensemble, jamais la garde seule.
+  const ledgerModel = input.phaseModels?.ledger ?? ledgerModelFromEnv(process.env);
+
   let ledgerFailed = false;
   let llmVerdicts: LlmCriterionVerdict[] = [];
   let usedLedger: CVFactLedger | null = null;
@@ -404,10 +411,6 @@ export async function analyzeCVApplication(
   if (llmCriteria.length > 0) {
     const llmSheet: ScoringSheet = { ...input.sheet, criteria: llmCriteria };
 
-    // Mode hybride : le relevé peut partir sur un autre modèle (réglage
-    // `CV_ANALYZER_LEDGER_MODEL`, ou `phaseModels.ledger` pour la comparaison
-    // de modèles, qui prime) — cf. `src/lib/ai/ledger-model.ts`.
-    const ledgerModel = input.phaseModels?.ledger ?? ledgerModelFromEnv(process.env);
 
     // 1bis. Relevé de faits (ledger) — SOURCE CANONIQUE des critères LLM.
     // Extrait UNE fois ; les verdicts s'y ancrent pour qu'un même fait
@@ -479,9 +482,15 @@ export async function analyzeCVApplication(
 
   // « AUCUN OUI SANS PREUVE » (25/09/2026), symétrique de l'invariant
   // ci-dessus : un « satisfait » ou « partiel » du modèle dont la citation ne
-  // se retrouve pas dans le CV est rétrogradé en `non_verifiable`. Le code
-  // tranche après la réponse, pour tout modèle — cf. `quote-evidence.ts`.
-  llmVerdicts = enforceQuotedEvidence(llmVerdicts, input.cvText);
+  // se retrouve pas dans le CV est rétrogradé en `non_verifiable` —
+  // cf. `quote-evidence.ts`.
+  //
+  // ⚠️ ACTIVE AVEC LE MODE HYBRIDE SEULEMENT (décision du 25/09/2026). En
+  // gpt-4o seul, son relevé normalisé contamine les citations : la garde
+  // rétrograderait ~17 % des verdicts positifs sur des CV type recette, contre
+  // 1,9 % en hybride sur les CV client. Seule, elle ferait plus de mal que de
+  // bien.
+  if (ledgerModel) llmVerdicts = enforceQuotedEvidence(llmVerdicts, input.cvText);
 
   // Fusion déterministe + LLM (l'ordre est indifférent : scoreCandidat indexe
   // par criterionId et itère la fiche complète).
