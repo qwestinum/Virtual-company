@@ -196,7 +196,16 @@ export type AnalyzeCVApplicationOutput = {
    * PROUVER que le document n'est pas un CV.
    */
   isCv: boolean;
-  metrics: { durationMs: number; tokensUsed: number; costEstimate: number };
+  metrics: {
+    durationMs: number;
+    tokensUsed: number;
+    costEstimate: number;
+    /** Détail entrée/sortie (appels réussis) — comparaison de modèles. */
+    promptTokens?: number;
+    completionTokens?: number;
+    /** Modèles RÉELLEMENT renvoyés par l'API, dans l'ordre des appels. */
+    models?: string[];
+  };
   /**
    * Observabilité : quelle(s) phase(s) LLM DÉGRADABLE(S) a/ont échoué
    * (fallback appliqué). La phase verdicts n'y figure plus : son échec ne
@@ -213,7 +222,14 @@ export type AnalyzeCVApplicationOutput = {
 export async function analyzeCVApplication(
   input: AnalyzeCVApplicationInput,
 ): Promise<AnalyzeCVApplicationOutput> {
-  const metrics = { durationMs: 0, tokensUsed: 0, costEstimate: 0 };
+  const metrics = {
+    durationMs: 0,
+    tokensUsed: 0,
+    costEstimate: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    models: [] as string[],
+  };
   /**
    * Agrège les métriques des appels LLM RÉUSSIS (candidat + verdicts).
    *
@@ -225,12 +241,16 @@ export async function analyzeCVApplication(
    */
   const accumulate = (raw: {
     durationMs: number;
-    usage: { totalTokens: number };
+    model?: string;
+    usage: { totalTokens: number; promptTokens?: number; completionTokens?: number };
     costEstimate: number;
   }): void => {
     metrics.durationMs += raw.durationMs;
     metrics.tokensUsed += raw.usage.totalTokens;
     metrics.costEstimate += raw.costEstimate;
+    metrics.promptTokens += raw.usage.promptTokens ?? 0;
+    metrics.completionTokens += raw.usage.completionTokens ?? 0;
+    if (raw.model) metrics.models.push(raw.model);
   };
 
   // 1. Extraction des données candidat (factuel annexe).
