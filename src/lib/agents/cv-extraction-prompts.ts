@@ -115,6 +115,7 @@ export function buildVerdictsSystemPrompt(): string {
     "- PRÉSENCE ≠ SATISFACTION : qu'un fait figure au relevé empêche de dire « non » (absent), mais n'impose JAMAIS « satisfait ». « Satisfait » exige que la PREUVE couvre le critère ENTIER (voir « critères composites » et « test de preuve » ci-dessous). Un fait au relevé qui ne couvre qu'une PARTIE du critère donne « partiel », pas « satisfait ».",
     "- Pour \"satisfait\" ou \"partiel\", tu DOIS fournir dans llmCVQuote un extrait VERBATIM du CV qui le prouve. Sans extrait littéral probant → \"non_verifiable\" (jamais \"satisfait\").",
     "- CITATION EXACTE, CONTRÔLÉE : llmCVQuote est une SOUS-CHAÎNE EXACTE du texte placé sous « CV à évaluer », copiée d'un seul tenant — jamais le RELEVÉ DE FAITS (reformulé, il n'est pas le CV), jamais une reformulation, jamais un mot remplacé, jamais deux lignes recollées, jamais de ponctuation ajoutée. Pour citer deux passages distincts, sépare-les par « … ». Chaque citation est RECHERCHÉE dans le CV après ta réponse : un « satisfait » ou « partiel » dont la citation ne s'y retrouve pas est automatiquement ramené à \"non_verifiable\".",
+    "- LE RELEVÉ DIT OÙ REGARDER, JAMAIS QUOI CITER : le relevé de faits est NORMALISÉ (noms d'outils uniformisés, faits résumés) — ses mots ne sont PAS ceux du CV. Pour un fait trouvé au relevé, retrouve la LIGNE du CV où il figure et cite CETTE ligne avec SES mots (si le CV écrit « X-Ray », cite « X-Ray », même si le relevé dit « Xray »). N'ASSEMBLE JAMAIS une liste de faits du relevé en guise de citation.",
     "- CITATION ANCRÉE SUR LE DOMAINE : pour tout verdict satisfait, partiel ou non sur un critère qui SPÉCIFIE un domaine, la llmCVQuote doit être une phrase LITTÉRALE du CV contenant EXPLICITEMENT ce domaine. Si aucune phrase du CV ne contient ce domaine → non_verifiable. Une citation portant sur un autre domaine, même proche, n'est JAMAIS une justification recevable.",
     "- N'attribue JAMAIS au candidat une expérience, un domaine, une compétence ou un chiffre qui ne figure pas EXPLICITEMENT dans le CV. Si le critère porte sur un domaine X et que le CV décrit un domaine Y différent, la réponse est \"non\" (ou \"non_verifiable\") — surtout pas \"satisfait\".",
     "- DISCIPLINE DU DOMAINE : avant d'évaluer un critère, identifie le(s) mot(s)-clé(s) de DOMAINE qu'il contient (ex. « recrutement » dans « expérience en recrutement »). Tu n'évalues ce critère QU'À PARTIR de phrases du CV qui mentionnent EXPLICITEMENT ce domaine. Ne reporte JAMAIS une expérience, une durée ou une compétence d'un AUTRE domaine — même proche, même présente au relevé de faits — pour juger un critère qui spécifie un domaine précis. Le qualificatif de domaine du critère prime TOUJOURS sur l'expérience générale du candidat.",
@@ -186,7 +187,7 @@ export function buildVerdictsUserPrompt(
   });
   lines.push(
     '',
-    'RELEVÉ DE FAITS du candidat (source canonique — un fait listé ici est PRÉSENT pour tout critère qui le vise) :',
+    'RELEVÉ DE FAITS du candidat (source canonique — un fait listé ici est PRÉSENT pour tout critère qui le vise). ⚠️ Relevé NORMALISÉ : ne le cite JAMAIS — les citations se copient dans le texte placé sous « CV à évaluer ».',
     formatLedger(ledger),
     '',
     'CV à évaluer :',
