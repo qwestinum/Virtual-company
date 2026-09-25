@@ -421,9 +421,20 @@ mais touche le chemin critique de tous les agents. Tester d'abord `gpt-4o`
 
 ---
 
+## Comparer gpt-4o-mini à gpt-4o sur l'analyse des CV
+
+**Statut** : cadré le 25/09/2026, non implémenté. Protocole complet :
+[`docs/ops/comparaison-modeles-scoring.md`](ops/comparaison-modeles-scoring.md).
+**Prérequis** : l'entrée suivante (coût OpenAI à 0 sur les modèles datés), sinon l'axe coût du
+rapport est faux. **Point d'arrêt** : le rapport, avant toute bascule du modèle en service.
+
+---
+
 ## Aligner les clés `pricing.ts` avec les model strings datés d'OpenAI
 
-**Statut** : non fait. Petit fix (~10 min) pour rendre le bench utile sur le coût.
+**Statut** : ✅ **fait le 25/09/2026** — `pricingKey` (nom exact prioritaire, puis famille sans
+suffixe `-AAAA-MM-JJ` / `-AAAAMMJJ`), testé sur les noms datés. Les coûts DÉJÀ enregistrés à 0
+(journal, métriques) ne sont pas recalculés : seule la suite est juste.
 **Code concerné** : `src/lib/ai/pricing.ts`, `src/lib/ai/provider.ts` (`estimateCost`).
 
 **Contexte.** `estimateCost(model, …)` indexe `PRICING` par le `model` **renvoyé**

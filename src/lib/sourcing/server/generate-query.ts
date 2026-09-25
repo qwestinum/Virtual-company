@@ -9,7 +9,6 @@
  */
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
-import { estimateCost } from '@/lib/ai/pricing';
 import { chatCompleteJson } from '@/lib/ai/provider';
 import { deterministicQuery } from '@/lib/sourcing/query-deterministic';
 import {
@@ -20,16 +19,6 @@ import {
   validateGeneratedQuery,
 } from '@/lib/sourcing/query-prompt';
 import type { GeneratedQuery, QueryFicheInput, SourcingLanguage } from '@/types/sourcing';
-
-/**
- * Coût d'un appel. Si le fournisseur renvoie un nom de modèle DATÉ
- * (`gpt-4o-2024-08-06`) absent de la table de tarifs, l'estimation vaut 0 : on
- * retente sans le suffixe de date plutôt que d'enregistrer un coût nul.
- */
-function callCost(raw: { model: string; costEstimate: number; usage: { promptTokens: number; completionTokens: number } }): number {
-  if (raw.costEstimate > 0) return raw.costEstimate;
-  return estimateCost(raw.model.replace(/-\d{4}-\d{2}-\d{2}$/, ''), raw.usage.promptTokens, raw.usage.completionTokens);
-}
 
 export async function generateSourcingQuery(
   fiche: QueryFicheInput,
@@ -73,7 +62,8 @@ export async function generateSourcingQuery(
       notEncoded: r.data.notEncoded,
       method: 'llm',
       language,
-      llmCostUsd: callCost(r.raw),
+      // Le nom daté renvoyé par le fournisseur est normalisé par `estimateCost`.
+      llmCostUsd: r.raw.costEstimate,
       fallbackReason: null,
     };
   } catch {

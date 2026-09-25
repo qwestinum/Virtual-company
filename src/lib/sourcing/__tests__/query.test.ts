@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/ai/provider', () => ({ chatCompleteJson: vi.fn() }));
 
+import { estimateCost } from '@/lib/ai/pricing';
 import { chatCompleteJson } from '@/lib/ai/provider';
 import { deterministicQuery, stripAmorces } from '@/lib/sourcing/query-deterministic';
 import { FEW_SHOTS, validateGeneratedQuery } from '@/lib/sourcing/query-prompt';
@@ -185,14 +186,16 @@ describe('générateur (b) — validation de sortie', () => {
 
 describe('generateSourcingQuery — (b) accepté, ou repli (a) dit à l’écran', () => {
   const mocked = vi.mocked(chatCompleteJson);
-  const raw = { model: 'gpt-4o-mini-2024-07-18', costEstimate: 0, usage: { promptTokens: 1500, completionTokens: 120, totalTokens: 1620 }, content: '', durationMs: 900 };
+  // Le coût est calculé par le fournisseur, nom daté compris (`pricingKey`) :
+  // la route le reprend tel quel.
+  const raw = { model: 'gpt-4o-mini-2024-07-18', costEstimate: estimateCost('gpt-4o-mini-2024-07-18', 1500, 120), usage: { promptTokens: 1500, completionTokens: 120, totalTokens: 1620 }, content: '', durationMs: 900 };
 
   // Aucun `beforeEach(mockReset | mockClear)` : constaté sous vitest 4.1, une
   // réinitialisation suivie d'un rejet du mock fait échouer le test alors que
   // le code sous test l'attrape (vérifié : repli rendu, aucune exception). Chaque
   // test pose donc sa propre implémentation « Once ».
 
-  it('sortie valide ⇒ méthode llm, coût calculé malgré le nom de modèle daté', async () => {
+  it('sortie valide ⇒ méthode llm, coût de l’appel repris (nom de modèle daté compris)', async () => {
     mocked.mockResolvedValueOnce({ data: FEW_SHOTS[1]!.out, raw, attempts: 1 } as never);
     const g = await generateSourcingQuery(TYPES.fullstack!, 'fr');
     expect(g.method).toBe('llm');
