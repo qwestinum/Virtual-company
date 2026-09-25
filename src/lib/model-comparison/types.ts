@@ -25,6 +25,12 @@ export type ArmVerdict = {
   /** Justification — relecture manuelle seulement, JAMAIS dans le rapport. */
   justification: string;
   quoteFound: boolean | null;
+  /**
+   * Verdict POSITIF du modèle rétrogradé par la garde « aucun oui sans
+   * preuve » (citation absente ou introuvable). Absent des enregistrements
+   * antérieurs à la garde.
+   */
+  evidenceDowngrade?: { from: 'satisfait' | 'partiel'; reason: 'missing_quote' | 'quote_not_found' };
 };
 
 export type ArmSuccess = {

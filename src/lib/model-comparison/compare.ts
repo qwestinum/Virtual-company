@@ -27,45 +27,30 @@ export function isFlip(a: ZoneBucket, b: ZoneBucket): boolean {
 // ─── Citations ──────────────────────────────────────────────────────────────
 
 /**
- * Normalisation pour la recherche « mot pour mot » : casse, espaces et
- * typographie (apostrophes, guillemets, tirets) — ce qu'une extraction PDF
- * déforme sans que le texte change. Rien d'autre : un mot différent reste
- * différent.
+ * La règle du PRODUIT (« aucun oui sans preuve »), réexportée : le rapport
+ * mesure exactement ce que la garde de l'analyse applique.
  */
-export function normalizeForQuote(text: string): string {
-  return text
-    // NFKC et non NFC : défait les formes de compatibilité (ligatures « ﬁ »,
-    // espaces insécables, exposants) qu'une extraction PDF laisse dans le CV.
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[’‘`´]/g, "'")
-    // Les guillemets disparaissent : « Trade Finance » (espaces français) et
-    // "Trade Finance" disent la même chose.
-    .replace(/[“”«»"]/g, ' ')
-    .replace(/[‐‑‒–—]/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+export { normalizeForQuote, quoteFoundInCv } from '@/lib/scoring/quote-evidence';
 
 /**
- * La citation se retrouve-t-elle dans le CV ? Une citation avec ellipse
- * (« … » ou « ... ») est jugée fragment par fragment, chacun devant s'y
- * trouver. Citation vide ⇒ `null` (rien à vérifier : un « non » sur une
- * absence n'a pas de citation à donner).
+ * Preuves d'un bras sur un CV : verdicts POSITIFS rendus par le modèle
+ * (satisfait/partiel, AVANT la garde) et, parmi eux, ceux dont la citation ne
+ * tenait pas. Depuis la garde, c'est `evidenceDowngrade` qui le dit ; pour un
+ * enregistrement antérieur, une citation introuvable sur un verdict positif.
  */
-export function quoteFoundInCv(quote: string, cvText: string): boolean | null {
-  const q = quote.replace(/^["«\s]+|["»\s]+$/g, '');
-  if (q.trim() === '') return null;
-  const cv = normalizeForQuote(cvText);
-  // Ponctuation de bord retirée : le modèle termine volontiers sa citation par
-  // un point que la ligne du CV n'a pas (mesuré au premier run : 1 fausse
-  // alerte sur 4). Un mot différent, lui, reste différent.
-  const fragments = q
-    .split(/…|\.\.\./)
-    .map((f) => normalizeForQuote(f).replace(/^[\s(\-•·*]+/, '').replace(/[\s.,;:!?)]+$/, ''))
-    .filter((f) => f.length > 0);
-  if (fragments.length === 0) return null;
-  return fragments.every((f) => cv.includes(f));
+export function evidenceOf(verdicts: ArmVerdict[]): { positives: number; unproven: number } {
+  let positives = 0;
+  let unproven = 0;
+  for (const v of verdicts) {
+    if (v.evidenceDowngrade) {
+      positives += 1;
+      unproven += 1;
+    } else if (v.decision === 'satisfait' || v.decision === 'partiel') {
+      positives += 1;
+      if (v.quoteFound !== true) unproven += 1;
+    }
+  }
+  return { positives, unproven };
 }
 
 // ─── Comparaison d'un CV ────────────────────────────────────────────────────
@@ -87,6 +72,11 @@ export type CvComparison = {
   knockoutsAgree: boolean;
   quotesChecked: number;
   quotesInvalid: number;
+  /** Verdicts positifs rendus / sans preuve tenable — référence et autre bras. */
+  refPositives: number;
+  refUnproven: number;
+  otherPositives: number;
+  otherUnproven: number;
   /** Critères en désaccord, pour la relecture. */
   disagreeingCriteria: { criterionId: string; label: string; ref: ArmVerdict['decision']; other: ArmVerdict['decision'] }[];
 };
@@ -108,6 +98,8 @@ export function compareCv(ref: ArmSuccess, other: ArmSuccess): CvComparison {
     if (r.decision === 'non_verifiable' && o.decision === 'non') nvToNon += 1;
   }
   const checked = other.verdicts.filter((v) => v.quoteFound !== null);
+  const refEvidence = evidenceOf(ref.verdicts);
+  const otherEvidence = evidenceOf(other.verdicts);
   const refZone = zoneBucket(ref.zone);
   const otherZone = zoneBucket(other.zone);
   return {
@@ -126,6 +118,10 @@ export function compareCv(ref: ArmSuccess, other: ArmSuccess): CvComparison {
     knockoutsAgree: sameSet(ref.knockoutsFailed, other.knockoutsFailed),
     quotesChecked: checked.length,
     quotesInvalid: checked.filter((v) => v.quoteFound === false).length,
+    refPositives: refEvidence.positives,
+    refUnproven: refEvidence.unproven,
+    otherPositives: otherEvidence.positives,
+    otherUnproven: otherEvidence.unproven,
     disagreeingCriteria: disagreeing,
   };
 }
@@ -177,6 +173,13 @@ export type Aggregate = {
   quotesChecked: number;
   quotesInvalid: number;
   quotesInvalidRate: number;
+  /** Part des verdicts positifs sans preuve tenable (avant la garde), par bras. */
+  refUnprovenRate: number;
+  otherUnprovenRate: number;
+  refUnproven: number;
+  refPositives: number;
+  otherUnproven: number;
+  otherPositives: number;
 };
 
 const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
@@ -192,7 +195,18 @@ export function aggregate(pairs: CvComparison[]): Aggregate {
   const agreeing = pairs.reduce((a, p) => a + p.criteriaAgreeing, 0);
   const quotesChecked = pairs.reduce((a, p) => a + p.quotesChecked, 0);
   const quotesInvalid = pairs.reduce((a, p) => a + p.quotesInvalid, 0);
+  const sum = (f: (p: CvComparison) => number) => pairs.reduce((a, p) => a + f(p), 0);
+  const refPositives = sum((p) => p.refPositives);
+  const otherPositives = sum((p) => p.otherPositives);
+  const refUnproven = sum((p) => p.refUnproven);
+  const otherUnproven = sum((p) => p.otherUnproven);
   return {
+    refPositives,
+    otherPositives,
+    refUnproven,
+    otherUnproven,
+    refUnprovenRate: refPositives === 0 ? 0 : refUnproven / refPositives,
+    otherUnprovenRate: otherPositives === 0 ? 0 : otherUnproven / otherPositives,
     n: pairs.length,
     meanAbsDelta: mean(deltas.map(Math.abs)),
     meanDelta: m,
@@ -215,7 +229,8 @@ export const RULES = {
   zoneAgreementMin: 0.95,
   deltaMarginOverNoise: 3,
   knockoutAgreementMin: 1,
-  quotesInvalidRateMax: 0.01,
+  /** (e) redéfini le 25/09/2026 : pas plus de 2 points au-dessus de la RÉFÉRENCE. */
+  unprovenMarginOverReference: 0.02,
 } as const;
 
 export type ProposedVerdict = {
@@ -261,10 +276,16 @@ export function proposeVerdict(candidate: Aggregate, noiseFloor: number | null, 
     passed: candidate.nonVerifiableToNon === 0,
     detail: `${candidate.nonVerifiableToNon} « non vérifiable » devenu(s) « non »`,
   });
+  // (e) — redéfini le 25/09/2026 : un seuil ABSOLU (1 %) était hors d'atteinte
+  // pour la référence elle-même (17 % au premier run). On compare au modèle
+  // de référence, sur les mêmes CV : pas plus de 2 points au-dessus.
+  const ceiling = candidate.refUnprovenRate + RULES.unprovenMarginOverReference;
   checks.push({
     id: 'e',
-    passed: candidate.quotesInvalidRate < RULES.quotesInvalidRateMax,
-    detail: `${candidate.quotesInvalid} citation(s) introuvable(s) sur ${candidate.quotesChecked} (${pct(candidate.quotesInvalidRate)}, seuil < ${pct(RULES.quotesInvalidRateMax)})`,
+    passed: candidate.otherUnprovenRate <= ceiling + 1e-9,
+    detail:
+      `verdicts positifs sans preuve tenable : ${candidate.otherUnproven}/${candidate.otherPositives} (${pct(candidate.otherUnprovenRate)}) ` +
+      `contre ${candidate.refUnproven}/${candidate.refPositives} (${pct(candidate.refUnprovenRate)}) pour la référence — plafond ${pct(ceiling)}`,
   });
   // Un CV que le modèle candidat n'a pas su analyser n'est pas « comparable » :
   // il ne peut pas faire passer le verdict en silence.

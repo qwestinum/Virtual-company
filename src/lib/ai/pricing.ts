@@ -8,6 +8,8 @@ const PRICING: Record<string, ModelPricing> = {
   'gpt-4o-mini': { promptUsdPerMTokens: 0.15, completionUsdPerMTokens: 0.6 },
   // Anthropic Sonnet 4.6 (chemin CV_ANALYZER_PROVIDER=anthropic).
   'claude-sonnet-4-6': { promptUsdPerMTokens: 3, completionUsdPerMTokens: 15 },
+  // Anthropic Haiku 4.5 (comparaison de modèles, 25/09/2026).
+  'claude-haiku-4-5': { promptUsdPerMTokens: 1, completionUsdPerMTokens: 5 },
   'whisper-1': { promptUsdPerMTokens: 0, completionUsdPerMTokens: 0 },
   // Embeddings vivier (EMBEDDING_PROVIDER=openai). Tarif facturé sur les
   // tokens d'entrée uniquement (pas de complétion).
