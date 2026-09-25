@@ -11,6 +11,9 @@ describe('environnement d’un bras', () => {
     expect(env).toMatchObject({ OPENAI_API_KEY: 'sk', OPENAI_CHAT_MODEL: 'gpt-4o-mini', CV_ANALYZER_PROVIDER: 'openai' });
     expect('OPENAI_BASE_URL' in env).toBe(false);
     expect('ANTHROPIC_CHAT_MODEL' in env).toBe(false);
+    // Le mode hybride de l'ambiant ne contamine JAMAIS un bras (la référence surtout).
+    expect('CV_ANALYZER_LEDGER_MODEL' in childEnv({ ...ambient, CV_ANALYZER_LEDGER_MODEL: 'gpt-4o-mini' }, mini)).toBe(false);
+    expect(envMismatches(mini, { ...env, CV_ANALYZER_LEDGER_MODEL: 'gpt-4o-mini' })).toHaveLength(1);
     expect(envMismatches(mini, env)).toEqual([]);
     // L'ambiant, lui, n'est pas modifié.
     expect(ambient.OPENAI_CHAT_MODEL).toBe('gpt-4o');

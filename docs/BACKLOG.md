@@ -428,10 +428,12 @@ mais touche le chemin critique de tous les agents. Tester d'abord `gpt-4o`
 [`docs/ops/comparaison-modeles-scoring.md`](ops/comparaison-modeles-scoring.md). Prérequis (coût
 à 0 sur les noms datés) réglé. **Point d'arrêt** : le rapport, avant toute bascule du modèle en
 service. Second run (25/09) : **hybride** (relevé sur gpt-4o-mini) acceptable sur le dev, à un
-verdict près chez le client ; **Haiku** refusé. **Reste ouvert** : trancher l'hybride (échantillon
-plus large chez le client, en lecture) ; comprendre les 25 % de citations non tenables de gpt-4o
-sur les CV de recette (contre 2,2 % chez le client) ; Mistral / OVHcloud / Scaleway sur le jeu
-synthétique uniquement (chantier du jeu de démonstration).
+verdict près chez le client ; **Haiku** refusé. Diagnostic et hybride sur 195 CV client (25/09) : cause des
+citations non tenables = recopie du relevé normalisé de gpt-4o ; hybride dans le bruit sur (e),
+activable par `CV_ANALYZER_LEDGER_MODEL`. **Reste ouvert** : activer l'hybride (variable à poser
+par environnement) ; fusionner la garde « aucun oui sans preuve » ; redéfinir (b) relativement au
+bruit ; annuler le correctif de prompt sans effet (`82849cd`) ; Mistral / OVHcloud / Scaleway sur
+le jeu synthétique uniquement (chantier du jeu de démonstration).
 
 ---
 

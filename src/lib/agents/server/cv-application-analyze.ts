@@ -38,6 +38,7 @@ import {
   buildNarrationUserPrompt,
 } from '@/lib/agents/cv-narration';
 import { AIValidationError, AnalysisUnavailableError } from '@/lib/ai/errors';
+import { ledgerModelFromEnv } from '@/lib/ai/ledger-model';
 import { chatCompleteJson } from '@/lib/ai/provider';
 import {
   enforceQuotedEvidence,
@@ -403,6 +404,11 @@ export async function analyzeCVApplication(
   if (llmCriteria.length > 0) {
     const llmSheet: ScoringSheet = { ...input.sheet, criteria: llmCriteria };
 
+    // Mode hybride : le relevé peut partir sur un autre modèle (réglage
+    // `CV_ANALYZER_LEDGER_MODEL`, ou `phaseModels.ledger` pour la comparaison
+    // de modèles, qui prime) — cf. `src/lib/ai/ledger-model.ts`.
+    const ledgerModel = input.phaseModels?.ledger ?? ledgerModelFromEnv(process.env);
+
     // 1bis. Relevé de faits (ledger) — SOURCE CANONIQUE des critères LLM.
     // Extrait UNE fois ; les verdicts s'y ancrent pour qu'un même fait
     // (« Xray ») ne soit pas jugé présent ici et absent là. Dégrade proprement :
@@ -415,7 +421,7 @@ export async function analyzeCVApplication(
           { role: 'user', content: buildLedgerUserPrompt(input.cvText, input.fileName) },
         ],
         CVFactLedgerSchema,
-        input.phaseModels?.ledger ? { model: input.phaseModels.ledger } : undefined,
+        ledgerModel ? { model: ledgerModel } : undefined,
       );
       ledger = r.data;
       accumulate(r.raw);

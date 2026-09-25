@@ -345,3 +345,38 @@ describe('analyzeCVApplication — « aucun oui sans preuve » (25/09/2026)', ()
     expect(byId.get('b')!.evidenceDowngrade).toBeUndefined();
   });
 });
+
+describe('analyzeCVApplication — mode hybride (CV_ANALYZER_LEDGER_MODEL)', () => {
+  beforeEach(() => chatCompleteJsonMock.mockReset());
+  afterEach(() => {
+    delete process.env.CV_ANALYZER_LEDGER_MODEL;
+  });
+
+  const sheet: ScoringSheet = {
+    campaignId: 'CAMP-T',
+    isValidated: true,
+    criteria: [buildCriterion({ id: 'b', label: 'Anglais', level: 'important' })],
+  };
+  const run = async () => {
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(
+        jsonResult({ verdicts: [{ criterionId: '1', llmDecision: 'satisfait', llmJustification: 'ok', llmCVQuote: 'anglais courant' }] }),
+      )
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    await analyzeCVApplication({ ...BASE_INPUT, sheet });
+    return chatCompleteJsonMock.mock.calls.map((c) => (c[2] as { model?: string } | undefined)?.model);
+  };
+
+  it('posée : SEUL le relevé de faits part sur ce modèle', async () => {
+    process.env.CV_ANALYZER_LEDGER_MODEL = 'gpt-4o-mini';
+    // candidat, relevé, verdicts, narration
+    expect(await run()).toEqual([undefined, 'gpt-4o-mini', undefined, undefined]);
+  });
+
+  it('absente : aucun appel ne change de modèle', async () => {
+    expect(await run()).toEqual([undefined, undefined, undefined, undefined]);
+  });
+});

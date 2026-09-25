@@ -47,6 +47,10 @@ export function armEnv(s: ArmSettings): Record<string, string | undefined> {
     OPENAI_CHAT_MODEL: s.provider === 'openai' ? s.model : undefined,
     ANTHROPIC_CHAT_MODEL: s.provider === 'anthropic' ? s.model : undefined,
     OPENAI_BASE_URL: s.baseUrl ?? undefined,
+    // TOUJOURS retiré : le modèle du relevé est posé par le script, bras par
+    // bras (`phaseModels.ledger`). Laissé à l'ambiant, un fichier .env qui
+    // active le mode hybride rendrait la RÉFÉRENCE hybride en silence.
+    CV_ANALYZER_LEDGER_MODEL: undefined,
   };
 }
 
