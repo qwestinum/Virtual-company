@@ -49,16 +49,31 @@ export function normalizeForQuote(text: string): string {
  * point que la ligne du CV n'a pas, ou reprend une puce). Citation vide ⇒
  * `null` : rien à vérifier.
  */
+/** Les mots d'un texte, dans l'ordre — lettres et chiffres seulement. */
+function wordsOf(text: string): string[] {
+  return normalizeForQuote(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
 export function quoteFoundInCv(quote: string, cvText: string): boolean | null {
   const q = quote.replace(/^["«\s]+|["»\s]+$/g, '');
   if (q.trim() === '') return null;
   const cv = normalizeForQuote(cvText);
+  // Même suite de mots, CONTIGUË, quelle que soit la ponctuation entre eux :
+  // « Anglais : courant » cité « Anglais courant », une puce ou une barre
+  // oblique qu'un PDF a posée au milieu d'une ligne — ce n'est pas une autre
+  // phrase. Diagnostic du 25/09/2026 : 3 rejets sur 13 étaient de ce type.
+  // Un mot changé, ajouté, retiré ou déplacé reste un écart.
+  const cvWords = ` ${wordsOf(cvText).join(' ')} `;
   const fragments = q
     .split(/…|\.\.\./)
     .map((f) => normalizeForQuote(f).replace(/^[\s(\-•·*]+/, '').replace(/[\s.,;:!?)]+$/, ''))
     .filter((f) => f.length > 0);
   if (fragments.length === 0) return null;
-  return fragments.every((f) => cv.includes(f));
+  return fragments.every((f) => {
+    if (cv.includes(f)) return true;
+    const words = wordsOf(f);
+    return words.length > 0 && cvWords.includes(` ${words.join(' ')} `);
+  });
 }
 
 export type EvidenceDowngradeReason = 'missing_quote' | 'quote_not_found';
