@@ -13,6 +13,7 @@ import type { Uploadable } from 'openai/core/uploads';
 import type { z } from 'zod';
 
 import { AIProviderError, AIValidationError } from './errors';
+import { resolveOpenAiEndpoint } from './openai-endpoint';
 import { estimateCost } from './pricing';
 import { zodToAnthropicToolSchema } from './zod-to-anthropic-schema';
 
@@ -53,6 +54,7 @@ const DEFAULT_ANTHROPIC_MAX_TOKENS = 8192;
 const ANTHROPIC_JSON_TOOL_NAME = 'emit_result';
 
 let cachedClient: OpenAI | null = null;
+let cachedChatClient: OpenAI | null = null;
 let cachedAnthropic: Anthropic | null = null;
 
 function getClient(): OpenAI {
@@ -70,6 +72,29 @@ function getClient(): OpenAI {
     maxRetries: DEFAULT_TRANSPORT_MAX_RETRIES,
   });
   return cachedClient;
+}
+
+/**
+ * Client des appels de CHAT : OpenAI par défaut, ou un point d'accès
+ * « compatible OpenAI » si `OPENAI_BASE_URL` est posée (cf. `openai-endpoint.ts`
+ * — https seulement, clé propre au tiers, deepseek.com refusé). La
+ * transcription garde `getClient()` : elle reste chez OpenAI.
+ */
+function getChatClient(): OpenAI {
+  if (cachedChatClient) return cachedChatClient;
+  if (!process.env.OPENAI_BASE_URL?.trim()) {
+    cachedChatClient = getClient();
+    return cachedChatClient;
+  }
+  const endpoint = resolveOpenAiEndpoint(process.env);
+  if (!endpoint.ok) throw new AIProviderError('config_missing', endpoint.reason);
+  cachedChatClient = new OpenAI({
+    apiKey: endpoint.apiKey,
+    ...(endpoint.baseURL ? { baseURL: endpoint.baseURL } : {}),
+    timeout: DEFAULT_TIMEOUT_MS,
+    maxRetries: DEFAULT_TRANSPORT_MAX_RETRIES,
+  });
+  return cachedChatClient;
 }
 
 function getAnthropicClient(): Anthropic {
@@ -91,6 +116,7 @@ function getAnthropicClient(): Anthropic {
 
 export function __resetClientForTests(): void {
   cachedClient = null;
+  cachedChatClient = null;
   cachedAnthropic = null;
 }
 
@@ -163,7 +189,7 @@ export async function chatComplete(
   params: ChatCompleteParams,
 ): Promise<ChatCompleteResult> {
   const model = params.model ?? DEFAULT_CHAT_MODEL;
-  const client = getClient();
+  const client = getChatClient();
   const startedAt = Date.now();
 
   const body: ChatCompletionCreateParamsNonStreaming = {
