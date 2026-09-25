@@ -54,6 +54,12 @@ export type ArmSuccess = {
    * enregistrements antérieurs à ce champ.
    */
   degradedPhases?: ('candidate' | 'ledger' | 'narration')[];
+  /**
+   * Relevé de faits vu par les verdicts, aplati en une liste de faits —
+   * DIAGNOSTIC seulement (reste dans le répertoire de sortie, jamais dans le
+   * rapport). Absent des enregistrements antérieurs.
+   */
+  ledgerFacts?: string[];
 };
 
 export type ArmFailureKind = 'analysis_unavailable' | 'unproven_negative' | 'transport' | 'other';

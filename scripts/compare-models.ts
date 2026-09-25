@@ -6,7 +6,7 @@
  *        [--candidate=<nom>,provider=openai|anthropic,model=<m>[,ledger=<m>][,base-url=https://…]]…
  *        [--reference-model=gpt-4o] [--sample=N|all] [--noise=20] [--include=<id>,<id>]
  *        [--out=<répertoire>] [--concurrency=3] [--max-cost=6] [--yes]
- *        [--estimate-only] [--report-only]
+ *        [--estimate-only] [--report-only] [--reference-only]
  *
  * Exemples :
  *   --candidate=mini,model=gpt-4o-mini
@@ -169,6 +169,17 @@ async function runWorker(): Promise<void> {
         costUsd: out.metrics.costEstimate,
         models,
         degradedPhases: (['candidate', 'ledger', 'narration'] as const).filter((k) => out.llmFailures[k]),
+        ...(out.ledger
+          ? {
+              ledgerFacts: [
+                ...out.ledger.tools,
+                ...out.ledger.methodologies,
+                ...out.ledger.skills,
+                ...out.ledger.domains,
+                ...(out.ledger.yearsExperience !== null ? [`${out.ledger.yearsExperience} ans`] : []),
+              ],
+            }
+          : {}),
       };
     } catch (err) {
       record = {
@@ -257,7 +268,10 @@ async function runMain(): Promise<void> {
   const reference: ArmSettings = { provider: 'openai', model: val('reference-model') ?? 'gpt-4o', baseUrl: null, ledgerModel: null };
   const specs = vals('candidate');
   const candidates: { name: string; settings: ArmSettings }[] = [];
-  for (const spec of specs.length ? specs : ['mini,model=gpt-4o-mini']) {
+  // `--reference-only` : la référence seule, pour un DIAGNOSTIC (aucun bras
+  // candidat, aucun bruit) — le rapport ne porte alors aucun verdict.
+  const referenceOnly = has('reference-only');
+  for (const spec of referenceOnly ? [] : specs.length ? specs : ['mini,model=gpt-4o-mini']) {
     const parsed = parseArmSpec(spec);
     if ('error' in parsed) fail(`--candidate : ${parsed.error}`);
     if (['reference', 'noise'].includes(parsed.name)) fail(`--candidate : « ${parsed.name} » est un nom réservé.`);
@@ -288,7 +302,7 @@ async function runMain(): Promise<void> {
     return;
   }
 
-  const noiseN = Math.max(0, Number(val('noise') ?? 20));
+  const noiseN = referenceOnly ? 0 : Math.max(0, Number(val('noise') ?? 20));
   const sampleArg = val('sample') ?? 'all';
   const include = (val('include') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   const concurrency = Math.max(1, Number(val('concurrency') ?? 3));

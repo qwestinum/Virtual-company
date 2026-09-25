@@ -223,6 +223,13 @@ export type AnalyzeCVApplicationOutput = {
     ledger: boolean;
     narration: boolean;
   };
+  /**
+   * Relevé de faits sur lequel les verdicts se sont ancrés (`null` : aucun
+   * critère n'est parti au modèle, ou document non reconnu). Rendu pour le
+   * DIAGNOSTIC (comparaison de modèles) — jamais persisté : `application`
+   * seule l'est.
+   */
+  ledger?: CVFactLedger | null;
 };
 
 export async function analyzeCVApplication(
@@ -391,6 +398,7 @@ export async function analyzeCVApplication(
 
   let ledgerFailed = false;
   let llmVerdicts: LlmCriterionVerdict[] = [];
+  let usedLedger: CVFactLedger | null = null;
 
   if (llmCriteria.length > 0) {
     const llmSheet: ScoringSheet = { ...input.sheet, criteria: llmCriteria };
@@ -415,6 +423,7 @@ export async function analyzeCVApplication(
       if (!(err instanceof AIValidationError)) throw err;
       ledgerFailed = true;
     }
+    usedLedger = ledger;
 
     // 2. Extraction des décisions des critères LLM, ANCRÉES sur le relevé.
     try {
@@ -547,6 +556,7 @@ export async function analyzeCVApplication(
   return {
     application,
     isCv: true,
+    ledger: usedLedger,
     metrics,
     llmFailures: {
       candidate: candidateFailed,
