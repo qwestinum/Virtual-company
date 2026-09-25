@@ -69,6 +69,41 @@ export async function listCvRetryStates(
 }
 
 /**
+ * Réessais de PLUSIEURS boîtes en une requête (tick de relève — diagnostic
+ * d'egress du 25/09/2026). Même fail-safe que `listCvRetryStates` : table
+ * absente ou erreur ⇒ maps vides, jamais un CV consommé faute de lecture.
+ */
+export async function listCvRetryStatesForMailboxes(
+  mailboxIds: string[],
+): Promise<Map<string, Map<string, CvRetryState>>> {
+  const byMailbox = new Map<string, Map<string, CvRetryState>>(mailboxIds.map((id) => [id, new Map()]));
+  if (mailboxIds.length === 0) return byMailbox;
+  let supabase;
+  try {
+    supabase = requireServerSupabase();
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return byMailbox;
+    throw err;
+  }
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('mailbox_id, uid, attempts, next_retry_at, last_error')
+    .in('mailbox_id', mailboxIds);
+  if (error) {
+    console.error('[imap-cv-retries] list failed (fail-safe)', error.message);
+    return byMailbox;
+  }
+  for (const row of (data ?? []) as (CvRetryRow & { mailbox_id: string })[]) {
+    byMailbox.get(row.mailbox_id)?.set(row.uid, {
+      attempts: row.attempts,
+      nextRetryAt: row.next_retry_at,
+      lastError: row.last_error,
+    });
+  }
+  return byMailbox;
+}
+
+/**
  * Enregistre un échec re-tentable : pose `attempts` + `next_retry_at` calculés
  * par l'appelant (lecture faite depuis la map du poll — un léger sous-comptage
  * sous crons concurrents est acceptable, il va dans le sens du réessai).

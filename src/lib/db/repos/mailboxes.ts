@@ -79,6 +79,52 @@ export async function listEnabledMailboxesWithSecrets(): Promise<MailboxRow[]> {
   return (data ?? []) as MailboxRow[];
 }
 
+/**
+ * Campagne rattachée à une boîte, telle que la relève en a besoin : son
+ * identifiant (rapprochement `CAMP-XXXX`) et son statut (écoute des seules
+ * campagnes actives, trace d'un mail reçu pour une campagne inactive). Le
+ * DOSSIER complet n'est chargé qu'au traitement d'un mail rapproché.
+ */
+export type MailboxCampaignLink = { id: string; status: string | null };
+
+export type MailboxForPoll = { mailbox: MailboxRow; campaigns: MailboxCampaignLink[] };
+
+type LinkRow = { campaign_id: string; campaigns: { status: string | null } | null };
+
+const toLinks = (rows: LinkRow[] | null | undefined): MailboxCampaignLink[] =>
+  (rows ?? []).map((r) => ({ id: r.campaign_id, status: r.campaigns?.status ?? null }));
+
+/**
+ * LA lecture d'un tick de relève (diagnostic d'egress du 25/09/2026) : les
+ * boîtes activées ET leurs campagnes rattachées, en deux colonnes, en UNE
+ * requête. Avant : boîtes, puis par boîte les rattachements, puis la liste
+ * COMPLÈTE des campagnes (`select *`, 60 Ko compressés) — 94 % du poids d'un
+ * tick, relu à chaque minute même quand aucun mail n'arrivait.
+ */
+export async function listEnabledMailboxesForPoll(): Promise<MailboxForPoll[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*, campaign_mailboxes(campaign_id, campaigns(status))')
+    .eq('is_enabled', true)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`listEnabledMailboxesForPoll: ${error.message}`);
+  return ((data ?? []) as (MailboxRow & { campaign_mailboxes: LinkRow[] | null })[]).map(
+    ({ campaign_mailboxes, ...mailbox }) => ({ mailbox, campaigns: toLinks(campaign_mailboxes) }),
+  );
+}
+
+/** Même projection pour UNE boîte — chemin de `pollMailbox` appelé seul. */
+export async function listCampaignLinksForMailbox(mailboxId: string): Promise<MailboxCampaignLink[]> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from('campaign_mailboxes')
+    .select('campaign_id, campaigns(status)')
+    .eq('mailbox_id', mailboxId);
+  if (error) throw new Error(`listCampaignLinksForMailbox: ${error.message}`);
+  return toLinks(data as unknown as LinkRow[]);
+}
+
 export async function getMailboxWithSecrets(
   id: string,
 ): Promise<MailboxRow | null> {

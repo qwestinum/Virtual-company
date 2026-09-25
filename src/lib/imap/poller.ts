@@ -49,6 +49,7 @@ import {
 import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
 import { imapAnalysisId } from '@/lib/imap/analysis-id';
 import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
+import { isMailboxDue, nextReadAt } from '@/lib/imap/poll-due';
 import {
   buildFetchSet,
   classifyProcessingError,
@@ -62,7 +63,7 @@ import {
   shouldProcessUid,
   withTimeout,
 } from '@/lib/imap/poll-retry';
-import { listCampaigns } from '@/lib/db/repos/campaigns';
+import { getCampaign } from '@/lib/db/repos/campaigns';
 import { mailboxFolder } from '@/lib/db/repos/mailboxes';
 import {
   insertArtifactMeta,
@@ -72,14 +73,17 @@ import { persistCandidateAnalysisStrict } from '@/lib/db/repos/candidate-analyse
 import {
   clearCvRetryState,
   listCvRetryStates,
+  listCvRetryStatesForMailboxes,
   upsertCvRetryState,
+  type CvRetryState,
 } from '@/lib/db/repos/imap-cv-retries';
 import { insertUnmatchedCv } from '@/lib/db/repos/imap-unmatched-cvs';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
-  listCampaignsForMailbox,
-  listEnabledMailboxesWithSecrets,
+  listCampaignLinksForMailbox,
+  listEnabledMailboxesForPoll,
   updateMailboxPollState,
+  type MailboxCampaignLink,
   type MailboxRow,
 } from '@/lib/db/repos/mailboxes';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -287,7 +291,17 @@ async function resolveInitialCursor(
   return initialCursorFor({ uidNext, uidsSinceConnection });
 }
 
-export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
+/**
+ * Ce que `pollAllMailboxes` a DÉJÀ lu pour cette boîte en une requête
+ * (rattachements + statuts, réessais). Absent ⇒ `pollMailbox` relit lui-même,
+ * en version légère — jamais la liste complète des campagnes.
+ */
+export type PollPrefetch = {
+  campaigns: MailboxCampaignLink[];
+  retryStates?: Map<string, CvRetryState>;
+};
+
+export async function pollMailbox(mailbox: MailboxRow, prefetch?: PollPrefetch): Promise<PollOutcome> {
   const outcome: PollOutcome = {
     mailboxId: mailbox.id,
     processed: 0,
@@ -304,7 +318,7 @@ export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
   }
   inflight.add(mailbox.id);
   try {
-    return await pollMailboxImpl(mailbox, outcome);
+    return await pollMailboxImpl(mailbox, outcome, prefetch);
   } finally {
     inflight.delete(mailbox.id);
   }
@@ -313,6 +327,7 @@ export async function pollMailbox(mailbox: MailboxRow): Promise<PollOutcome> {
 async function pollMailboxImpl(
   mailbox: MailboxRow,
   outcome: PollOutcome,
+  prefetch?: PollPrefetch,
 ): Promise<PollOutcome> {
   let password: string;
   try {
@@ -325,10 +340,11 @@ async function pollMailboxImpl(
     return outcome;
   }
 
-  // Liste des campagnes associées à cette mailbox (pour matching subject).
-  let associatedIds: string[];
+  // Campagnes associées à cette mailbox (pour matching subject) : identifiant
+  // et statut seulement, déjà lus par le tick quand il y en a un.
+  let links: MailboxCampaignLink[];
   try {
-    associatedIds = await listCampaignsForMailbox(mailbox.id);
+    links = prefetch?.campaigns ?? (await listCampaignLinksForMailbox(mailbox.id));
   } catch (err) {
     await updateMailboxPollState(mailbox.id, {
       lastError: `db_assoc_failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -336,6 +352,7 @@ async function pollMailboxImpl(
     outcome.errors += 1;
     return outcome;
   }
+  const associatedIds = links.map((l) => l.id);
 
   if (associatedIds.length === 0) {
     // Boîte activée mais rattachée à AUCUNE campagne : on note le poll (preuve
@@ -347,20 +364,26 @@ async function pollMailboxImpl(
     return outcome;
   }
 
-  // Cache des campagnes pour ne pas re-fetcher à chaque CV. On garde
-  // l'ensemble complet pour distinguer plus tard les matches sur
-  // campagne inactive (audit dédié) vs les non-matches (silence).
-  let campaignsById: Map<string, ActiveCampaign>;
-  try {
-    const all = await listCampaigns();
-    campaignsById = new Map(all.map((c) => [c.id, c]));
-  } catch (err) {
-    await updateMailboxPollState(mailbox.id, {
-      lastError: `db_campaigns_failed: ${err instanceof Error ? err.message : String(err)}`,
-    });
-    outcome.errors += 1;
-    return outcome;
-  }
+  // Statut de chaque campagne associée, lu avec les rattachements. Le DOSSIER
+  // complet d'une campagne (fiche, grille, seuils) n'est chargé QU'AU
+  // TRAITEMENT d'un mail rapproché, une fois par relève (diagnostic d'egress
+  // du 25/09/2026 : la liste COMPLÈTE des campagnes était relue à chaque
+  // tick, pour chaque boîte, même sans aucun mail — 94 % du poids d'un tick).
+  // Un échec de ce chargement LÈVE : le filet de la boucle committe jusqu'au
+  // message précédent et le message en cours est re-présenté — jamais
+  // consommé sans état final.
+  const statusById = new Map(links.map((l) => [l.id, l.status]));
+  const campaignCache = new Map<string, ActiveCampaign | null>();
+  const loadCampaign = async (id: string): Promise<ActiveCampaign | null> => {
+    if (!campaignCache.has(id)) {
+      try {
+        campaignCache.set(id, await getCampaign(id));
+      } catch (err) {
+        throw new Error(`db_campaigns_failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return campaignCache.get(id) ?? null;
+  };
 
   // Round 5 fix — l'écoute IMAP est conditionnée au statut `active`.
   // Une campagne draft / in_progress / paused / closed ne reçoit pas
@@ -369,17 +392,14 @@ async function pollMailboxImpl(
   // pouvoir voir « tu as reçu un CV pour CAMP-XXX mais la campagne
   // est paused/closed »). Symétrique du filtre snapshotActiveCampaigns
   // utilisé pour l'upload manuel.
-  const activeAssociatedIds = associatedIds.filter((id) => {
-    const c = campaignsById.get(id);
-    return c?.status === 'active';
-  });
+  const activeAssociatedIds = associatedIds.filter((id) => statusById.get(id) === 'active');
 
   // Réessais d'analyse en cours pour cette boîte (correctif audit C2/C3) :
   // compteur + backoff DURABLES — la mémoire de process ne survit ni entre
   // polls ni entre instances serverless. Une requête par poll (lignes rares :
   // uniquement les échecs). Fail-safe : map vide si table absente ⇒ réessai
   // sans plafond, on ne consomme jamais un CV faute de migration.
-  const retryStates = await listCvRetryStates(mailbox.id);
+  const retryStates = prefetch?.retryStates ?? (await listCvRetryStates(mailbox.id));
 
   // OUVERTURE BORNÉE (connexion + SELECT). Le budget est partagé entre les
   // deux étapes : ce qui compte est le temps total avant de pouvoir lire, et
@@ -655,11 +675,10 @@ async function pollMailboxImpl(
       }
 
       if (match.kind === 'inactive') {
-        const inactiveCamp = campaignsById.get(match.campaignId);
         await appendJournalEntry({
           action: 'imap_match_inactive_campaign',
           actor: 'imap_poller',
-          campaignId: inactiveCamp?.id.startsWith('TASK-')
+          campaignId: match.campaignId.startsWith('TASK-')
             ? null
             : match.campaignId,
           payload: {
@@ -668,7 +687,7 @@ async function pollMailboxImpl(
             subject,
             from: parsed.from?.text ?? null,
             matchSource: match.source,
-            campaignStatus: inactiveCamp?.status ?? 'unknown',
+            campaignStatus: statusById.get(match.campaignId) ?? 'unknown',
             reason:
               'campaign_not_active — réactive la campagne ou attends qu\'elle franchisse les jalons',
           },
@@ -773,7 +792,7 @@ async function pollMailboxImpl(
       const matchedCampaignId = match.campaignId;
       const matchSource = match.source;
 
-      const campaign = campaignsById.get(matchedCampaignId);
+      const campaign = await loadCampaign(matchedCampaignId);
       if (!campaign) {
         // Association orpheline (la campagne a été supprimée mais
         // pas la jointure). On log et on saute.
@@ -1578,25 +1597,59 @@ declare global {
  * scheduler. Capture les erreurs par mailbox pour ne pas qu'une
  * mauvaise mailbox tue les autres.
  */
-export async function pollAllMailboxes(): Promise<PollOutcome[]> {
+/**
+ * Prochaine lecture utile, en mémoire de PROCESSUS : entre deux échéances, un
+ * tick ne lit RIEN (diagnostic d'egress du 25/09/2026). Sur serverless, chaque
+ * invocation repart à zéro et lit une fois — c'est voulu : la base reste la
+ * seule mémoire partagée, ceci n'est qu'une économie locale.
+ */
+let nextMailboxReadAtMs = 0;
+
+export function __resetPollScheduleForTests(): void {
+  nextMailboxReadAtMs = 0;
+}
+
+/**
+ * Relève de toutes les boîtes DUES (`poll-due.ts`), en UNE lecture de base
+ * (boîtes + campagnes rattachées réduites à id/statut) et une lecture des
+ * réessais. `force` (relève manuelle, `/api/imap/poll-now`) ignore les
+ * échéances.
+ */
+export async function pollAllMailboxes({ force = false }: { force?: boolean } = {}): Promise<PollOutcome[]> {
+  // Aucune boîte ne peut être due avant cet instant : on ne lit rien.
+  if (!force && Date.now() < nextMailboxReadAtMs) return [];
   // Un poll déjà en cours ⇒ on saute ce déclenchement (anti double-traitement).
   if (globalThis.__imapPollInFlight__) return [];
   globalThis.__imapPollInFlight__ = true;
   try {
-    let mailboxes: MailboxRow[];
+    let all: Awaited<ReturnType<typeof listEnabledMailboxesForPoll>>;
     try {
-      mailboxes = await listEnabledMailboxesWithSecrets();
+      all = await listEnabledMailboxesForPoll();
     } catch (err) {
       if (err instanceof SupabaseNotConfiguredError) return [];
       throw err;
     }
-    if (mailboxes.length === 0) return [];
+    const now = Date.now();
+    const due = force ? all : all.filter((m) => isMailboxDue(m.mailbox.last_polled_at, now));
+    // Échéance suivante calculée AVANT la relève : les boîtes relevées à
+    // l'instant repartent pour un intervalle entier.
+    nextMailboxReadAtMs = nextReadAt(
+      all.map((m) => ({ id: m.mailbox.id, lastPolledAt: m.mailbox.last_polled_at })),
+      new Set(due.map((m) => m.mailbox.id)),
+      now,
+    );
+    if (due.length === 0) return [];
+    const retries = await listCvRetryStatesForMailboxes(due.map((m) => m.mailbox.id));
+    const mailboxes = due.map((m) => m.mailbox);
+    const prefetchById = new Map<string, PollPrefetch>(
+      due.map((m) => [m.mailbox.id, { campaigns: m.campaigns, retryStates: retries.get(m.mailbox.id) }]),
+    );
     // `await` IMPÉRATIF ici : le `finally` ne doit libérer le flag qu'une fois
     // TOUTES les mailboxes relevées (sinon il retombe à false immédiatement et
     // la garde ne sert à rien).
     return await Promise.all(
       mailboxes.map((mb) =>
-        pollMailbox(mb).catch(async (err) => {
+        pollMailbox(mb, prefetchById.get(mb.id)).catch(async (err) => {
           // Un crash de poll n'est JAMAIS silencieux (l'incident 24/07/2026
           // a tourné 3 jours sans une ligne de log) : trace console + écrit
           // dans `last_error` (visible dans /api/imap/status et l'admin).
