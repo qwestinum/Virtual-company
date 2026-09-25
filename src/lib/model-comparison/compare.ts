@@ -225,75 +225,103 @@ export function aggregate(pairs: CvComparison[]): Aggregate {
 
 // ─── Verdict proposé (§4) ───────────────────────────────────────────────────
 
+/**
+ * RÈGLE DU 25/09/2026 : tout seuil est RELATIF AU PLANCHER DE BRUIT DU RUN,
+ * jamais absolu. Le plancher = gpt-4o rejoué contre lui-même, dans le même
+ * run, sur les mêmes CV. Deux seuils absolus (1 % de citations, 95 % d'accord
+ * de zone) se sont révélés hors d'atteinte pour la référence elle-même : ils ne
+ * départageaient rien.
+ */
 export const RULES = {
-  zoneAgreementMin: 0.95,
+  /** (b) accord de zone ≥ celui du bruit − 3 points. */
+  zoneAgreementMarginUnderNoise: 0.03,
+  /** (b) Δscore moyen absolu ≤ celui du bruit + 3. */
   deltaMarginOverNoise: 3,
-  knockoutAgreementMin: 1,
-  /** (e) redéfini le 25/09/2026 : pas plus de 2 points au-dessus de la RÉFÉRENCE. */
+  /** (e) positifs sans preuve ≤ taux de la RÉFÉRENCE (gpt-4o, même run) + 2 points. */
   unprovenMarginOverReference: 0.02,
 } as const;
 
 export type ProposedVerdict = {
   acceptable: boolean;
   /**
-   * Critère par critère, dans l'ordre (a)…(e) du protocole : passé ou non, et
-   * pourquoi. (f) n'apparaît que s'il y a des analyses en échec chez le modèle
-   * candidat : elles ne sont pas comparées, donc elles ne peuvent pas passer.
+   * Critère par critère, dans l'ordre (a)…(f) : passé ou non, et pourquoi.
+   * Sans bras de bruit, les critères relatifs au bruit ÉCHOUENT : sans
+   * plancher, on ne peut pas dire qu'un écart n'est pas significatif.
    */
   checks: { id: 'a' | 'b' | 'c' | 'd' | 'e' | 'f'; passed: boolean; detail: string }[];
 };
 
 const pct = (x: number) => `${(x * 100).toFixed(1)} %`;
+const rate = (count: number, n: number) => (n === 0 ? 0 : count / n);
+const EPS = 1e-9;
 
 /**
- * La règle du protocole. `noiseFloor` = écart moyen absolu gpt-4o vs gpt-4o ;
- * `null` si le bras de bruit n'a rien donné — (b) échoue alors : sans plancher,
- * on ne peut pas dire qu'un écart n'est pas significatif.
+ * @param candidate  agrégat candidat contre référence (tout l'échantillon)
+ * @param noise      agrégat bruit (second rejeu gpt-4o) contre référence, ou `null`
+ * @param candidateFailures  analyses en échec chez le candidat
+ * @param referenceFailures  analyses en échec chez la référence (même run)
  */
-export function proposeVerdict(candidate: Aggregate, noiseFloor: number | null, candidateFailures: number): ProposedVerdict {
+export function proposeVerdict(
+  candidate: Aggregate,
+  noise: Aggregate | null,
+  candidateFailures: number,
+  referenceFailures = 0,
+): ProposedVerdict {
   const checks: ProposedVerdict['checks'] = [];
+  const unknown = '(plancher de bruit INCONNU)';
+
+  const candFlipRate = rate(candidate.flips, candidate.n);
   checks.push({
     id: 'a',
-    passed: candidate.flips === 0,
-    detail: `${candidate.flips} basculement(s) accepté ↔ refus`,
+    passed: noise !== null && candFlipRate <= rate(noise.flips, noise.n) + EPS,
+    detail: `basculements accepté ↔ refus : ${candidate.flips}/${candidate.n} (${pct(candFlipRate)}) ` +
+      (noise ? `— bruit ${noise.flips}/${noise.n} (${pct(rate(noise.flips, noise.n))})` : unknown),
   });
-  const deltaOk = noiseFloor !== null && candidate.meanAbsDelta <= noiseFloor + RULES.deltaMarginOverNoise;
+
+  const zoneFloor = noise ? noise.zoneAgreement - RULES.zoneAgreementMarginUnderNoise : null;
+  const deltaCeiling = noise ? noise.meanAbsDelta + RULES.deltaMarginOverNoise : null;
   checks.push({
     id: 'b',
-    passed: candidate.zoneAgreement >= RULES.zoneAgreementMin && deltaOk,
+    passed: zoneFloor !== null && deltaCeiling !== null &&
+      candidate.zoneAgreement >= zoneFloor - EPS && candidate.meanAbsDelta <= deltaCeiling + EPS,
     detail:
-      `accord de zone ${pct(candidate.zoneAgreement)} (seuil ${pct(RULES.zoneAgreementMin)}) ; ` +
-      `Δscore moyen absolu ${candidate.meanAbsDelta.toFixed(1)} ` +
-      (noiseFloor === null ? '(plancher de bruit INCONNU)' : `(plafond ${(noiseFloor + RULES.deltaMarginOverNoise).toFixed(1)} = bruit ${noiseFloor.toFixed(1)} + ${RULES.deltaMarginOverNoise})`),
+      `accord de zone ${pct(candidate.zoneAgreement)} ` +
+      (zoneFloor !== null ? `(plancher ${pct(zoneFloor)} = bruit ${pct(noise!.zoneAgreement)} − 3 pts)` : unknown) +
+      ` ; Δscore moyen absolu ${candidate.meanAbsDelta.toFixed(1)} ` +
+      (deltaCeiling !== null ? `(plafond ${deltaCeiling.toFixed(1)} = bruit ${noise!.meanAbsDelta.toFixed(1)} + ${RULES.deltaMarginOverNoise})` : unknown),
   });
+
   checks.push({
     id: 'c',
-    passed: candidate.knockoutAgreement >= RULES.knockoutAgreementMin,
-    detail: `accord sur les rédhibitoires ${pct(candidate.knockoutAgreement)}`,
+    passed: noise !== null && candidate.knockoutAgreement >= noise.knockoutAgreement - EPS,
+    detail: `accord sur les rédhibitoires ${pct(candidate.knockoutAgreement)} ` + (noise ? `— bruit ${pct(noise.knockoutAgreement)}` : unknown),
   });
+
+  const candNv = rate(candidate.nonVerifiableToNon, candidate.n);
   checks.push({
     id: 'd',
-    passed: candidate.nonVerifiableToNon === 0,
-    detail: `${candidate.nonVerifiableToNon} « non vérifiable » devenu(s) « non »`,
+    passed: noise !== null && candNv <= rate(noise.nonVerifiableToNon, noise.n) + EPS,
+    detail: `« non vérifiable » devenu « non » : ${candidate.nonVerifiableToNon} sur ${candidate.n} CV ` +
+      (noise ? `— bruit ${noise.nonVerifiableToNon} sur ${noise.n}` : unknown),
   });
-  // (e) — redéfini le 25/09/2026 : un seuil ABSOLU (1 %) était hors d'atteinte
-  // pour la référence elle-même (17 % au premier run). On compare au modèle
-  // de référence, sur les mêmes CV : pas plus de 2 points au-dessus.
+
   const ceiling = candidate.refUnprovenRate + RULES.unprovenMarginOverReference;
   checks.push({
     id: 'e',
-    passed: candidate.otherUnprovenRate <= ceiling + 1e-9,
+    passed: candidate.otherUnprovenRate <= ceiling + EPS,
     detail:
       `verdicts positifs sans preuve tenable : ${candidate.otherUnproven}/${candidate.otherPositives} (${pct(candidate.otherUnprovenRate)}) ` +
       `contre ${candidate.refUnproven}/${candidate.refPositives} (${pct(candidate.refUnprovenRate)}) pour la référence — plafond ${pct(ceiling)}`,
   });
-  // Un CV que le modèle candidat n'a pas su analyser n'est pas « comparable » :
-  // il ne peut pas faire passer le verdict en silence.
-  if (candidateFailures > 0) {
+
+  // Un CV que le candidat n'a pas su analyser n'est pas comparé : il ne peut
+  // pas faire passer le verdict en silence. Relatif, lui aussi : pas plus
+  // d'échecs que la référence dans le même run.
+  if (candidateFailures > referenceFailures) {
     checks.push({
       id: 'f',
       passed: false,
-      detail: `${candidateFailures} analyse(s) en échec chez le modèle candidat — non comparées, à examiner`,
+      detail: `${candidateFailures} analyse(s) en échec chez le candidat contre ${referenceFailures} pour la référence — non comparées, à examiner`,
     });
   }
   return { acceptable: checks.every((c) => c.passed), checks };
