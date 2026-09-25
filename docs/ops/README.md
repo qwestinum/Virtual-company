@@ -8,6 +8,9 @@ Documentation opérationnelle du prototype Virtual Enterprise (QWESTINUM).
 - **[deploiement-client.md](deploiement-client.md)** — modèle d'isolation
   (**Voie A** : une instance par client) + runbook de provisioning + plan de
   **déploiement réel en production** (avec les points durs à régler avant).
+- **[comparaison-modeles-scoring.md](comparaison-modeles-scoring.md)** — protocole de
+  comparaison gpt-4o / gpt-4o-mini sur l'analyse des CV (script hors produit, dry-run,
+  décisions comparées et pas seulement les scores). Cadré, non implémenté.
 
 ## Rappel d'architecture (état actuel)
 
