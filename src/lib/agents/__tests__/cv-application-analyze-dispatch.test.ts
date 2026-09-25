@@ -406,3 +406,42 @@ describe('analyzeCVApplication — mode hybride (CV_ANALYZER_LEDGER_MODEL)', () 
     expect(await run()).toEqual([undefined, undefined, undefined, undefined]);
   });
 });
+
+describe('analyzeCVApplication — la consigne de citation contrôlée suit le contrôle (25/09/2026)', () => {
+  beforeEach(() => chatCompleteJsonMock.mockReset());
+  afterEach(() => {
+    delete process.env.CV_ANALYZER_LEDGER_MODEL;
+  });
+
+  const verdictsSystemPrompt = async () => {
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-T',
+      isValidated: true,
+      criteria: [buildCriterion({ id: 'b', label: 'Anglais', level: 'important' })],
+    };
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(
+        jsonResult({ verdicts: [{ criterionId: '1', llmDecision: 'satisfait', llmJustification: 'ok', llmCVQuote: 'anglais courant' }] }),
+      )
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    await analyzeCVApplication({ ...BASE_INPUT, sheet });
+    const messages = chatCompleteJsonMock.mock.calls[2]![0] as { role: string; content: string }[];
+    return messages.find((m) => m.role === 'system')!.content;
+  };
+
+  it('sans mode hybride, le prompt ne décrit AUCUN contrôle — il n’a pas lieu', async () => {
+    const { QUOTE_CHECK_RULE } = await import('@/lib/agents/cv-extraction-prompts');
+    const sys = await verdictsSystemPrompt();
+    expect(sys).not.toContain(QUOTE_CHECK_RULE);
+    expect(sys).not.toMatch(/RECHERCHÉE dans le CV après ta réponse/);
+  });
+
+  it('en mode hybride, la consigne accompagne la garde', async () => {
+    process.env.CV_ANALYZER_LEDGER_MODEL = 'gpt-4o-mini';
+    const { QUOTE_CHECK_RULE } = await import('@/lib/agents/cv-extraction-prompts');
+    expect(await verdictsSystemPrompt()).toContain(QUOTE_CHECK_RULE);
+  });
+});

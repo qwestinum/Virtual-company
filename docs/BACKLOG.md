@@ -432,7 +432,8 @@ verdict près chez le client ; **Haiku** refusé. Diagnostic et hybride sur 195 
 citations non tenables = recopie du relevé normalisé de gpt-4o ; hybride dans le bruit sur (e),
 activable par `CV_ANALYZER_LEDGER_MODEL`. **Décidé le 25/09** (§6sexies) : hybride adopté, garde
 fusionnée et couplée à l'hybride, seuils relatifs au bruit, prompt sans effet annulé. **Reste
-ouvert** : recette sur le dev, activation chez le client, non-régression avant/après sur 20 CV ;
+ouvert** : recette sur le dev, activation chez le client, non-régression avant/après sur 20 CV ; mesurer l'effet propre de la consigne
+de citation contrôlée (bras « hybride sans consigne ») ;
 Mistral / OVHcloud / Scaleway sur le jeu synthétique uniquement (chantier du jeu de
 démonstration).
 

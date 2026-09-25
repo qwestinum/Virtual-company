@@ -92,7 +92,17 @@ export function buildLedgerUserPrompt(cvText: string, fileName: string): string 
 
 // ── 2. Extraction des décisions par critère (verdicts) ──────────────────────
 
-export function buildVerdictsSystemPrompt(): string {
+/**
+ * Consigne de citation EXACTE et CONTRÔLÉE — envoyée SEULEMENT quand le
+ * contrôle a lieu (mode hybride, qui allume la garde « aucun oui sans
+ * preuve »). Décision du 25/09/2026 : un prompt ne décrit jamais un contrôle
+ * qui n'a pas lieu. Son effet propre n'est pas mesuré (bras « hybride sans
+ * consigne », plus tard).
+ */
+export const QUOTE_CHECK_RULE =
+  "- CITATION EXACTE, CONTRÔLÉE : llmCVQuote est une SOUS-CHAÎNE EXACTE du texte placé sous « CV à évaluer », copiée d'un seul tenant — jamais le RELEVÉ DE FAITS (reformulé, il n'est pas le CV), jamais une reformulation, jamais un mot remplacé, jamais deux lignes recollées, jamais de ponctuation ajoutée. Pour citer deux passages distincts, sépare-les par « … ». Chaque citation est RECHERCHÉE dans le CV après ta réponse : un « satisfait » ou « partiel » dont la citation ne s'y retrouve pas est automatiquement ramené à \"non_verifiable\".";
+
+export function buildVerdictsSystemPrompt(options: { quoteCheck?: boolean } = {}): string {
   return [
     "Tu es l'évaluateur par critère du CV Analyzer RH. Pour CHAQUE critère de la fiche de scoring fournie, tu rends une décision qualitative SANS calculer aucune note — le score est calculé ensuite par le système, pas par toi.",
     '',
@@ -114,7 +124,7 @@ export function buildVerdictsSystemPrompt(): string {
     "- SOURCE CANONIQUE : un RELEVÉ DE FAITS du candidat (outils, méthodologies, compétences, domaines, années) t'est fourni AVANT le CV. C'est la référence partagée par TOUS les critères. Un élément présent au relevé (ex. l'outil « Xray ») est PRÉSENT pour CHAQUE critère qui le vise : tu ne peux JAMAIS le déclarer « non » (absent) pour un critère alors qu'il figure au relevé. Inversement, juge un critère cohéremment d'un critère à l'autre — un même fait reçoit le même statut partout.",
     "- PRÉSENCE ≠ SATISFACTION : qu'un fait figure au relevé empêche de dire « non » (absent), mais n'impose JAMAIS « satisfait ». « Satisfait » exige que la PREUVE couvre le critère ENTIER (voir « critères composites » et « test de preuve » ci-dessous). Un fait au relevé qui ne couvre qu'une PARTIE du critère donne « partiel », pas « satisfait ».",
     "- Pour \"satisfait\" ou \"partiel\", tu DOIS fournir dans llmCVQuote un extrait VERBATIM du CV qui le prouve. Sans extrait littéral probant → \"non_verifiable\" (jamais \"satisfait\").",
-    "- CITATION EXACTE, CONTRÔLÉE : llmCVQuote est une SOUS-CHAÎNE EXACTE du texte placé sous « CV à évaluer », copiée d'un seul tenant — jamais le RELEVÉ DE FAITS (reformulé, il n'est pas le CV), jamais une reformulation, jamais un mot remplacé, jamais deux lignes recollées, jamais de ponctuation ajoutée. Pour citer deux passages distincts, sépare-les par « … ». Chaque citation est RECHERCHÉE dans le CV après ta réponse : un « satisfait » ou « partiel » dont la citation ne s'y retrouve pas est automatiquement ramené à \"non_verifiable\".",
+    ...(options.quoteCheck ? [QUOTE_CHECK_RULE] : []),
     "- CITATION ANCRÉE SUR LE DOMAINE : pour tout verdict satisfait, partiel ou non sur un critère qui SPÉCIFIE un domaine, la llmCVQuote doit être une phrase LITTÉRALE du CV contenant EXPLICITEMENT ce domaine. Si aucune phrase du CV ne contient ce domaine → non_verifiable. Une citation portant sur un autre domaine, même proche, n'est JAMAIS une justification recevable.",
     "- N'attribue JAMAIS au candidat une expérience, un domaine, une compétence ou un chiffre qui ne figure pas EXPLICITEMENT dans le CV. Si le critère porte sur un domaine X et que le CV décrit un domaine Y différent, la réponse est \"non\" (ou \"non_verifiable\") — surtout pas \"satisfait\".",
     "- DISCIPLINE DU DOMAINE : avant d'évaluer un critère, identifie le(s) mot(s)-clé(s) de DOMAINE qu'il contient (ex. « recrutement » dans « expérience en recrutement »). Tu n'évalues ce critère QU'À PARTIR de phrases du CV qui mentionnent EXPLICITEMENT ce domaine. Ne reporte JAMAIS une expérience, une durée ou une compétence d'un AUTRE domaine — même proche, même présente au relevé de faits — pour juger un critère qui spécifie un domaine précis. Le qualificatif de domaine du critère prime TOUJOURS sur l'expérience générale du candidat.",

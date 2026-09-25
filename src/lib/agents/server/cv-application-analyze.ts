@@ -438,7 +438,9 @@ export async function analyzeCVApplication(
     try {
       const r = await chatCompleteJson(
         [
-          { role: 'system', content: buildVerdictsSystemPrompt() },
+          // La consigne de citation contrôlée n'est envoyée QUE si le contrôle
+          // a lieu : même réglage que la garde (mode hybride).
+          { role: 'system', content: buildVerdictsSystemPrompt({ quoteCheck: Boolean(ledgerModel) }) },
           {
             role: 'user',
             content: buildVerdictsUserPrompt(
