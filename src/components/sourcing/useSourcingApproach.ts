@@ -15,6 +15,14 @@
  * Une rédaction arrivée après la fermeture ou après une plus récente a
  * pourtant créé une approche côté serveur : elle est ANNULÉE, sinon elle
  * resterait en suspens avec un lien émis que personne n'a vu.
+ *
+ * ⚠️ UNE APPROCHE CONFIRMÉE NE S'ANNULE PLUS (25/09/2026). Fermer la fenêtre
+ * annule l'approche affichée — y compris, avant ce correctif, celle qu'on
+ * venait de CONFIRMER : le profil restait « contacté », mais le lien déjà
+ * collé dans le message était révoqué (la personne tombait sur une page
+ * « indisponible ») et la carte de campagne affichait « Aucune approche
+ * préparée ». Une confirmation réussie retire l'approche du champ de
+ * l'annulation.
  */
 
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -45,6 +53,8 @@ const annulerCote = (approachId: string) =>
 export function useSourcingApproach() {
   const [approche, setApproche] = useState<ApproachState | null>(null);
   const jeton = useRef(0);
+  // Approches confirmées : fermer la fenêtre ne doit JAMAIS les annuler.
+  const confirmees = useRef(new Set<string>());
   // Lu dans les rappels sans les recréer à chaque rendu.
   const courante = useRef<ApproachState | null>(null);
   useLayoutEffect(() => {
@@ -94,7 +104,7 @@ export function useSourcingApproach() {
   const changerFormat = useCallback(
     (p: SourcingProfileView, format: ApproachFormat) => {
       const ancienne = courante.current?.prepared;
-      if (ancienne) annulerCote(ancienne.approachId);
+      if (ancienne && !confirmees.current.has(ancienne.approachId)) annulerCote(ancienne.approachId);
       void preparer(p, 'linkedin', format);
     },
     [preparer],
@@ -103,7 +113,7 @@ export function useSourcingApproach() {
   const fermer = useCallback(() => {
     jeton.current++;
     const prepared = courante.current?.prepared;
-    if (prepared) annulerCote(prepared.approachId);
+    if (prepared && !confirmees.current.has(prepared.approachId)) annulerCote(prepared.approachId);
     setApproche(null);
   }, []);
 
@@ -115,7 +125,10 @@ export function useSourcingApproach() {
       message,
       url: prepared.url,
     }).catch(() => null);
-    if (res?.ok) return null;
+    if (res?.ok) {
+      confirmees.current.add(prepared.approachId);
+      return null;
+    }
     const json = res ? ((await res.json().catch(() => ({}))) as { message?: string }) : null;
     return json?.message ?? 'L’approche n’a pas pu être enregistrée.';
   }, []);

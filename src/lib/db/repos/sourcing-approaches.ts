@@ -157,17 +157,48 @@ export async function confirmSourcingApproach(
   }
 }
 
-/** Révocation : seulement un lien jamais ouvert (un lien ouvert a pu engager la personne). */
+/**
+ * Révocation : seulement un lien jamais ouvert (un lien ouvert a pu engager la
+ * personne) ET jamais confirmé (25/09/2026).
+ *
+ * ⚠️ Une approche CONFIRMÉE a son lien dans un message déjà copié, peut-être
+ * déjà envoyé : la révoquer rend ce lien mort sans que personne le sache. Le
+ * client annulait ainsi, à la fermeture de la fenêtre, l'approche qu'il venait
+ * de confirmer. La confirmation est la SEULE écriture sur une approche active
+ * jamais ouverte, et le déclencheur `touch_updated_at` la date : une approche
+ * dont `updated_at` a quitté `created_at` a été confirmée. Lecture puis
+ * écriture conditionnée sur l'`updated_at` lu (contrôle optimiste) — une
+ * confirmation qui passe entre les deux fait échouer la révocation.
+ */
 export async function revokeSourcingApproach(id: string): Promise<boolean> {
-  const { data, error } = await requireServerSupabase()
+  const db = requireServerSupabase();
+  const read = await db
+    .from('sourcing_approaches')
+    .select('created_at, updated_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (read.error) throw new Error(`revokeSourcingApproach/read: ${read.error.message}`);
+  const row = read.data as { created_at: string; updated_at: string } | null;
+  if (!row || !isUntouchedApproach(row)) return false;
+  const { data, error } = await db
     .from('sourcing_approaches')
     .update({ status: 'revoked' })
     .eq('id', id)
     .eq('status', 'active')
     .is('first_opened_at', null)
+    .eq('updated_at', row.updated_at)
     .select('id');
   if (error) throw new Error(`revokeSourcingApproach: ${error.message}`);
   return (data ?? []).length > 0;
+}
+
+/**
+ * Jamais modifiée depuis sa préparation — donc jamais confirmée. PUR.
+ * Comparaison des chaînes telles que Postgres les rend (même ligne, même
+ * format, microsecondes comprises) : `Date.parse` tronquerait à la milliseconde.
+ */
+export function isUntouchedApproach(row: { created_at: string; updated_at: string }): boolean {
+  return row.updated_at === row.created_at;
 }
 
 export async function countRecruiterApproachesForCampaign(recruiterId: string, campaignId: string): Promise<number> {
