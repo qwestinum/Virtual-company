@@ -1,6 +1,8 @@
 # Comparaison de modèles pour le scoring — gpt-4o vs gpt-4o-mini
 
-> **Statut (25/09/2026)** : cadré, **non implémenté**. Script hors produit, dry-run pur.
+> **Statut (25/09/2026)** : **implémenté** — `scripts/compare-models.ts`, logique pure dans
+> `src/lib/model-comparison/`. Premier run : gpt-4o (référence + bruit) contre gpt-4o-mini sur la
+> base de dev. Script hors produit, dry-run pur.
 > **Point d'arrêt** : le rapport, avant toute décision de bascule. Le modèle en service ne
 > change pas tant que la liste des désaccords n'a pas été relue à la main.
 
@@ -73,8 +75,9 @@ npm run compare:models -- --env=.env.local [--sample=N|all] [--noise=20]
 - **Dry-run pur** : aucune écriture produit, aucun mail, aucun claim. Le modèle en service ne
   change pas (`OPENAI_CHAT_MODEL` intact dans les fichiers d'environnement).
 - **Aucun nom ni contenu de CV** dans le rapport : identifiants et chiffres seulement.
-- **Coût attendu** : ~100 CV × mini (~0,003 $) + 20 CV × gpt-4o (~0,05 $) ≈ **1,5 $**.
-  Affiché avant exécution, confirmation demandée.
+- **Coût** : mesuré au premier essai à **0,05 $ par CV pour gpt-4o** et **0,003 $ pour mini**.
+  Avec la référence rejouée (arbitrage 3) : ~100 CV ⇒ ≈ 5 $ + 20 de bruit ≈ 6 $. Estimé et
+  affiché avant exécution, confirmation demandée (`--yes` pour la passer, jamais le plafond).
 
 ## 6. Points à régler avant d'écrire le script (relevés dans le code le 25/09/2026)
 
@@ -105,6 +108,89 @@ npm run compare:models -- --env=.env.local [--sample=N|all] [--noise=20]
 5. **Le fournisseur doit rester OpenAI** pendant le test (`CV_ANALYZER_PROVIDER` absent ou
    `openai`). En mode `anthropic`, `OPENAI_CHAT_MODEL` n'est pas lu du tout. Le script refuse de
    démarrer sinon.
+
+## 6bis. Arbitrages du donneur d'ordre (25/09/2026) et mise en œuvre
+
+1. **Un processus par modèle, réglages posés par le script** (`--candidate-provider`,
+   `--candidate-model`, `--candidate-base-url`, `--reference-model`). L'environnement du
+   sous-processus est construit par `childEnv` (`src/lib/model-comparison/arm-env.ts`) : fichier
+   `.env` + réglages du bras imposés, et les réglages absents sont RETIRÉS. Le bras **refuse de
+   démarrer** si son environnement effectif diffère de ce qu'il demande (`envMismatches`), puis
+   vérifie, CV par CV, que le modèle **renvoyé par l'API** est bien celui demandé (`isSameModel` :
+   égalité ou suffixe de date seulement — `gpt-4o-mini-2024-07-18` n'est PAS un `gpt-4o`). Au
+   premier écart, le bras s'arrête. Le modèle réellement renvoyé est écrit dans chaque ligne du
+   CSV.
+   **Adaptateur « compatible OpenAI par URL de base »** préparé pour Mistral / OVHcloud / Scaleway
+   (`src/lib/ai/openai-endpoint.ts`) : `OPENAI_BASE_URL` (https seulement) +
+   `OPENAI_COMPATIBLE_API_KEY` (la clé OpenAI n'est **jamais** envoyée à un tiers). Seuls les appels
+   de chat changent de destination, la transcription reste chez OpenAI. **Toute URL deepseek.com
+   est refusée**, sous-domaines compris, au seul point où le client est construit. Restent à
+   vérifier fournisseur par fournisseur avant un vrai run : graine (`random_seed` chez Mistral),
+   mode JSON, nom de modèle renvoyé, tarif (absent de `pricing.ts` ⇒ coût compté 0, signalé à
+   l'estimation).
+2. **Coût à 0 sur les noms datés** : corrigé à part (`pricingKey`, commit `0b65440`) — c'était
+   aussi la carte des coûts de l'administration en production.
+3. **Référence = gpt-4o rejoué aujourd'hui** sur tout l'échantillon (même code, même moment) ;
+   **bruit = second rejeu gpt-4o** sur `--noise` CV. La valeur stockée en base n'entre pas dans la
+   comparaison.
+4. **Bruit mesuré, pas éliminé.**
+
+**Ce que le script fait en plus du protocole** :
+- **Dédoublonnage** : le même CV envoyé plusieurs fois sur la même campagne (fréquent en recette)
+  n'est compté qu'une fois. Sur la base de dev, **27 des 47 analyses rejouables** étaient des
+  renvois ; il reste **20 CV distincts**.
+- **Candidatures sourcing écartées** : leur zone est FORCÉE à l'admission, ce n'est pas une
+  décision du modèle.
+- **Phases dégradées** comptées par bras (relevé de faits, extraction candidat, narration en échec
+  après réessais) : un modèle qui rate le relevé juge ensuite sans lui.
+- **Plafond de coût** (`--max-cost`, défaut 6 $) vérifié sur l'estimation AVANT tout appel ;
+  `--estimate-only` pour chiffrer sans lancer ; reprise d'un run interrompu dans le même `--out`.
+- **Sortie** : `rapport.md` et `comparison.csv` (identifiants et chiffres) ; `details.json` (les
+  deux verdicts côte à côte AVEC citations et justifications, pour la relecture — données
+  personnelles). `--out` est refusé s'il pointe dans le dépôt.
+- **Garde structurelle** (`src/lib/model-comparison/__tests__/script-guard.test.ts`) : sur TOUT le
+  graphe d'imports atteignable depuis le script (imports dynamiques compris), aucun repo, émetteur,
+  file HITL, claim ni surface du produit ; seul le script parle à la base, et sans aucun verbe
+  d'écriture. Sondée : une écriture directe et un import indirect de la file HITL la font rougir.
+
+**Limite du premier run** : 20 CV, c'est peu. Un seul désaccord de zone fait tomber l'accord à
+95 %. Pour conclure, il faut un échantillon plus large — la base de production (lecture seule,
+même script, `--env` du client) ou de nouveaux CV de recette. À décider.
+
+## 6ter. Premier run — base de dev, 25/09/2026
+
+20 CV distincts · gpt-4o (référence + bruit) contre gpt-4o-mini · coût réel **1,84 $** (0,045 $ par
+CV pour gpt-4o, 0,002 $ pour mini) · 14 s par CV pour gpt-4o, 11 s pour mini. Rapport complet dans
+le scratchpad de la session (hors dépôt).
+
+| | gpt-4o contre lui-même (bruit) | gpt-4o-mini contre gpt-4o |
+|---|---:|---:|
+| CV comparés | 20 | 18 (+ 2 analyses abandonnées) |
+| Δscore moyen absolu | 4,6 | **19,0** |
+| Accord de zone | 95,0 % | **77,8 %** |
+| Basculements accepté ↔ refus | 0 | 0 |
+| Accord des verdicts par critère | 93,0 % | 71,2 % |
+| « Non vérifiable » devenu « non » | 0 | 0 |
+| Accord sur les rédhibitoires | 100 % | 100 % |
+| Citations introuvables | 17,3 % | 19,0 % |
+
+**Verdict proposé : REFUSÉ** — (b) zone et écart de score, (e) citations, (f) deux analyses
+abandonnées (verdicts inexploitables après réessais, sur des CV que gpt-4o analyse sans peine).
+
+Lecture, avant relecture des désaccords à la main :
+- **Le sens des écarts compte plus que leur taille.** Trois dossiers « à décider » passent
+  « accepté » chez mini (+19, +44, +46 points), sur des critères SOUPLES (sensibilité UX, challenge
+  du besoin, résolution de problèmes) que gpt-4o juge « non vérifiables » et que mini déclare
+  « satisfaits ». `auto_accept` est la seule zone qui envoie seule : ce sont des invitations qui
+  partiraient sans relecture. L'invariant « aucun négatif sans preuve » tient (0 « non vérifiable » →
+  « non ») ; c'est l'invariant SYMÉTRIQUE — aucun positif sans preuve — que mini affaiblit.
+- **Le critère (e) tel qu'écrit ne départage rien** : gpt-4o lui-même rend 17 % de citations
+  introuvables mot pour mot (un mot changé sur quinze, des lignes recollées — ni ligature ni
+  ponctuation, ces deux fausses alertes ont été retirées du contrôle). Le seuil de 1 % est hors
+  d'atteinte pour la référence. À redéfinir **relativement au bruit** (ex. « pas pire que gpt-4o
+  + 2 points »), ou à traiter comme un défaut du prompt commun aux deux modèles — à décider.
+- **20 CV ne suffisent pas à conclure** : l'écart est net (19 points contre un bruit de 4,6), mais
+  l'échantillon est petit et ne contient aucun des cas sentinelles.
 
 ## 7. Outil voisin
 

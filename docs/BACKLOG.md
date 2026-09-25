@@ -423,10 +423,13 @@ mais touche le chemin critique de tous les agents. Tester d'abord `gpt-4o`
 
 ## Comparer gpt-4o-mini à gpt-4o sur l'analyse des CV
 
-**Statut** : cadré le 25/09/2026, non implémenté. Protocole complet :
-[`docs/ops/comparaison-modeles-scoring.md`](ops/comparaison-modeles-scoring.md).
-**Prérequis** : l'entrée suivante (coût OpenAI à 0 sur les modèles datés), sinon l'axe coût du
-rapport est faux. **Point d'arrêt** : le rapport, avant toute bascule du modèle en service.
+**Statut** : implémenté le 25/09/2026 (`npm run compare:models`), premier run sur la base de dev
+(20 CV distincts — trop peu pour conclure seul). Protocole et arbitrages :
+[`docs/ops/comparaison-modeles-scoring.md`](ops/comparaison-modeles-scoring.md). Prérequis (coût
+à 0 sur les noms datés) réglé. **Point d'arrêt** : le rapport, avant toute bascule du modèle en
+service. **Reste ouvert** : élargir l'échantillon (base de production en lecture, ou CV de recette),
+et vérifier un fournisseur « compatible OpenAI » (Mistral / OVHcloud / Scaleway) avant de le
+rejouer.
 
 ---
 
