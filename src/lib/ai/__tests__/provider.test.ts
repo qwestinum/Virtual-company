@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { AIProviderError } from '@/lib/ai/errors';
-import { estimateCost } from '@/lib/ai/pricing';
+import { estimateCost, isKnownModel, pricingKey } from '@/lib/ai/pricing';
 
 const chatCreateMock = vi.fn();
 const audioCreateMock = vi.fn();
@@ -37,6 +37,22 @@ describe('estimateCost', () => {
 
   it('returns 0 for unknown model', () => {
     expect(estimateCost('unknown-model', 1000, 1000)).toBe(0);
+  });
+
+  // Les fournisseurs RENVOIENT un nom daté : sans normalisation, 0 $ partout.
+  it('prices dated model names as their family', () => {
+    expect(estimateCost('gpt-4o-2024-08-06', 1_000_000, 1_000_000)).toBeCloseTo(12.5, 5);
+    expect(estimateCost('gpt-4o-mini-2024-07-18', 1_000_000, 1_000_000)).toBeCloseTo(0.75, 5);
+    expect(estimateCost('claude-sonnet-4-6-20250929', 1_000_000, 1_000_000)).toBeCloseTo(18, 5);
+    expect(pricingKey('gpt-4o-2024-08-06')).toBe('gpt-4o');
+    expect(isKnownModel('gpt-4o-mini-2024-07-18')).toBe(true);
+  });
+
+  it('never strips into a DIFFERENT model, nor prices an unknown dated name', () => {
+    // « gpt-4o-mini » daté ne doit pas retomber sur « gpt-4o ».
+    expect(pricingKey('gpt-4o-mini-2024-07-18')).toBe('gpt-4o-mini');
+    expect(pricingKey('gpt-5-2026-01-01')).toBeNull();
+    expect(estimateCost('gpt-5-2026-01-01', 1000, 1000)).toBe(0);
   });
 });
 

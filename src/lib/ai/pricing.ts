@@ -21,12 +21,28 @@ const PRICING: Record<string, ModelPricing> = {
   },
 };
 
+/**
+ * La clé de tarif d'un nom de modèle. Les fournisseurs RENVOIENT un nom daté
+ * (`gpt-4o-2024-08-06`, `gpt-4o-mini-2024-07-18`, `claude-sonnet-4-6-20250929`)
+ * alors que la table est tenue par famille : sans cette normalisation, tout
+ * appel OpenAI était estimé à 0 $ — et la carte des coûts de l'administration
+ * avec lui (constat du 25/09/2026). Le nom exact reste prioritaire : une entrée
+ * datée ajoutée un jour à la table l'emporte sur sa famille.
+ */
+export function pricingKey(model: string): string | null {
+  const name = model.trim();
+  if (name in PRICING) return name;
+  const family = name.replace(/-\d{4}-\d{2}-\d{2}$/, '').replace(/-\d{8}$/, '');
+  return family in PRICING ? family : null;
+}
+
 export function estimateCost(
   model: string,
   promptTokens: number,
   completionTokens: number,
 ): number {
-  const entry = PRICING[model];
+  const key = pricingKey(model);
+  const entry = key ? PRICING[key] : undefined;
   if (!entry) return 0;
   const prompt = (promptTokens / 1_000_000) * entry.promptUsdPerMTokens;
   const completion =
@@ -35,5 +51,5 @@ export function estimateCost(
 }
 
 export function isKnownModel(model: string): boolean {
-  return model in PRICING;
+  return pricingKey(model) !== null;
 }
