@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   aggregate,
   compareCv,
+  evidenceOf,
   isSameModel,
   pairArms,
   proposeVerdict,
@@ -120,6 +121,26 @@ describe('verdict proposé', () => {
     expect(proposeVerdict(aggregate(pairsOf(40, 5)), 2, 0).checks.find((c) => c.id === 'b')!.passed).toBe(true);
   });
 
+  it('(e) redéfini : pas plus de 2 points au-dessus de la RÉFÉRENCE (et non un seuil absolu)', () => {
+    // 10 CV × 10 verdicts positifs. Référence : 1 sans preuve sur 10 par CV (10 %).
+    const verdictsWith = (unproven: number) =>
+      Array.from({ length: 10 }, (_, i) => v(String(i), 'satisfait', i >= unproven));
+    const pairs = (candUnprovenPerCv: number[]) =>
+      candUnprovenPerCv.map((u, i) => compareCv(ok(String(i), 60, 'gray', verdictsWith(1)), ok(String(i), 60, 'gray', verdictsWith(u))));
+    // 12 sur 100 = 12 % ≤ 10 % + 2 : passe.
+    expect(proposeVerdict(aggregate(pairs([2, 2, 1, 1, 1, 1, 1, 1, 1, 1])), 2, 0).checks.find((c) => c.id === 'e')!.passed).toBe(true);
+    // 13 sur 100 : ne passe pas.
+    expect(proposeVerdict(aggregate(pairs([2, 2, 2, 1, 1, 1, 1, 1, 1, 1])), 2, 0).checks.find((c) => c.id === 'e')!.passed).toBe(false);
+  });
+
+  it('les preuves se lisent sur la rétrogradation (depuis la garde) ou sur la citation (avant)', () => {
+    const downgraded: ArmVerdict = { ...v('1', 'non_verifiable', null), evidenceDowngrade: { from: 'satisfait', reason: 'quote_not_found' } };
+    expect(evidenceOf([downgraded, v('2', 'satisfait', true), v('3', 'partiel', false), v('4', 'non', null), v('5', 'non_verifiable', null)])).toEqual({
+      positives: 3,
+      unproven: 2,
+    });
+  });
+
   it('(f) une analyse en échec chez le candidat empêche l’acceptation', () => {
     const r = proposeVerdict(aggregate(pairsOf(40)), 2, 1);
     expect(r.acceptable).toBe(false);
@@ -162,8 +183,7 @@ describe('rapport', () => {
       projectRef: 'dev',
       sample: { eligible: 2, selected: 2, excluded: {}, sentinelsRequested: 0, sentinelsFound: 0 },
       arms: [summarizeArm('référence', { provider: 'openai', requestedModel: 'gpt-4o', baseUrl: null }, ref)],
-      outcome,
-      candidateLabel: 'gpt-4o-mini',
+      candidates: [{ label: 'gpt-4o-mini', outcome }],
     });
     const csv = renderCsv(outcome.candidate.pairs, ref, cand);
     for (const out of [md, csv]) {

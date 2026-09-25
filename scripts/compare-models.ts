@@ -2,23 +2,31 @@
  * Comparaison de modèles pour l'analyse des CV — HORS PRODUIT, dry-run pur.
  * Protocole : docs/ops/comparaison-modeles-scoring.md.
  *
- *   npm run compare:models -- --env=.env.local [--sample=N|all] [--noise=20]
- *        [--candidate-model=gpt-4o-mini] [--candidate-provider=openai]
- *        [--candidate-base-url=https://…] [--reference-model=gpt-4o]
- *        [--include=<id>,<id>] [--out=<répertoire>] [--concurrency=3]
- *        [--max-cost=6] [--yes] [--estimate-only]
+ *   npm run compare:models -- --env=<fichier> --confirm-project=<ref>
+ *        [--candidate=<nom>,provider=openai|anthropic,model=<m>[,ledger=<m>][,base-url=https://…]]…
+ *        [--reference-model=gpt-4o] [--sample=N|all] [--noise=20] [--include=<id>,<id>]
+ *        [--out=<répertoire>] [--concurrency=3] [--max-cost=6] [--yes]
+ *        [--estimate-only] [--report-only]
  *
- * Trois bras, chacun dans SON processus (le modèle est lu une fois, au
- * chargement du fournisseur) :
+ * Exemples :
+ *   --candidate=mini,model=gpt-4o-mini
+ *   --candidate=hybride,model=gpt-4o,ledger=gpt-4o-mini      (relevé de faits sur mini)
+ *   --candidate=haiku,provider=anthropic,model=claude-haiku-4-5
+ *
+ * Bras, chacun dans SON processus (le modèle est lu une fois, au chargement
+ * du fournisseur) :
  *   - référence  : gpt-4o REJOUÉ aujourd'hui sur tout l'échantillon ;
  *   - bruit      : un second rejeu gpt-4o sur `--noise` CV (le plancher) ;
- *   - candidat   : le modèle évalué, sur tout l'échantillon.
+ *   - un bras par `--candidate`, sur tout l'échantillon.
  * La valeur STOCKÉE en base n'est pas la référence : le scoring a changé
  * depuis une partie des analyses, la comparer mélangerait modèle et code.
  *
  * GARANTIES (tenues par `src/lib/model-comparison/__tests__/script-guard.test.ts`) :
  *   - aucune écriture en base : le script ne fait que lire (`select`,
  *     téléchargement du CV), n'importe aucun repo, aucun émetteur, aucun claim ;
+ *   - la base visée se NOMME : `--confirm-project` doit reprendre la référence
+ *     du projet pointé par `--env`, sinon rien ne part — même en lecture, les
+ *     CV de ce projet partent chez les fournisseurs de modèles ;
  *   - l'analyse tourne EN MÉMOIRE par `analyzeCVApplication`, le même chemin
  *     que le produit — rien n'est persisté, aucun gate d'envoi n'est appelé ;
  *   - le modèle en service ne change pas : les réglages du bras sont posés
@@ -30,13 +38,13 @@ import { spawn } from 'node:child_process';
 import { hash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve, isAbsolute } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-import { childEnv, envMismatches, type ArmSettings } from '@/lib/model-comparison/arm-env';
+import { allowedModels, childEnv, envMismatches, parseArmSpec, type ArmSettings } from '@/lib/model-comparison/arm-env';
 import type { ArmFailureKind, ArmRecord, ArmVerdict, ReplayItem } from '@/lib/model-comparison/types';
 import type { ScoringSheet } from '@/types/scoring';
 
@@ -44,6 +52,7 @@ import type { ScoringSheet } from '@/types/scoring';
 
 const argv = process.argv.slice(2);
 const val = (flag: string): string | undefined => argv.find((a) => a.startsWith(`--${flag}=`))?.slice(flag.length + 3);
+const vals = (flag: string): string[] => argv.filter((a) => a.startsWith(`--${flag}=`)).map((a) => a.slice(flag.length + 3));
 const has = (flag: string): boolean => argv.includes(`--${flag}`);
 
 function fail(msg: string): never {
@@ -75,6 +84,7 @@ async function runWorker(): Promise<void> {
     provider: (val('provider') as ArmSettings['provider']) ?? fail('--provider manquant'),
     model: val('model') ?? fail('--model manquant'),
     baseUrl: val('base-url') ?? null,
+    ledgerModel: val('ledger-model') ?? null,
   };
   const arm = val('arm') ?? fail('--arm manquant');
   const itemsPath = val('items') ?? fail('--items manquant');
@@ -94,6 +104,7 @@ async function runWorker(): Promise<void> {
   const { UnprovenNegativeVerdictError } = await import('@/lib/scoring/verdict-integrity');
   const { isSameModel, quoteFoundInCv } = await import('@/lib/model-comparison/compare');
   const sheets = JSON.parse(readFileSync(sheetsPath, 'utf8')) as Record<string, ScoringSheet>;
+  const allowed = allowedModels(settings);
 
   const items = JSON.parse(readFileSync(itemsPath, 'utf8')) as ReplayItem[];
   const done = new Set<string>();
@@ -103,7 +114,8 @@ async function runWorker(): Promise<void> {
     }
   }
   const todo = items.filter((i) => !done.has(i.analysisId));
-  console.log(`[${arm}] ${settings.provider}/${settings.model} — ${todo.length} CV à analyser (${done.size} déjà faits)`);
+  const label = settings.ledgerModel ? `${settings.model} (relevé : ${settings.ledgerModel})` : settings.model;
+  console.log(`[${arm}] ${settings.provider}/${label} — ${todo.length} CV à analyser (${done.size} déjà faits)`);
 
   let aborted: string | null = null;
   let finished = 0;
@@ -127,10 +139,11 @@ async function runWorker(): Promise<void> {
         computedAt: '2026-01-01T00:00:00.000Z',
         thresholdLow: item.thresholdLow,
         thresholdHigh: item.thresholdHigh,
+        ...(settings.ledgerModel ? { phaseModels: { ledger: settings.ledgerModel } } : {}),
       });
       const models = out.metrics.models ?? [];
-      const wrong = models.find((m) => !isSameModel(settings.model, m));
-      if (wrong) aborted = `modèle renvoyé « ${wrong} » ≠ modèle demandé « ${settings.model} »`;
+      const wrong = models.find((m) => !allowed.some((a) => isSameModel(a, m)));
+      if (wrong) aborted = `modèle renvoyé « ${wrong} » ∉ modèles demandés (${allowed.join(', ')})`;
       const sr = out.application.scoringResult;
       const knockoutIds = new Set(sr.breakdown.filter((b) => b.criticityLevel === 'redhibitoire').map((b) => b.criterionId));
       record = {
@@ -147,6 +160,7 @@ async function runWorker(): Promise<void> {
           quote: b.llmCVQuote,
           justification: b.llmJustification,
           quoteFound: quoteFoundInCv(b.llmCVQuote, item.cvText),
+          ...(b.evidenceDowngrade ? { evidenceDowngrade: b.evidenceDowngrade } : {}),
         })),
         knockoutsFailed: sr.hardFailures.filter((f) => knockoutIds.has(f.criterionId)).map((f) => f.criterionId),
         durationMs: Date.now() - started,
@@ -162,8 +176,8 @@ async function runWorker(): Promise<void> {
         analysisId: item.analysisId,
         campaignId: item.campaignId,
         kind: classify(err),
-        // Le nom de la classe et un message borné : un message d'erreur de
-        // validation peut citer la sortie du modèle, donc le CV.
+        // Le nom de la classe et un code : un message d'erreur de validation
+        // peut citer la sortie du modèle, donc le CV.
         message: `${err instanceof Error ? err.name : 'Error'}${err instanceof AIProviderError ? ` (${err.code})` : ''}`,
         durationMs: Date.now() - started,
       };
@@ -189,6 +203,8 @@ async function runWorker(): Promise<void> {
 
 type AnalysisRow = { id: string; campaign_id: string | null; source: string; received_at: string };
 type CampaignRow = { id: string; scoring_sheet: { criteria?: unknown[] } | null; threshold_low: number | null; threshold_high: number | null };
+type SampleMeta = { eligible: number; selected: number; excluded: Record<string, number>; sentinelsRequested: number; sentinelsFound: number };
+type ArmPlan = { arm: string; settings: ArmSettings; itemsFile: string; count: number };
 
 /** Où vit le CV d'origine d'une analyse (conventions de persistance du produit). */
 function cvArtifactId(analysisId: string): string {
@@ -233,19 +249,25 @@ async function runMain(): Promise<void> {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
   if (!url || !key) fail('Accès Supabase absent du fichier d’environnement.');
   const projectRef = new URL(url).hostname.split('.')[0] ?? url;
+  // La base se NOMME : même en lecture seule, ses CV partent chez les
+  // fournisseurs de modèles.
+  const confirm = val('confirm-project') ?? fail(`--confirm-project=<ref> est obligatoire (projet pointé : « ${projectRef} »).`);
+  if (confirm !== projectRef) fail(`--confirm-project=« ${confirm} » ≠ projet pointé par ${envPath} : « ${projectRef} ».`);
 
-  const reference: ArmSettings = { provider: 'openai', model: val('reference-model') ?? 'gpt-4o', baseUrl: null };
-  const candidate: ArmSettings = {
-    provider: (val('candidate-provider') as ArmSettings['provider']) ?? 'openai',
-    model: val('candidate-model') ?? 'gpt-4o-mini',
-    baseUrl: val('candidate-base-url') ?? null,
-  };
-  if (!['openai', 'anthropic'].includes(candidate.provider)) fail('--candidate-provider : openai ou anthropic.');
-  if (candidate.baseUrl && candidate.provider !== 'openai') fail('--candidate-base-url ne vaut que pour un point d’accès compatible OpenAI.');
-  if (candidate.baseUrl) {
-    const { resolveOpenAiEndpoint } = await import('@/lib/ai/openai-endpoint');
-    const check = resolveOpenAiEndpoint({ ...process.env, OPENAI_BASE_URL: candidate.baseUrl });
-    if (!check.ok) fail(check.reason);
+  const reference: ArmSettings = { provider: 'openai', model: val('reference-model') ?? 'gpt-4o', baseUrl: null, ledgerModel: null };
+  const specs = vals('candidate');
+  const candidates: { name: string; settings: ArmSettings }[] = [];
+  for (const spec of specs.length ? specs : ['mini,model=gpt-4o-mini']) {
+    const parsed = parseArmSpec(spec);
+    if ('error' in parsed) fail(`--candidate : ${parsed.error}`);
+    if (['reference', 'noise'].includes(parsed.name)) fail(`--candidate : « ${parsed.name} » est un nom réservé.`);
+    if (candidates.some((c) => c.name === parsed.name)) fail(`--candidate : bras « ${parsed.name} » en double.`);
+    if (parsed.settings.baseUrl) {
+      const { resolveOpenAiEndpoint } = await import('@/lib/ai/openai-endpoint');
+      const check = resolveOpenAiEndpoint({ ...process.env, OPENAI_BASE_URL: parsed.settings.baseUrl });
+      if (!check.ok) fail(check.reason);
+    }
+    candidates.push(parsed);
   }
 
   const outDir = resolve(val('out') ?? join(tmpdir(), `compare-models-${new Date().toISOString().replace(/[:.]/g, '-')}`));
@@ -253,13 +275,7 @@ async function runMain(): Promise<void> {
   if (!rel.startsWith('..') && !isAbsolute(rel)) fail(`--out est DANS le dépôt (${outDir}) : ce sont des dossiers de personnes réelles, la sortie va ailleurs.`);
   mkdirSync(outDir, { recursive: true });
 
-  const noiseN = Math.max(0, Number(val('noise') ?? 20));
-  const sampleArg = val('sample') ?? 'all';
-  const include = (val('include') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const concurrency = Math.max(1, Number(val('concurrency') ?? 3));
-  const maxCost = Number(val('max-cost') ?? 6);
-
-  console.log(`\n  Base visée : ${projectRef} (via ${envPath})`);
+  console.log(`\n  Base visée : ${projectRef} (via ${envPath}) — LECTURE SEULE`);
   console.log(`  Sortie     : ${outDir}\n`);
 
   // ── Rapport seul : on recalcule à partir des résultats déjà obtenus ──
@@ -268,9 +284,15 @@ async function runMain(): Promise<void> {
     if (!existsSync(itemsFile)) fail(`--report-only : aucun items.json dans ${outDir}.`);
     const saved = JSON.parse(readFileSync(itemsFile, 'utf8')) as ReplayItem[];
     const meta = JSON.parse(readFileSync(join(outDir, 'sample.json'), 'utf8')) as SampleMeta;
-    await writeReport(outDir, projectRef, saved, meta, reference, candidate);
+    await writeReport(outDir, projectRef, saved, meta, reference, candidates);
     return;
   }
+
+  const noiseN = Math.max(0, Number(val('noise') ?? 20));
+  const sampleArg = val('sample') ?? 'all';
+  const include = (val('include') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const concurrency = Math.max(1, Number(val('concurrency') ?? 3));
+  const maxCost = Number(val('max-cost') ?? 6);
 
   // ── Sélection (lecture seule) ──
   const db = createClient(url, key, { auth: { persistSession: false } });
@@ -341,36 +363,43 @@ async function runMain(): Promise<void> {
     sentinelsRequested: include.length,
     sentinelsFound: include.length - missingSentinels.length,
   };
-  writeFileSync(join(outDir, 'sample.json'), JSON.stringify(sampleMeta));
   const noiseItems = items.slice(0, Math.min(noiseN, items.length));
   const sheets = Object.fromEntries([...new Set(items.map((i) => i.campaignId))].map((id) => [id, campaignById.get(id)!.scoring_sheet]));
   writeFileSync(join(outDir, 'items.json'), JSON.stringify(items));
   writeFileSync(join(outDir, 'noise-items.json'), JSON.stringify(noiseItems));
   writeFileSync(join(outDir, 'sheets.json'), JSON.stringify(sheets));
+  writeFileSync(join(outDir, 'sample.json'), JSON.stringify(sampleMeta));
 
   // ── Estimation du coût, AVANT tout appel ──
   const { estimateCost, isKnownModel } = await import('@/lib/ai/pricing');
   // Quatre appels par CV (candidat, relevé, verdicts, narration) : le CV est
   // relu trois fois, la narration part du score. Ordre de grandeur, ±50 %.
-  const estimate = (model: string, list: ReplayItem[]) =>
-    list.reduce((sum, i) => sum + estimateCost(model, 3 * Math.ceil(i.cvText.length / 3.5) + 7000, 2500), 0);
-  const plan = [
-    { arm: 'reference', settings: reference, list: items },
-    { arm: 'noise', settings: reference, list: noiseItems },
-    { arm: 'candidate', settings: candidate, list: items },
-  ].filter((p) => p.list.length > 0);
-  let total = 0;
+  const perCv = (i: ReplayItem) => ({ prompt: Math.ceil(i.cvText.length / 3.5) + 1750, completion: 625 });
+  const estimate = (s: ArmSettings, list: ReplayItem[]) =>
+    list.reduce((sum, i) => {
+      const { prompt, completion } = perCv(i);
+      const main = 2 * estimateCost(s.model, prompt, completion) + estimateCost(s.model, 1750, completion);
+      const ledger = estimateCost(s.ledgerModel ?? s.model, prompt, completion);
+      return sum + main + ledger;
+    }, 0);
+  const plan: ArmPlan[] = [
+    { arm: 'reference', settings: reference, itemsFile: join(outDir, 'items.json'), count: items.length },
+    { arm: 'noise', settings: reference, itemsFile: join(outDir, 'noise-items.json'), count: noiseItems.length },
+    ...candidates.map((c) => ({ arm: `cand-${c.name}`, settings: c.settings, itemsFile: join(outDir, 'items.json'), count: items.length })),
+  ].filter((p) => p.count > 0);
   console.log(`  Échantillon : ${items.length} CV (éligibles ${eligible.length}) · bruit : ${noiseItems.length}`);
   for (const [why, n] of Object.entries(excluded)) console.log(`    écartées — ${why} : ${n}`);
-  if (include.length) console.log(`  Sentinelles : ${include.length - missingSentinels.length}/${include.length} trouvées`);
+  if (include.length) console.log(`  Sentinelles : ${sampleMeta.sentinelsFound}/${include.length} trouvées`);
   console.log('\n  Coût estimé (ordre de grandeur, ±50 %) :');
+  let total = 0;
   for (const p of plan) {
-    const c = estimate(p.settings.model, p.list);
+    const c = estimate(p.settings, p.arm === 'noise' ? noiseItems : items);
     total += c;
-    const known = isKnownModel(p.settings.model) ? '' : '  ⚠ tarif inconnu : compté 0';
-    console.log(`    ${p.arm.padEnd(10)} ${p.settings.model.padEnd(22)} ${String(p.list.length).padStart(4)} CV  ≈ ${c.toFixed(2)} $${known}`);
+    const unknown = [p.settings.model, p.settings.ledgerModel].filter((m): m is string => !!m && !isKnownModel(m));
+    const label = p.settings.ledgerModel ? `${p.settings.model}+${p.settings.ledgerModel}` : p.settings.model;
+    console.log(`    ${p.arm.padEnd(14)} ${label.padEnd(24)} ${String(p.count).padStart(4)} CV  ≈ ${c.toFixed(2)} $${unknown.length ? `  ⚠ tarif inconnu (${unknown.join(', ')}) : compté 0` : ''}`);
   }
-  console.log(`    ${'TOTAL'.padEnd(10)} ${''.padEnd(22)} ${''.padStart(4)}     ≈ ${total.toFixed(2)} $\n`);
+  console.log(`    ${'TOTAL'.padEnd(14)} ${''.padEnd(24)} ${''.padStart(4)}     ≈ ${total.toFixed(2)} $\n`);
   if (total > maxCost) fail(`Estimation ${total.toFixed(2)} $ > plafond --max-cost=${maxCost} $.`);
   if (has('estimate-only')) return;
   if (!has('yes')) {
@@ -380,30 +409,28 @@ async function runMain(): Promise<void> {
     if (answer.trim().toLowerCase() !== 'oui') fail('Abandon.');
   }
 
-  // ── Les trois bras, chacun dans son processus ──
+  // ── Les bras, chacun dans son processus ──
   const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx');
-  const runArm = (arm: string, settings: ArmSettings, itemsFile: string) =>
+  const runArm = (p: ArmPlan) =>
     new Promise<void>((done, reject) => {
-      const env = childEnv(process.env, settings) as NodeJS.ProcessEnv;
       const child = spawn(
         tsx,
         [
-          'scripts/compare-models.ts', '--worker', `--arm=${arm}`, `--provider=${settings.provider}`, `--model=${settings.model}`,
-          ...(settings.baseUrl ? [`--base-url=${settings.baseUrl}`] : []),
-          `--items=${itemsFile}`, `--sheets=${join(outDir, 'sheets.json')}`, `--output=${join(outDir, `${arm}.jsonl`)}`, `--concurrency=${concurrency}`,
+          'scripts/compare-models.ts', '--worker', `--arm=${p.arm}`, `--provider=${p.settings.provider}`, `--model=${p.settings.model}`,
+          ...(p.settings.baseUrl ? [`--base-url=${p.settings.baseUrl}`] : []),
+          ...(p.settings.ledgerModel ? [`--ledger-model=${p.settings.ledgerModel}`] : []),
+          `--items=${p.itemsFile}`, `--sheets=${join(outDir, 'sheets.json')}`, `--output=${join(outDir, `${p.arm}.jsonl`)}`, `--concurrency=${concurrency}`,
         ],
-        { env, stdio: 'inherit' },
+        { env: childEnv(process.env, p.settings) as NodeJS.ProcessEnv, stdio: 'inherit' },
       );
-      child.on('exit', (code) => (code === 0 ? done() : reject(new Error(`bras ${arm} : code ${code}`))));
+      child.on('exit', (code) => (code === 0 ? done() : reject(new Error(`bras ${p.arm} : code ${code}`))));
     });
-  await Promise.all(
-    plan.map((p) => runArm(p.arm, p.settings, join(outDir, p.arm === 'noise' ? 'noise-items.json' : 'items.json'))),
-  );
+  // Un bras qui échoue n'emporte pas les autres : le rapport dit ce qui manque.
+  const results = await Promise.allSettled(plan.map(runArm));
+  for (const r of results) if (r.status === 'rejected') console.error(`  ⚠ ${(r.reason as Error).message}`);
 
-  await writeReport(outDir, projectRef, items, sampleMeta, reference, candidate);
+  await writeReport(outDir, projectRef, items, sampleMeta, reference, candidates);
 }
-
-type SampleMeta = { eligible: number; selected: number; excluded: Record<string, number>; sentinelsRequested: number; sentinelsFound: number };
 
 async function writeReport(
   outDir: string,
@@ -411,7 +438,7 @@ async function writeReport(
   items: ReplayItem[],
   sample: SampleMeta,
   reference: ArmSettings,
-  candidate: ArmSettings,
+  candidates: { name: string; settings: ArmSettings }[],
 ): Promise<void> {
   const { quoteFoundInCv } = await import('@/lib/model-comparison/compare');
   const { computeOutcome, renderCsv, renderReport, summarizeArm } = await import('@/lib/model-comparison/report');
@@ -434,42 +461,38 @@ async function writeReport(
   };
   const refRecords = readArm('reference');
   const noiseRecords = readArm('noise');
-  const candRecords = readArm('candidate');
-  const outcome = computeOutcome(refRecords, candRecords, noiseRecords.length ? noiseRecords : null);
-  const report = renderReport({
-    generatedAt: new Date().toISOString(),
-    projectRef,
-    sample,
-    arms: [
-      summarizeArm('référence', { provider: reference.provider, requestedModel: reference.model, baseUrl: null }, refRecords),
-      summarizeArm('bruit', { provider: reference.provider, requestedModel: reference.model, baseUrl: null }, noiseRecords),
-      summarizeArm('candidat', { provider: candidate.provider, requestedModel: candidate.model, baseUrl: candidate.baseUrl }, candRecords),
-    ],
-    outcome,
-    candidateLabel: candidate.model,
-  });
-  writeFileSync(join(outDir, 'rapport.md'), report);
-  writeFileSync(join(outDir, 'comparison.csv'), renderCsv(outcome.candidate.pairs, refRecords, candRecords));
-  // Pour la relecture à la main : les deux verdicts côte à côte, AVEC citations
-  // et justifications. Données personnelles — ne quitte pas ce répertoire.
+  const refMeta = { provider: reference.provider, requestedModel: reference.model, baseUrl: null };
+  const arms = [summarizeArm('référence', refMeta, refRecords), summarizeArm('bruit', refMeta, noiseRecords)];
+  const results: { label: string; outcome: ReturnType<typeof computeOutcome> }[] = [];
   const byId = (rs: ArmRecord[]) => new Map(rs.map((r) => [r.analysisId, r]));
   const refMap = byId(refRecords);
-  const candMap = byId(candRecords);
-  writeFileSync(
-    join(outDir, 'details.json'),
-    JSON.stringify(
-      outcome.candidate.pairs.filter((p) => p.disagreeingCriteria.length > 0 || !p.zoneSame || p.quotesInvalid > 0).map((p) => ({
-        analysisId: p.analysisId,
-        reference: refMap.get(p.analysisId),
-        candidate: candMap.get(p.analysisId),
-      })),
-      null,
-      2,
-    ),
-  );
-  console.log(`\n  Verdict proposé : ${outcome.verdict.acceptable ? 'ACCEPTABLE' : 'REFUSÉ'}`);
-  for (const c of outcome.verdict.checks) console.log(`    ${c.passed ? '✅' : '❌'} (${c.id}) ${c.detail}`);
-  console.log(`\n  Rapport : ${join(outDir, 'rapport.md')}\n  CSV     : ${join(outDir, 'comparison.csv')}\n  Détails : ${join(outDir, 'details.json')} (données personnelles)\n`);
+  for (const c of candidates) {
+    const records = readArm(`cand-${c.name}`);
+    const label = c.settings.ledgerModel ? `${c.name} — ${c.settings.model} (relevé : ${c.settings.ledgerModel})` : `${c.name} — ${c.settings.model}`;
+    arms.push(summarizeArm(c.name, { provider: c.settings.provider, requestedModel: c.settings.model, baseUrl: c.settings.baseUrl, ledgerModel: c.settings.ledgerModel }, records));
+    const outcome = computeOutcome(refRecords, records, noiseRecords.length ? noiseRecords : null);
+    results.push({ label, outcome });
+    writeFileSync(join(outDir, `comparison-${c.name}.csv`), renderCsv(outcome.candidate.pairs, refRecords, records));
+    // Pour la relecture à la main : les deux verdicts côte à côte, AVEC citations
+    // et justifications. Données personnelles — ne quitte pas ce répertoire.
+    const candMap = byId(records);
+    writeFileSync(
+      join(outDir, `details-${c.name}.json`),
+      JSON.stringify(
+        outcome.candidate.pairs
+          .filter((p) => p.disagreeingCriteria.length > 0 || !p.zoneSame || p.otherUnproven > 0)
+          .map((p) => ({ analysisId: p.analysisId, reference: refMap.get(p.analysisId), candidate: candMap.get(p.analysisId) })),
+        null,
+        2,
+      ),
+    );
+  }
+  writeFileSync(join(outDir, 'rapport.md'), renderReport({ generatedAt: new Date().toISOString(), projectRef, sample, arms, candidates: results }));
+  for (const r of results) {
+    console.log(`\n  ${r.label} : ${r.outcome.verdict.acceptable ? 'ACCEPTABLE' : 'REFUSÉ'}`);
+    for (const k of r.outcome.verdict.checks) console.log(`    ${k.passed ? '✅' : '❌'} (${k.id}) ${k.detail}`);
+  }
+  console.log(`\n  Rapport : ${join(outDir, 'rapport.md')}\n  Détails : ${join(outDir, 'details-<bras>.json')} (données personnelles)\n`);
 }
 
 (has('worker') ? runWorker() : runMain()).catch((err) => {

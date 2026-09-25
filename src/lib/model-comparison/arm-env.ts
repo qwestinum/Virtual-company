@@ -9,7 +9,36 @@
  * autre fournisseur rendrait un « accord parfait ».
  */
 
-export type ArmSettings = { provider: 'openai' | 'anthropic'; model: string; baseUrl: string | null };
+export type ArmSettings = {
+  provider: 'openai' | 'anthropic';
+  /** Modèle de TOUTES les phases, sauf celles surchargées ci-dessous. */
+  model: string;
+  baseUrl: string | null;
+  /** Bras hybride : un autre modèle pour le relevé de faits seulement. */
+  ledgerModel?: string | null;
+};
+
+/** Les modèles qu'un bras a le droit de voir revenir de l'API. */
+export function allowedModels(s: ArmSettings): string[] {
+  return [s.model, ...(s.ledgerModel ? [s.ledgerModel] : [])];
+}
+
+/**
+ * Lit une définition de bras candidat :
+ *   `nom,provider=openai,model=gpt-4o[,ledger=gpt-4o-mini][,base-url=https://…]`
+ * Rend `null` si la définition est incomplète ou incohérente.
+ */
+export function parseArmSpec(spec: string): { name: string; settings: ArmSettings } | { error: string } {
+  const [name, ...pairs] = spec.split(',').map((p) => p.trim());
+  if (!name || !/^[a-z0-9-]+$/.test(name)) return { error: `nom de bras invalide dans « ${spec} » (a-z, 0-9, tiret)` };
+  const kv = Object.fromEntries(pairs.map((p) => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]));
+  const provider = kv.provider ?? 'openai';
+  if (provider !== 'openai' && provider !== 'anthropic') return { error: `fournisseur inconnu : ${provider}` };
+  if (!kv.model) return { error: `modèle manquant pour le bras « ${name} »` };
+  const baseUrl = kv['base-url'] || null;
+  if (baseUrl && provider !== 'openai') return { error: 'base-url ne vaut que pour un point d’accès compatible OpenAI' };
+  return { name, settings: { provider, model: kv.model, baseUrl, ledgerModel: kv.ledger || null } };
+}
 
 /** Les réglages qui décident OÙ partent les CV et QUEL modèle les lit. `undefined` = à retirer. */
 export function armEnv(s: ArmSettings): Record<string, string | undefined> {

@@ -24,3 +24,21 @@ describe('environnement d’un bras', () => {
     expect(envMismatches(compat, childEnv({}, compat))).toEqual([]);
   });
 });
+
+describe('définition d’un bras candidat', () => {
+  it('hybride : un modèle pour le relevé, un autre pour le reste — les deux sont admis au retour', async () => {
+    const { parseArmSpec, allowedModels } = await import('@/lib/model-comparison/arm-env');
+    const r = parseArmSpec('hybride,model=gpt-4o,ledger=gpt-4o-mini');
+    expect(r).toEqual({ name: 'hybride', settings: { provider: 'openai', model: 'gpt-4o', baseUrl: null, ledgerModel: 'gpt-4o-mini' } });
+    if ('settings' in r) expect(allowedModels(r.settings)).toEqual(['gpt-4o', 'gpt-4o-mini']);
+    expect(parseArmSpec('haiku,provider=anthropic,model=claude-haiku-4-5')).toMatchObject({ settings: { provider: 'anthropic', model: 'claude-haiku-4-5' } });
+  });
+
+  it('refuse l’incomplet et l’incohérent', async () => {
+    const { parseArmSpec } = await import('@/lib/model-comparison/arm-env');
+    expect(parseArmSpec('x,provider=openai')).toHaveProperty('error');
+    expect(parseArmSpec('Nom Espacé,model=a')).toHaveProperty('error');
+    expect(parseArmSpec('x,provider=mistral,model=a')).toHaveProperty('error');
+    expect(parseArmSpec('x,provider=anthropic,model=a,base-url=https://api.mistral.ai/v1')).toHaveProperty('error');
+  });
+});
