@@ -1,6 +1,7 @@
 # Comparaison de modèles pour le scoring — gpt-4o vs gpt-4o-mini
 
-> **Statut (25/09/2026)** : **implémenté** — `scripts/compare-models.ts`, logique pure dans
+> **Statut (25/09/2026)** : **décidé — hybride adopté** (§6sexies), mise en service dev → recette →
+> client. Script : **implémenté** — `scripts/compare-models.ts`, logique pure dans
 > `src/lib/model-comparison/`. Premier run : gpt-4o (référence + bruit) contre gpt-4o-mini sur la
 > base de dev. Script hors produit, dry-run pur.
 > **Point d'arrêt** : le rapport, avant toute décision de bascule. Le modèle en service ne
@@ -300,6 +301,50 @@ référence deviendrait hybride en silence) et pose le modèle du relevé lui-m�
 ponctuation, et aucun rejet restant ne vient de l'extraction PDF. En gpt-4o seul, elle rétrograde
 2,6 % des verdicts positifs sur les CV client et ~17 % sur les CV de recette ; en mode hybride,
 1,9 % et 4,3 %.
+
+## 6sexies. Décisions du 25/09/2026 — hybride adopté, garde avec lui, seuils relatifs au bruit
+
+1. **Hybride : OUI.** `CV_ANALYZER_LEDGER_MODEL=gpt-4o-mini` — dev d'abord, recette (une campagne
+   analysée de bout en bout, dossier d'audit relu), puis client. Non-régression avant/après chez
+   le client par le script sur 20 CV.
+2. **Garde « aucun oui sans preuve » : fusionnée, mais active AVEC l'hybride seulement, jamais
+   seule** — même réglage (`ledgerModel` dans `analyzeCVApplication`) : sans hybride, aucun
+   verdict n'est touché. Une rétrogradation sur un rédhibitoire va en file de validation, rien ne
+   part. La citation rejetée reste recopiée dans la justification pour l'audit.
+3. **Tout seuil du protocole est relatif au plancher de bruit du run**, jamais absolu (plancher =
+   gpt-4o rejoué contre lui-même, même run, mêmes CV) :
+   - (a) taux de basculements accepté ↔ refus ≤ celui du bruit ;
+   - (b) accord de zone ≥ celui du bruit − 3 points, et Δscore moyen ≤ celui du bruit + 3 ;
+   - (c) accord sur les rédhibitoires ≥ celui du bruit ;
+   - (d) taux de « non vérifiable » → « non » ≤ celui du bruit ;
+   - (e) positifs sans preuve ≤ taux de la RÉFÉRENCE (gpt-4o, même run) + 2 points ;
+   - (f) pas plus d'analyses en échec que la référence.
+   Sans bras de bruit, (a) à (d) échouent : sans plancher, on ne conclut pas.
+4. **Commit `82849cd` annulé** (prompt sans effet mesuré). La tolérance de ponctuation du
+   vérificateur reste : elle corrige de vraies fausses alertes.
+
+**Chiffres de décision — hybride sur 195 CV client, règles relatives au bruit : ACCEPTABLE.**
+
+| | bruit (gpt-4o contre lui-même, 20 CV) | hybride contre gpt-4o (195 CV) |
+|---|---:|---:|
+| (a) Basculements accepté ↔ refus | 0/20 | 0/195 |
+| (b) Accord de zone | 90,0 % | 89,2 % (plancher 87,0 %) |
+| (b) Δscore moyen absolu | 3,6 | 4,6 (plafond 6,6) |
+| (c) Rédhibitoires | 100 % | 100 % |
+| (d) « Non vérifiable » → « non » | 0 | 0 |
+| (e) Positifs sans preuve (référence) | — | 1,9 % (2,6 %, plafond 4,6 %) |
+| Coût par CV | 0,030 $ | 0,022 $ (gpt-4o : 0,032 $) |
+
+**Direction des 21 changements de zone** — l'hybride penche vers « à décider » :
+
+| mouvement | dossiers | écart de score médian (min / max) |
+|---|---:|---|
+| refus proposé → **à décider** | **14** | +13 (+7 / +33) |
+| à décider → **refus proposé** | 7 | −13 (−27 / −6) |
+
+Les deux files sont humaines ; aucun dossier n'atteint ni ne quitte l'acceptation (aucune dans
+l'échantillon). Pour mémoire, le bruit de gpt-4o seul déplace 2 dossiers sur 20, tous vers « refus
+proposé ».
 
 ## 7. Outil voisin
 

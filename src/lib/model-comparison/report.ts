@@ -102,7 +102,7 @@ export function computeOutcome(reference: ArmRecord[], candidate: ArmRecord[], n
     candidate: { pairs: c.pairs, agg, refFailed: c.refFailed, otherFailed: c.otherFailed, missing: c.missing },
     noise: n && noiseAgg ? { pairs: n.pairs, agg: noiseAgg } : null,
     noiseFloor,
-    verdict: proposeVerdict(agg, noiseFloor, c.otherFailed.length),
+    verdict: proposeVerdict(agg, noiseAgg, c.otherFailed.length, c.refFailed.length),
   };
 }
 

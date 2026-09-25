@@ -98,39 +98,50 @@ describe('comparaison d’un CV', () => {
   });
 });
 
-describe('verdict proposé', () => {
-  const pairsOf = (n: number, delta = 1) =>
-    Array.from({ length: n }, (_, i) => compareCv(ok(String(i), 60, 'gray', [v('1', 'satisfait')]), ok(String(i), 60 + delta, 'gray', [v('1', 'satisfait')])));
+describe('verdict proposé — tout seuil relatif au plancher de bruit du run', () => {
+  const pairsOf = (n: number, delta = 1, zone: ArmSuccess['zone'] = 'gray', otherZone: ArmSuccess['zone'] = zone) =>
+    Array.from({ length: n }, (_, i) => compareCv(ok(String(i), 60, zone, [v('1', 'satisfait')]), ok(String(i), 60 + delta, otherZone, [v('1', 'satisfait')])));
+  // Bruit : 20 CV, Δ 2, accord de zone 90 % (2 dossiers changent de zone).
+  const noise = aggregate([...pairsOf(18, 2), ...pairsOf(2, 2, 'gray', 'proposed_reject')]);
 
-  it('ACCEPTABLE quand les cinq critères passent', () => {
-    const r = proposeVerdict(aggregate(pairsOf(40)), 2, 0);
+  it('ACCEPTABLE quand chaque critère tient face au bruit', () => {
+    const r = proposeVerdict(aggregate(pairsOf(40)), noise, 0);
     expect(r.acceptable).toBe(true);
     expect(r.checks.map((c) => c.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
   });
 
-  it('(a) un seul basculement accepté ↔ refus suffit à refuser', () => {
+  it('(b) 89 % d’accord de zone PASSE quand gpt-4o lui-même n’en fait que 90 % — le seuil absolu de 95 % l’aurait refusé', () => {
+    const cand = aggregate([...pairsOf(89), ...pairsOf(11, 1, 'gray', 'proposed_reject')]);
+    expect(cand.zoneAgreement).toBeCloseTo(0.89);
+    expect(proposeVerdict(cand, noise, 0).checks.find((c) => c.id === 'b')!.passed).toBe(true);
+    // 86 % : plus de 3 points sous le bruit.
+    const worse = aggregate([...pairsOf(86), ...pairsOf(14, 1, 'gray', 'proposed_reject')]);
+    expect(proposeVerdict(worse, noise, 0).checks.find((c) => c.id === 'b')!.passed).toBe(false);
+  });
+
+  it('(b) écart de score : plafond = bruit + 3', () => {
+    expect(proposeVerdict(aggregate(pairsOf(40, 5)), noise, 0).checks.find((c) => c.id === 'b')!.passed).toBe(true);
+    expect(proposeVerdict(aggregate(pairsOf(40, 6)), noise, 0).checks.find((c) => c.id === 'b')!.passed).toBe(false);
+  });
+
+  it('(a) un basculement accepté ↔ refus refuse, tant que le bruit n’en fait aucun', () => {
     const pairs = [...pairsOf(99), compareCv(ok('x', 90, 'auto_accept', []), ok('x', 20, 'proposed_reject', []))];
-    const r = proposeVerdict(aggregate(pairs), 60, 0);
-    expect(r.acceptable).toBe(false);
+    const r = proposeVerdict(aggregate(pairs), noise, 0);
     expect(r.checks.find((c) => c.id === 'a')!.passed).toBe(false);
   });
 
-  it('(b) sans plancher de bruit, l’écart ne peut pas passer ; au-delà de bruit + 3, refusé', () => {
-    expect(proposeVerdict(aggregate(pairsOf(40)), null, 0).checks.find((c) => c.id === 'b')!.passed).toBe(false);
-    expect(proposeVerdict(aggregate(pairsOf(40, 6)), 2, 0).checks.find((c) => c.id === 'b')!.passed).toBe(false);
-    expect(proposeVerdict(aggregate(pairsOf(40, 5)), 2, 0).checks.find((c) => c.id === 'b')!.passed).toBe(true);
+  it('sans bras de bruit, les critères relatifs au bruit ÉCHOUENT (aucun plancher)', () => {
+    const r = proposeVerdict(aggregate(pairsOf(40)), null, 0);
+    expect(r.acceptable).toBe(false);
+    expect(r.checks.filter((c) => !c.passed).map((c) => c.id)).toEqual(['a', 'b', 'c', 'd']);
   });
 
-  it('(e) redéfini : pas plus de 2 points au-dessus de la RÉFÉRENCE (et non un seuil absolu)', () => {
-    // 10 CV × 10 verdicts positifs. Référence : 1 sans preuve sur 10 par CV (10 %).
-    const verdictsWith = (unproven: number) =>
-      Array.from({ length: 10 }, (_, i) => v(String(i), 'satisfait', i >= unproven));
+  it('(e) pas plus de 2 points au-dessus de la RÉFÉRENCE du même run', () => {
+    const verdictsWith = (unproven: number) => Array.from({ length: 10 }, (_, i) => v(String(i), 'satisfait', i >= unproven));
     const pairs = (candUnprovenPerCv: number[]) =>
       candUnprovenPerCv.map((u, i) => compareCv(ok(String(i), 60, 'gray', verdictsWith(1)), ok(String(i), 60, 'gray', verdictsWith(u))));
-    // 12 sur 100 = 12 % ≤ 10 % + 2 : passe.
-    expect(proposeVerdict(aggregate(pairs([2, 2, 1, 1, 1, 1, 1, 1, 1, 1])), 2, 0).checks.find((c) => c.id === 'e')!.passed).toBe(true);
-    // 13 sur 100 : ne passe pas.
-    expect(proposeVerdict(aggregate(pairs([2, 2, 2, 1, 1, 1, 1, 1, 1, 1])), 2, 0).checks.find((c) => c.id === 'e')!.passed).toBe(false);
+    expect(proposeVerdict(aggregate(pairs([2, 2, 1, 1, 1, 1, 1, 1, 1, 1])), noise, 0).checks.find((c) => c.id === 'e')!.passed).toBe(true);
+    expect(proposeVerdict(aggregate(pairs([2, 2, 2, 1, 1, 1, 1, 1, 1, 1])), noise, 0).checks.find((c) => c.id === 'e')!.passed).toBe(false);
   });
 
   it('les preuves se lisent sur la rétrogradation (depuis la garde) ou sur la citation (avant)', () => {
@@ -141,10 +152,9 @@ describe('verdict proposé', () => {
     });
   });
 
-  it('(f) une analyse en échec chez le candidat empêche l’acceptation', () => {
-    const r = proposeVerdict(aggregate(pairsOf(40)), 2, 1);
-    expect(r.acceptable).toBe(false);
-    expect(r.checks.at(-1)!.id).toBe('f');
+  it('(f) plus d’échecs que la référence : non comparés, verdict refusé', () => {
+    expect(proposeVerdict(aggregate(pairsOf(40)), noise, 1, 0).checks.at(-1)!.id).toBe('f');
+    expect(proposeVerdict(aggregate(pairsOf(40)), noise, 1, 1).acceptable).toBe(true);
   });
 });
 
