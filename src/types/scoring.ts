@@ -449,6 +449,17 @@ export const DECISION_OUTCOME_MATRIX: Record<
  * `criterionId` n'est conservé QUE comme clé de jointure (lookup depuis
  * `hardFailures`), pas comme substitut aux attributs copiés.
  */
+/**
+ * Rétrogradation « aucun oui sans preuve » (25/09/2026, `quote-evidence.ts`) :
+ * le modèle avait rendu `from`, sa citation était absente ou introuvable dans
+ * le CV, le verdict est devenu `non_verifiable`. Absent = verdict tel que rendu.
+ */
+export const EvidenceDowngradeSchema = z.object({
+  from: z.enum(['satisfait', 'partiel']),
+  reason: z.enum(['missing_quote', 'quote_not_found']),
+});
+export type EvidenceDowngrade = z.infer<typeof EvidenceDowngradeSchema>;
+
 export const CriterionDecisionSchema = z.object({
   criterionId: z.string().min(1),
   criterionLabel: z.string().min(1),
@@ -480,6 +491,8 @@ export const CriterionDecisionSchema = z.object({
    * analyses antérieures à ce champ (juin–août 2026), qu'on ne réécrit pas.
    */
   decidedBy: VerdictPathSchema.optional(),
+  /** Verdict positif rétrogradé faute de preuve retrouvée dans le CV. */
+  evidenceDowngrade: EvidenceDowngradeSchema.optional(),
 });
 export type CriterionDecision = z.infer<typeof CriterionDecisionSchema>;
 

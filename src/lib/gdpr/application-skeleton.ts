@@ -89,6 +89,9 @@ export const DISPOSITION_CRITERION: Record<keyof CriterionDecision, Disposition>
   // redondant avec `llmDecision` pour tout usage statistique.
   matchedKeywords: 'erase',
   decidedBy: 'keep', // chemin emprunté (mot-clé vs modèle)
+  // Verdict d'origine + raison de la rétrogradation (« aucun oui sans
+  // preuve ») : deux énumérations, rien de la personne ni du CV.
+  evidenceDowngrade: 'keep',
 };
 
 export const DISPOSITION_HARD_FAILURE: Record<keyof CriterionFailure, Disposition> = {

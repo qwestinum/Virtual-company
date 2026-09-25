@@ -40,6 +40,7 @@ import {
 import { AIValidationError, AnalysisUnavailableError } from '@/lib/ai/errors';
 import { chatCompleteJson } from '@/lib/ai/provider';
 import {
+  enforceQuotedEvidence,
   findMatchedKeywords,
   matchKeywordsForHybrid,
   scoreCandidat,
@@ -183,6 +184,11 @@ export type AnalyzeCVApplicationInput = {
   criteriaVersion?: string;
   /** Horodatage ISO 8601 du calcul (sinon laissé au défaut de scoreCandidat). */
   computedAt?: string;
+  /**
+   * Modèle PAR PHASE (comparaison de modèles, hors produit). Absent ⇒ modèle
+   * par défaut du fournisseur pour chaque appel — le produit ne le pose pas.
+   */
+  phaseModels?: Partial<Record<'candidate' | 'ledger' | 'verdicts' | 'narration', string>>;
 };
 
 export type AnalyzeCVApplicationOutput = {
@@ -266,6 +272,7 @@ export async function analyzeCVApplication(
         },
       ],
       ExtractedCandidateSchema,
+      input.phaseModels?.candidate ? { model: input.phaseModels.candidate } : undefined,
     );
     extracted = r.data;
     accumulate(r.raw);
@@ -400,6 +407,7 @@ export async function analyzeCVApplication(
           { role: 'user', content: buildLedgerUserPrompt(input.cvText, input.fileName) },
         ],
         CVFactLedgerSchema,
+        input.phaseModels?.ledger ? { model: input.phaseModels.ledger } : undefined,
       );
       ledger = r.data;
       accumulate(r.raw);
@@ -424,6 +432,7 @@ export async function analyzeCVApplication(
           },
         ],
         VerdictsResponseSchema,
+        input.phaseModels?.verdicts ? { model: input.phaseModels.verdicts } : undefined,
       );
       llmVerdicts = remapVerdictsToCriteria(r.data.verdicts, llmCriteria).map(
         (v) => ({
@@ -452,6 +461,12 @@ export async function analyzeCVApplication(
       );
     }
   }
+
+  // « AUCUN OUI SANS PREUVE » (25/09/2026), symétrique de l'invariant
+  // ci-dessus : un « satisfait » ou « partiel » du modèle dont la citation ne
+  // se retrouve pas dans le CV est rétrogradé en `non_verifiable`. Le code
+  // tranche après la réponse, pour tout modèle — cf. `quote-evidence.ts`.
+  llmVerdicts = enforceQuotedEvidence(llmVerdicts, input.cvText);
 
   // Fusion déterministe + LLM (l'ordre est indifférent : scoreCandidat indexe
   // par criterionId et itère la fiche complète).
@@ -502,7 +517,10 @@ export async function analyzeCVApplication(
         },
       ],
       CVNarrationSchema,
-      { temperature: 0.4 }, // prose : un peu de souplesse, score déjà figé
+      {
+        temperature: 0.4, // prose : un peu de souplesse, score déjà figé
+        ...(input.phaseModels?.narration ? { model: input.phaseModels.narration } : {}),
+      },
     );
     narration = r.data;
     accumulate(r.raw);

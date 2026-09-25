@@ -202,7 +202,7 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
       criteria: [
         buildCriterion({
           id: 'h',
-          label: 'Management',
+          label: 'Développement web',
           level: 'important',
           verificationMethod: 'hybrid_keywords_llm',
           keywords: ['Kubernetes'], // absent du CV
@@ -211,7 +211,8 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
     };
     const VERDICTS = {
       verdicts: [
-        { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Encadrement d’équipe décrit.', llmCVQuote: 'Management' },
+        // La citation doit se RETROUVER dans le CV (« aucun oui sans preuve ») :
+        { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Pile web décrite.', llmCVQuote: 'React et Node' },
       ],
     };
     chatCompleteJsonMock
@@ -307,5 +308,40 @@ describe('analyzeCVApplication — méthode hybride (Phase 3a)', () => {
     expect(byId.get('hn')!.decidedBy).toBe('llm'); // refusé APRÈS lecture
     expect(byId.get('hm')!.matchedKeywords).toEqual(['React']); // hybride avec match
     expect(byId.get('lang')!.verificationMethodUsed).toBe('llm_with_quote');
+  });
+});
+
+describe('analyzeCVApplication — « aucun oui sans preuve » (25/09/2026)', () => {
+  beforeEach(() => chatCompleteJsonMock.mockReset());
+
+  it('un « satisfait » dont la citation ne se retrouve pas dans le CV sort NON VÉRIFIABLE, et le dit', async () => {
+    const sheet: ScoringSheet = {
+      campaignId: 'CAMP-T',
+      isValidated: true,
+      criteria: [
+        buildCriterion({ id: 'a', label: 'Développement web', level: 'important' }),
+        buildCriterion({ id: 'b', label: 'Anglais', level: 'important' }),
+      ],
+    };
+    chatCompleteJsonMock
+      .mockResolvedValueOnce(jsonResult(CANDIDATE_OK))
+      .mockResolvedValueOnce(jsonResult(LEDGER_OK))
+      .mockResolvedValueOnce(
+        jsonResult({
+          verdicts: [
+            // « Angular » : un mot changé — la phrase n'est pas dans le CV.
+            { criterionId: '1', llmDecision: 'satisfait', llmJustification: 'Pile web.', llmCVQuote: 'Angular et Node' },
+            { criterionId: '2', llmDecision: 'satisfait', llmJustification: 'Anglais.', llmCVQuote: 'anglais courant' },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResult(NARRATION_OK));
+
+    const { analyzeCVApplication } = await import('@/lib/agents/server/cv-application-analyze');
+    const out = await analyzeCVApplication({ ...BASE_INPUT, sheet });
+    const byId = new Map(out.application.scoringResult.breakdown.map((b) => [b.criterionId, b]));
+    expect(byId.get('a')).toMatchObject({ llmDecision: 'non_verifiable', llmCVQuote: '', evidenceDowngrade: { from: 'satisfait', reason: 'quote_not_found' } });
+    expect(byId.get('b')).toMatchObject({ llmDecision: 'satisfait', llmCVQuote: 'anglais courant' });
+    expect(byId.get('b')!.evidenceDowngrade).toBeUndefined();
   });
 });

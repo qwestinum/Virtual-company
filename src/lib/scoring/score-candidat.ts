@@ -35,6 +35,7 @@ import {
   DEFAULT_VERIFICATION_METHOD,
   LlmDecisionSchema,
   ScoreResultSchema,
+  EvidenceDowngradeSchema,
   VerdictPathSchema,
   type CandidateStatus,
   type CriterionDecision,
@@ -96,6 +97,8 @@ export const LlmCriterionVerdictSchema = z.object({
    * à lire. `undefined` sur les analyses antérieures à ce champ.
    */
   decidedBy: VerdictPathSchema.optional(),
+  /** Posé par `enforceQuotedEvidence` : verdict positif rétrogradé faute de preuve. */
+  evidenceDowngrade: EvidenceDowngradeSchema.optional(),
 });
 export type LlmCriterionVerdict = z.infer<typeof LlmCriterionVerdictSchema>;
 
@@ -301,6 +304,11 @@ export function scoreCandidat(
         // « qui a lu le CV pour rendre ce verdict ? ».
         ...(verdict.decidedBy !== undefined
           ? { decidedBy: verdict.decidedBy }
+          : {}),
+        // « Aucun oui sans preuve » : l'audit doit pouvoir dire POURQUOI un
+        // critère est non vérifiable alors que le modèle l'avait accordé.
+        ...(verdict.evidenceDowngrade !== undefined
+          ? { evidenceDowngrade: verdict.evidenceDowngrade }
           : {}),
       };
     },

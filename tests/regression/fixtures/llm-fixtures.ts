@@ -114,7 +114,11 @@ export function verdictsFixture(profile: TestProfile) {
       criterionId: String(i + 1),
       llmDecision: decision,
       llmJustification: `Verdict fixe de test (${profile}, critère ${i + 1}).`,
-      llmCVQuote: decision === 'non' ? '' : 'Extrait fixe du CV de test.',
+      // Le MARQUEUR du profil : présent, par construction, dans tout texte
+      // routé vers ce profil — la citation se retrouve donc dans le CV, comme
+      // l'exige la garde « aucun oui sans preuve » (quote-evidence.ts). Une
+      // phrase inventée ferait rétrograder chaque « satisfait ».
+      llmCVQuote: decision === 'non' ? '' : PROFILE_MARKERS[profile],
     })),
   };
 }
