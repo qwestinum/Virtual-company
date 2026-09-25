@@ -322,6 +322,10 @@ ponctuation, et aucun rejet restant ne vient de l'extraction PDF. En gpt-4o seul
    Sans bras de bruit, (a) à (d) échouent : sans plancher, on ne conclut pas.
 4. **Commit `82849cd` annulé** (prompt sans effet mesuré). La tolérance de ponctuation du
    vérificateur reste : elle corrige de vraies fausses alertes.
+5. **La consigne de citation exacte et contrôlée** (`QUOTE_CHECK_RULE`, prompt des verdicts) n'est
+   envoyée QU'EN MODE HYBRIDE, sur le même réglage que la garde : un prompt ne décrit jamais un
+   contrôle qui n'a pas lieu. Son effet propre n'est pas mesuré — bras « hybride sans consigne »
+   à prévoir plus tard, pas maintenant.
 
 **Chiffres de décision — hybride sur 195 CV client, règles relatives au bruit : ACCEPTABLE.**
 
