@@ -10,6 +10,7 @@ vi.mock('@/lib/imap/poller', () => ({
 vi.mock('@/lib/scheduling-host/drain', () => ({ drainSchedulingEvents: vi.fn().mockResolvedValue({}) }));
 vi.mock('@/lib/sourcing/server/maintenance', () => ({ runSourcingMaintenance: vi.fn().mockResolvedValue({}) }));
 vi.mock('@/lib/candidatures/dismissal-batch', () => ({ runQueuedClosureDismissals: vi.fn().mockResolvedValue({}) }));
+vi.mock('@/lib/vivier/maintenance', () => ({ runVivierIndexingMaintenance: vi.fn().mockResolvedValue({}) }));
 vi.mock('@/lib/db/repos/journal', () => ({ appendJournalEntry: vi.fn() }));
 
 import { runQueuedClosureDismissals } from '@/lib/candidatures/dismissal-batch';
@@ -17,11 +18,19 @@ import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { pollAllMailboxes } from '@/lib/imap/poller';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
 import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
+import { runVivierIndexingMaintenance } from '@/lib/vivier/maintenance';
 import { GET } from '@/app/api/cron/imap-poll/route';
 
 const pollMock = vi.mocked(pollAllMailboxes);
 const anyWork = () =>
-  [pollAllMailboxes, drainSchedulingEvents, runSourcingMaintenance, runQueuedClosureDismissals, appendJournalEntry].some(
+  [
+    pollAllMailboxes,
+    drainSchedulingEvents,
+    runSourcingMaintenance,
+    runVivierIndexingMaintenance,
+    runQueuedClosureDismissals,
+    appendJournalEntry,
+  ].some(
     (f) => vi.mocked(f).mock.calls.length > 0,
   );
 
