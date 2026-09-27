@@ -200,3 +200,25 @@ relevé du 25/09 : 2,95 ticks/min). « Après » : attendu ~**15-35 Mo/jour** (c
 mesurer : redémarrer `next dev` (le minuteur garde le code du démarrage), déployer sur Vercel la
 branche servie par le cron, puis 24 h plus tard prendre l'instantané « après » et comparer ; la
 vérité reste le rapport d'usage quotidien du dashboard Supabase.
+
+### 9.1 Résultat mesuré (27/09/2026, 14:20 UTC)
+
+| | Avant (25/09) | Après (27/09) |
+|---|---:|---:|
+| Requêtes utiles / min (sans humain) | 48,5 | **13,2** |
+| Ticks de relève / min | 2,95 (poste + cron) | **1,00** (cron seul — `next dev` arrêté) |
+| Listes complètes des campagnes / jour | ~8 500 | **~0** (93 en 40 h, toutes des 44 ticks de l'ancien code avant le déploiement) |
+| Lecture de boîtes par tick | 60 Ko × 2 + ~8 Ko | **0,67 Ko** + ~8 Ko de rails |
+| Egress estimé | **~570 Mo/jour** | **~26 Mo/jour** sur 40 h (fenêtre mêlant l'ancien code) ; **~30 Mo/jour** au rythme actuel (majorant : 1 Ko compté par appel « autre ») |
+
+**Cible < 100 Mo/jour : tenue** (~20× moins qu'avant). Estimation par appels × taille mesurée sur le
+fil ; la vérité reste le rapport d'usage quotidien du dashboard Supabase (à confirmer à J+1).
+
+Observations :
+- Le nouveau code tourne côté cron : 2 071 lectures « boîtes + campagnes embarquées », 44 de l'ancienne
+  forme (avant déploiement). 349 ticks sur 2 420 n'ont rien lu (aucune boîte due) ; chaque boîte a
+  été relevée ~2 090 fois en 40 h, soit environ une fois par minute.
+- **La pause du minuteur local n'a pas encore été éprouvée en conditions réelles** : aucun tick local
+  ni aucune entrée pause/reprise au journal sur la période — `next dev` n'a pas tourné.
+- Reste l'égal du quota à surveiller : `/admin/dashboard` sonde toujours `/api/metrics/global` à 5 s
+  (non modifié) — un onglet oublié suffirait à ressortir du quota.
