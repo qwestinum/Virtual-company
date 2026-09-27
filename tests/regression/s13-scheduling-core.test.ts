@@ -30,6 +30,7 @@ import {
   getBookingByManageToken,
   listSlotsForLink,
   registerEventConsumer,
+  REPAIR_GRACE_MS,
   repointTarget,
   rescheduleBooking,
   resetSchedulingConfig,
@@ -365,9 +366,24 @@ describe('S13.4 — événements', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    // On simule le crash entre le claim et l'écriture de l'outbox.
+    // État d'une réservation entre le claim et l'écriture de l'outbox.
     await db().from('sched_events').delete().eq('booking_id', result.booking.id);
     const before = eventsFor(result.booking.id).length;
+
+    // JEUNE, elle peut être une confirmation EN COURS : le filet ne la touche
+    // pas (27/09/2026 — sinon son `booking.created` coupait la séquence et la
+    // compensation levait, cf. S13.3).
+    await drainPendingEvents();
+    expect(eventsFor(result.booking.id).length).toBe(before);
+    const { data: stillThere } = await db()
+      .from('sched_events')
+      .select('id')
+      .eq('booking_id', result.booking.id);
+    expect(stillThere ?? []).toHaveLength(0);
+
+    // ANCIENNE, c'est un crash : le filet la rattrape.
+    const aged = new Date(Date.now() - REPAIR_GRACE_MS - 60_000).toISOString();
+    await db().from('sched_bookings').update({ created_at: aged }).eq('id', result.booking.id);
 
     const drain = await drainPendingEvents();
     expect(drain.repaired).toBeGreaterThanOrEqual(1);
