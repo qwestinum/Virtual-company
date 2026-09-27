@@ -32,7 +32,7 @@ export function TodayScreen() {
   const team = useTodayTeam(fenetre);
   // On ne sonde PAS depuis ici : seule la bande de répartition vient de cette
   // route, et elle ne bouge pas entre deux clics. Rechargée à chaque affichage.
-  const { data } = useDashboardData({ poll: false });
+  const { data } = useDashboardData();
   const campaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
 
   /** L'intitulé du poste vient du briefing quand il l'a, du store sinon. */

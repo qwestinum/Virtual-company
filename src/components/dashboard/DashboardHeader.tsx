@@ -18,7 +18,8 @@ export function DashboardHeader({ offline, isStale }: DashboardHeaderProps) {
   const label = offline
     ? 'Mode local'
     : isStale
-      ? 'Reconnexion…'
+      // Plus de sondage : rien ne se reconnecte seul, on dit ce qui est.
+      ? 'Actualisation impossible'
       : 'Système actif';
   const bg = offline
     ? 'var(--dash-hover)'
