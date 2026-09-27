@@ -64,9 +64,17 @@ describe('S34 — un seul rythme de page', () => {
         o.nom,
         await page.evaluate(() => {
           const cont = document.querySelector('[data-page-container]');
+          // ⚠️ Une fente RENDUE MAIS VIDE compte comme ABSENTE, comme dans le
+          // gabarit (« une zone absente ne laisse pas de trou ») : le filtre
+          // Référent ne s'affiche qu'à partir de deux référents dans les lignes
+          // de l'écran. Sur un jeu de données qui n'en a qu'un, sa fente fait
+          // 0 px et sa marge fusionne avec celle des compteurs — la mesurer
+          // rendait « 0 px » au lieu de « pas de barre » (échec dépendant des
+          // données, constaté sur Entretiens le 27/09/2026).
           const r = (sel: string) => {
             const el = cont?.querySelector(sel) ?? null;
-            return el ? el.getBoundingClientRect() : null;
+            const box = el ? el.getBoundingClientRect() : null;
+            return box && box.height > 0 ? box : null;
           };
           const entete = r('header');
           const onglets = r('[data-page-tabs]');
@@ -161,7 +169,8 @@ describe('S34 — un seul rythme de page', () => {
       })),
     );
     const detail = JSON.stringify(puces);
-    expect(puces.map((p) => p.cle), detail).toEqual(['scheduled', 'awaiting', 'verdict']);
+    // Quatre vues depuis l'onglet « Historique » (24/09/2026).
+    expect(puces.map((p) => p.cle), detail).toEqual(['scheduled', 'awaiting', 'verdict', 'history']);
     expect(new Set(puces.map((p) => p.hauteur)).size, detail).toBe(1);
     // Une ligne de 12 px avec son rembourrage : bien en deçà de deux lignes.
     expect(puces[0]!.hauteur, detail).toBeLessThan(40);
