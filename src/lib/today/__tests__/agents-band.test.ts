@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bandWindowStart, parseBandWindow } from '@/lib/today/agents-band';
+import { AGENT_BAND, bandWindowStart, parseBandWindow } from '@/lib/today/agents-band';
 
 const JOUR = 86_400_000;
 const MAINTENANT = Date.parse('2026-09-22T10:00:00.000Z');
@@ -27,5 +27,29 @@ describe('fenêtre de la bande d’équipe', () => {
 
   it('sans fenêtre dite, c’est la semaine', () => {
     expect(bandWindowStart(MAINTENANT)).toBe(bandWindowStart(MAINTENANT, 'semaine'));
+  });
+});
+
+describe('Mail Composer — un message ENVOYÉ, quelle que soit la porte', () => {
+  const mail = AGENT_BAND.find((a) => a.id === 'agent.mail-composer');
+
+  it('compte les envois automatiques ET ceux validés par le recruteur (défaut du 27/09)', () => {
+    const actions = mail?.sources.map((s) => s.action);
+    expect(actions).toContain('imap_outreach_mail');
+    // L'acceptation envoyée après une décision humaine : absente, le compteur
+    // restait à 0 juste après un envoi.
+    expect(actions).toContain('hitl_validation_sent');
+  });
+
+  it('ne compte que les mails PARTIS — jamais une tentative échouée ni un envoi sauté', () => {
+    for (const src of mail?.sources ?? []) {
+      expect(src.payloadEquals, src.action).toBeDefined();
+    }
+    expect(mail?.sources.find((s) => s.action === 'imap_outreach_mail')?.payloadEquals).toEqual({
+      status: 'sent',
+    });
+    expect(mail?.sources.find((s) => s.action === 'hitl_validation_sent')?.payloadEquals).toEqual({
+      mailSent: 'true',
+    });
   });
 });

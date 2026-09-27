@@ -119,6 +119,29 @@ export async function listRecentJournalEntriesByActions(
 }
 
 /**
+ * Compte les lignes d'UNE action depuis `sinceIso`, restreintes aux lignes
+ * dont le payload porte les valeurs données (comparées en TEXTE :
+ * `payload->>clé`). `head: true` : aucune ligne rapatriée.
+ */
+export async function countJournalEntriesMatching(
+  source: { action: string; payloadEquals?: Readonly<Record<string, string>> },
+  sinceIso: string,
+): Promise<number> {
+  const supabase = requireServerSupabase();
+  let q = supabase
+    .from('journal')
+    .select('id', { count: 'exact', head: true })
+    .eq('action', source.action)
+    .gte('created_at', sinceIso);
+  for (const [key, value] of Object.entries(source.payloadEquals ?? {})) {
+    q = q.eq(`payload->>${key}`, value);
+  }
+  const { count, error } = await q;
+  if (error) throw new Error(`countJournalEntriesMatching: ${error.message}`);
+  return count ?? 0;
+}
+
+/**
  * Liste EXHAUSTIVE des entrées du journal pour un ENSEMBLE d'actions données,
  * paginée en interne (pages de 1000) — SANS le plafond 500 de
  * `listJournalEntries`. Réservée aux marqueurs BAS VOLUME (entretien /
@@ -126,28 +149,6 @@ export async function listRecentJournalEntriesByActions(
  * en phase entretien, jamais par tout le journal. Les compteurs du menu
  * Candidatures EN DÉPENDENT pour ne pas mentir au-delà de 500 entrées.
  */
-/**
- * COMPTE les entrées de journal d'un ensemble d'actions depuis une date.
- *
- * `head: true` + `count: 'exact'` : on demande combien, on ne rapatrie rien.
- * C'est ce qui rend la bande d'équipe d'*Aujourd'hui* gratuite à afficher,
- * même quand le journal porte des centaines de milliers de lignes.
- */
-export async function countJournalEntriesByActions(
-  actions: readonly string[],
-  sinceIso: string,
-): Promise<number> {
-  if (actions.length === 0) return 0;
-  const supabase = requireServerSupabase();
-  const { count, error } = await supabase
-    .from('journal')
-    .select('id', { count: 'exact', head: true })
-    .in('action', [...actions])
-    .gte('created_at', sinceIso);
-  if (error) throw new Error(`countJournalEntriesByActions: ${error.message}`);
-  return count ?? 0;
-}
-
 export async function listJournalEntriesByActions(
   actions: string[],
   args: { campaignId?: string } = {},

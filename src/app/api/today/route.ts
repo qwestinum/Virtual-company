@@ -16,7 +16,7 @@
 import { NextResponse } from 'next/server';
 
 import { getApiUser, unauthorizedResponse } from '@/lib/auth/require-api-user';
-import { countJournalEntriesByActions } from '@/lib/db/repos/journal';
+import { countJournalEntriesMatching } from '@/lib/db/repos/journal';
 import { getRecruiter } from '@/lib/db/repos/recruiters';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
@@ -43,13 +43,18 @@ export async function GET(request: Request): Promise<NextResponse> {
   const since = bandWindowStart(Date.now(), fenetre);
 
   try {
-    // Les six comptes partent ENSEMBLE : ils ne se dépendent pas, et chacun
-    // est un `head: true` qui ne rapatrie aucune ligne.
+    // Les comptes partent ENSEMBLE : ils ne se dépendent pas, et chacun est
+    // un `head: true` qui ne rapatrie aucune ligne. Un agent peut avoir
+    // plusieurs sources (le Mail Composer : envois automatiques ET envois
+    // validés par le recruteur) — actions distinctes, donc une somme exacte.
     const [recruiter, ...counts] = await Promise.all([
       getRecruiter(user.id).catch(() => null),
-      ...AGENT_BAND.map((a) =>
-        countJournalEntriesByActions(a.actions, since).catch(() => 0),
-      ),
+      ...AGENT_BAND.map(async (a) => {
+        const parts = await Promise.all(
+          a.sources.map((src) => countJournalEntriesMatching(src, since).catch(() => 0)),
+        );
+        return parts.reduce((sum, n) => sum + n, 0);
+      }),
     ]);
 
     return NextResponse.json(

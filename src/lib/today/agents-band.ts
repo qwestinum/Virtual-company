@@ -18,6 +18,16 @@
  * dise précisément ce que le nombre mesure.
  */
 
+/**
+ * Une famille de lignes du journal comptée pour un agent. `payloadEquals`
+ * restreint aux lignes dont le payload porte ces valeurs (comparées en
+ * texte) — c'est ce qui distingue « un message ENVOYÉ » d'une tentative.
+ */
+export type JournalSource = {
+  action: string;
+  payloadEquals?: Readonly<Record<string, string>>;
+};
+
 export type AgentBandEntry = {
   /** Identifiant CANONIQUE de l'agent — celui qui résout son avatar. */
   id: string;
@@ -25,8 +35,8 @@ export type AgentBandEntry = {
   name: string;
   /** Ce qu'il fait, en trois mots. */
   role: string;
-  /** Actions de journal comptées — la SOURCE du chiffre. */
-  actions: readonly string[];
+  /** Lignes de journal comptées — la SOURCE du chiffre. */
+  sources: readonly JournalSource[];
   /** Ce que le chiffre compte, au singulier et au pluriel. */
   unit: { one: string; many: string };
 };
@@ -36,7 +46,7 @@ export const AGENT_BAND: readonly AgentBandEntry[] = [
     id: 'agent.cv-analyzer',
     name: 'CV Analyzer',
     role: 'Lit et note les CV',
-    actions: ['imap_cv_analyzed'],
+    sources: [{ action: 'imap_cv_analyzed' }],
     unit: { one: 'candidature analysée', many: 'candidatures analysées' },
   },
   {
@@ -45,43 +55,47 @@ export const AGENT_BAND: readonly AgentBandEntry[] = [
     role: 'Cale les rendez-vous',
     // Le briefing est DÉLIVRÉ au moment où le créneau est confirmé : c'est le
     // marqueur le plus fidèle d'« un entretien a été pris ».
-    actions: ['interview_brief_delivered'],
+    sources: [{ action: 'interview_brief_delivered' }],
     unit: { one: 'entretien pris', many: 'entretiens pris' },
   },
   {
     id: 'agent.publisher',
     name: 'Publisher',
     role: 'Met les annonces en ligne',
-    actions: ['apec_offer_status_changed'],
+    sources: [{ action: 'apec_offer_status_changed' }],
     unit: { one: 'annonce mise à jour', many: 'annonces mises à jour' },
   },
   {
     id: 'agent.mail-composer',
     name: 'Mail Composer',
     role: 'Écrit aux candidats',
-    actions: ['imap_outreach_mail'],
+    // ⚠️ DEUX portes, et seulement les mails PARTIS (27/09/2026). La bande ne
+    // comptait que `imap_outreach_mail` — les envois AUTOMATIQUES : un mail
+    // d'acceptation envoyé par le recruteur après sa décision (carte de
+    // validation, Candidatures) s'écrit `hitl_validation_sent`, et le Mail
+    // Composer affichait 0 juste après un envoi. Et « message envoyé » ne
+    // compte pas une tentative échouée ni un envoi volontairement sauté.
+    sources: [
+      { action: 'imap_outreach_mail', payloadEquals: { status: 'sent' } },
+      { action: 'hitl_validation_sent', payloadEquals: { mailSent: 'true' } },
+    ],
     unit: { one: 'message envoyé', many: 'messages envoyés' },
   },
   {
     id: 'agent.job-writer',
     name: 'Job Writer',
     role: 'Rédige les annonces',
-    actions: ['job_writer_rendered'],
+    sources: [{ action: 'job_writer_rendered' }],
     unit: { one: 'annonce rédigée', many: 'annonces rédigées' },
   },
   {
     id: 'agent.manager-rh',
     name: 'Manager RH',
     role: 'Applique vos décisions',
-    actions: ['candidate_validation_marked'],
+    sources: [{ action: 'candidate_validation_marked' }],
     unit: { one: 'décision appliquée', many: 'décisions appliquées' },
   },
 ] as const;
-
-/** Toutes les actions à charger, sans doublon — une seule lecture par action. */
-export const AGENT_BAND_ACTIONS: string[] = [
-  ...new Set(AGENT_BAND.flatMap((a) => a.actions)),
-];
 
 /** « 3 candidatures analysées » · « 0 candidature analysée ». */
 export function agentCountLabel(entry: AgentBandEntry, count: number): string {
