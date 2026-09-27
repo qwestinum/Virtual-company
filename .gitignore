@@ -75,11 +75,6 @@ bench/*
 scripts/*-tmp.ts
 scripts/*-tmp[0-9].ts
 
-# aperçu JETABLE de l'identité ORQA (données mockées) : `next build` en ferait
-# une page PUBLIQUE en prod (elle n'est pas dans PROTECTED_PREFIXES du proxy).
-# À supprimer — cf. docs/BACKLOG.md et docs/audit/audit-orqa.md (SEC-7).
-/src/app/candidatures-apercu/
-
 # fichier utilitaire de diagnostic du 18/08 — ne teste rien, à supprimer.
 /tests/regression/zz-dbg.test.ts
 
