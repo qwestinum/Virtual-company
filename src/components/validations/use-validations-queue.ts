@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 
 import { hydrateArtifactsForOwners } from '@/lib/db/sync/artifacts-sync';
 import type { ReferentByCampaign } from '@/lib/referent/filter';
+import type { ValidationCoherence } from '@/lib/hitl/queue-coherence';
 import type { DecisionZone, PendingValidation } from '@/types/hitl';
 
 export type QueueState =
@@ -31,6 +32,9 @@ export function useValidationsQueue() {
   // campagne, qui re-jugerait un dossier avec un barème qu'il n'a jamais
   // connu (cf. rejection-proposal.ts).
   const [zones, setZones] = useState<Record<string, DecisionZone | null>>({});
+  // Cohérence file ↔ analyse, jugée SERVEUR (prédicat pur partagé). Une fiche
+  // dont le dossier n'attend plus est DÉSARMÉE, jamais masquée.
+  const [coherence, setCoherence] = useState<Record<string, ValidationCoherence>>({});
   const [referents, setReferents] = useState<ReferentByCampaign>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [history, setHistory] = useState<PendingValidation[]>([]);
@@ -44,12 +48,14 @@ export function useValidationsQueue() {
         const json = (await res.json()) as {
           validations: PendingValidation[];
           zoneByValidation?: Record<string, DecisionZone | null>;
+          coherenceByValidation?: Record<string, ValidationCoherence>;
           referentByCampaign?: ReferentByCampaign;
           currentUserId?: string | null;
         };
         if (!cancelled) {
           setState({ kind: 'ready', items: json.validations });
           setZones(json.zoneByValidation ?? {});
+          setCoherence(json.coherenceByValidation ?? {});
           // Enrichissements ABSENTS = dégradation douce : aucun référent
           // connu, pas de raccourci « Mes campagnes ». La file, elle, reste
           // entière et actionnable.
@@ -131,6 +137,7 @@ export function useValidationsQueue() {
   return {
     state,
     zones,
+    coherence,
     referents,
     currentUserId,
     history,

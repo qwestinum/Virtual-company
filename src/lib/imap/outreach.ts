@@ -35,17 +35,14 @@ import {
   releaseOutreachClaim,
 } from '@/lib/db/repos/imap-outreach-claims';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
-import {
-  getPendingValidation,
-  upsertPendingValidation,
-} from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { getSynthesisReplyToForCampaign } from '@/lib/campaign/synthesis-recipients';
 import { sendEmail } from '@/lib/email/client';
 import { RetryablePollError } from '@/lib/imap/poll-retry';
 import { uploadArtifact } from '@/lib/storage/blob';
 import { queueInterviewBrief } from '@/lib/interview/queue-brief';
-import { mergePendingValidationEnqueue } from '@/lib/hitl/enqueue-merge';
+import { enqueueValidationRow } from '@/lib/hitl/enqueue';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 import {
   gateCandidateOutreach,
   type SendResult,
@@ -105,8 +102,6 @@ export type OutreachKeys = {
   analysisId: string;
   /** Verrou d'envoi deux-phases (`imap_outreach_claims`). */
   claim: { mailboxId: string; uid: string };
-  /** Préfixe de l'id déterministe de la validation suspendue. */
-  validationPrefix: string;
   /** Auteur écrit au journal. */
   actor: string;
 };
@@ -115,7 +110,6 @@ export function imapOutreachKeys(input: Pick<OutreachInput, 'mailboxId' | 'uid'>
   return {
     analysisId: imapAnalysisId(input.mailboxId, input.uid),
     claim: { mailboxId: input.mailboxId, uid: input.uid },
-    validationPrefix: `val_imap_${input.mailboxId}_${input.uid}`,
     actor: 'imap_poller',
   };
 }
@@ -268,10 +262,10 @@ async function enqueueImapPendingValidation(args: {
   // l'humain tranche. Pré-rédiger un refus laissait croire (à tort) que le
   // candidat était refusé. Le booléen de retour est décidé par CE seul write
   // (persisté ou non → le gate retombe sur 'deferred', jamais envoi à l'aveugle).
-  // Id déterministe (mailbox + uid + décision) ⇒ upsert idempotent si re-polled,
-  // NON DESTRUCTIF via mergePendingValidationEnqueue : une re-passe ne remplace
-  // jamais un lien d'artefact non-null par null ni ne ré-ouvre un `sent`.
-  const validationId = `${args.keys.validationPrefix}_${decision}`;
+  // Id DÉTERMINISTE dérivé de l'analyse (`validationIdFor`) ⇒ upsert idempotent
+  // si re-polled, NON DESTRUCTIF via l'écrivain unique : une re-passe ne
+  // remplace jamais un lien d'artefact non-null par null ni ne rouvre un `sent`.
+  const validationId = validationIdFor(args.keys.analysisId, decision);
   const nowIso = new Date().toISOString();
   const fresh: PendingValidation = {
     id: validationId,
@@ -303,22 +297,14 @@ async function enqueueImapPendingValidation(args: {
     decidedBy: null,
     decidedByUser: null,
   };
-  try {
-    const existing = await getPendingValidation(validationId);
-    const merged = mergePendingValidationEnqueue(existing, fresh);
-    if (!merged.write) {
-      // Déjà engagée (`sending`) ou tranchée (`sent`) : la validation existe
-      // durablement, l'humain a la main — cette re-passe n'a rien à écrire.
-      return true;
-    }
-    await upsertPendingValidation(merged.value);
-  } catch (err) {
-    if (!(err instanceof SupabaseNotConfiguredError)) {
-      console.error('[imap-outreach] enqueue pending failed', err);
-    }
-    // Non persisté → le gate retombe sur 'deferred' (réessai), jamais envoi.
-    return false;
-  }
+  // Écrivain UNIQUE de la file (partagé avec le chat, le re-scoring et la
+  // re-mise en file manuelle). Non persisté → le gate retombe sur 'deferred'
+  // (réessai), jamais un envoi à l'aveugle.
+  const enqueued = await enqueueValidationRow(fresh);
+  if (enqueued === 'failed') return false;
+  // Déjà engagée ou tranchée : la file est bonne, mais rien n'a été écrit —
+  // on ne journalise pas une mise en file qui n'a pas eu lieu.
+  if (enqueued === 'already_engaged') return true;
 
   await appendJournalEntry({
     action: 'imap_outreach_pending',

@@ -25,6 +25,7 @@ import { POST as reserveSend } from '@/app/api/validations/[id]/reserve-send/rou
 import { POST as markSent } from '@/app/api/validations/[id]/send/route';
 import { cvApplicationToMailCandidate, type MailCandidate } from '@/types/mail-candidate';
 import type { CVApplication } from '@/types/cv-analysis';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import {
   call,
@@ -110,7 +111,7 @@ beforeAll(async () => {
   await analyze('faible', uidFaible);
 
   grayCandidate = cvApplicationToMailCandidate(moyen);
-  grayValidationId = `val_treg_${uidMoyen}`;
+  grayValidationId = validationIdFor(uidMoyen, 'reject');
   const enqueued = await call(postValidation, {
     method: 'POST',
     body: {

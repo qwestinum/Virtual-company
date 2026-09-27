@@ -33,6 +33,7 @@ import { journalRowsInScope, type JournalRow } from '@/lib/gdpr/journal-scope';
 import { stripCandidateSections } from '@/lib/gdpr/report-rewrite';
 import { isMissingTable, pageAllByText } from '@/lib/gdpr/scan';
 import type { CVApplication } from '@/types/cv-analysis';
+import { isAwaitingHumanZone, type DecisionZone } from '@/types/hitl';
 import {
   EMPTY_ERASURE_COUNTS,
   type ErasureCounts,
@@ -68,9 +69,20 @@ export type ExecuteResult = {
   /** Nom de l'étape où l'on s'est arrêté. `null` = tout est passé. */
   stoppedAt: string | null;
   error: string | null;
+  /**
+   * Dossiers CLÔTURÉS (classés sans suite) faute de pouvoir rester décidables :
+   * leur file de validation vient d'être supprimée. Ce n'est PAS un effacement
+   * — il ne rejoint donc jamais `counts`, dont le total sert la preuve remise
+   * au responsable de traitement.
+   */
+  closedAnalyses: number;
 };
 
-type Ctx = ExecuteInput & { counts: ErasureCounts; already: ErasureCounts };
+type Ctx = ExecuteInput & {
+  counts: ErasureCounts;
+  already: ErasureCounts;
+  closedAnalyses: number;
+};
 
 type Step = { name: string; run: (ctx: Ctx) => Promise<void> };
 
@@ -102,6 +114,7 @@ export async function executeErasure(input: ExecuteInput): Promise<ExecuteResult
     ...input,
     counts: { ...EMPTY_ERASURE_COUNTS },
     already: { ...EMPTY_ERASURE_COUNTS },
+    closedAnalyses: 0,
   };
 
   for (const step of STEPS) {
@@ -113,10 +126,17 @@ export async function executeErasure(input: ExecuteInput): Promise<ExecuteResult
         alreadyErased: ctx.already,
         stoppedAt: step.name,
         error: err instanceof Error ? err.message : String(err),
+        closedAnalyses: ctx.closedAnalyses,
       };
     }
   }
-  return { counts: ctx.counts, alreadyErased: ctx.already, stoppedAt: null, error: null };
+  return {
+    counts: ctx.counts,
+    alreadyErased: ctx.already,
+    stoppedAt: null,
+    error: null,
+    closedAnalyses: ctx.closedAnalyses,
+  };
 }
 
 // ─── Étapes ────────────────────────────────────────────────────────────────
@@ -532,37 +552,67 @@ async function stepAnalyses(ctx: Ctx): Promise<void> {
     id: string;
     candidate_name: string;
     application: CVApplication | null;
-  }>(ctx.db, 'candidate_analyses', 'id, candidate_name, application', 'id', [
-    { op: 'in', col: 'id', values: ctx.identity.analysisIds },
-  ]);
+    decision_zone: DecisionZone | null;
+    decided_by: 'auto' | 'user' | null;
+    dismissed_at: string | null;
+  }>(
+    ctx.db,
+    'candidate_analyses',
+    'id, candidate_name, application, decision_zone, decided_by, dismissed_at',
+    'id',
+    [{ op: 'in', col: 'id', values: ctx.identity.analysisIds }],
+  );
 
   for (const row of rows) {
-    const alreadyDone =
-      isErasureMarker(row.candidate_name) &&
-      (row.application === null || isApplicationStripped(row.application));
-    if (alreadyDone) {
+    const strip =
+      !isErasureMarker(row.candidate_name) ||
+      !(row.application === null || isApplicationStripped(row.application));
+    // `stepValidations` vient de supprimer la file de ce sujet. Une analyse
+    // laissée en zone d'attente resterait donc comptée « à valider » et ne
+    // serait PAS décidable : le produit réclamerait une décision sur une
+    // personne dont on vient d'effacer les données (diagnostic du 20/09/2026,
+    // docs/ops/diagnostic-validations-orphelines-2026-09-20.md §4.1 ③).
+    // On CLÔT le dossier — sans mail, et sans toucher au verdict de screening
+    // ni à la zone : « classée sans suite » est orthogonale à l'évaluation.
+    const closes =
+      row.dismissed_at === null &&
+      row.decided_by !== 'user' &&
+      isAwaitingHumanZone(row.decision_zone ?? 'auto_accept');
+    if (!strip && !closes) {
       ctx.already.analyses += 1;
       continue;
     }
     if (!ctx.dryRun) {
+      const patch: Record<string, unknown> = {};
+      if (strip) {
+        patch.candidate_name = ctx.marker;
+        // Colonne d'adresse : on n'y met pas un texte qui n'en est pas une.
+        patch.candidate_email = null;
+        patch.file_name = ctx.marker;
+        patch.application = row.application
+          ? stripApplication(row.application, ctx.marker)
+          : row.application;
+        // Le dossier de vivier vient d'être supprimé : le pointeur ne mène
+        // plus nulle part, et il rattachait la ligne à une personne.
+        patch.vivier_candidate_id = null;
+      }
+      if (closes) {
+        patch.dismissed_at = new Date().toISOString();
+        // La personne a exercé son droit à l'effacement : elle s'est retirée.
+        patch.dismissal_reason = 'candidat_retire';
+        // Écriture SYSTÈME : l'auteur et le motif de la demande vivent dans
+        // `gdpr_erasure_requests` et au journal, pas dans une colonne d'identité.
+        patch.dismissed_by = 'auto';
+      }
       const { error } = await ctx.db
         .from('candidate_analyses')
-        .update({
-          candidate_name: ctx.marker,
-          // Colonne d'adresse : on n'y met pas un texte qui n'en est pas une.
-          candidate_email: null,
-          file_name: ctx.marker,
-          application: row.application
-            ? stripApplication(row.application, ctx.marker)
-            : row.application,
-          // Le dossier de vivier vient d'être supprimé : le pointeur ne mène
-          // plus nulle part, et il rattachait la ligne à une personne.
-          vivier_candidate_id: null,
-        })
+        .update(patch)
         .eq('id', row.id);
       if (error) throw new Error(`candidate_analyses : ${error.message}`);
     }
-    ctx.counts.analyses += 1;
+    if (closes) ctx.closedAnalyses += 1;
+    if (strip) ctx.counts.analyses += 1;
+    else ctx.already.analyses += 1;
   }
 }
 

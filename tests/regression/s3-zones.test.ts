@@ -15,6 +15,7 @@ import { PUT as putCampaign } from '@/app/api/campaigns/route';
 import { POST as postValidation } from '@/app/api/validations/route';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import type { CVApplication } from '@/types/cv-analysis';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import { call, cvAnalyzerForm, testCampaignPayload, testScoringSheet } from './helpers/api';
 import { cleanAll, newTestCampaignId, readRow, readRows } from './helpers/db';
@@ -139,7 +140,7 @@ describe('S3 — zones de décision', () => {
     const enqueue = await call(postValidation, {
       method: 'POST',
       body: {
-        id: `val_treg_${taskId}`,
+        id: validationIdFor(taskId, 'reject'),
         campaignId: camp,
         candidateName: application.candidate.fullName,
         candidateEmail: application.candidate.email,
@@ -156,7 +157,7 @@ describe('S3 — zones de décision', () => {
 
     const pending = await readRow<{ status: string; cv_artifact_id: string | null }>(
       'pending_validations',
-      `val_treg_${taskId}`,
+      validationIdFor(taskId, 'reject'),
     );
     expect(pending.status).toBe('pending');
 

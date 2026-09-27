@@ -263,6 +263,101 @@ vs « Décision automatique (système) ».
 
 ---
 
+## 6bis. Cohérence entre l'analyse et sa fiche de validation (20/09/2026)
+
+`candidate_analyses` et `pending_validations` décrivent **le même fait** — « ce
+dossier attend une décision humaine » — **sans clé étrangère, sans contrainte,
+sans réconciliation**. Chaque table est écrite par ses propres chemins. Rien ne
+vérifie qu'elles racontent la même histoire, et elles ont divergé **dans les
+deux sens**, en production comme en développement.
+
+Diagnostics : `docs/ops/diagnostic-validations-orphelines-2026-09-20.md` (sens A)
+et `docs/ops/plan-coherence-file-analyse-2026-09-20.md` (sens B + plan).
+
+### 6bis.1 Les deux sens de la divergence
+
+| | Sens A | Sens B |
+|---|---|---|
+| Symptôme | analyse **en attente**, **aucune** fiche ouverte | fiche **ouverte**, analyse qui **n'attend plus** |
+| Ce que voit le recruteur | compté « À valider », **indécidable** — l'écran disait « Validation introuvable (déjà traitée ?) », l'hypothèse exactement inverse de la réalité | une carte d'arbitrage sur un dossier tranché ailleurs |
+| Danger | un dossier oublié | **un refus envoyé à quelqu'un que le produit compte comme accepté** (cas réel : direction `reject`, score 100, analyse `auto_accept`) |
+
+### 6bis.2 L'invariant, dans les deux sens et en un seul endroit
+
+`src/lib/hitl/queue-coherence.ts` — **pur, testé, partagé**.
+
+- `checkValidationCoherence(facts)` → `awaiting` · `settled{reason}` · `unknown`.
+  L'ordre suit `deriveCandidateStage` : classement sans suite, puis décision
+  humaine, puis zone. Quatre motifs de clôture : `accepted`, `decided`,
+  `dismissed`, `legacy_auto_reject`.
+- `queueMismatch({ coherence, hasOpenRow })` → `awaiting_without_row` ·
+  `row_without_awaiting` · `null`.
+
+⚠️ **Le doute ne conclut JAMAIS.** Analyse introuvable ou zone absente (ligne
+antérieure au modèle 3 zones) ⇒ `unknown` : la carte garde son chemin de
+décision, et le signal ne compte aucun écart. Retirer un arbitrage sur une
+incertitude serait pire que la divergence qu'on cherche à voir.
+
+⚠️ **Un seul prédicat pour les deux sens.** En écrire un par direction
+re-fabriquerait la divergence : c'est précisément ce qui est arrivé au premier
+signal (`validations_orphelines`, 20/09), qui n'en surveillait qu'un et a laissé
+le défaut de production vivre un mois dans l'angle mort de l'autre.
+
+### 6bis.3 Deux écrivains, et deux seulement
+
+| Écrivain | Rôle | Appelants |
+|---|---|---|
+| `hitl/enqueue.ts` — `enqueueValidationRow` | **OUVRIR** une fiche. Upsert par id déterministe, fusion non destructive. Rend `written` \| `already_engaged` \| `failed` — `already_engaged` est un succès distinct, pour que l'appelant ne journalise pas une mise en file qui n'a pas eu lieu. | poller IMAP, filet serveur du chat, `requeue`, re-scoring (branche entrante) |
+| `hitl/settle.ts` — `settleValidationsForAnalysis` | **FERMER** une fiche (`pending → void`). Cherche par **uid** et non par l'id canonique : les fiches antérieures à l'id déterministe portent un id aléatoire, et ce sont celles qu'on ne retrouverait pas autrement. Un `sending` **suspend tout**. | re-scoring (branche sortante), correction de décision, route du hub |
+
+Le **classement sans suite** garde son chemin propre (`dismissal.ts`) : il ferme
+déjà sa fiche, avant le classement, avec ses propres claims.
+
+**Garde structurelle sondée** — `src/lib/hitl/__tests__/queue-writers.test.ts` :
+aucun fichier du produit n'appelle les primitives d'écriture de statut hors
+d'une liste **assumée et motivée**. Un chemin ajouté fait rougir la suite en le
+nommant. C'est la seule chose qui tient la discipline, puisque le défaut consiste
+à **ne pas** appeler quelque chose — aucun test de logique ne peut l'attraper.
+
+### 6bis.4 L'identifiant d'une fiche est DÉRIVÉ, jamais choisi
+
+`hitl/validation-id.ts` — `validationIdFor(analysisId, decision)` =
+`val_<racine de l'analyse>_<décision>`. **C'est un CONTRAT** : il doit continuer
+de rendre les identifiants déjà en base (`val_imap_<boîte>_<uid>_reject`), sinon
+une re-mise en file crée un doublon au lieu de retrouver la ligne.
+
+`POST /api/validations` le **dérive** du dossier (`payload.analysisId ?? uid`) :
+l'id envoyé par l'appelant n'est qu'un repli. C'était le dernier chemin par
+lequel deux fiches pouvaient coexister pour une candidature — et le chemin chat
+en tirait une **aléatoire** (`nowTaskId('val')`), donc deux dispatches du même
+lot créaient deux fiches pour un seul candidat.
+
+### 6bis.5 Ce que l'écran en fait
+
+- Fiche **désarmée**, jamais masquée (`SettledValidationCard`) : plus de
+  « Accepter / Refuser », la phrase qui dit pourquoi, et **un** geste — *Clore
+  cette fiche*. Masquer aurait fait disparaître des dossiers du hub sans que
+  personne ne sache pourquoi le compteur a bougé.
+- Une fiche désarmée **n'est pas sélectionnable** dans le refus groupé.
+- Sens A, côté fiche candidature : le bandeau dit le fait et propose
+  *Remettre en file* (`POST /api/validations/requeue`) — la cible est **relue
+  côté serveur** (409 sur un dossier tranché, classé, ou hors zone d'attente).
+- **Clore n'est pas refuser** : aucun mail, aucune décision, le verdict de
+  screening, la zone et `decided_by` restent intacts. Journal
+  `validation_settled` / `validation_requeued`.
+
+### 6bis.6 Le signal
+
+`validations_incoherentes` (registre `BUSINESS_SIGNALS`) compte les **deux**
+écarts et les **nomme séparément** — ils n'appellent pas le même geste, et les
+fondre dans un total rendrait le signal inactionnable :
+
+> « 13 dossiers ne sont pas cohérents entre la file de validation et leur
+> analyse : 12 attendent sans fiche de validation (non décidables), 1 garde une
+> fiche qui n'a plus lieu d'être. »
+
+---
+
 ## 7. Modèle de données
 
 | Table.colonne | Type | Rôle |
@@ -330,8 +425,18 @@ Colonnes inertes conservées (aucune migration de drop) :
 | Reporting | `src/lib/reporting/campaign-report.ts` / `multi-campaign-report.ts` | recos recalibrées |
 | Audit | `src/lib/reporting/candidate-journey.ts` / `journey-lookup.ts` | parcours piloté par la zone |
 | UI | `CampaignCreateSheet` (slider double poignée), `CampaignReport*`, `KPIGrid`, `InterventionFlag` | surfaces |
+| **Cohérence** | `src/lib/hitl/queue-coherence.ts` | `checkValidationCoherence`, `queueMismatch`, `SETTLED_LABELS` — **pur**, les deux sens |
+| **Cohérence** | `src/lib/hitl/validation-id.ts` | `validationIdFor` — l'identifiant d'une fiche est un CONTRAT |
+| **Cohérence** | `src/lib/hitl/enqueue.ts` / `settle.ts` | les **deux** écrivains de la file (ouvrir / fermer) |
+| **Cohérence** | `src/lib/hitl/requeue.ts` / `validation-from-analysis.ts` | re-mise en file (sens A), reconstruction pure depuis l'analyse |
+| **Cohérence** | `SettledValidationCard`, `GrayValidationAction` | fiche désarmée, bandeau « fiche introuvable » |
+| **Cohérence** | `POST /api/validations/requeue`, `POST /api/validations/[id]/settle` | les deux gestes de réparation, cible relue serveur |
 
 **Tests** : `decision-zone.test.ts`, `score-candidat*.test.ts` (+ golden),
 `candidate-journey.test.ts`, `campaign-report*.test.ts`, `multi-campaign-report*.test.ts`,
-`candidate-analyses.test.ts`. Invariant projet : `npm run typecheck` + suite
+`candidate-analyses.test.ts`.
+**Cohérence** : `queue-coherence.test.ts` (les deux sens + le doute),
+`validation-id.test.ts` (le contrat, aller-retour), `validation-from-analysis.test.ts`
+(ce qu'il REFUSE), `requeue-no-send.test.ts` et `queue-writers.test.ts`
+(**gardes structurelles sondées** : aucun émetteur importé, aucun écrivain hors liste). Invariant projet : `npm run typecheck` + suite
 vitest verte avant tout commit.

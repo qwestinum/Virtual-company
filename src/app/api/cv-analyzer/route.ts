@@ -8,6 +8,7 @@ import { resolveCandidateEmail } from '@/lib/agents/candidate-email';
 import { ScoringError } from '@/lib/scoring';
 import { AIProviderError, AnalysisUnavailableError } from '@/lib/ai/errors';
 import { persistCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import { ensureValidationAfterChatAnalysis } from '@/lib/hitl/requeue';
 import { insertArtifactMeta } from '@/lib/db/repos/artifacts';
 import { uploadArtifactBinary } from '@/lib/storage/blob';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
@@ -182,6 +183,29 @@ export async function POST(request: Request): Promise<NextResponse> {
       campaignId: campaignId ?? null,
       application,
     });
+
+    // FILET SERVEUR de la mise en file HITL. La file du chemin chat était
+    // posée par le NAVIGATEUR (`dispatchPostAnalysisOutreach`, en
+    // fire-and-forget) : onglet fermé ou réseau coupé, l'analyse existait sans
+    // sa fiche de validation et le dossier devenait indécidable (diagnostic du
+    // 20/09/2026, docs/ops/diagnostic-validations-orphelines-2026-09-20.md).
+    // Le chemin IMAP, lui, a toujours écrit côté serveur.
+    // Idempotent (id déterministe + fusion non destructive) : le dispatch
+    // client qui suit enrichit la même ligne, il n'en crée pas une seconde.
+    // N'ENVOIE RIEN — mettre en file, c'est attendre un clic humain.
+    //
+    // Même la PLANIFICATION est protégée : hors scope de requête (tests,
+    // appel in-process), `after` LÈVE — et un filet qui casse la réponse
+    // d'analyse ferait plus de mal que le trou qu'il bouche.
+    try {
+      after(() =>
+        ensureValidationAfterChatAnalysis(taskId).catch((queueErr) => {
+          console.error('[cv-analyzer] filet de mise en file échoué', queueErr);
+        }),
+      );
+    } catch (scheduleErr) {
+      console.error('[cv-analyzer] filet de mise en file non planifié', scheduleErr);
+    }
 
     // Alimentation automatique du vivier APRÈS la réponse (non bloquant —
     // §3.1 porte 2). Le File est rebufférisable (Blob.arrayBuffer relisible).

@@ -93,7 +93,7 @@ describe('admission', () => {
     expect(persisted.application.scoringResult.decisionZone).toBe('auto_accept');
     expect(vi.mocked(analyzeCVApplication).mock.calls[0]![0]).toMatchObject({ source: 'sourcing' });
     const [input, keys] = vi.mocked(dispatchCandidateOutreach).mock.calls[0]!;
-    expect(keys).toEqual({ analysisId: `can_src_${APPROACH_ID}`, claim: { mailboxId: 'sourcing', uid: APPROACH_ID }, validationPrefix: `val_src_${APPROACH_ID}`, actor: 'sourcing' });
+    expect(keys).toEqual({ analysisId: `can_src_${APPROACH_ID}`, claim: { mailboxId: 'sourcing', uid: APPROACH_ID }, actor: 'sourcing' });
     expect(input.candidate).toMatchObject({ email: 'claire.martin@exemple.fr', decisionZone: 'auto_accept', sourcingApproach: { recruiterName: 'Jane R.' } });
     expect(input.cvArtifactId).toBe(`art_src_cv_${APPROACH_ID}`);
     expect(completeAdmission).toHaveBeenCalledWith(APPROACH_ID, `can_src_${APPROACH_ID}`);

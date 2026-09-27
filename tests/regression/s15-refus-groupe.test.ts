@@ -53,6 +53,7 @@ import {
 import type { CVApplication } from '@/types/cv-analysis';
 import type { DecisionZone, PendingValidation } from '@/types/hitl';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import {
   call,
@@ -170,7 +171,9 @@ async function enqueue(
   expect(analyzed.status).toBe(200);
   const app = analyzed.json.application as CVApplication;
 
-  const id = `val_treg_${taskId}`;
+  // Identifiant CANONIQUE (écrivain unique de la file) : un id inventé
+  // créerait une SECONDE ligne pour la même candidature.
+  const id = validationIdFor(taskId, 'reject');
   const enqueue = await call(postValidation, {
     method: 'POST',
     body: {

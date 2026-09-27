@@ -57,6 +57,7 @@ import { verifyErasure } from '@/lib/gdpr/verify';
 import { ARTIFACTS_BUCKET } from '@/lib/storage/blob';
 import type { CVApplication } from '@/types/cv-analysis';
 import { EMPTY_ERASURE_COUNTS, type ErasureIdentity } from '@/types/gdpr';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import { call, cvAnalyzerForm, testCampaignPayload, testScoringSheet, until } from './helpers/api';
 import { cleanAll, db, newTestCampaignId, readRows } from './helpers/db';
@@ -268,7 +269,9 @@ beforeAll(async () => {
   // 4. File de validation humaine (route réelle).
   const validation = await call(postValidation, {
     body: {
-      id: `val_treg_s18_${subjectTaskId}`,
+      // Identifiant CANONIQUE (écrivain unique de la file) : un id inventé
+      // créerait une SECONDE ligne pour la même candidature.
+      id: validationIdFor(subjectTaskId, 'reject'),
       campaignId: camp,
       candidateName: SUBJECT_NAME,
       candidateEmail: SUBJECT_EMAIL,
@@ -626,8 +629,17 @@ describe('S18.4 — l’exécution efface et pseudonymise', () => {
     expect(report?.sections.topics).toContain(SUBJECT_NAME);
   });
 
-  it('vide les satellites', async () => {
-    expect(await readRows('pending_validations', { campaign_id: camp })).toHaveLength(0);
+  it('vide les satellites du SUJET, et seulement les siens', async () => {
+    // Périmètre, pas campagne : depuis l'écrivain unique, TOUTE candidature en
+    // zone d'attente a sa ligne de file — le VOISIN en a une, et la purge n'a
+    // aucune raison d'y toucher. Exiger une campagne sans aucune validation
+    // confondrait « les satellites du sujet sont partis » avec « personne
+    // d'autre n'attend », et ferait passer un débordement pour un succès.
+    const left = await readRows<{ id: string }>('pending_validations', {
+      campaign_id: camp,
+    });
+    expect(left.map((v) => v.id)).not.toContain(validationIdFor(subjectTaskId, 'reject'));
+    expect(left.map((v) => v.id)).toContain(validationIdFor(neighbourTaskId, 'reject'));
     expect(
       (await db().from('sched_booking_links').select('token').in('token', identity.linkTokens))
         .data ?? [],

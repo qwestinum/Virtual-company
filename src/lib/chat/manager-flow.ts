@@ -30,6 +30,7 @@ import {
   renderCVBatchMarkdown,
   suggestCVReportFileName,
 } from '@/lib/agents/cv-report-render';
+import { validationIdFor } from '@/lib/hitl/validation-id';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 import type { DecisionZone, HitlDecision } from '@/types/hitl';
 import {
@@ -583,8 +584,11 @@ export async function dispatchPostAnalysisOutreach(args: {
           campaignId: args.campaignId,
           jobTitle: args.jobTitle,
         }),
-      enqueue: async () => {
-        await enqueuePendingValidation({
+      // Rend la PERSISTANCE réelle : `true` inconditionnel faisait passer un
+      // échec de mise en file pour un succès, et le gate ne différait donc
+      // jamais. Un `false` retombe sur 'deferred' — jamais sur un envoi.
+      enqueue: () =>
+        enqueuePendingValidation({
           cv,
           uid,
           decision,
@@ -592,9 +596,7 @@ export async function dispatchPostAnalysisOutreach(args: {
           jobTitle: args.jobTitle,
           cvArtifactId: args.cvArtifactIds[index] ?? null,
           reportArtifactId: args.reportArtifactId,
-        });
-        return true;
-      },
+        }),
     });
 
     if (outcome.kind === 'deferred') {
@@ -778,15 +780,21 @@ async function enqueuePendingValidation(args: {
   reportArtifactId: string;
   /** Artefact CV (consultation du CV depuis la carte de validation). */
   cvArtifactId: string | null;
-}): Promise<void> {
+}): Promise<boolean> {
   const chat = useChatStore.getState();
   const candidate = cvApplicationToMailCandidate(args.cv);
-  const validationId = nowTaskId('val');
+  // Id DÉTERMINISTE, dérivé de l'analyse (l'uid EST l'identifiant d'analyse
+  // côté chat). Il tirait auparavant un id ALÉATOIRE (`nowTaskId('val')`) :
+  // deux dispatches du même lot créaient deux lignes pour un seul candidat, et
+  // rien ne permettait de retrouver la file depuis l'analyse. Même convention
+  // que le poller, donc le filet serveur (`ensureValidationAfterChatAnalysis`)
+  // et ce dispatch écrivent bien la MÊME ligne.
+  const validationId = validationIdFor(args.uid, args.decision);
 
   // Crée la validation suspendue (persistée — survit au refresh). Pas de
   // brouillon pré-rédigé : `mailDraftArtifactId` null, la carte composera.
   try {
-    await fetch('/api/validations', {
+    const res = await fetch('/api/validations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -811,8 +819,13 @@ async function enqueuePendingValidation(args: {
         },
       }),
     });
+    if (!res.ok) {
+      console.error('[hitl] enqueue refusée', res.status);
+      return false;
+    }
   } catch (err) {
     console.error('[hitl] enqueue failed', err);
+    return false;
   }
 
   // Bulle Manager NEUTRE : en zone de validation, à trancher (jamais « refus »).
@@ -821,6 +834,7 @@ async function enqueuePendingValidation(args: {
     source: 'text',
     content: `${args.cv.candidate.fullName} est en zone de validation (score ${args.cv.scoringResult.totalScore}/100) — à accepter ou refuser dans « Validation suspendue ».`,
   });
+  return true;
 }
 
 async function dispatchSchedulerBrief(args: {

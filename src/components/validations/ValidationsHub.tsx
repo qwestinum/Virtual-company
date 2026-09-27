@@ -37,6 +37,7 @@ import type { PendingValidation } from '@/types/hitl';
 import { EmptyQueueNotice } from './EmptyQueueNotice';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
 import { RejectionProposalsTab } from './RejectionProposalsTab';
+import { SettledValidationCard } from './SettledValidationCard';
 import { SubTabButton } from './SubTabButton';
 import { useValidationsQueue } from './use-validations-queue';
 import { ValidationCard } from './ValidationCard';
@@ -48,6 +49,7 @@ export function ValidationsHub() {
   const {
     state,
     zones,
+    coherence,
     referents,
     currentUserId,
     history,
@@ -172,6 +174,7 @@ export function ValidationsHub() {
           referentOf={referentOf}
           filterKey={filterKey}
           maskedByFilter={sortedProposals.length - visibleProposals.length}
+          coherence={coherence}
         />
       ) : visibleExamine.length === 0 ? (
         <EmptyQueueNotice
@@ -180,14 +183,28 @@ export function ValidationsHub() {
         />
       ) : (
         <div className="flex flex-col gap-3">
-          {visibleExamine.map((v) => (
-            <ValidationCard
-              key={v.id}
-              v={v}
-              onSent={onSent}
-              referent={referentOf(v.campaignId)}
-            />
-          ))}
+          {visibleExamine.map((v) => {
+            // DÉSARMÉE, jamais masquée : un dossier qui n'attend plus ne doit
+            // pas offrir d'arbitrage, mais sa disparition silencieuse serait
+            // pire (cf. plan-coherence-file-analyse-2026-09-20.md, lot 0).
+            const c = coherence[v.id];
+            return c?.kind === 'settled' ? (
+              <SettledValidationCard
+                key={v.id}
+                v={v}
+                reason={c.reason}
+                onSettled={onSent}
+                referent={referentOf(v.campaignId)}
+              />
+            ) : (
+              <ValidationCard
+                key={v.id}
+                v={v}
+                onSent={onSent}
+                referent={referentOf(v.campaignId)}
+              />
+            );
+          })}
         </div>
       )}
 

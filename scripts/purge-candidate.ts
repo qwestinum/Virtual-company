@@ -329,6 +329,7 @@ async function main(): Promise<void> {
       reason,
       counts: result.counts,
       already: result.alreadyErased,
+      closedAnalyses: result.closedAnalyses,
       execute,
     });
     process.exit(1);
@@ -336,6 +337,18 @@ async function main(): Promise<void> {
 
   printCounts(execute ? 'Effacé' : 'À effacer', result.counts);
   if (sum(result.alreadyErased) > 0) printCounts('Déjà effacé', result.alreadyErased);
+  if (result.closedAnalyses > 0) {
+    // Ce n'est pas un effacement : on le dit à part, en clair, plutôt que de
+    // le fondre dans un total qui sert de preuve au responsable de traitement.
+    const n = result.closedAnalyses;
+    console.log(
+      `\n  ${execute ? 'Clôturé' : 'À clôturer'} : ${n} candidature${n > 1 ? 's' : ''} ` +
+        `classée${n > 1 ? 's' : ''} sans suite (motif « candidat retiré »).\n` +
+        `     Leur file de validation vient d'être supprimée : sans clôture, elles ` +
+        `resteraient\n     comptées « à valider » et ne seraient pas décidables. ` +
+        `Aucun mail n'est envoyé.`,
+    );
+  }
 
   // ── 5. Contrôle final ───────────────────────────────────────────────────
   // ⚠️ Le contrôle ne lit QUE le périmètre de la demande. Périmètre vide ⇒ il
@@ -395,6 +408,7 @@ async function main(): Promise<void> {
     instructedBy,
     operator,
     reason,
+    closedAnalyses: result.closedAnalyses,
     counts: result.counts,
     already: result.alreadyErased,
     execute,
@@ -497,6 +511,12 @@ async function persistTrace(
     reason: string | null;
     counts: ErasureCounts;
     already: ErasureCounts;
+    /**
+     * Dossiers CLÔTURÉS faute de pouvoir rester décidables (leur file de
+     * validation vient d'être supprimée). Jamais mêlé aux compteurs
+     * d'effacement : ce n'est pas un effacement.
+     */
+    closedAnalyses: number;
     execute: boolean;
   },
 ): Promise<boolean> {
@@ -538,6 +558,7 @@ async function persistTrace(
       status: args.status,
       counts: { ...args.counts },
       alreadyErased: { ...args.already },
+      closedAnalyses: args.closedAnalyses,
       traceRecorded: written,
     },
   });

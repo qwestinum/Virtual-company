@@ -1,15 +1,157 @@
-# Brief — prochaine session (réécrit le 09/09/2026)
+# Brief — prochaine session (réécrit le 20/09/2026)
 
-Le chantier courant est le **connecteur APEC / ADEP V5**. Source de vérité :
-**`docs/specs/apec-adep-connector.md`** — à lire avant de toucher au connecteur.
-Exploitation : `docs/ops/apec-mise-en-service.md`.
+Le chantier est la **REFONTE DES INTERFACES**. Source de vérité :
+**`docs/ux/maquette-structure-v2-2026-09-20.md`** — à lire EN ENTIER avant de toucher à un
+écran. Elle supersède la v1 (`maquette-structure-2026-09-20.md`, conservée pour la trace).
+L'état objectif de l'existant est dans **`docs/ux/audit-ux-2026-09-20.md`**.
 
-> Le brief précédent (21/08, IMAP et conformité prod) est archivé en §5. Ce qu'il
-> contient reste vrai, mais ce n'est plus le sujet.
+> Le brief précédent (APEC / ADEP) est archivé en §8. Ce qu'il contient reste vrai ; le
+> connecteur est livré et tourne en simulation tant que `ADEP_ENABLED` n'est pas posé.
+> Compte rendu de la session qui précède celle-ci :
+> `docs/sessions/SESSION_2026-09-20_UX_COHERENCE.md`.
 
 ---
 
-## 0. ÉTAT — lots 0 à 4 livrés, aucun appel réel
+## 0. ÉTAT — la maquette est validée, aucun écran n'est commencé
+
+`fix/validations-orphelines` porte 7 commits **jamais poussés** : ils n'ont RIEN à voir avec la
+refonte (cohérence de la file HITL), mais ils touchent `ValidationsHub`, `RejectionProposalsTab`
+et `GrayValidationAction`. **Les merger avant de commencer**, sinon la refonte repartira d'un
+hub périmé.
+
+Vert au moment d'écrire : typecheck propre, **2 707 tests**, **régression 232/232**.
+
+---
+
+## 1. Ce que la refonte change — et ce qu'elle ne change PAS
+
+**5 entrées** : `Aujourd'hui` (défaut) · `Campagnes` · `Candidatures` · `Entretiens` ·
+`Pilotage`. Réglages hors navigation.
+
+**Conservés SANS changement de structure** : `Candidatures` et `Entretiens`. Seuls ajouts —
+réception des filtres par URL avec un bandeau visible et retirable, accès au mode groupé depuis
+la puce « À valider », lexique appliqué aux puces. **Ne pas les refondre.**
+
+**Un seul écran est à créer de zéro** : *Aujourd'hui*.
+
+| Disparaît du premier niveau | Où va son contenu |
+|---|---|
+| Bureau | devient *Aujourd'hui* ; agents + répartition → *Pilotage* |
+| Validation suspendue | puce « À valider » + mode groupé |
+| Validations vivier | décision **sur place** dans la recherche vivier d'une campagne |
+| Sourcing | bouton de la carte campagne |
+
+---
+
+## 2. Le blocage n°1, et il n'est pas technique
+
+**Il n'existe AUCUNE URL dans le produit.** Les 8 onglets et tous les sous-onglets vivent dans un
+`useState` ; le seul `router.push` du workspace mène à `/settings`. Donc : pas de favori, pas de
+bouton Précédent, pas de lien partageable, et **rien où pointer** — les deux signaux APEC ciblent
+déjà `{ route: '/rh/recrutement' }` sans pouvoir dire QUELLE campagne.
+
+**Le lot M0 (squelette adressable) conditionne tout le reste.** Une refonte « en modules » sans
+routes serait le même produit avec d'autres étiquettes, et *Aujourd'hui* — dont chaque ligne doit
+mener quelque part — serait irréalisable.
+
+⚠️ **Rester sous `/rh/…`** : le proxy est une **liste blanche de préfixes**
+(`['/app','/rh','/settings','/validations','/admin']`). Un module sorti de là devient **public
+par défaut**.
+
+---
+
+## 3. Ordre des lots (§F.5 de la maquette v2)
+
+| Lot | Contenu | Poids | Bloque |
+|---|---|---|---|
+| **P0** | **Arbitrages métier** — cf. §5 | — | M1, E.2 |
+| **M0** | Squelette adressable : routeur à 5 entrées, redirections 301, proxy vérifié, lecture d'URL + bandeau de filtre partagé | M | tout |
+| **M1** | *Aujourd'hui* : `TodayBoard`, 4 sections, 2 signaux à ajouter, 3 états à zéro, garde « À vérifier jamais filtré » | M | — |
+| **M2** | Carte campagne : 4 blocs, **sémantique des compteurs tranchée**, duplication retirée, 3 boutons de sourcing | S | — |
+| **M3** | Assistant de création : 6 étapes + récap + écran de sortie, découpe des **1 695 lignes** de `CampaignCreateSheet`, 3 trous de provenance | L | — |
+| **M4** | Vivier : décision sur place, retrait de l'onglet, reprise de la ligne en attente | S | — |
+| **M5** | Lexique (7 mots partout), cartographie du Manager réécrite + **test de non-divergence** | S | après M1-M4 |
+
+**M0 + M1 = le minimum démontrable** : c'est le chemin (a) qui passe de 5 clics à 2.
+
+---
+
+## 4. Les six pièges à ne pas perdre
+
+1. **Les compteurs de la carte comptent une TRAJECTOIRE, pas une étape.**
+   « Shortlistés / Invités » = `everInvited` (passés par l'invitation, y compris ceux qui ont
+   avancé). Mesuré : la carte CAMP-2026-221 affiche **2**, et la puce « Invité » de cette
+   campagne affiche **0**. La v2 tranche pour l'**étape courante** (option A, §B.1) et déménage
+   la trajectoire en Pilotage — **à valider avant de coder M2**.
+2. **Les alertes ne sont JAMAIS filtrées par référent.** Garde structurelle existante à étendre :
+   `src/components/referent/__tests__/surfaces.test.ts`. Ne pas confondre avec la **portée
+   personnelle** des deux signaux d'agenda (`personal: true`) — autre axe, il reste tel quel.
+3. **Les filtres existent déjà côté serveur.** `CandidaturesWorkspace` prend `initialCampaignId` /
+   `initialStage` / `everInvited` / `everInterviewed`, et **`GET /api/interviews?campaignId=`**
+   est déjà servi. Le travail est la **lecture de l'URL**, pas le filtrage.
+4. **La suite S1→S25 est insensible à une refonte UI** : elle traverse les routes API, **zéro
+   import de `components/`**. Tant qu'aucune route `/api/*` ne bouge, impact nul.
+5. **Le diffusion d'une campagne ne s'ouvre que sur une campagne ACTIVE** (invariant :
+   diffuser depuis un brouillon appelle des CV qui ne seront pas analysés). Le sous-onglet
+   existe toujours et **dit** ce qui s'ouvrira — on ne masque jamais en silence.
+6. **`manager-cartography.ts` est DÉJÀ périmé sur 6 points** sans qu'aucune refonte ait eu lieu
+   (onglet Sourcing absent, « 5 sections » au lieu de 7, « Seuil d'acceptation », un niveau de
+   scoring supprimé, un onglet Dashboard qui n'existe plus, HITL présenté comme global). Le
+   réécrire **avec** un test de non-divergence, sinon la dérive recommence.
+
+---
+
+## 5. P0 — les arbitrages qui bloquent, à poser AVANT M1
+
+| # | Question | Effet si non tranchée |
+|---|---|---|
+| **Q1** | **Sémantique des compteurs de carte** (trajectoire vs étape, §4-1) | M2 ne peut pas être codé |
+| **Q2** | **La scène des 6 agents** part en Pilotage — elle quitte l'ouverture de démonstration, alors que c'est elle qui fait l'effet « une équipe au travail » face à Limova. **Arbitrage commercial, pas UX.** | M1 (on garde ou non un bandeau compact en pied) |
+| **Q3** | **Volume réel** de dossiers en attente en cabinet. *Aujourd'hui* liste les dossiers (plafond 5 + « voir les N autres »). À 40, c'est un mur ; à 3, un compteur serait du gâchis. | Format des sections de M1 |
+| **Q4** | **Où vit le vivier** : Pilotage, Candidatures, ou seulement depuis la carte campagne ? | M4 |
+| **Q5** | **Jooble** — absent du code. Diffusion réelle = annonce générique + APEC. | Libellés de M2 |
+| **Q6** | **Le commentaire de verdict reste FACULTATIF** (arbitrage du 19/09). Le brief v2 le disait obligatoire ; la maquette retient facultatif. À confirmer. | Libellé d'*Aujourd'hui* |
+
+---
+
+## 6. Correctifs XS/S autorisés en parallèle (branche `fix/ux-mensonges`)
+
+Vrais quelle que soit la structure, tous mesurés dans l'audit :
+
+- **« Refus auto » → « Proposé au refus »** dans le curseur de CRÉATION (celui de l'édition est
+  déjà juste). Le refus automatique n'existe plus depuis le 18/08 : le formulaire enseigne un
+  comportement supprimé.
+- **`STAGE_PILL_CLASS` → `STAGE_TONE_*`** : 5 pastilles sur 7 échouent AA, et la palette
+  conforme est **déjà écrite dans le même fichier**, jamais importée.
+- **« Enregistrer » qui n'enregistre rien** (7 boutons de la création) → « Section terminée ».
+- **Champs obligatoires marqués** + compteur « 4 sur 8 ».
+- **Message d'accueil du Manager** : il promet « lancer un recrutement […] je m'occupe du reste »
+  alors qu'il est en lecture seule.
+- **Vouvoiement** (3 chaînes tutoient : `ChatInput`, `SettingsHub:498`, `AgendaSettings:82`).
+- **Identifiant technique `can_src_…` retiré** de l'en-tête de la fiche candidature.
+- `--dash-text-tertiary` (2,87:1) et les bordures (1,22:1) remontés au-dessus des seuils.
+
+---
+
+## 7. Ce qui attend ailleurs (hors refonte)
+
+- **Sourcing : la saisie d'un candidat est DÉTRUITE sur une cause transitoire**
+  (`docs/ops/diagnostic-s20-4-2026-09-20.md` §2). Diagnostic posé, **arbitrage non tranché**.
+- **Lots 4-5 du module de réservation** : extinction du stock Cal.com puis décommission.
+- **Cartographie produit du Manager** — dette qui grandit (cf. §4-6).
+- **Lot audit 🟠 résiduel** (`docs/audit/audit-orqa.md`) : I1, I2, I3/I4, I15/I16, I17,
+  **Settings I12** (sauvegarde optimiste sans rollback).
+- **UI de rejeu des `imap_unmatched_cvs`** (API only).
+- `docs/BACKLOG.md` pour le reste.
+
+---
+
+## 8. Archive — brief APEC / ADEP du 09/09 (lots 0-4 livrés, jamais poussés)
+
+Toujours valable, simplement plus le sujet. Source : `docs/specs/apec-adep-connector.md`.
+
+
+### 0. ÉTAT — lots 0 à 4 livrés, aucun appel réel
 
 Le connecteur est **complet et commité** (6 commits, `feat(adep): lot 0` à
 `docs(adep)`), **jamais poussé** au moment d'écrire — le DO pousse lui-même.
@@ -42,7 +184,7 @@ Dev vert au moment du commit : typecheck, **2097 tests** (7 sautés quand
 
 ---
 
-## 1. Migration APEC — AVANT tout déploiement
+### 1. Migration APEC — AVANT tout déploiement
 
 `scripts/migrate.sql`, **fichier entier**, **deux exécutions successives** (règle
 absolue), puis **Dashboard Supabase → Reload schema cache**. Sans le rechargement
@@ -65,7 +207,7 @@ point de reprise immédiat, avec un contrôle POSITIF : un vrai `SELECT`,
 
 ---
 
-## 2. Les quatre restes ouverts — et qui les bloque
+### 2. Les quatre restes ouverts — et qui les bloque
 
 | Reste | Bloqué par | Ce qu'on fait en attendant |
 |---|---|---|
@@ -79,7 +221,7 @@ depuis l'annonce générique (§3).
 
 ---
 
-## 3. Pré-remplissage depuis l'annonce générique (09/09, livré)
+### 3. Pré-remplissage depuis l'annonce générique (09/09, livré)
 
 Détail : **§6quater de la spec**. Ce que le recruteur a validé ne se ressaisit
 pas — à l'ouverture du panneau, le titre et le corps de l'offre APEC viennent de
@@ -101,7 +243,7 @@ Trois choses à ne pas défaire :
 
 ---
 
-## 4. Ce qui attend ailleurs (inchangé)
+### 4. Ce qui attend ailleurs (inchangé)
 
 - **Cartographie produit du Manager** — le panneau APEC s'ajoute à la liste des
   surfaces qu'il ignore (référent, Entretiens, disponibilités, sans-suite). Il
@@ -115,7 +257,7 @@ Trois choses à ne pas défaire :
 
 ---
 
-## 5. Archive du brief du 21/08 — IMAP et conformité prod
+### 5. Archive du brief du 21/08 — IMAP et conformité prod
 
 Toujours valable, simplement moins prioritaire que le connecteur. Compte-rendu :
 `docs/sessions/SESSION_2026-08-20_21_IMAP_UX.md`.
@@ -140,7 +282,7 @@ Toujours valable, simplement moins prioritaire que le connecteur. Compte-rendu :
 
 ---
 
-## 6. OUT (ne pas entamer sans décision)
+### 6. OUT (ne pas entamer sans décision)
 
 - n8n / event bus externe (post-MVP).
 - Cloisonnement de données par recruteur — « espace commun » est un CHOIX validé.
@@ -153,7 +295,9 @@ Toujours valable, simplement moins prioritaire que le connecteur. Compte-rendu :
 
 ---
 
-## Rappels d'exécution permanents
+---
+
+## 9. Rappels d'exécution permanents
 
 - `migrate.sql` = état final idempotent : un bloc canonique par contrainte,
   guards sur la DÉFINITION, **double application en dev avant la prod**.
@@ -167,3 +311,8 @@ Toujours valable, simplement moins prioritaire que le connecteur. Compte-rendu :
 - **Le poller lit le dossier configuré (défaut INBOX).** Un mail de test envoyé
   *depuis* la boîte surveillée part dans `\Sent` et restera invisible.
 - **Jamais deux poller sur une même base** (`next dev` local + cron déployé).
+- **Le serveur de dev et `test:regression` partagent la base.** Une fixture posée
+  dans un état qu'un rail de maintenance traite doit se protéger elle-même
+  (cf. `docs/ops/diagnostic-s20-4-2026-09-20.md`).
+- **Un identifiant de fiche de validation ne se choisit plus** : il est DÉRIVÉ du
+  dossier. Une fixture qui l'invente crée une seconde fiche par candidature.
