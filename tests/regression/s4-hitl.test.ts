@@ -36,6 +36,7 @@ async function seedGrayValidation(slug: string): Promise<{
   taskId: string;
   validationId: string;
   candidate: MailCandidate;
+  enqueueBody: Record<string, unknown>;
 }> {
   const taskId = `treg_s4_${slug}_${Date.now().toString(36)}`;
   const res = await call(analyzeCv, {
@@ -57,20 +58,22 @@ async function seedGrayValidation(slug: string): Promise<{
   // Identifiant CANONIQUE : depuis l'écrivain unique, la route le DÉRIVE du
   // dossier — un id inventé par la fixture ne serait pas celui de la fiche.
   const validationId = validationIdFor(taskId, 'reject');
-  const enqueue = await call(postValidation, {
-    method: 'POST',
-    body: {
-      id: validationId,
-      campaignId: camp,
-      candidateName: application.candidate.fullName,
-      candidateEmail: application.candidate.email,
-      score: application.scoringResult.totalScore,
-      decision: 'reject',
-      payload: { uid: taskId, candidate, jobTitle: TEST_JOB_TITLE },
-    },
-  });
+  const enqueueBody = {
+    id: validationId,
+    campaignId: camp,
+    candidateName: application.candidate.fullName,
+    candidateEmail: application.candidate.email,
+    score: application.scoringResult.totalScore,
+    decision: 'reject',
+    payload: { uid: taskId, candidate, jobTitle: TEST_JOB_TITLE },
+  };
+  const enqueue = await call(postValidation, { method: 'POST', body: enqueueBody });
   expect(enqueue.status).toBe(200);
-  return { taskId, validationId, candidate };
+  // ⚠️ Le filet serveur de /api/cv-analyzer remet le dossier en file APRÈS
+  // la réponse, et tombe parfois entre la décision et la réservation du test
+  // « ACCEPTER » — c'est ainsi que le défaut du 27/09/2026 a été attrapé. On
+  // ne l'attend PAS : ce croisement naturel doit rester vert.
+  return { taskId, validationId, candidate, enqueueBody };
 }
 
 /** Chaîne d'envoi post-décision — identique au client (sendValidation). */
@@ -86,7 +89,10 @@ async function decideAndSend(args: {
   });
   expect(patched.status).toBe(200);
 
-  const reserved = await callWithId(reserveSend, args.validationId, { method: 'POST' });
+  const reserved = await callWithId(reserveSend, args.validationId, {
+    method: 'POST',
+    body: { expectedDecision: args.decision },
+  });
   expect(reserved.status).toBe(200);
   expect(reserved.json.reserved).toBe(true);
 
@@ -250,7 +256,7 @@ describe('S4 — parcours HITL', () => {
       body: { decision: 'accept', confirmed: true },
     });
     expect(patched.status).toBe(200);
-    const reserved = await callWithId(reserveSend, seeded.validationId, { method: 'POST' });
+    const reserved = await callWithId(reserveSend, seeded.validationId, { method: 'POST', body: { expectedDecision: 'accept' } });
     expect(reserved.json.reserved).toBe(true);
 
     // Toute re-décision après réservation est REFUSÉE.
@@ -260,5 +266,101 @@ describe('S4 — parcours HITL', () => {
     });
     expect(relocked.status).toBe(409);
     expect(relocked.json.error).toBe('decision_locked');
+  });
+
+  it('« basculé puis remis en file » : la décision humaine survit, l’invitation part sur elle', async () => {
+    const seeded = await seedGrayValidation('flip');
+    const before = sentEmails.length;
+
+    // Le recruteur choisit « accepter » (PATCH, comme decideGrayValidation)…
+    const patched = await callWithId(patchValidation, seeded.validationId, {
+      method: 'PATCH',
+      body: { decision: 'accept', confirmed: true },
+    });
+    expect(patched.status).toBe(200);
+
+    // … et une remise en file du même dossier arrive AVANT la réservation,
+    // avec la direction provisoire d'une fiche (`reject`).
+    const requeued = await call(postValidation, { method: 'POST', body: seeded.enqueueBody });
+    expect(requeued.status).toBe(200);
+
+    const afterRequeue = await readRow<{ status: string; decision: string; confirmed: boolean; decided_by: string | null }>(
+      'pending_validations',
+      seeded.validationId,
+    );
+    expect(afterRequeue.status).toBe('pending');
+    expect(afterRequeue.decision).toBe('accept');
+    expect(afterRequeue.confirmed).toBe(true);
+    expect(afterRequeue.decided_by).toBe('user');
+
+    // La suite de l'envoi : réservation sur la décision affichée, mail, fin.
+    await decideAndSend({ ...seeded, decision: 'accept' });
+
+    const validation = await readRow<{ status: string; decision: string }>(
+      'pending_validations',
+      seeded.validationId,
+    );
+    expect(validation.status).toBe('sent');
+    expect(validation.decision).toBe('accept');
+    const analysis = await readRow<{ status: string; decided_by: string }>(
+      'candidate_analyses',
+      seeded.taskId,
+    );
+    expect(analysis.status).toBe('accepted');
+    expect(analysis.decided_by).toBe('user');
+    expect(sentEmails.length).toBeGreaterThan(before);
+  });
+
+  it('réservation REFUSÉE si la décision en base n’est pas celle affichée — rien ne part', async () => {
+    const seeded = await seedGrayValidation('divergent');
+    const before = sentEmails.length;
+
+    // L'écran montre « accepter », la base dit « refuser » (proposition
+    // provisoire, jamais tranchée) : la réservation doit refuser.
+    const refused = await callWithId(reserveSend, seeded.validationId, {
+      method: 'POST',
+      body: { expectedDecision: 'accept' },
+    });
+    expect(refused.status).toBe(409);
+    expect(refused.json.error).toBe('decision_changed');
+    expect(refused.json.current).toBe('reject');
+
+    // Une réservation sans décision affichée est refusée elle aussi.
+    const blind = await callWithId(reserveSend, seeded.validationId, { method: 'POST' });
+    expect(blind.status).toBe(400);
+
+    const row = await readRow<{ status: string; decision: string }>(
+      'pending_validations',
+      seeded.validationId,
+    );
+    expect(row.status).toBe('pending');
+    expect(row.decision).toBe('reject');
+    expect(sentEmails.length).toBe(before);
+  });
+
+  it('mail REFUSÉ si sa direction n’est pas la décision réservée — seconde ceinture', async () => {
+    const seeded = await seedGrayValidation('mailguard');
+    const reserved = await callWithId(reserveSend, seeded.validationId, {
+      method: 'POST',
+      body: { expectedDecision: 'reject' },
+    });
+    expect(reserved.json.reserved).toBe(true);
+    const before = sentEmails.length;
+
+    const composed = await call(composeMail, {
+      method: 'POST',
+      body: {
+        artifactId: `art_treg_${seeded.taskId}_guard`,
+        campaignId: camp,
+        jobTitle: TEST_JOB_TITLE,
+        mode: 'invite',
+        candidate: seeded.candidate,
+        mail: { subject: '[TREG] Invitation', html: '<p>Invitation.</p>' },
+        validationId: seeded.validationId,
+      },
+    });
+    expect(composed.status).toBe(409);
+    expect(composed.json.error).toBe('decision_mismatch');
+    expect(sentEmails.length).toBe(before);
   });
 });

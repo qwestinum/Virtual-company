@@ -9,21 +9,52 @@
  * `pending`) : « invitation + refus au même candidat » devient impossible par
  * construction. Séquence client : réserver → mail-composer (claim d'envoi) →
  * scheduler → finaliser (/send).
+ *
+ * Corps OBLIGATOIRE `{ expectedDecision }` : la décision que l'écran montre
+ * (27/09/2026). La base diverge ⇒ 409 `decision_changed`, rien de réservé,
+ * rien d'envoyé. Un appel sans elle est refusé (400) : une réservation « à
+ * l'aveugle » est exactement ce que la garde supprime.
  */
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 
 import { reserveValidationSend } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
+import { HitlDecisionSchema } from '@/types/hitl';
 
 export const runtime = 'nodejs';
 
+const BodySchema = z.object({ expectedDecision: HitlDecisionSchema });
+
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await context.params;
+  const body = BodySchema.safeParse(await request.json().catch(() => null));
+  if (!body.success) {
+    return NextResponse.json(
+      {
+        error: 'expected_decision_required',
+        message:
+          'La décision affichée doit accompagner la réservation — rien n’a été réservé.',
+      },
+      { status: 400 },
+    );
+  }
   try {
-    const outcome = await reserveValidationSend(id);
+    const outcome = await reserveValidationSend(id, body.data.expectedDecision);
+    if (typeof outcome === 'object') {
+      return NextResponse.json(
+        {
+          error: 'decision_changed',
+          current: outcome.current,
+          message:
+            'La décision enregistrée pour ce dossier n’est plus celle affichée — rien n’a été envoyé.',
+        },
+        { status: 409 },
+      );
+    }
     switch (outcome) {
       case 'reserved':
         return NextResponse.json({ reserved: true });

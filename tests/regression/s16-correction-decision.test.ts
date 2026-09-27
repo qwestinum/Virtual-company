@@ -168,7 +168,7 @@ beforeAll(async () => {
     },
   });
   expect(enqueued.status).toBe(200);
-  const reserved = await callWithId(reserveSend, validationId, { method: 'POST' });
+  const reserved = await callWithId(reserveSend, validationId, { method: 'POST', body: { expectedDecision: 'reject' } });
   expect(reserved.json.reserved).toBe(true);
   const composed = await call(composeMail, {
     method: 'POST',

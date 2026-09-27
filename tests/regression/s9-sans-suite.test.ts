@@ -159,7 +159,7 @@ async function refuseByHuman(taskId: string): Promise<void> {
     },
   });
   expect(enqueue.status).toBe(200);
-  const reserved = await callWithId(reserveSend, validationId, { method: 'POST' });
+  const reserved = await callWithId(reserveSend, validationId, { method: 'POST', body: { expectedDecision: 'reject' } });
   expect(reserved.json.reserved).toBe(true);
   const composed = await call(composeMail, {
     method: 'POST',
@@ -440,7 +440,7 @@ describe('S9 — flux GO (poste pourvu) et gris en cours d’envoi', () => {
     );
 
     // Réservation d'envoi réelle (pending → sending) — un mail part peut-être.
-    const reserved = await callWithId(reserveSend, validationId, { method: 'POST' });
+    const reserved = await callWithId(reserveSend, validationId, { method: 'POST', body: { expectedDecision: 'reject' } });
     expect(reserved.json.reserved).toBe(true);
 
     // Le classement individuel REFUSE (409) tant que l'envoi n'est pas résolu.

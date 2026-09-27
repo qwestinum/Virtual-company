@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergePendingValidationEnqueue } from '@/lib/hitl/enqueue-merge';
+import {
+  ENQUEUE_REFRESHABLE,
+  mergePendingValidationEnqueue,
+} from '@/lib/hitl/enqueue-merge';
 import type { PendingValidation } from '@/types/hitl';
 
 function validation(over: Partial<PendingValidation> = {}): PendingValidation {
@@ -97,5 +100,63 @@ describe('mergePendingValidationEnqueue', () => {
     const existing = validation({ status: 'sending' });
     const res = mergePendingValidationEnqueue(existing, validation());
     expect(res).toEqual({ write: false, reason: 'already_engaged' });
+  });
+});
+
+describe('une remise en file ne touche jamais à ce que l’humain a posé', () => {
+  const human = {
+    userId: 'u_recruteur',
+    email: 'recruteur@example.com',
+  };
+
+  it('« basculé puis remis en file » : la décision humaine SURVIT (régression S4)', () => {
+    // Le recruteur a choisi « accepter » (PATCH decision + confirmed), la
+    // réservation d'envoi n'est pas encore posée : la fiche est `pending`.
+    const existing = validation({
+      decision: 'accept',
+      confirmed: true,
+      decidedBy: 'user',
+      decidedByUser: human,
+      mailDraftArtifactId: 'art_mail_invite',
+    });
+    // Une remise en file arrive (filet serveur, réessai IMAP…) avec la
+    // direction PROVISOIRE d'une fiche : toujours `reject`.
+    const fresh = validation({
+      decision: 'reject',
+      confirmed: false,
+      decidedBy: null,
+      decidedByUser: null,
+      mailDraftArtifactId: 'art_mail_reject',
+      score: 58,
+      updatedAt: '2026-07-24T12:50:27.000Z',
+    });
+    const res = mergePendingValidationEnqueue(existing, fresh);
+    expect(res.write).toBe(true);
+    if (!res.write) return;
+    expect(res.value.decision).toBe('accept');
+    expect(res.value.confirmed).toBe(true);
+    expect(res.value.decidedBy).toBe('user');
+    expect(res.value.decidedByUser).toEqual(human);
+    // Le brouillon suit la décision, pas la remise en file.
+    expect(res.value.mailDraftArtifactId).toBe('art_mail_invite');
+    // Ce que l'analyse sait du dossier, lui, est rafraîchi.
+    expect(res.value.score).toBe(58);
+    expect(res.value.updatedAt).toBe('2026-07-24T12:50:27.000Z');
+  });
+
+  it('la liste des champs rafraîchissables ne contient aucun champ de décision', () => {
+    for (const forbidden of [
+      'id',
+      'decision',
+      'confirmed',
+      'status',
+      'decidedAt',
+      'decidedBy',
+      'decidedByUser',
+      'mailDraftArtifactId',
+      'createdAt',
+    ]) {
+      expect(ENQUEUE_REFRESHABLE as readonly string[]).not.toContain(forbidden);
+    }
   });
 });

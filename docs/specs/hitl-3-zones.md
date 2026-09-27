@@ -381,6 +381,53 @@ sabotage du scénario et le piétinait. S15 passait SEUL — d'où un angle mort
 Couvert par trois tests unitaires du dépôt (insertion, mise à jour
 conditionnelle, course).
 
+### 6bis.8 Une remise en file ne DÉCIDE jamais (27/09/2026)
+
+La mise à jour conditionnelle de §6bis.7 réécrivait encore la ligne ENTIÈRE
+d'une fiche `pending` — décision, confirmation et auteur compris. Or la
+direction d'une remise en file est **provisoire** (`provisionalDecisionFor` ⇒
+toujours `reject` pour une fiche). Scénario : le recruteur choisit
+« accepter » ; `decideGrayValidation` écrit la décision (PATCH) puis réserve
+l'envoi quelques millisecondes plus tard ; une remise en file (filet serveur du
+dépôt de CV, réessai IMAP, rejeu, re-scoring) tombe entre les deux et remet
+`reject`. **Le mail suit l'écran** (invitation), **la finalisation suit la
+base** : analyse refusée, lien de réservation **révoqué**, journal « refus ».
+Attrapé par **S4** (test « ACCEPTER » intermittent) — la fenêtre est étroite,
+elle est réelle.
+
+Trois gardes :
+
+1. **Mise à jour PARTIELLE, dans la requête.** Sur une fiche qui existe déjà,
+   une remise en file n'écrit que `ENQUEUE_REFRESHABLE` (campagne, nom,
+   adresse, score, liens CV/rapport, charge utile, date de mise à jour) via
+   `enqueueRefreshRow` — jamais la décision, la confirmation, l'auteur, le
+   brouillon (il suit la décision), le statut ni la date de première
+   réception. Le type d'entrée n'a aucun champ de décision : en ajouter un ne
+   compile pas. La fusion pure (`mergePendingValidationEnqueue`) suit la même
+   règle.
+2. **Garde à la réservation.** `POST …/reserve-send` exige
+   `{ expectedDecision }` — la décision que l'écran montre (400 sans elle) ;
+   les deux transitions (`pending→sending`, reprise d'un `sending` périmé)
+   sont conditionnées à `decision = expectedDecision`. Divergence ⇒ 409
+   `decision_changed` (avec la décision en base), **rien de réservé, rien
+   d'envoyé**. On compare la décision elle-même plutôt qu'un horodatage : un
+   rafraîchissement du score par une remise en file n'a pas à bloquer un
+   envoi, une décision différente si.
+3. **Seconde ceinture à l'envoi.** `mail-composer` avec `validationId` relit la
+   fiche (`checkHitlSend`, pur) : elle doit être réservée et sa décision doit
+   être celle du mail (`invite`↔`accept`) — sinon 409, aucun mail, et le
+   client **ne finalise pas**.
+
+Garde structurelle (`requeue-decision-fields.test.ts`, sondée) : aucun chemin
+de remise en file / réessai / rejeu — découverts par leur NOM, plus une liste
+de ceux qui ne le disent pas — n'importe un accès en écriture aux champs de
+décision (`patchPendingValidation*`, `reserveValidationSend`,
+`updateCandidateAnalysisDecision`) ni n'écrit `pending_validations` en direct.
+
+Audit de la production le 27/09/2026 (lecture seule, décision enregistrée
+comparée au mail réellement parti — claim d'envoi, trace d'envoi, refus
+groupé) : **155 fiches envoyées, toutes rapprochées, aucun écart**.
+
 ---
 
 ## 7. Modèle de données

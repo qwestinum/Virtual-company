@@ -25,8 +25,10 @@ import {
   releaseOutreachClaim,
 } from '@/lib/db/repos/imap-outreach-claims';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
+import { getPendingValidation } from '@/lib/db/repos/pending-validations';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
+import { checkHitlSend } from '@/lib/hitl/send-guard';
 import { uploadArtifact } from '@/lib/storage/blob';
 import { MailCandidateSchema } from '@/types/mail-candidate';
 
@@ -268,6 +270,11 @@ async function finalizeSend(
     status = 'skipped_no_email';
   } else {
     if (claimKey) {
+      // Seconde ceinture (27/09/2026) : la fiche doit être RÉSERVÉE et sa
+      // décision en base doit être celle de ce mail. Sinon la finalisation
+      // enregistrerait l'inverse de ce que le candidat reçoit.
+      const refused = await refuseDivergentHitlSend(parsed.validationId!, parsed.mode);
+      if (refused) return refused;
       const verdict = await claimOutreach(claimKey);
       if (verdict === 'already_sent' || verdict === 'in_flight') {
         // Mail déjà parti (prouvé) ou envoi concurrent en cours : ne rien
@@ -404,6 +411,33 @@ async function finalizeSend(
     publicUrl,
     error: sendError ?? null,
   });
+}
+
+/**
+ * `null` = l'envoi peut partir. Sans base (démo volatile), il n'existe ni
+ * fiche ni claim : on laisse passer, comme le claim lui-même.
+ */
+async function refuseDivergentHitlSend(
+  validationId: string,
+  mode: 'invite' | 'reject',
+): Promise<NextResponse | null> {
+  let fiche: Awaited<ReturnType<typeof getPendingValidation>>;
+  try {
+    fiche = await getPendingValidation(validationId);
+  } catch (err) {
+    if (err instanceof SupabaseNotConfiguredError) return null;
+    throw err;
+  }
+  const guard = checkHitlSend(fiche, mode);
+  if (guard.ok) return null;
+  return NextResponse.json(
+    {
+      error: guard.error,
+      message:
+        'La décision enregistrée pour ce dossier n’est pas celle de ce mail — rien n’a été envoyé.',
+    },
+    { status: 409 },
+  );
 }
 
 /** Slug ASCII basique pour les noms de fichier. */
