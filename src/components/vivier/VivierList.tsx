@@ -8,7 +8,7 @@
  */
 
 import { Loader2, Search } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { VivierDeleteDialog } from './VivierDeleteDialog';
 import { VivierListRow } from './VivierListRow';
@@ -25,7 +25,6 @@ export function VivierList({ refreshKey }: { refreshKey: number }) {
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [toDelete, setToDelete] = useState<VivierCandidate | null>(null);
-  const firstLoad = useRef(true);
 
   const load = useCallback(async () => {
     try {
@@ -107,7 +106,9 @@ export function VivierList({ refreshKey }: { refreshKey: number }) {
         </button>
       </div>
 
-      {loading && firstLoad.current ? (
+      {/* `loading` n'est vrai qu'au PREMIER chargement (jamais remis à vrai) :
+          les rechargements suivants gardent la liste affichée. */}
+      {loading ? (
         <p className="font-body text-[13px] text-stone-500">Chargement…</p>
       ) : items.length === 0 ? (
         <p className="font-body text-[13px] text-stone-500">

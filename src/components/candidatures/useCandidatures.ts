@@ -76,8 +76,14 @@ function buildQuery(params: Record<string, string | undefined>): string {
  *     Jamais de la recherche texte ni du chip d'étape ni du filtre vivier.
  *   - liste paginée       → dépend de TOUS les filtres (recherche debouncée).
  */
-export function useCandidatures() {
-  const [filters, setFilters] = useState<CandidaturesFilters>(EMPTY_FILTERS);
+/**
+ * `initial` : filtres posés DÈS LA CRÉATION de l'état (pré-filtres d'une
+ * navigation croisée). Un effet de montage qui les appliquait après coup
+ * provoquait un rendu en cascade (règle react-hooks/set-state-in-effect) et un
+ * premier chargement sur les filtres vides.
+ */
+export function useCandidatures(initial?: Partial<CandidaturesFilters>) {
+  const [filters, setFilters] = useState<CandidaturesFilters>(() => ({ ...EMPTY_FILTERS, ...initial }));
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<CandidateListItem[]>([]);
   const [listTotal, setListTotal] = useState(0);

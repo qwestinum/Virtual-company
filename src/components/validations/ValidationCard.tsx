@@ -67,7 +67,16 @@ export function ValidationCard({
   const [sendError, setSendError] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
+  // Brouillon retouché par le relecteur. DEUX formes, à dessein : la ref sert à
+  // la réponse ASYNCHRONE du brouillon (elle lit la valeur du moment, pour ne
+  // jamais écraser une retouche), l'état sert au RENDU (lire une ref pendant le
+  // rendu est interdit — react-hooks/refs). Posées ensemble, toujours.
   const editedRef = useRef(false);
+  const [edited, setEdited] = useState(false);
+  const markEdited = (value: boolean) => {
+    editedRef.current = value;
+    setEdited(value);
+  };
   // Garde SYNCHRONE : `disabled={sending}` ne s'applique qu'au re-render suivant ;
   // un double-clic rapide enverrait le mail deux fois (mail-composer non idempotent).
   const sendingRef = useRef(false);
@@ -80,6 +89,10 @@ export function ValidationCard({
     if (!candidate) return;
     const mode = chosen === 'accept' ? 'invite' : 'reject';
     let cancelled = false;
+    // Chargement RÉSEAU du brouillon, déclenché par le choix de l'action ET par
+    // une validation rafraîchie (`v`) : l'indicateur doit s'allumer dans les deux
+    // cas, d'où sa place ici (même convention que useDashboardData).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftLoading(true);
     void (async () => {
       try {
@@ -134,7 +147,7 @@ export function ValidationCard({
   );
 
   const choose = (d: HitlDecision) => {
-    editedRef.current = false;
+    markEdited(false);
     setSendError(null);
     setChosen(d);
   };
@@ -272,7 +285,7 @@ export function ValidationCard({
             Relisez le mail {chosen === 'accept' ? "d’invitation" : 'de refus'}{' '}
             avant de l’envoyer.
           </p>
-          {draftLoading && !editedRef.current ? (
+          {draftLoading && !edited ? (
             <p className="font-body text-[12px] text-stone-400 italic">
               Préparation du brouillon depuis le modèle…
             </p>
@@ -285,7 +298,7 @@ export function ValidationCard({
                 type="text"
                 value={subject}
                 onChange={(e) => {
-                  editedRef.current = true;
+                  markEdited(true);
                   setSubject(e.currentTarget.value);
                 }}
                 className="mt-1 w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-body text-[13px] text-stone-800 outline-none focus:border-blue-400"
@@ -296,7 +309,7 @@ export function ValidationCard({
               <textarea
                 value={body}
                 onChange={(e) => {
-                  editedRef.current = true;
+                  markEdited(true);
                   setBody(e.currentTarget.value);
                 }}
                 rows={8}

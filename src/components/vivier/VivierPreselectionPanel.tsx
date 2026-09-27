@@ -57,6 +57,9 @@ export function VivierPreselectionPanel({ campaignId }: { campaignId: string }) 
   }, [base]);
 
   useEffect(() => {
+    // Chargement RÉSEAU : l'état n'est posé qu'après la réponse (jamais en
+    // synchrone), ce que la règle ne peut pas prouver à travers l'appel.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadPersisted();
   }, [loadPersisted]);
 

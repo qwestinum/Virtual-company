@@ -122,7 +122,26 @@ export function CandidaturesWorkspace({
     page,
     setPage,
     refresh,
-  } = useCandidatures();
+  } = useCandidatures(
+    // Pré-filtres de navigation croisée, posés DÈS LA CRÉATION de l'état (le
+    // composant remonte à chaque entrée dans l'onglet, et le parent remet les
+    // pré-filtres à null sur toute navigation manuelle) :
+    //  - étape seule (notification métier) : le deep-link doit voir TOUTES les
+    //    campagnes (le signal n'est pas scopé aux actives) → sélecteur « Toutes » ;
+    //  - campagne (quadrant d'une carte campagne) : sélecteur figé sur CETTE
+    //    campagne, étape éventuelle du quadrant en plus.
+    initialCampaignId
+      ? {
+          campaignId: initialCampaignId,
+          campaignIds: NO_CAMPAIGN_IDS,
+          stage: initialStage ?? null,
+          everInvited: initialEverInvited,
+          everInterviewed: initialEverInterviewed,
+        }
+      : initialStage
+        ? { stage: initialStage }
+        : undefined,
+  );
 
   // Référent ACTIF de la campagne d'une fiche — même règle et même rendu que
   // la file des validations et l'onglet Entretiens (cf. lib/referent/filter).
@@ -183,32 +202,10 @@ export function CandidaturesWorkspace({
   const hauteurPanneau = useVisibleHeight(colonnePanneau, panelItem !== null);
   // L'utilisateur a touché au sélecteur de campagne : la vue par défaut
   // (campagnes actives) cesse de s'imposer.
-  const [campaignTouched, setCampaignTouched] = useState(false);
+  // Un pré-filtre de navigation vaut choix : la vue par défaut ne l'écrase pas.
+  const [campaignTouched, setCampaignTouched] = useState(Boolean(initialCampaignId || initialStage));
   const referenceDate = useMemo(() => new Date(), []);
 
-  // Pré-filtres de navigation croisée — appliqués une seule fois au montage ;
-  // le composant remonte à chaque entrée dans l'onglet, et le parent remet les
-  // pré-filtres à null sur toute navigation manuelle.
-  //  - étape seule (notification métier) : le deep-link doit voir TOUTES les
-  //    campagnes (le signal n'est pas scopé aux actives) → sélecteur « Toutes » ;
-  //  - campagne (quadrant d'une carte campagne) : sélecteur figé sur CETTE
-  //    campagne, étape éventuelle du quadrant en plus.
-  useEffect(() => {
-    if (initialCampaignId) {
-      setCampaignTouched(true);
-      setFilters({
-        campaignId: initialCampaignId,
-        campaignIds: NO_CAMPAIGN_IDS,
-        stage: initialStage ?? null,
-        everInvited: initialEverInvited,
-        everInterviewed: initialEverInterviewed,
-      });
-    } else if (initialStage) {
-      setCampaignTouched(true);
-      setFilters({ stage: initialStage });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // VUE PAR DÉFAUT : candidatures des campagnes ACTIVES. Appliquée au montage
   // et maintenue tant que l'utilisateur n'a pas choisi lui-même une campagne

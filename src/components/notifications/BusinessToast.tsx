@@ -40,6 +40,10 @@ export function BusinessToast({
     } catch {
       // sessionStorage indisponible → on affiche quand même (dismiss local).
     }
+    // `sessionStorage` n'existe qu'APRÈS l'hydratation : la décision d'afficher
+    // ne peut se prendre qu'ici (un initialiseur d'état la prendrait côté
+    // serveur, sans stockage, et le rendu divergerait).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisible(true);
   }, [signals]);
 
