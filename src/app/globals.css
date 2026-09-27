@@ -47,28 +47,83 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 
-  /* ── Palette ORQA (menu Candidatures) ───────────────────────────────────
-     Tokens enregistrés dans @theme → utilitaires Tailwind `bg-orqa-*`,
-     `text-orqa-*`, `border-orqa-*`. Source unique, jamais de hex dispersé. */
-  --color-orqa-nuit: #0a1f3f;
-  --color-orqa-nuit2: #0e2a52;
-  --color-orqa-ciel: #2b9fd8;
-  --color-orqa-ciel-clair: #5fbdec;
-  --color-orqa-cielbg: #e6f4fb;
-  --color-orqa-brume: #f4f7fb;
-  --color-orqa-brume2: #e9eef5;
-  --color-orqa-encre: #16263b;
-  --color-orqa-gris: #64748b;
-  --color-orqa-gris-clair: #94a3b8;
-  --color-orqa-ligne: #e2e9f1;
-  --color-orqa-rouge: #e5484d;
-  --color-orqa-rouge-bg: #fdecec;
-  --color-orqa-ambre: #e08700;
-  --color-orqa-ambre-bg: #fcf3e3;
-  --color-orqa-vert: #16a34a;
-  --color-orqa-vert-bg: #e8f6ed;
-  --color-orqa-violet: #7c5cd6;
-  --color-orqa-violet-bg: #f0ecfb;
+  /* ── LA PALETTE DU PRODUIT, exposée à Tailwind ─────────────────────────
+     Les valeurs vivent plus bas, en `:root` (`--dash-*`) : ici on ne fait que
+     les enregistrer dans @theme pour obtenir `bg-dash-*`, `text-dash-*`,
+     `border-dash-*`. Une seule source, et le thème sombre continue de
+     fonctionner sans rien dupliquer.
+
+     ⚠️ La palette `orqa-*` (marine #0a1f3f, bleu-gris #64748b, brume
+     #f4f7fb) a été RETIRÉE le 21/09/2026 : elle n'existait que sur le menu
+     Candidatures, avec Fraunces en titre, et ne se retrouvait sur aucun autre
+     écran. Deux vocabulaires pour un seul produit, et aucune façon de voir la
+     divergence. */
+  --color-dash-bg: var(--dash-bg);
+  --color-dash-surface: var(--dash-surface);
+  --color-dash-warm: var(--dash-warm);
+  --color-dash-hover: var(--dash-hover);
+  --color-dash-border: var(--dash-border);
+  --color-dash-border-strong: var(--dash-border-strong);
+  --color-dash-field-border: var(--dash-field-border);
+  --color-dash-text: var(--dash-text);
+  --color-dash-text-secondary: var(--dash-text-secondary);
+  --color-dash-text-tertiary: var(--dash-text-tertiary);
+  --color-dash-blue: var(--dash-blue);
+  --color-dash-blue-light: var(--dash-blue-light);
+  --color-dash-purple: var(--dash-purple);
+  --color-dash-purple-light: var(--dash-purple-light);
+  --color-dash-green: var(--dash-green);
+  --color-dash-green-light: var(--dash-green-light);
+  --color-dash-orange: var(--dash-orange);
+  --color-dash-orange-light: var(--dash-orange-light);
+  --color-dash-red: var(--dash-red);
+  --color-dash-red-light: var(--dash-red-light);
+  --color-dash-teal: var(--dash-teal);
+  --color-dash-teal-light: var(--dash-teal-light);
+  --color-dash-yellow: var(--dash-yellow);
+  --color-dash-yellow-light: var(--dash-yellow-light);
+  --color-dash-sky: var(--dash-sky);
+  /* Teintes de TEXTE des étapes — les seules à passer AA sur fond clair. */
+  --color-dash-green-text: var(--dash-green-text);
+  --color-dash-indigo-text: var(--dash-indigo-text);
+  --color-dash-orange-text: var(--dash-orange-text);
+  --color-dash-red-text: var(--dash-red-text);
+  --color-dash-green-bandeau: var(--dash-green-bandeau);
+
+  /* ── SOCLE DE JETONS — NOMMÉ, PAS INVENTÉ ───────────────────────────────
+     L'audit du 20/09/2026 a mesuré 22 à 25 niveaux typographiques sur un seul
+     écran (cible : 3), 27 tailles arbitraires et 52 valeurs de padding en
+     ligne. Le socle ne crée donc RIEN : il NOMME ce que les écrans sains
+     (Campagnes, Réglages, Sourcing) emploient déjà, pour que le prochain
+     écran le reprenne au lieu de réinventer.
+
+     TROIS niveaux typographiques, et trois seulement :
+       .font-display  15 à 22 px / 700-800  — ce qui porte (titres, noms, boutons)
+       .font-body     13 à 14 px / 400-600  — ce qui se lit (phrases)
+       .font-body     11 à 12 px / 400-600  — ce qui se survole (états, dates)
+     AUCUN serif : le menu Candidatures portait le sien (Fraunces), il a été
+       retiré le 21/09/2026 — un produit, une famille.
+
+     UNE échelle d'espacement : 4 · 8 · 12 · 16 · 24 (Tailwind 1/2/3/4/6).
+
+     RÔLES de couleur — tous déjà définis plus bas en `--dash-*` :
+       fond de page        --dash-bg          #faf8f5   (sand)
+       surface de carte    --dash-surface     #ffffff
+       bordure de carte    --dash-border      #ede8e3
+       texte principal     --dash-text        17,3:1 sur blanc  ✓ AA
+       texte secondaire    --dash-text-secondary  6,1:1          ✓ AA
+       accent « candidat » --dash-teal / --dash-purple  (pastilles, 3:1 ✓)
+       accent « réglage »  --dash-orange                (pastille,  3:1 ✓)
+       action principale   dégradé --dash-blue → --dash-purple, texte blanc 4,6:1 ✓
+
+     ⚠️ DETTES CONNUES, mesurées, qui appartiennent au lot « accessibilité »
+     et NON à un écran isolé (les corriger ici ferait diverger cet écran du
+     reste du produit) :
+       --dash-text-tertiary  2,87:1 — sous AA. N'est donc pas employé pour du
+                             texte sur les écrans refondus : `--dash-text-secondary`
+                             le remplace, et il existe déjà.
+       --dash-border         1,22:1 · --dash-border-strong 1,57:1 — sous le
+                             3:1 de WCAG 1.4.11 pour un élément porteur.
 
   /* Ombres ORQA (légères) → utilitaires `shadow-orqa`, `shadow-orqa-lg`. */
   --shadow-orqa: 0 1px 2px rgba(10, 31, 63, 0.04),
@@ -173,6 +228,16 @@
   --dash-hover: #f5f0eb;
   --dash-border: #ede8e3;
   --dash-border-strong: #d4cdc5;
+  /*
+   * BORDURE DE CHAMP DE SAISIE — un rôle à part, et il a sa raison d'être.
+   * `--dash-border` (1,22:1) et `--dash-border-strong` (1,57:1) dessinent des
+   * CARTES : leur faiblesse est un choix, une carte se lit par son fond. Un
+   * champ, lui, doit se voir comme une zone où l'on écrit — sous 3:1 on ne
+   * distingue pas le contour, et le libellé au-dessus devient le seul repère,
+   * donc la chose qu'on clique. Mesuré : 3,39:1 sur blanc, 3,20:1 sur le fond
+   * sand, 3,24:1 sur le fond chaud (test `socle-contraste`).
+   */
+  --dash-field-border: #8f8b84;
   --dash-text: #1b1b18;
   --dash-text-secondary: #65625d;
   --dash-text-tertiary: #9c9891;
@@ -194,6 +259,74 @@
   --dash-indigo: #3e63dd;
   --dash-indigo-light: #ecf0ff;
   --dash-yellow: #d5a000;
+  /* Bleu CIEL — ajouté le 21/09/2026 pour l'icône de campagne. La palette
+     n'avait que du bleu royal (#2f6eeb) et du turquoise ; il manquait
+     littéralement le ciel.
+     ⚠️ C'est une teinte PÂLE : le glyphe ne peut pas être blanc (1,26:1,
+     invisible). Il prend `--dash-blue` (3,66:1, au-delà des 3:1 exigés d'un
+     élément non textuel). Et la pastille ne se détache que de 1,19:1 du fond
+     sand : elle porte donc un filet, sinon elle flotterait sans contour. */
+  --dash-sky: #d7e6ff;
+  /* La pastille des PERSONNES et son encre, posées le 21/09/2026.
+     ⚠️ Mesuré : l'encre donne 1,68:1 sur la pastille, et la pastille 1,42:1
+     sur le fond sand. C'est TRÈS en dessous des 3:1 d'un élément non textuel.
+     Tenable seulement parce que les initiales sont REDONDANTES — le nom
+     complet est à côté, en contraste AA — et parce que c'est la teinte
+     demandée. Dans la même famille : #9a3412 donnerait 4,86:1. */
+  /* L'icône « Aujourd'hui » de la colonne — le point de départ a sa couleur,
+     et elle n'est partagée avec rien d'autre. */
+  --dash-accueil: #fedc96;
+  --dash-candidat: #ffcb60;
+  --dash-candidat-encre: #ff7f00;
+
+  /* ── TEINTES DE TEXTE DES ÉTAPES ────────────────────────────────────────
+     ⚠️ Les couleurs de marque ci-dessus sont des REPÈRES (pastilles, points,
+     soulignements) : mesurées sur leur propre fond clair, elles donnent 2,83
+     à 3,44:1 — SOUS AA. Elles ne peuvent donc pas porter du texte.
+     Ces quatre-ci sont les mêmes familles, assombries jusqu'à passer 4,5:1
+     sur les fonds `-light` du produit (mesuré : 4,56 · 6,95 · 4,59 · 5,68).
+     C'est la palette d'étapes que portait le menu Candidatures ; elle est
+     conservée POUR ÇA et nommée ici. */
+  --dash-green-text: #15803d;
+  --dash-indigo-text: #4338ca;
+  --dash-orange-text: #b45309;
+  --dash-red-text: #b91c1c;
+  /* Le vert des liens du BANDEAU. Celui-ci est ambre (#FFB000 à 50 % sur
+     blanc ≈ #ffd77f), donc plus sombre qu'une carte : `--dash-green` n'y tient
+     que 2,37:1 et `--dash-green-text` 3,65 — sous les 4,5:1 exigés d'un texte
+     de 13 px, fût-il gras (le seuil « grand texte » commence à 18,66 px gras).
+     Celui-ci donne 5,19:1. */
+  --dash-green-bandeau: #166534;
+  /* BEIGE — la teinte des boutons qui étaient noirs (« Détail »,
+     « Relancer », « Lancer »). Encre à 5,91:1 dessus : AA largement. */
+  /* FILET des familles de réglages (/settings) — demandé par le donneur
+     d'ordre le 22/09, en bordure seule depuis le 23/09. Un trait, jamais une
+     encre : ce jaune en texte sur fond clair resterait sous 2:1. */
+  --dash-famille: #ebbb58;
+  --dash-beige: #f2e8d5;
+  --dash-beige-bord: #d9c9a8;
+  --dash-beige-encre: #6b5426;
+
+  /* SURBRILLANCE d'une ligne déjà traitée. Mesuré : 1,11:1 contre la carte
+     blanche voisine — c'est une NUANCE, la plus discrète du produit, et c'est
+     ce qui est demandé. Le texte y garde 15,62:1. */
+  --dash-surbrillance: #f5f4e9;
+
+  /* L'AMBRE du bouton « Sourcer » — le seul geste qui ENGAGE une dépense sur
+     cet écran, d'où un aplat plein là où tout le reste est en nuance.
+     ⚠️ Mesuré : blanc dessus = 3,72:1, sous les 4,5:1 d'un texte de 12 px
+     semi-gras (le seuil « grand texte » commence à 18,66 px gras). C'est la
+     teinte demandée ; #9a6f02 passerait tout juste (4,52) et #8a6402
+     confortablement (5,38). */
+  --dash-ambre-action: #ac7c02;
+
+  /* LE BANDEAU du haut — et, EXACTEMENT la même valeur, l'en-tête des trois
+     blocs pliables d'Aujourd'hui (22/09/2026). UN jeton lu aux deux endroits :
+     deux copies de la même couleur finissent par diverger.
+     ⚠️ Translucide : sur blanc il rend ≈ #ffd880. Mesuré dessus : texte
+     12,65:1 ; texte SECONDAIRE 4,45:1, SOUS AA — d'où l'encre beige (5,27:1)
+     pour un sous-titre posé sur cette teinte. */
+  --dash-bandeau: rgba(255, 176, 0, 0.5);
   --dash-yellow-light: #fff8e1;
 }
 
@@ -210,6 +343,27 @@
 
 .dash-fade-in {
   animation: dash-fade-in 0.35s ease both;
+}
+
+/* ── Mouvement réduit — une préférence système, pas une option ────────────
+   Le produit anime beaucoup : apparitions en cascade, pulsations d'état,
+   flux le long des liens. Aucune de ces animations ne PORTE d'information ;
+   elles décorent. Sous `prefers-reduced-motion: reduce`, elles s'arrêtent —
+   et le contenu s'affiche d'emblée plutôt que de se révéler.
+
+   ⚠️ `animation: none` et pas une durée nulle : une durée nulle laisse
+   l'élément à son état INITIAL (opacité 0) quand l'animation porte un
+   `both` — le contenu resterait invisible. */
+@media (prefers-reduced-motion: reduce) {
+  .dash-fade-in,
+  .pulse-glow,
+  .status-dot-pulse,
+  .work-bounce {
+    animation: none !important;
+  }
+  .msg-rise {
+    animation: none !important;
+  }
 }
 
 @keyframes pulse-glow {
@@ -365,29 +519,15 @@
     Menlo, Consolas, monospace;
   font-feature-settings: "tnum", "ss01";
 }
-/* Identité ORQA (menu Candidatures) : titres + corps. `.font-data` (JetBrains)
-   reste la police des données/scores/références. */
-.font-fraunces {
-  font-family: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
-}
-.font-inter {
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-}
+/* ⚠️ Fraunces (serif) et Inter ont été RETIRÉES le 21/09/2026 avec la peau
+   divergente du menu Candidatures. `.font-data` (JetBrains) reste la police
+   des chiffres, des notes et des références — et d'elles seules. */
 
 /*
- * Motif de fond du bureau — dots subtils sur grille 24px, opacité ~10%
- * de slate-900. Se superpose au radial-gradient stone du <section>
- * parent et reste lisible en accompagnement des cartes d'agents sans
- * « cager » la composition.
+ * Le motif de points du bureau (`.bg-grid-dots`) et les taches floutées
+ * (`.bg-blob*`) ont été RETIRÉS le 21/09/2026 : le fond de page est uni
+ * (sand), sur tous les écrans. Cf. `WorkspaceBackground`.
  */
-.bg-grid-dots {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(15, 23, 42, 0.1) 1px,
-    transparent 0
-  );
-  background-size: 24px 24px;
-}
 
 @keyframes btn-pulse {
   0%,
@@ -422,24 +562,38 @@
   }
 }
 
-.bg-blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  pointer-events: none;
-  will-change: transform;
+
+/* ── CHAMPS DE SAISIE  ───────────────────────────────────────────────────────
+ *
+ * Un champ se voit, et il DIT qu'il a le focus. La bordure seule ne suffit
+ * pas : un simple changement de teinte n'est pas perceptible pour qui
+ * distingue mal les couleurs, et disparaît sous une loupe d'écran. D'où un
+ * ANNEAU, dessiné hors du cadre pour ne pas déplacer la mise en page.
+ */
+.orqa-field {
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
-.bg-blob-1 {
-  animation: blob-float 22s ease-in-out infinite;
+.orqa-field:hover:not(:disabled) {
+  border-color: var(--dash-text-secondary);
 }
 
-.bg-blob-2 {
-  animation: blob-float 26s ease-in-out infinite reverse;
-  animation-delay: -4s;
+.orqa-field:focus,
+.orqa-field:focus-visible {
+  outline: none;
+  border-color: var(--dash-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dash-blue) 28%, transparent);
 }
 
-.bg-blob-3 {
-  animation: blob-float 30s ease-in-out infinite;
-  animation-delay: -8s;
+.orqa-field:disabled {
+  background: var(--dash-hover);
+  color: var(--dash-text-secondary);
+  cursor: not-allowed;
+}
+
+/* Le texte d'exemple vit DANS le champ, jamais au-dessus : au-dessus, il se
+ * lit comme une valeur déjà saisie. */
+.orqa-field::placeholder {
+  color: var(--dash-text-secondary);
+  opacity: 0.75;
 }

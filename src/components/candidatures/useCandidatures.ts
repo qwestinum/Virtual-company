@@ -9,6 +9,7 @@ import {
 } from '@/lib/reporting/candidate-stage';
 import type { ReferentByCampaign } from '@/lib/referent/filter';
 import type { CandidateListItem } from '@/types/reporting';
+import { perimetreCampagnes } from '@/lib/candidatures/campaign-perimeter';
 
 export const CANDIDATURES_PAGE_SIZE = 50;
 
@@ -37,6 +38,12 @@ export type CandidaturesFilters = {
    * sémantique de stade courant.
    */
   everInterviewed: boolean;
+  /**
+   * Campagnes du référent sélectionné — `null` quand le filtre est « Tous ».
+   * Restreint le PÉRIMÈTRE de la requête, jamais les lignes reçues : la liste
+   * est paginée côté serveur, un filtre de lignes ne filtrerait qu'une page.
+   */
+  referentCampaignIds: string[] | null;
 };
 
 /** Référence stable pour « aucune campagne ciblée » (évite les refetch en boucle). */
@@ -52,6 +59,7 @@ const EMPTY_FILTERS: CandidaturesFilters = {
   fromVivier: false,
   everInvited: false,
   everInterviewed: false,
+  referentCampaignIds: null,
 };
 
 function buildQuery(params: Record<string, string | undefined>): string {
@@ -68,8 +76,14 @@ function buildQuery(params: Record<string, string | undefined>): string {
  *     Jamais de la recherche texte ni du chip d'étape ni du filtre vivier.
  *   - liste paginée       → dépend de TOUS les filtres (recherche debouncée).
  */
-export function useCandidatures() {
-  const [filters, setFilters] = useState<CandidaturesFilters>(EMPTY_FILTERS);
+/**
+ * `initial` : filtres posés DÈS LA CRÉATION de l'état (pré-filtres d'une
+ * navigation croisée). Un effet de montage qui les appliquait après coup
+ * provoquait un rendu en cascade (règle react-hooks/set-state-in-effect) et un
+ * premier chargement sur les filtres vides.
+ */
+export function useCandidatures(initial?: Partial<CandidaturesFilters>) {
+  const [filters, setFilters] = useState<CandidaturesFilters>(() => ({ ...EMPTY_FILTERS, ...initial }));
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<CandidateListItem[]>([]);
   const [listTotal, setListTotal] = useState(0);
@@ -88,16 +102,25 @@ export function useCandidatures() {
     return () => clearTimeout(t);
   }, [filters.search]);
 
-  const campaignIds = filters.campaignIds;
-  const campaignIdsParam = campaignIds.length > 0 ? campaignIds.join(',') : undefined;
+  // ⚠️ INTERSECTION du sélecteur de campagne et du filtre par référent :
+  // « Campagnes actives » + « Mes campagnes » = mes campagnes actives.
+  const { campaignId: perimetreCampaignId, campaignIdsParam } = useMemo(
+    () =>
+      perimetreCampagnes({
+        campaignId: filters.campaignId,
+        campaignIds: filters.campaignIds,
+        referentCampaignIds: filters.referentCampaignIds,
+      }),
+    [filters.campaignId, filters.campaignIds, filters.referentCampaignIds],
+  );
   const perimeter = useMemo(
     () => ({
-      campaignId: filters.campaignId,
+      campaignId: perimetreCampaignId,
       campaignIdsParam,
       from: filters.from,
       to: filters.to,
     }),
-    [filters.campaignId, campaignIdsParam, filters.from, filters.to],
+    [perimetreCampaignId, campaignIdsParam, filters.from, filters.to],
   );
 
   // Compteurs — PÉRIMÈTRE uniquement.

@@ -9,7 +9,7 @@
  * à réapprendre à lire la même information d'un écran à l'autre.
  *
  * ⚠️ Aucune COULEUR de texte n'est imposée : la mention hérite de celle de son
- * hôte (`text-stone-500` côté validations et entretiens, `text-orqa-gris` sur
+ * hôte (`text-stone-500` côté validations et entretiens, `text-dash-text-secondary` sur
  * la fiche candidature). Coder une palette ici la rendrait fausse sur deux des
  * trois surfaces — « identique » veut dire même forme, pas même couleur qu'un
  * écran arbitrairement choisi.

@@ -49,7 +49,6 @@ export function SaveBanner({ message, tone = 'success' }: SaveBannerProps) {
         background: p.bg,
         color: p.color,
         fontSize: 12,
-        fontFamily: 'var(--font-nunito), system-ui, sans-serif',
       }}
     >
       <span aria-hidden style={{ fontWeight: 800 }}>
@@ -63,6 +62,7 @@ export function SaveBanner({ message, tone = 'success' }: SaveBannerProps) {
 export function SaveFooter({ children }: { children: ReactNode }) {
   return (
     <div
+      className="font-body"
       style={{
         display: 'flex',
         justifyContent: 'flex-end',

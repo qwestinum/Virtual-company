@@ -45,7 +45,20 @@ export type DashboardState = {
 
 const POLL_INTERVAL_MS = 5_000;
 
-export function useDashboardData(): DashboardState {
+export function useDashboardData({
+  poll = true,
+}: {
+  /**
+   * Sonder toutes les 5 s ? Vrai par défaut (le tableau de bord vit dessus).
+   *
+   * ⚠️ *Aujourd'hui* dit NON : il ne lit de cette route QUE la bande de
+   * répartition, et la sonder toutes les 5 secondes relançait une route
+   * lourde (697 ms, 36 Ko mesurés) pour un bandeau qui ne bouge pas entre
+   * deux clics. La donnée reste EXACTE et rechargée à chaque affichage — on
+   * ne cache rien, on cesse simplement de redemander sans raison.
+   */
+  poll?: boolean;
+} = {}): DashboardState {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [isStale, setStale] = useState(false);
@@ -84,17 +97,17 @@ export function useDashboardData(): DashboardState {
     // useEffect de synchronisation avec un système externe.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchOnce();
-    const id = window.setInterval(fetchOnce, POLL_INTERVAL_MS);
+    const id = poll ? window.setInterval(fetchOnce, POLL_INTERVAL_MS) : 0;
     const onVisible = () => {
       if (document.visibilityState === 'visible') void fetchOnce();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      window.clearInterval(id);
+      if (id) window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
       inflight.current?.abort();
     };
-  }, [fetchOnce]);
+  }, [fetchOnce, poll]);
 
   return { data, isLoading, isStale, error, refresh: fetchOnce };
 }

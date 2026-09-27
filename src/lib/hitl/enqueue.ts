@@ -11,7 +11,9 @@
  *   · upsert par id DÉTERMINISTE (`validationIdFor`) ⇒ rejouable ;
  *   · fusion NON DESTRUCTIVE (`mergePendingValidationEnqueue`) ⇒ une re-passe
  *     ne remplace jamais un lien d'artefact non-null par null, ne rouvre
- *     jamais un `sent` et ne piétine jamais un `sending` ;
+ *     jamais un `sent` et ne piétine jamais un `sending` — la lecture le
+ *     décide, et l'ÉCRITURE le garantit (conditionnelle : la fenêtre entre
+ *     les deux était réelle, cf. `upsertPendingValidation`) ;
  *   · l'issue dit la PERSISTANCE, rien d'autre : `failed` fait retomber le
  *     gate sur `deferred`, donc sur le réessai — jamais sur un envoi à
  *     l'aveugle. `already_engaged` est un SUCCÈS (l'humain a déjà la main),
@@ -49,8 +51,11 @@ export async function enqueueValidationRow(
     // Déjà engagée (`sending`) ou tranchée (`sent`) : la validation existe
     // durablement, l'humain a la main — cette passe n'a rien à écrire.
     if (!merged.write) return 'already_engaged';
-    await upsertPendingValidation(merged.value);
-    return 'written';
+    // ⚠️ La lecture ci-dessus ne suffit PAS : une réservation d'envoi peut se
+    // poser entre elle et l'écriture. C'est l'écriture elle-même qui refuse
+    // de rouvrir une fiche engagée (`null` ⇒ elle l'était devenue).
+    const written = await upsertPendingValidation(merged.value);
+    return written ? 'written' : 'already_engaged';
   } catch (err) {
     if (!(err instanceof SupabaseNotConfiguredError)) {
       console.error('[hitl] mise en file échouée', fresh.id, err);

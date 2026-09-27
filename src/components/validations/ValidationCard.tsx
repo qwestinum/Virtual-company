@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { analysisIdForValidation } from '@/lib/hitl/analysis-key';
 import type { ReferentInfo } from '@/lib/referent/filter';
 import { decideGrayValidation } from '@/lib/hitl/decide-gray-validation';
+import { openReportInline } from '@/lib/reporting/open-report-inline';
 import { openSignedArtifact } from '@/lib/storage/open-signed-artifact';
 import { formatDateTimeFr } from '@/lib/format/datetime';
 import {
@@ -64,8 +65,18 @@ export function ValidationCard({
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
+  // Brouillon retouché par le relecteur. DEUX formes, à dessein : la ref sert à
+  // la réponse ASYNCHRONE du brouillon (elle lit la valeur du moment, pour ne
+  // jamais écraser une retouche), l'état sert au RENDU (lire une ref pendant le
+  // rendu est interdit — react-hooks/refs). Posées ensemble, toujours.
   const editedRef = useRef(false);
+  const [edited, setEdited] = useState(false);
+  const markEdited = (value: boolean) => {
+    editedRef.current = value;
+    setEdited(value);
+  };
   // Garde SYNCHRONE : `disabled={sending}` ne s'applique qu'au re-render suivant ;
   // un double-clic rapide enverrait le mail deux fois (mail-composer non idempotent).
   const sendingRef = useRef(false);
@@ -78,6 +89,10 @@ export function ValidationCard({
     if (!candidate) return;
     const mode = chosen === 'accept' ? 'invite' : 'reject';
     let cancelled = false;
+    // Chargement RÉSEAU du brouillon, déclenché par le choix de l'action ET par
+    // une validation rafraîchie (`v`) : l'indicateur doit s'allumer dans les deux
+    // cas, d'où sa place ici (même convention que useDashboardData).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftLoading(true);
     void (async () => {
       try {
@@ -120,9 +135,11 @@ export function ValidationCard({
   const cvArtifact = useArtifactsStore((s) =>
     v.cvArtifactId ? s.byId[v.cvArtifactId] : undefined,
   );
-  const reportArtifact = useArtifactsStore((s) =>
-    v.reportArtifactId ? s.byId[v.reportArtifactId] : undefined,
-  );
+  // ⚠️ Le rapport d'analyse s'ouvre par son ANALYSE, plus par son artefact
+  // markdown (23/09/2026) : c'est le MÊME PDF coloré que la fiche
+  // candidature. Deux rendus du même fait, et le plus pauvre servait ici —
+  // c'est-à-dire à l'endroit où l'on accepte ou l'on refuse.
+  const analysisId = analysisIdForValidation(v);
   const fdpArtifact = useArtifactsStore((s) =>
     Object.values(s.byId).find(
       (a) => a.campaignId === v.campaignId && a.kind === 'fdp',
@@ -130,7 +147,7 @@ export function ValidationCard({
   );
 
   const choose = (d: HitlDecision) => {
-    editedRef.current = false;
+    markEdited(false);
     setSendError(null);
     setChosen(d);
   };
@@ -193,7 +210,7 @@ export function ValidationCard({
           {summary}
         </p>
       ) : null}
-      {cvArtifact || reportArtifact || fdpArtifact ? (
+      {cvArtifact || analysisId || fdpArtifact ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {cvArtifact ? (
             <button
@@ -204,10 +221,17 @@ export function ValidationCard({
               📎 CV du candidat
             </button>
           ) : null}
-          {reportArtifact ? (
+          {analysisId ? (
             <button
               type="button"
-              onClick={() => void openArtifact(reportArtifact)}
+              onClick={() => {
+                setReportError(null);
+                void openReportInline(analysisId).then((ok) => {
+                  // Un bouton qui ne fait rien passe pour cassé : on DIT que
+                  // le rapport n'a pas pu être servi.
+                  if (!ok) setReportError('Le rapport d’analyse n’a pas pu être ouvert.');
+                });
+              }}
               className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-2 py-1 font-body text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
             >
               📄 Rapport d’analyse
@@ -223,6 +247,11 @@ export function ValidationCard({
             </button>
           ) : null}
         </div>
+      ) : null}
+      {reportError ? (
+        <p role="alert" className="mt-1.5 font-body text-[11px] text-rose-700">
+          {reportError}
+        </p>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -256,7 +285,7 @@ export function ValidationCard({
             Relisez le mail {chosen === 'accept' ? "d’invitation" : 'de refus'}{' '}
             avant de l’envoyer.
           </p>
-          {draftLoading && !editedRef.current ? (
+          {draftLoading && !edited ? (
             <p className="font-body text-[12px] text-stone-400 italic">
               Préparation du brouillon depuis le modèle…
             </p>
@@ -269,7 +298,7 @@ export function ValidationCard({
                 type="text"
                 value={subject}
                 onChange={(e) => {
-                  editedRef.current = true;
+                  markEdited(true);
                   setSubject(e.currentTarget.value);
                 }}
                 className="mt-1 w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-body text-[13px] text-stone-800 outline-none focus:border-blue-400"
@@ -280,7 +309,7 @@ export function ValidationCard({
               <textarea
                 value={body}
                 onChange={(e) => {
-                  editedRef.current = true;
+                  markEdited(true);
                   setBody(e.currentTarget.value);
                 }}
                 rows={8}

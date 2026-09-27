@@ -12,9 +12,9 @@ const SIZES = {
 } as const;
 
 function ringColor(score: number): string {
-  if (score >= 75) return 'var(--color-orqa-vert)';
-  if (score >= 60) return 'var(--color-orqa-ambre)';
-  return 'var(--color-orqa-rouge)';
+  if (score >= 75) return 'var(--color-dash-green)';
+  if (score >= 60) return 'var(--color-dash-orange)';
+  return 'var(--color-dash-red)';
 }
 
 export function ScoreRing({
@@ -31,11 +31,11 @@ export function ScoreRing({
     <span
       className={`relative grid shrink-0 place-items-center rounded-full ${s.box}`}
       style={{
-        background: `conic-gradient(${color} 0 ${pct}%, var(--color-orqa-brume2) ${pct}% 100%)`,
+        background: `conic-gradient(${color} 0 ${pct}%, var(--color-dash-border) ${pct}% 100%)`,
       }}
     >
       <span className={`absolute rounded-full bg-white ${s.inset}`} />
-      <span className={`relative font-data font-medium text-orqa-nuit ${s.text}`}>
+      <span className={`relative font-data font-medium text-dash-text ${s.text}`}>
         {score}
       </span>
     </span>

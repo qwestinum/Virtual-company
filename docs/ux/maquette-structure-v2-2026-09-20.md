@@ -630,3 +630,244 @@ cycle de vie · invariants du module de réservation · « classée sans suite �
 purge RGPD · idempotence des envois · **commentaire de verdict facultatif** (§0.1).
 **Toutes les routes `/api/*` restent identiques** — c'est ce qui rend S1–S25 insensible à cette
 refonte, et la garantie que réorganiser l'accès ne peut pas casser le métier.
+
+---
+
+## I. Règle de composition — deux composants, et pas un troisième (21/09/2026)
+
+**Un écran ne crée JAMAIS son composant de navigation ni son compteur.** Il prend l'un des deux
+qui existent :
+
+| Besoin | Composant | Fichier |
+|---|---|---|
+| Basculer de vue | **Puces à point coloré** | `src/components/ui/DotTabs.tsx` |
+| Montrer des volumes | **Cartes-compteurs soulignées** | `src/components/ui/CounterRibbon.tsx` |
+
+**Pourquoi.** Le produit en avait quatre formes pour le même geste : les puces de la liste des
+campagnes, une barre segmentée inventée pour *Pilotage*, une barre soulignée pour le *Vivier* et
+les *Validations*, une rangée d'onglets pour *Entretiens*. D'un écran à l'autre, on ne
+reconnaissait plus la chose qui fait changer de vue — et chaque nouvelle forme rendait la
+suivante plus facile à justifier.
+
+**Contraintes portées par les composants eux-mêmes :**
+
+- **Le point coloré n'est pas un ornement** : c'est le même repère de couleur que la pastille
+  d'état d'une ligne, le soulignement d'une carte-compteur et les segments de l'entonnoir.
+- **Une carte-compteur n'a que deux rangs** : un chiffre, un libellé. **Jamais une troisième
+  ligne.** Une précision tient DANS la deuxième ligne, en pastille poussée à droite
+  (`CountBadge`, celle des onglets de navigation) ; une carte qui n'en a pas n'affiche rien à
+  droite et ne réserve aucune place. Toutes les cartes d'un ruban ont la même structure et la
+  même hauteur.
+- **Le chiffre est FACULTATIF** : une bascule de vue qui ne compte rien (les vues de *Pilotage*)
+  prend le même ruban sans chiffre — le libellé et le point coloré suffisent. Le composant
+  l'accepte ; on ne le recopie pas pour ça.
+- **La couleur vient des composants existants**, jamais d'un aplat local : entonnoir en segments
+  (`SegmentedCounts`, la géométrie du mini-pipeline de *Candidatures*) à la place de nombres gris,
+  pastille d'état colorée, soulignement de carte.
+- **Aucune ombre portée** sur un élément du flux ; la sélection se marque par la bordure et le
+  fond. Une ombre n'informe que sur une couche flottante (dialogue, liste déroulante).
+
+### La navigation passe en COLONNE (lot 8, 21/09/2026)
+
+La barre d'onglets horizontale devient une **colonne à gauche**, montée par la coquille du
+workspace — **les pages ne changent pas**. Trois rangs, et ils ne se ressemblent pas :
+
+| Rang | Contenu | Rendu |
+|---|---|---|
+| ① | **Aujourd'hui** — le point de départ | une **icône de maison** (`#fedc96`), **sans libellé** et **sans rendu d'onglet** : ni pastille, ni fond. L'état actif ne se marque que par le poids du trait |
+| ② | Campagnes · Candidatures · Entretiens · Pilotage | rendu d'onglet, pastille active = celle des cartes-compteurs (`SELECTION`, **mêmes valeurs importées**), badges existants alignés à droite |
+| ③ | **Paramètres**, en bas | la roue dentée quitte la barre du haut, mais ne rejoint pas les quatre |
+
+La barre du haut garde le logo, *Lobby / RH / Recrutement* et le compte. **Repli sous
+1 100 px** : icônes seules, libellés en infobulles, le contenu garde son cadre de 1 400 px.
+Le repli est en **CSS pur** — piloté en JavaScript, il montrerait la version large pendant
+une frame au chargement.
+
+**Clavier** : Tab et Entrée viennent des liens ; les **flèches** haut/bas déplacent le
+focus, comme dans un menu. `aria-current="page"` marque l'entrée active — c'est ce que lit
+un lecteur d'écran, la couleur ne lui dit rien.
+
+⚠️ **Mesure.** `#fedc96` sur blanc donne **1,32:1**. C'est la seule chose qui désigne cette
+entrée (elle n'a pas de libellé), donc l'icône n'est **jamais atténuée** — une première
+version la passait à 65 % d'opacité au repos et elle devenait invisible. Son nom reste
+porté par `aria-label` et par l'infobulle. Pour la rendre perceptible sans quitter la
+famille : `#e8a33a` donnerait 2,2:1, `--dash-orange` 3,09:1.
+
+**Garde** : S36 (5 cas) — chaque entrée ouvre sa page, *Aujourd'hui* est l'entrée par
+défaut et en tête, la colonne tombe au même pixel sur les cinq, elle se replie à 1 000 px
+sans emporter la largeur du contenu, et les flèches déplacent le focus.
+
+### La barre du haut : atterrissage direct + espaces transverses (lot 8 bis, 21/09/2026)
+
+**Plus de « Lobby / RH / Recrutement ».** Le fil d'Ariane décrivait une hiérarchie que
+personne ne parcourait : trois clics pour atteindre le travail du jour. L'application
+s'ouvre sur *Aujourd'hui*, le **logo y ramène**, et `/app`, `/rh`, `/rh/recrutement`
+**redirigent** — jamais 404.
+
+À sa place, **quatre espaces de gestion TRANSVERSES**, groupés **À DROITE** juste avant le
+compte, en **liens texte verts et gras** (pas des onglets : la colonne garde ce rendu) :
+
+| Espace | Ce qu'il porte | Ce qu'il ne porte PAS |
+|---|---|---|
+| **Vivier** | l'écran existant, ré-atteignable directement (déposer, parcourir, rechercher) | — |
+| **Sourcing** | **la base des campagnes ACTIVES qui existait déjà** : celles qui ont sourcé passent en tête, portent la pastille « Sourcée » et proposent **Détail** ; les autres proposent **Sourcer** | **aucune indication de coût** — le budget vit dans l'administration ; un recruteur n'a pas à connaître le prix d'une recherche pour décider s'il en a besoin |
+| **Diffusion** | toutes les annonces publiées, tous canaux, toutes campagnes : état, date, jours restants avant que republier soit refusé | aucun geste — chaque ligne mène à la campagne |
+| **Revue de candidature** | la revue **groupée** des dossiers à valider, avec un indicateur du nombre en attente | la décision à l'unité, qui reste sous la puce « À valider » |
+
+Puis le compte / *Se déconnecter* à l'extrême droite.
+
+⚠️ **« Revue de candidature » n'est pas un troisième chemin vers la même décision.** C'est
+la revue GROUPÉE — celle qui passe les propositions de refus en une fois. La décision
+dossier par dossier reste sous la puce « À valider » de *Candidatures*. Les **règles** de
+validation (seuils par défaut, gabarits de refus) sont dans *Réglages*. Son indicateur ne
+s'affiche qu'à partir de 1 : un « 0 » sur un lien se lit comme un compteur en panne.
+
+⚠️ **Une seconde vue transverse du sourcing a existé quelques heures, et a été retirée.**
+Elle listait les APPROCHES là où la base existante liste les CAMPAGNES : deux écrans pour
+« où en est mon sourcing ? » finissent par se contredire.
+
+⚠️ **Le vert des liens du bandeau est le sien.** Le bandeau est ambre (#FFB000 à 50 % sur
+blanc ≈ #ffd77f), donc plus sombre qu'une carte : `--dash-green` n'y tient que **2,37:1**
+et `--dash-green-text` **3,65** — sous les 4,5:1 exigés d'un texte de 13 px, fût-il gras
+(le seuil « grand texte » commence à 18,66 px gras). `--dash-green-bandeau` (#166534)
+donne **5,19:1**.
+
+⚠️ **L'état d'une annonce est un CACHE.** Un consultant Apec peut valider, un recruteur
+peut modifier sur apec.fr : ORQA ne l'apprend qu'en demandant. Chaque ligne de *Diffusion*
+dit donc **quand l'état a été lu**. Et « J+30 » n'est pas une expiration qu'ORQA
+connaîtrait : c'est la borne au-delà de laquelle l'Apec **refuse une republication** — on
+affiche donc « N jours pour republier », jamais « expire le ».
+
+**Garde** : S37 (5 cas) — les trois liens ouvrent leur page (colonne comprise), le logo
+ramène à *Aujourd'hui*, les trois anciennes adresses redirigent, la barre ne porte que ces
+trois espaces, et *Sourcing* ne propose aucun lancement de recherche.
+
+### Une couleur par NATURE d'objet (21/09/2026)
+
+**Règle.** La couleur d'un pavé d'initiales ou d'une icône de ligne ne code ni l'étape, ni
+l'urgence, ni le score : tout cela est déjà écrit sur la ligne, en toutes lettres. Elle dit
+**de quelle nature est l'objet**, et rien d'autre.
+
+| Objet | Pastille | Écrans |
+|---|---|---|
+| Une **personne** | pastille **`#ffcb60`**, initiales **`#ff7f00`**, sans exception | Entretiens · Candidatures · Audit |
+| Une **campagne** | **bleu ciel** (`--dash-sky`) et son éclair | Campagnes · Pilotage → Rapport de campagne |
+
+**Pourquoi.** Un candidat était orange sur *Entretiens* quand il était en retard, turquoise
+sinon, violet en attente de réservation, et marine dégradé sur *Candidatures* : **quatre
+couleurs pour la même personne**, selon l'écran et son état. Une couleur qui change sans
+rien signifier se lit comme une information — et on la cherche. L'icône de campagne, elle,
+était **verte** : le vert disait « conforme » là où il ne signifiait rien de tel, pendant
+qu'il servait ailleurs à marquer les candidats retenus.
+
+⚠️ **Portée exacte.** Sur la **carte** d'une campagne, « suspendue » (jaune) et
+« brouillon » (gris) gardent leurs teintes : elles distinguent trois cartes côte à côte
+dans une même liste, ce qui est un autre problème. Seule l'icône **active** change.
+
+⚠️ **Mesure, et elle est basse.** Les initiales `#ff7f00` sur la pastille `#ffcb60`
+donnent **1,68:1**, et la pastille se détache de **1,42:1** du fond sand — très en dessous
+des 3:1 d'un élément non textuel. Ce n'est tenable QUE parce que les initiales sont
+**redondantes** : le nom complet est à côté, en contraste AA, et aucune information ne
+dépend de leur lecture. Ce sont les teintes choisies par le donneur d'ordre, et
+l'arbitrage lui appartient ; dans la même famille, `#9a3412` donnerait 4,86:1 sur la même
+pastille.
+
+Côté campagne, le ciel `#d7e6ff` est lui aussi **pâle** : le glyphe ne peut pas être blanc
+(1,26:1) et prend `--dash-blue` (**3,66:1**, au-delà des 3:1 d'un élément non textuel) ; la
+pastille porte un filet, car elle ne se détache que de 1,19:1 du fond.
+
+**Garde** : `socle-jetons.test.ts` — un `avatarColor` qui n'est pas `PASTILLE.candidat`,
+ou un fond posé à la main derrière des initiales, fait rougir la suite. Sondée.
+
+### Le socle de jetons (lot 7, 21/09/2026)
+
+Un fichier : **`src/components/ui/tokens.ts`**. Il ne dessine rien — il NOMME ce que les
+écrans sains employaient déjà : **trois niveaux typographiques** (`font-display` ·
+`font-body` · `font-data`, cette dernière réservée aux chiffres et aux références), une
+**échelle d'espacement** en multiples de 4, les **rôles de couleur**, les **trois
+profondeurs** (carte · sous-bloc · rangée) et leurs bornes de contraste.
+
+**Candidatures a pris la peau du produit.** Sa palette `orqa-*` (marine `#0a1f3f`,
+bleu-gris `#64748b`, brume `#f4f7fb`) et ses deux polices (Fraunces, Inter) ont été
+retirées : elles n'existaient que là, sur un seul écran, et se chargeaient sur toutes les
+pages. **Sa structure, elle, ne bouge pas** — c'est elle qui a servi de modèle aux autres.
+
+⚠️ **Deux familles de couleur, et il ne faut pas les confondre.** Les couleurs de marque
+(`--dash-green`…) sont des **repères** : mesurées sur leur propre fond clair elles donnent
+2,83 à 3,44:1 — assez pour un élément non textuel (WCAG 1.4.11 : 3:1), **sous AA pour du
+texte**. Le texte d'une pastille d'état prend les teintes `--dash-*-text` (4,56 · 6,95 ·
+4,59 · 5,68:1, mesurées).
+
+**Garde structurelle** : `src/components/ui/__tests__/socle-jetons.test.ts` — aucune
+couleur en dur, aucune famille de police déclarée à la main, la palette retirée ne revient
+pas. Et `stage-ui.test.ts` **résout les jetons dans `globals.css`** avant de mesurer le
+contraste : une teinte changée en CSS fait rougir la suite sans qu'on touche au code.
+
+**Garde structurelle** : `src/components/ui/__tests__/interface-sobre.test.ts` — aucune bascule de
+vue définie hors de `DotTabs` (`role="tablist"`, `aria-selected`, onglets soulignés), et le type
+`CounterItem` borné aux champs d'une carte à deux rangs. Sondée dans les deux sens.
+
+---
+
+### Recette du donneur d'ordre — 22 et 23/09/2026
+
+Ce que la recette a changé, une fois la refonte à l'écran. Chaque point a sa
+raison : elle vaut plus que la règle qu'elle produit.
+
+**On arrive sur des titres, pas sur des murs.** *Aujourd'hui* et *Paramètres*
+s'ouvrent **repliés** ; *Campagnes* n'ouvre **aucune** carte (seule exception :
+la campagne désignée par l'URL — on y revient pour elle). Ce qu'on ouvre reste
+ouvert **le temps de la session** (`sessionStorage`) : une nouvelle ouverture de
+l'application repart fermée. Avant, les réglages ouverts la veille rouvraient
+seuls, et la première campagne de la page était dépliée d'office — un rang
+qu'elle n'a pas.
+
+**Les familles de réglages portent un FILET `--dash-famille` (#ebbb58)**, sans
+aplat. ⚠️ Le texte reste en encre du produit : ce jaune **en texte** sur fond
+clair donne 1,78:1. La couleur borde, elle n'écrit pas. (En aplat, l'encre
+#1b1b18 y tenait 9,68:1 — la première version ; le donneur d'ordre a préféré le
+trait seul.)
+
+**Le compteur du vivier quitte la colonne.** Il vivait sous « Campagnes » et ne
+s'éteignait pas de lui-même : son décompte ignore l'état de la campagne, donc un
+profil présélectionné sur une campagne clôturée le tenait allumé. La file reste
+à `/validations-vivier`.
+
+**Le flou, seulement là où le fond est INERTE.** Le détail complet d'une
+candidature (`fixed inset-0`, portail vers `body`, Échap et clic-fond ferment)
+gagne `backdrop-blur-sm` par-dessus son voile à 30 %. ⚠️ **Pas** le panneau
+latéral de 420 px : c'est une **seconde colonne**, la liste qu'il côtoie reste le
+moyen de passer au dossier suivant, et la flouter la ferait passer pour
+désactivée.
+
+**Un seul rapport d'analyse : le PDF.** Il se lisait sous deux formes selon la
+porte — le PDF d'audit depuis la fiche candidature, un markdown dépouillé depuis
+la fiche de validation, c'est-à-dire là où l'on accepte ou refuse. Le lecteur est
+unique (`src/lib/reporting/open-report-inline.ts`), la fiche de validation
+l'ouvre par l'identifiant d'analyse, et un échec est DIT plutôt que de laisser un
+bouton mort. L'artefact markdown continue d'être produit et archivé.
+
+**Assistant de création — étape « Le poste ».** L'intitulé et « Démarrer à partir
+d'un document » sont **côte à côte, à la même largeur** ; l'import est mis en
+exergue (indigo, filet de dépôt), et une lecture affiche un bandeau animé avec
+son compteur, gèle les champs et refuse « Suivant » — plusieurs dizaines de
+secondes sur un écran immobile faisaient cliquer partout. Les aides qui dépendent
+de l'intitulé (« Proposer le reste de la fiche », campagne comparable)
+n'apparaissent qu'une fois celui-ci saisi. Changer d'étape remonte en haut de la
+carte.
+
+**Assistant — l'étape « réception » ne choisit plus les canaux.** Cocher APEC à
+la création ne diffusait rien : le texte s'écrit et se publie APRÈS le lancement,
+et l'écran « Diffuser l'annonce » **propose déjà le canal** quand la campagne n'en
+a aucun. Le choix vivait à deux endroits, le premier ne servant qu'à préparer le
+second. L'état `channels` disparaît du brouillon (une campagne comparable n'en
+copie plus : des canaux activés sans écran pour les montrer), et la note de
+l'étape DIT où la diffusion se règle.
+
+**Mots de l'écran.** « Méthode » → « **Méthode de recherche** » ; « LLM » → «
+**IA** » partout où le recruteur lit (sélecteur de la grille, badges, message de
+cohérence, audit candidat).
+
+**Sur un dossier tranché, le compte rendu d'entretien se LIT** et ne s'écrit plus
+— et disparaît quand rien n'a été rédigé. Voir `docs/specs/compte-rendu-entretien.md`
+§19.2.

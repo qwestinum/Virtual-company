@@ -163,15 +163,25 @@ describe('selectUnblockedHolidays', () => {
 describe('message du signal 4', () => {
   const NOEL = { day: '2026-12-25', label: 'Noël' };
 
-  it('parle de VOTRE agenda — le signal est filtré par session', () => {
+  it('parle de VOUS — le signal est filtré par session', () => {
     // Un réglage personnel : le message s'adresse à la personne qui peut
     // le corriger, pas au « cabinet » en général.
-    expect(buildHolidaysUnblockedMessage(1, NOEL)).toBe(
-      'Votre agenda propose encore des créneaux le 25 décembre (Noël), qui est férié.',
-    );
-    expect(buildHolidaysUnblockedMessage(3, NOEL)).toBe(
-      'Votre agenda propose encore des créneaux sur 3 jours fériés — le plus proche : 25 décembre (Noël).',
-    );
+    expect(buildHolidaysUnblockedMessage(1, NOEL)).toContain('avec vous');
+    expect(buildHolidaysUnblockedMessage(3, NOEL)).toContain('avec vous');
+  });
+
+  it('dit la CONSÉQUENCE et le geste, pas seulement l’état', () => {
+    // « Votre agenda propose des créneaux un jour férié » décrivait un
+    // réglage ; ce qui compte est qu'un candidat puisse réserver ce jour-là,
+    // et ce qu'il faut faire pour l'empêcher.
+    const un = buildHolidaysUnblockedMessage(1, NOEL);
+    expect(un).toContain('réserver');
+    expect(un).toContain('25 décembre (Noël)');
+    expect(un).toContain('bloquez');
+
+    const plusieurs = buildHolidaysUnblockedMessage(3, NOEL);
+    expect(plusieurs).toContain('3 jours fériés');
+    expect(plusieurs).toContain('bloquez-les');
   });
 
   it('formate la date sans bascule de fuseau', () => {

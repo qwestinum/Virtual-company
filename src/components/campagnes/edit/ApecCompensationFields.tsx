@@ -38,7 +38,7 @@ export function ApecCompensationFields({
 }: ApecCompensationFieldsProps) {
   return (
     <>
-        <ApecFieldRow label="Salaire minimum (€/an)" note={notes.salaryMin}>
+        <ApecFieldRow label="Salaire minimum (€/an)" field="salaryMin" note={notes.salaryMin}>
           <input
             style={inputStyle}
             type="number"
@@ -49,7 +49,7 @@ export function ApecCompensationFields({
           />
         </ApecFieldRow>
 
-        <ApecFieldRow label="Salaire maximum (€/an)" note={notes.salaryMax}>
+        <ApecFieldRow label="Salaire maximum (€/an)" field="salaryMax" note={notes.salaryMax}>
           <input
             style={inputStyle}
             type="number"
@@ -60,7 +60,7 @@ export function ApecCompensationFields({
           />
         </ApecFieldRow>
 
-        <ApecFieldRow label="Affichage du salaire" note={notes.displayedPay}>
+        <ApecFieldRow label="Affichage du salaire" field="displayedPay" note={notes.displayedPay}>
           <ApecSelect
             value={offer.displayedPay}
             onChange={(displayedPay) => displayedPay && onChange({ displayedPay })}
@@ -68,7 +68,7 @@ export function ApecCompensationFields({
           />
         </ApecFieldRow>
 
-        <ApecFieldRow label="Temps partiel">
+        <ApecFieldRow label="Temps partiel" field="partTime">
           <ApecSelect
             value={offer.partTime ? 'oui' : 'non'}
             onChange={(v) =>
@@ -85,7 +85,7 @@ export function ApecCompensationFields({
         </ApecFieldRow>
 
         {offer.partTime ? (
-          <ApecFieldRow label="Modalité du temps partiel" note={notes.partTimeDuration}>
+          <ApecFieldRow label="Modalité du temps partiel" field="partTimeDuration" note={notes.partTimeDuration}>
             <ApecSelect
               value={offer.partTimeDuration}
               onChange={(partTimeDuration) => onChange({ partTimeDuration })}
@@ -95,7 +95,7 @@ export function ApecCompensationFields({
           </ApecFieldRow>
         ) : null}
 
-        <ApecFieldRow label="Télétravail">
+        <ApecFieldRow label="Télétravail" field="remoteWork">
           <ApecSelect
             value={offer.remoteWork}
             onChange={(remoteWork) => onChange({ remoteWork })}
@@ -104,7 +104,7 @@ export function ApecCompensationFields({
           />
         </ApecFieldRow>
 
-        <ApecFieldRow label="Nombre de postes" note={notes.numberToFill}>
+        <ApecFieldRow label="Nombre de postes" field="numberToFill" note={notes.numberToFill}>
           <input
             style={inputStyle}
             type="number"
@@ -115,7 +115,7 @@ export function ApecCompensationFields({
           />
         </ApecFieldRow>
 
-        <ApecFieldRow label="Type d’offre" note={notes.positionType}>
+        <ApecFieldRow label="Type d’offre" field="positionType" note={notes.positionType}>
           <ApecSelect
             value={offer.positionType}
             onChange={(positionType) => positionType && onChange({ positionType })}

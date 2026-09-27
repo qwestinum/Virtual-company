@@ -89,6 +89,54 @@ type PreselectionJoinedRow = VivierPreselectionRow & {
   vivier_candidates: { nom: string; email: string; updated_at: string } | null;
 };
 
+/**
+ * TOUTES les propositions encore EN ATTENTE, toutes campagnes confondues.
+ *
+ * Sert le déménagement du lot 4 (la file « Validations vivier » disparaît) :
+ * on a besoin de la liste complète, pas d'une campagne à la fois.
+ *
+ * Keyset sur `(campaign_id, candidate_id)` — la clé primaire, donc unique et
+ * stable : aucun trou ni doublon aux frontières de page, même sous écriture
+ * concurrente. Projection MINIMALE : ni scores, ni filtres, ni rang.
+ */
+export async function listPendingPreselections(): Promise<
+  { campaignId: string; candidateId: string; generatedAt: string }[]
+> {
+  const supabase = requireServerSupabase();
+  const rows = await fetchAllKeyset<{
+    campaign_id: string;
+    candidate_id: string;
+    generated_at: string;
+  }>({
+    // Curseur composite : `candidate_id` seul ne suffirait pas ici, la même
+    // personne pouvant figurer dans deux campagnes.
+    cursorOf: (r) => `${r.campaign_id}:${r.candidate_id}`,
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from(TABLE)
+        .select('campaign_id, candidate_id, generated_at')
+        .eq('state', 'identified')
+        .order('campaign_id', { ascending: true })
+        .order('candidate_id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) {
+        const [campagne, candidat] = afterId.split(':');
+        q = q.or(
+          `campaign_id.gt.${campagne},and(campaign_id.eq.${campagne},candidate_id.gt.${candidat})`,
+        );
+      }
+      const { data, error } = await q;
+      if (error) throw new Error(`listPendingPreselections: ${error.message}`);
+      return data ?? [];
+    },
+  });
+  return rows.map((r) => ({
+    campaignId: r.campaign_id,
+    candidateId: r.candidate_id,
+    generatedAt: r.generated_at,
+  }));
+}
+
 /** Relit la short-list persistée d'une campagne, ordonnée par rang. */
 export async function listPreselection(
   campaignId: string,

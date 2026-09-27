@@ -1,0 +1,2715 @@
+<?xml version='1.0' encoding='UTF-8'?><wsdl:definitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:tns="http://adep.apec.fr/hrxml/sep" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:ns1="http://schemas.xmlsoap.org/soap/http" name="AdepSepService" targetNamespace="http://adep.apec.fr/hrxml/sep">
+  <wsdl:types>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://www.w3.org/XML/1998/namespace" version="1.0">
+
+  <xs:attribute name="lang" type="xs:language"/>
+
+</xs:schema>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:tns="http://ns.hr-xml.org/2006-02-28" attributeFormDefault="unqualified" elementFormDefault="qualified" targetNamespace="http://ns.hr-xml.org/2006-02-28">
+  <xs:import namespace="http://www.w3.org/XML/1998/namespace"/>
+  <xs:element name="Achievement" type="tns:AchievementType"/>
+  <xs:element name="Achievements">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" name="Achievement" type="tns:AchievementType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="ApplicationAcknowledgement" type="tns:AcknowledgeType"/>
+  <xs:element name="AreaCityCode" type="xs:string"/>
+  <xs:element name="Association">
+    <xs:complexType>
+      <xs:complexContent>
+        <xs:extension base="tns:AssociationType">
+          <xs:sequence/>
+          <xs:attribute name="type" type="xs:string"/>
+        </xs:extension>
+      </xs:complexContent>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Associations">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" ref="tns:Association"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Candidate" type="tns:CandidateType"/>
+  <xs:element name="Competency" type="tns:CompetencyType"/>
+  <xs:element name="CountryCode" type="xs:string"/>
+  <xs:element name="CurrencyCode" type="xs:string"/>
+  <xs:element name="DunsNumber" type="tns:DunsNumberDataType"/>
+  <xs:element name="EducationHistory" type="tns:EducationHistoryType"/>
+  <xs:element name="EmploymentHistory" type="tns:EmploymentHistoryType"/>
+  <xs:element name="Extension" type="xs:string"/>
+  <xs:element name="FLSAStatus" type="tns:FLSAStatusEnumType"/>
+  <xs:element name="Fax" type="tns:TelcomNumberType"/>
+  <xs:element name="FormattedNumber" type="xs:string"/>
+  <xs:element name="Frequency" type="xs:string"/>
+  <xs:element name="GenderCode" type="xs:integer"/>
+  <xs:element name="IndustryCode" type="tns:IndustryCodeType"/>
+  <xs:element name="InternationalCountryCode" type="xs:string"/>
+  <xs:element name="InternetDomainName" type="tns:InternetDomainNameType"/>
+  <xs:element name="InternetEmailAddress" type="xs:string"/>
+  <xs:element name="InternetWebAddress" type="xs:string"/>
+  <xs:element name="Language">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="LanguageCode" type="xs:language"/>
+        <xs:element minOccurs="0" name="Read" type="xs:boolean"/>
+        <xs:element minOccurs="0" name="Write" type="xs:boolean"/>
+        <xs:element minOccurs="0" name="Speak" type="xs:boolean"/>
+        <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="LanguageCode" type="xs:string"/>
+  <xs:element name="LicenseOrCertification" type="tns:CredentialType"/>
+  <xs:element name="LicensesAndCertifications">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" name="LicenseOrCertification" type="tns:CredentialType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Location" type="xs:string"/>
+  <xs:element name="MilitaryHistory" type="tns:MilitaryHistoryType"/>
+  <xs:element name="Mobile" type="tns:MobileTelcomNumberType"/>
+  <xs:element name="NationalNumber" type="xs:string"/>
+  <xs:element name="NonXMLResume" type="tns:NonXMLResumeType"/>
+  <xs:element name="NumericValue">
+    <xs:complexType>
+      <xs:simpleContent>
+        <xs:extension base="xs:double">
+          <xs:attribute name="minValue" type="xs:double"/>
+          <xs:attribute name="maxValue" type="xs:double"/>
+          <xs:attribute name="interval" type="xs:double"/>
+          <xs:attribute name="description" type="xs:string"/>
+        </xs:extension>
+      </xs:simpleContent>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Organization">
+    <xs:complexType>
+      <xs:complexContent>
+        <xs:extension base="tns:OrganizationType">
+          <xs:sequence/>
+        </xs:extension>
+      </xs:complexContent>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="OrganizationalUnit" type="tns:OrganizationalUnitType"/>
+  <xs:element name="Pager" type="tns:TelcomNumberType"/>
+  <xs:element name="PatentHistory" type="tns:PatentHistoryType"/>
+  <xs:element name="PayTypeHours" type="xs:string"/>
+  <xs:element name="PersonDescriptors" type="tns:PersonDescriptorsType"/>
+  <xs:element name="PersonName" type="tns:PersonNameType"/>
+  <xs:element name="PersonalData" type="tns:CandidatePersonalDataType"/>
+  <xs:element name="PhysicalLocation" type="tns:PhysicalLocationType"/>
+  <xs:element name="PositionMatching" type="tns:PositionMatchingType"/>
+  <xs:element name="PositionOpening" type="tns:PositionOpeningType"/>
+  <xs:element name="PostalAddress" type="tns:PostalAddressType"/>
+  <xs:element name="PrehireRemuneration" type="tns:PrehireRemunerationPackageType"/>
+  <xs:element name="PublicationHistory" type="tns:PublicationHistoryType"/>
+  <xs:element name="Reference" type="tns:ReferenceType"/>
+  <xs:element name="References">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" name="Reference" type="tns:ReferenceType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Resume">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="ResumeId" type="tns:EntityIdType"/>
+        <xs:element minOccurs="0" name="DistributionGuidelines" type="tns:DistributionGuidelinesType"/>
+        <xs:element minOccurs="0" name="StructuredXMLResume" type="tns:StructuredXMLResumeType"/>
+        <xs:element minOccurs="0" name="NonXMLResume" type="tns:NonXMLResumeType"/>
+        <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+      </xs:sequence>
+      <xs:attribute ref="xml:lang"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="ResumeAdditionalItem" type="tns:AdditionalItemType"/>
+  <xs:element name="SEPPhysicalLocation" type="tns:SEPPhysicalLocationType"/>
+  <xs:element name="SecurityCredential" type="tns:CredentialType"/>
+  <xs:element name="SecurityCredentials">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" name="SecurityCredential" type="tns:CredentialType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="SpatialLocation" type="tns:SpatialLocationType"/>
+  <xs:element name="SpeakingEvent" type="tns:SpeakingEventType"/>
+  <xs:element name="SpeakingEventsHistory">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" name="SpeakingEvent" type="tns:SpeakingEventType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="StringValue">
+    <xs:complexType>
+      <xs:simpleContent>
+        <xs:extension base="xs:string">
+          <xs:attribute name="minValue" type="xs:string"/>
+          <xs:attribute name="maxValue" type="xs:string"/>
+          <xs:attribute name="description" type="xs:string"/>
+        </xs:extension>
+      </xs:simpleContent>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="StructuredXMLResume" type="tns:StructuredXMLResumeType"/>
+  <xs:element name="SubscriberNumber" type="xs:string"/>
+  <xs:element name="SupportingInformation" type="xs:string"/>
+  <xs:element name="TTYTDD" type="tns:TelcomNumberType"/>
+  <xs:element name="Telephone" type="tns:TelcomNumberType"/>
+  <xs:element name="Use" type="xs:string"/>
+  <xs:element name="UserArea" type="tns:UserAreaType"/>
+  <xs:element name="WhenAvailable" type="xs:string"/>
+  <xs:element name="WorkSite" type="tns:WorkSiteType"/>
+  <xs:element name="WorkSiteEnvironment" type="tns:WorkSiteEnvironmentType"/>
+  <xs:complexType name="EntityIdType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" name="IdValue">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="name" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="validFrom" type="xs:string"/>
+    <xs:attribute name="validTo" type="xs:string"/>
+    <xs:attribute name="idOwner" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="PersonLegalIdType">
+    <xs:complexContent>
+      <xs:extension base="tns:EntityIdType">
+        <xs:sequence/>
+        <xs:attribute name="countryCode" type="xs:string"/>
+        <xs:attribute name="jurisdiction" type="xs:string"/>
+        <xs:attribute name="issuingRegion" type="xs:string"/>
+        <xs:attribute name="documentType" type="xs:string"/>
+        <xs:attribute name="idSource" type="xs:string"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="PositionStatusResponseTypeApec">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" name="onePosition" type="tns:OnePositionTypeApec"/>
+      <xs:element name="uniquePayloadTrackingId" type="tns:EntityIdType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OnePositionTypeApec">
+    <xs:sequence>
+      <xs:element name="apecPositionNumero" type="xs:string"/>
+      <xs:element name="clientPositionId" type="xs:string"/>
+      <xs:element name="status" type="xs:string"/>
+      <xs:element name="isEditable" type="xs:boolean"/>
+      <xs:element name="positionUrl" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PositionOpeningType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="PositionRecordInfo" type="tns:RecordInfoType"/>
+      <xs:element minOccurs="0" name="PositionPostings" type="tns:PositionPostingsType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PositionSupplier" type="tns:PositionSupplierType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PositionProfile" type="tns:PositionProfileType"/>
+      <xs:element minOccurs="0" name="NumberToFill" type="xs:integer"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute ref="xml:lang"/>
+  </xs:complexType>
+  <xs:complexType name="RecordInfoType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Id" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Status">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="validFrom" type="xs:string"/>
+              <xs:attribute name="validTo" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PositionPostingsType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PositionPosting">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="Id" type="tns:EntityIdType"/>
+            <xs:element minOccurs="0" name="Title" type="xs:string"/>
+            <xs:element minOccurs="0" name="Link" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PositionSupplierType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="SupplierId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="EntityName" type="xs:string"/>
+      <xs:element minOccurs="0" name="ContactName" type="tns:PersonNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+      <xs:element minOccurs="0" name="Role" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="relationship" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="PersonNameType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="FormattedName" type="xs:string"/>
+      <xs:element minOccurs="0" name="LegalName" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="GivenName" type="xs:string"/>
+      <xs:element minOccurs="0" name="PreferredGivenName" type="xs:string"/>
+      <xs:element minOccurs="0" name="MiddleName" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="FamilyName">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="primary" type="xs:string"/>
+              <xs:attribute name="prefix" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Affix">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="type" type="xs:string" use="required"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="AlternateScript">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="FormattedName" type="xs:string"/>
+            <xs:element minOccurs="0" name="LegalName" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="GivenName" type="xs:string"/>
+            <xs:element minOccurs="0" name="PreferredGivenName" type="xs:string"/>
+            <xs:element minOccurs="0" name="MiddleName" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="FamilyName">
+              <xs:complexType>
+                <xs:simpleContent>
+                  <xs:extension base="xs:string">
+                    <xs:attribute name="primary" type="xs:string"/>
+                    <xs:attribute name="prefix" type="xs:string"/>
+                  </xs:extension>
+                </xs:simpleContent>
+              </xs:complexType>
+            </xs:element>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="Affix">
+              <xs:complexType>
+                <xs:simpleContent>
+                  <xs:extension base="xs:string">
+                    <xs:attribute name="type" type="xs:string" use="required"/>
+                  </xs:extension>
+                </xs:simpleContent>
+              </xs:complexType>
+            </xs:element>
+          </xs:sequence>
+          <xs:attribute name="script" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="script" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="ContactMethodType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Use" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="Location" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="WhenAvailable" type="xs:string"/>
+      <xs:element minOccurs="0" name="Telephone" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="Mobile" type="tns:MobileTelcomNumberType"/>
+      <xs:element minOccurs="0" name="Fax" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="Pager" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="TTYTDD" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="InternetEmailAddress" type="xs:string"/>
+      <xs:element minOccurs="0" name="InternetWebAddress" type="xs:string"/>
+      <xs:element minOccurs="0" name="PostalAddress" type="tns:PostalAddressType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="TelcomNumberType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="FormattedNumber" type="xs:string"/>
+      <xs:element minOccurs="0" name="InternationalCountryCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="NationalNumber" type="xs:string"/>
+      <xs:element minOccurs="0" name="AreaCityCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="SubscriberNumber" type="xs:string"/>
+      <xs:element minOccurs="0" name="Extension" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="MobileTelcomNumberType">
+    <xs:complexContent>
+      <xs:extension base="tns:TelcomNumberType">
+        <xs:sequence/>
+        <xs:attribute name="smsEnabled" type="xs:boolean"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="PostalAddressType">
+    <xs:sequence>
+      <xs:element name="CountryCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="PostalCode" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Region" type="xs:string"/>
+      <xs:element minOccurs="0" name="Municipality" type="xs:string"/>
+      <xs:element minOccurs="0" name="DeliveryAddress">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="AddressLine" type="xs:string"/>
+            <xs:element minOccurs="0" name="StreetName" type="xs:string"/>
+            <xs:element minOccurs="0" name="BuildingNumber" type="xs:string"/>
+            <xs:element minOccurs="0" name="Unit" type="xs:string"/>
+            <xs:element minOccurs="0" name="PostOfficeBox" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Recipient">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="PersonName" type="tns:PersonNameType"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="AdditionalText" type="xs:string"/>
+            <xs:element minOccurs="0" name="Organization" type="xs:string"/>
+            <xs:element minOccurs="0" name="OrganizationName" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="type" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="PositionProfileType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="ProfileId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="ProfileName" type="xs:string"/>
+      <xs:element name="PositionDateInfo" type="tns:PositionDateInfoType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Organization" type="tns:OrganizationType"/>
+      <xs:element minOccurs="0" name="PositionDetail">
+        <xs:complexType>
+          <xs:complexContent>
+            <xs:extension base="tns:PositionMatchingType">
+              <xs:sequence>
+                <xs:element maxOccurs="unbounded" minOccurs="0" name="JobLevelInfo" type="tns:JobLevelInfoType"/>
+              </xs:sequence>
+            </xs:extension>
+          </xs:complexContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="PositionClassification" type="tns:LocalizedPositionClassificationType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="FormattedPositionDescription">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Name">
+              <xs:complexType>
+                <xs:simpleContent>
+                  <xs:extension base="xs:string">
+                    <xs:attribute ref="xml:lang"/>
+                  </xs:extension>
+                </xs:simpleContent>
+              </xs:complexType>
+            </xs:element>
+            <xs:element name="Value">
+              <xs:complexType>
+                <xs:simpleContent>
+                  <xs:extension base="xs:string">
+                    <xs:attribute ref="xml:lang"/>
+                  </xs:extension>
+                </xs:simpleContent>
+              </xs:complexType>
+            </xs:element>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="HowToApply">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="PersonName" type="tns:PersonNameType"/>
+            <xs:element minOccurs="0" name="ApplicationMethod" type="tns:ApplicationMethodType"/>
+            <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DistributionGuidelines" type="tns:DistributionGuidelinesType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="SupportingMaterials" type="tns:StaffingSupportingMaterialsType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute ref="xml:lang"/>
+  </xs:complexType>
+  <xs:complexType name="PositionDateInfoType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="StartAsSoonAsPossible" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="StartDate" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="ExpectedEndDate" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="MaximumStartDate" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="MaximumEndDate" type="xs:anySimpleType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OrganizationType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="OrganizationName" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OrganizationId" type="tns:EntityIdType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="TaxId" type="tns:EntityIdType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="LegalId" type="tns:EntityIdType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DunsNumber" type="tns:DunsNumberDataType"/>
+      <xs:element minOccurs="0" name="IsPublicCompany" type="xs:boolean"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Stock" type="tns:StockType"/>
+      <xs:element minOccurs="0" name="MissionStatement" type="xs:string"/>
+      <xs:element minOccurs="0" name="ValueStatement" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="InternetDomainName" type="tns:InternetDomainNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DoingBusinessAs" type="tns:LanguageDependentTextType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="LegalClassification" type="tns:OrganizationLegalClassificationType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="IndustryCode" type="tns:IndustryCodeType"/>
+      <xs:element minOccurs="0" name="Headcount" type="xs:nonNegativeInteger"/>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="WorkSite" type="tns:WorkSiteType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactInfo" type="tns:OrganizationContactType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="RelatedOrganization" type="tns:RelatedOrganizationType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OrganizationalUnit" type="tns:OrganizationalUnitType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="DunsNumberDataType">
+    <xs:simpleContent>
+      <xs:extension base="xs:integer">
+        <xs:attribute name="dunsNumberType" type="xs:string" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="StockType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Id" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Symbol" type="xs:string"/>
+      <xs:element minOccurs="0" name="Exchange" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="InternetDomainNameType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="primaryIndicator" type="xs:boolean"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="LanguageDependentTextType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute ref="xml:lang"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="OrganizationLegalClassificationType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="countryCode" type="xs:string" use="required"/>
+        <xs:attribute name="ownership" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="IndustryCodeType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="primaryIndicator" type="xs:boolean"/>
+        <xs:attribute name="classificationName" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="WorkSiteType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="WorkSiteName" type="xs:string"/>
+      <xs:element minOccurs="0" name="WorkSiteId" type="tns:EntityIdType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Details">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="tns:LanguageDependentTextType">
+              <xs:attribute name="type" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="PostalAddress" type="tns:PostalAddressType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="TravelDirections" type="tns:LanguageDependentTextType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ParkingInstructions" type="tns:LanguageDependentTextType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="WorkSiteEnvironment" type="tns:WorkSiteEnvironmentType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="WorkSiteEnvironmentType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="EnvironmentName" type="xs:string"/>
+      <xs:element minOccurs="0" name="EnvironmentId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="WorkSiteId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Description">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute ref="xml:lang"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Considerations">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="General" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="Physical" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="SafetyEquipment" type="tns:SafetyEquipmentType"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="DressCode" type="tns:DressCodeType"/>
+            <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+          </xs:sequence>
+          <xs:attribute ref="xml:lang"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SafetyEquipmentType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="suppliedByOrganization" type="xs:boolean"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="DressCodeType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="suppliedByOrganization" type="xs:boolean"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="UserAreaType">
+    <xs:sequence>
+      <xs:any maxOccurs="unbounded" minOccurs="0" namespace="##other" processContents="lax"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="ApplicationMethodType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Telephone" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="Fax" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="InternetEmailAddress" type="xs:string"/>
+      <xs:element minOccurs="0" name="InternetWebAddress" type="xs:string"/>
+      <xs:element minOccurs="0" name="PostalAddress" type="tns:PostalAddressType"/>
+      <xs:element minOccurs="0" name="InPerson">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="TravelDirections" type="xs:string"/>
+            <xs:element minOccurs="0" name="MapLink" type="xs:string"/>
+            <xs:element minOccurs="0" name="AdditionalInstructions" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PrehireRemunerationPackageType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="BasePay" type="tns:BasePayType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OtherPay" type="tns:OtherPayDataType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Benefits" type="tns:BenefitsType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="BasePayType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="BasePayAmountMin" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="BasePayAmountMax" type="xs:decimal"/>
+    </xs:sequence>
+    <xs:attribute name="currencyCode" type="xs:string"/>
+    <xs:attribute name="baseInterval" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="OtherPayDataType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="OtherPayAmountMin" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="OtherPayAmountMax" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="OtherPayCalculation" type="xs:string"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="currencyCode" type="xs:string"/>
+    <xs:attribute name="otherInterval" type="xs:string"/>
+    <xs:attribute name="otherPayType" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="BenefitsType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Insurance">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:boolean">
+              <xs:attribute name="type" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="RetirementOrSavingsPlan" type="xs:boolean"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="CompanyVehicle">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="Description" type="xs:string"/>
+          </xs:sequence>
+          <xs:attribute name="companyOffered" type="xs:boolean"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="RelocationAssistance">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="Description" type="xs:string"/>
+          </xs:sequence>
+          <xs:attribute name="companyOffered" type="xs:boolean"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="VisaSponsorship" type="xs:boolean"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="TimeOffAllowance" type="tns:TimeOffAllowanceType"/>
+      <xs:element minOccurs="0" name="ExpatriateBenefits" type="tns:ExpatriateBenefitsType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OtherBenefits">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="type" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="TimeOffAllowanceType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="timeOffType" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="ExpatriateBenefitsType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ExpatriateBenefitsOffered" type="xs:boolean"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ExpatriateBenefitList" type="xs:anySimpleType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="CommuteType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="TimeMax">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:decimal">
+              <xs:attribute name="unitOfMeasure" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="DistanceMax">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:decimal">
+              <xs:attribute name="unitOfMeasure" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="VerificationType">
+    <xs:sequence>
+      <xs:element name="ContactInfo">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="PersonName" type="tns:PersonNameType"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="ReasonForLeaving" type="xs:string"/>
+      <xs:element minOccurs="0" name="PermissionToContact" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="VerifyEmployment" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="EligibleForRehire" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="AttendanceRating" type="tns:RatingType"/>
+      <xs:element minOccurs="0" name="OverallPerformanceRating" type="tns:RatingType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="QuestionAnswerPair" type="tns:EmploymentQuestionAnswerPairType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="RatingType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="NumericValue">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:double">
+              <xs:attribute name="minValue" type="xs:double"/>
+              <xs:attribute name="maxValue" type="xs:double"/>
+              <xs:attribute name="description" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="StringValue">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="minValue" type="xs:string"/>
+              <xs:attribute name="maxValue" type="xs:string"/>
+              <xs:attribute name="description" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="EmploymentQuestionAnswerPairType">
+    <xs:sequence>
+      <xs:element name="Question" type="xs:string"/>
+      <xs:element minOccurs="0" name="Answer" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="MilitaryHistoryType">
+    <xs:sequence>
+      <xs:element name="CountryServed" type="xs:string"/>
+      <xs:element minOccurs="0" name="ServiceNumber" type="tns:EntityIdType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ServiceDetail">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="UnitOrDivision" type="xs:string"/>
+            <xs:element minOccurs="0" name="RankAchieved" type="tns:RankAchievedType"/>
+            <xs:element name="DatesOfService" type="tns:DatesOfServiceType"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="Campaign" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="AreaOfExpertise" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="RecognitionAchieved" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="DisciplinaryAction" type="xs:string"/>
+            <xs:element minOccurs="0" name="DischargeStatus" type="xs:string"/>
+            <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+          </xs:sequence>
+          <xs:attribute name="branch" type="xs:string" use="required"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="ServiceStatus" type="xs:string"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="RankAchievedType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="StartRank" type="xs:string"/>
+      <xs:element minOccurs="0" name="CurrentOrEndRank" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="DatesOfServiceType">
+    <xs:sequence>
+      <xs:element name="StartDate" type="tns:FlexibleDatesType"/>
+      <xs:element minOccurs="0" name="EndDate" type="tns:FlexibleDatesType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="FlexibleDatesType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="AnyDate" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="YearMonth" type="xs:gYearMonth"/>
+      <xs:element minOccurs="0" name="Year" type="xs:gYear"/>
+      <xs:element minOccurs="0" name="MonthDay" type="xs:gMonthDay"/>
+      <xs:element minOccurs="0" name="StringDate" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="dateDescription" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="PayloadResponseSummaryType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ReferenceId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="TransportMessageId">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="MessageIdType" type="xs:string"/>
+            <xs:element name="MessageId" type="tns:EntityIdType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="UniquePayloadTrackingId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="TransactionReceiptTimestamp" type="xs:dateTime"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ProcessingTimestamp">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="description" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="AcknowledgementCreationTimestamp" type="xs:dateTime"/>
+      <xs:element minOccurs="0" name="ReceivedPayloadSummary">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="ReceivedPayloadSchemaURI" type="xs:anyURI"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="EntityInfo">
+              <xs:complexType>
+                <xs:sequence>
+                  <xs:element minOccurs="0" name="EntityInstanceAxisXPath" type="xs:string"/>
+                  <xs:element name="Count" type="xs:nonNegativeInteger"/>
+                  <xs:element minOccurs="0" name="EntityShortName" type="xs:string"/>
+                </xs:sequence>
+              </xs:complexType>
+            </xs:element>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="EducationalMeasureType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="EducationalMeasure" type="tns:EducationMeasureType"/>
+      <xs:element minOccurs="0" name="AcademicCreditCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="CourseLevelCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="CumulativeSummaryIndicator" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="AcademicCreditHoursIncluded" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="AcademicCreditHoursAttempted" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="AcademicCreditHoursEarned" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="ClassRank">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:integer">
+              <xs:attribute name="numberOfStudents" type="xs:integer"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="measureType" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="EducationMeasureType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="MeasureSystem" type="xs:string"/>
+      <xs:element minOccurs="0" name="MeasureValue" type="tns:MeasureValueType"/>
+      <xs:element minOccurs="0" name="LowestPossibleValue" type="tns:MeasureValueType"/>
+      <xs:element minOccurs="0" name="HighestPossibleValue" type="tns:MeasureValueType"/>
+      <xs:element minOccurs="0" name="ExcessiveValueIndicator" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="GoodStudentIndicator" type="xs:boolean"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="MeasureValueType">
+    <xs:sequence>
+      <xs:element minOccurs="0" ref="tns:NumericValue"/>
+      <xs:element minOccurs="0" ref="tns:StringValue"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="EmployerOrgDataType">
+    <xs:sequence>
+      <xs:element name="EmployerOrgName" type="xs:string"/>
+      <xs:element minOccurs="0" name="EmployerContactInfo" type="tns:EmpContactInfoType"/>
+      <xs:element maxOccurs="unbounded" name="PositionHistory">
+        <xs:complexType>
+          <xs:complexContent>
+            <xs:extension base="tns:PositionHistoryType">
+              <xs:sequence/>
+            </xs:extension>
+          </xs:complexContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute name="employerOrgType" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="EmpContactInfoType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="PersonName" type="tns:PersonNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+      <xs:element minOccurs="0" name="LocationSummary" type="tns:EmploymentLocationSummaryType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="InternetDomainName" type="tns:InternetDomainNameType"/>
+    </xs:sequence>
+    <xs:attribute name="contactType" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="EmploymentLocationSummaryType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Municipality" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Region" type="xs:string"/>
+      <xs:element minOccurs="0" name="CountryCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="PostalCode" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PositionHistoryType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Title" type="xs:string"/>
+      <xs:element name="OrgName" type="tns:PositionOrgNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OrgInfo" type="tns:PositionOrgInfoType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OrgIndustry" type="tns:PositionOrgIndustryType"/>
+      <xs:element minOccurs="0" name="OrgSize" type="xs:string"/>
+      <xs:element name="Description" type="xs:string"/>
+      <xs:element name="StartDate" type="tns:FlexibleDatesType"/>
+      <xs:element minOccurs="0" name="EndDate" type="tns:FlexibleDatesType"/>
+      <xs:element minOccurs="0" name="Compensation" type="tns:PositionCompensationType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      <xs:element minOccurs="0" name="Verification" type="tns:VerificationType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="JobLevelInfo" type="tns:JobLevelInfoType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="JobCategory" type="tns:OccupationalCategoryType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Competency" type="tns:CompetencyType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute name="positionType" type="xs:string"/>
+    <xs:attribute name="currentEmployer" type="xs:boolean"/>
+  </xs:complexType>
+  <xs:complexType name="PositionOrgNameType">
+    <xs:sequence>
+      <xs:element name="OrganizationName" type="xs:string"/>
+      <xs:element minOccurs="0" name="OrgName" type="tns:PositionOrgNameType"/>
+    </xs:sequence>
+    <xs:attribute name="organizationType" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="PositionOrgInfoType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="PositionLocation" type="tns:PostalAddressType"/>
+      <xs:element minOccurs="0" name="WebSite" type="xs:string"/>
+      <xs:element minOccurs="0" name="LocationSummary" type="tns:EmploymentLocationSummaryType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PositionOrgIndustryType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="IndustryDescription" type="xs:string"/>
+      <xs:element minOccurs="0" name="IndustryCode">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="classificationName" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="primaryIndicator" type="xs:boolean" use="required"/>
+  </xs:complexType>
+  <xs:complexType name="PositionCompensationType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="StartingCompensation">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="currency" type="xs:string" use="required"/>
+              <xs:attribute name="intervalType" type="xs:string"/>
+              <xs:attribute name="validFrom" type="xs:string"/>
+              <xs:attribute name="validTo" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="EndingCompensation">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="currency" type="xs:string" use="required"/>
+              <xs:attribute name="intervalType" type="xs:string"/>
+              <xs:attribute name="validFrom" type="xs:string"/>
+              <xs:attribute name="validTo" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OtherCompensation">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="type" type="xs:string"/>
+              <xs:attribute name="validFrom" type="xs:string"/>
+              <xs:attribute name="validTo" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="JobLevelInfoType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="JobPlan" type="xs:string"/>
+      <xs:element minOccurs="0" name="JobGrade" type="xs:string"/>
+      <xs:element minOccurs="0" name="JobStep" type="xs:string"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OccupationalCategoryType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="TaxonomyName">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="version" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="CategoryCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="CategoryDescription" type="xs:string"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      <xs:element minOccurs="0" name="JobCategory" type="tns:OccupationalCategoryType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="CompetencyType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="CompetencyId">
+        <xs:complexType>
+          <xs:sequence/>
+          <xs:attribute name="id" type="xs:string" use="required"/>
+          <xs:attribute name="idOwner" type="xs:string"/>
+          <xs:attribute name="description" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="TaxonomyId">
+        <xs:complexType>
+          <xs:sequence/>
+          <xs:attribute name="id" type="xs:string" use="required"/>
+          <xs:attribute name="idOwner" type="xs:string"/>
+          <xs:attribute name="description" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="CompetencyEvidence">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="EvidenceId">
+              <xs:complexType>
+                <xs:sequence/>
+                <xs:attribute name="id" type="xs:string" use="required"/>
+                <xs:attribute name="idOwner" type="xs:string"/>
+                <xs:attribute name="description" type="xs:string"/>
+              </xs:complexType>
+            </xs:element>
+            <xs:element minOccurs="0" ref="tns:NumericValue"/>
+            <xs:element minOccurs="0" ref="tns:StringValue"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="SupportingInformation" type="xs:string"/>
+          </xs:sequence>
+          <xs:attribute name="dateOfIncident" type="xs:string"/>
+          <xs:attribute name="name" type="xs:string"/>
+          <xs:attribute name="typeDescription" type="xs:string"/>
+          <xs:attribute name="expirationDate" type="xs:string"/>
+          <xs:attribute name="typeId" type="xs:string"/>
+          <xs:attribute name="required" type="xs:boolean"/>
+          <xs:attribute name="lastUsed" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="CompetencyWeight">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" ref="tns:NumericValue"/>
+            <xs:element minOccurs="0" ref="tns:StringValue"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="SupportingInformation" type="xs:string"/>
+          </xs:sequence>
+          <xs:attribute name="type" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Competency" type="tns:CompetencyType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute name="name" type="xs:string"/>
+    <xs:attribute name="description" type="xs:string"/>
+    <xs:attribute name="required" type="xs:boolean"/>
+  </xs:complexType>
+  <xs:complexType name="StructuredXMLResumeType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="ContactInfo" type="tns:SEPContactInfoType"/>
+      <xs:element minOccurs="0" name="ExecutiveSummary" type="xs:string"/>
+      <xs:element minOccurs="0" name="Objective" type="xs:string"/>
+      <xs:element minOccurs="0" name="EmploymentHistory" type="tns:EmploymentHistoryType"/>
+      <xs:element minOccurs="0" name="EducationHistory" type="tns:EducationHistoryType"/>
+      <xs:element minOccurs="0" ref="tns:LicensesAndCertifications"/>
+      <xs:element minOccurs="0" name="MilitaryHistory" type="tns:MilitaryHistoryType"/>
+      <xs:element minOccurs="0" name="PatentHistory" type="tns:PatentHistoryType"/>
+      <xs:element minOccurs="0" name="PublicationHistory" type="tns:PublicationHistoryType"/>
+      <xs:element minOccurs="0" ref="tns:SpeakingEventsHistory"/>
+      <xs:element minOccurs="0" name="Qualifications">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="QualificationSummary" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="Competency" type="tns:CompetencyType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="Languages">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" ref="tns:Language"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" ref="tns:Achievements"/>
+      <xs:element minOccurs="0" ref="tns:Associations"/>
+      <xs:element minOccurs="0" ref="tns:References"/>
+      <xs:element minOccurs="0" ref="tns:SecurityCredentials"/>
+      <xs:element minOccurs="0" name="ResumeAdditionalItems">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" name="ResumeAdditionalItem" type="tns:AdditionalItemType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="SupportingMaterials" type="tns:StaffingSupportingMaterialsType"/>
+      <xs:element minOccurs="0" name="ProfessionalAssociations" type="tns:ProfessionalAssociationType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      <xs:element minOccurs="0" name="RevisionDate" type="xs:anySimpleType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SEPContactInfoType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="PersonName" type="tns:PersonNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="EmploymentHistoryType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" name="EmployerOrg" type="tns:EmployerOrgDataType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="EducationHistoryType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" name="SchoolOrInstitution" type="tns:SchoolOrInstitutionType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SchoolOrInstitutionType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="SchoolName" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="School" type="tns:SchoolDataType"/>
+      <xs:element minOccurs="0" name="LocationSummary">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="Municipality" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="Region" type="xs:string"/>
+            <xs:element minOccurs="0" name="CountryCode" type="xs:string"/>
+            <xs:element minOccurs="0" name="PostalCode" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="PostalAddress" type="tns:PostalAddressType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OrganizationUnit">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="organizationType" type="xs:string" use="required"/>
+              <xs:attribute name="attendanceStatus" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Degree" type="tns:EduDegreeType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Major" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Minor" type="xs:string"/>
+      <xs:element minOccurs="0" name="Measure" type="tns:EduMeasureType"/>
+      <xs:element minOccurs="0" name="DatesOfAttendance" type="tns:DeprecatedDatesOfAttendanceType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute name="schoolType" type="xs:string" use="required"/>
+  </xs:complexType>
+  <xs:complexType name="SchoolDataType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="InternetDomainName" type="tns:InternetDomainNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="SchoolId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="SchoolName" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="type" type="tns:SchoolTypeType"/>
+  </xs:complexType>
+  <xs:complexType name="EduDegreeType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="DegreeName">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="academicHonors" type="xs:string"/>
+              <xs:attribute name="honorsProgram" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="DegreeDate" type="tns:FlexibleDatesType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OtherHonors">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="type" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DegreeMajor" type="tns:MajorType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DegreeMinor" type="tns:MinorType"/>
+      <xs:element minOccurs="0" name="DegreeMeasure" type="tns:EducationalMeasureType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DatesOfAttendance" type="tns:DatesOfAttendanceType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute name="degreeType" type="xs:string"/>
+    <xs:attribute name="examPassed" type="xs:boolean"/>
+    <xs:attribute name="graduatingDegree" type="tns:GraduatingDegreeType"/>
+  </xs:complexType>
+  <xs:complexType name="MajorType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ProgramId" type="tns:EntityIdType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DegreeConcentration" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" name="Name" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Option" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="MinorType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ProgramId" type="tns:EntityIdType"/>
+      <xs:element maxOccurs="unbounded" name="Name" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="DatesOfAttendanceType">
+    <xs:sequence>
+      <xs:element name="StartDate" type="tns:FlexibleDatesType"/>
+      <xs:element minOccurs="0" name="EndDate" type="tns:FlexibleDatesType"/>
+    </xs:sequence>
+    <xs:attribute name="enrollmentStatus" type="xs:string"/>
+    <xs:attribute name="currentlyEnrolled" type="xs:boolean"/>
+    <xs:attribute name="studentInGoodStanding" type="xs:boolean"/>
+  </xs:complexType>
+  <xs:complexType name="EduMeasureType">
+    <xs:sequence>
+      <xs:element name="MeasureSystem" type="xs:string"/>
+      <xs:element name="MeasureValue" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="measureType" type="xs:string" use="required"/>
+  </xs:complexType>
+  <xs:complexType name="DeprecatedDatesOfAttendanceType">
+    <xs:sequence>
+      <xs:choice maxOccurs="unbounded" minOccurs="0">
+        <xs:element name="EndDate" type="tns:FlexibleDatesType"/>
+        <xs:element name="StartDate" type="tns:FlexibleDatesType"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="enrollmentStatus" type="xs:string"/>
+    <xs:attribute name="currentlyEnrolled" type="xs:boolean"/>
+    <xs:attribute name="studentInGoodStanding" type="xs:boolean"/>
+  </xs:complexType>
+  <xs:complexType name="CredentialType">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element minOccurs="0" name="Id" type="xs:string"/>
+      <xs:element minOccurs="0" name="IssuingAuthority" type="tns:IssuingAuthorityType"/>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+      <xs:element minOccurs="0" name="EffectiveDate">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="ValidFrom" type="tns:FlexibleDatesType"/>
+            <xs:element minOccurs="0" name="ValidTo" type="tns:FlexibleDatesType"/>
+            <xs:element minOccurs="0" name="FirstIssuedDate" type="tns:FlexibleDatesType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="IssuingAuthorityType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="countryCode" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="PatentHistoryType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" name="Patent" type="tns:PatentDescriptionType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PatentDescriptionType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="PatentTitle" type="xs:string"/>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+      <xs:element minOccurs="0" name="Inventors">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" name="InventorName" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PatentDetail">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="IssuingAuthority">
+              <xs:complexType>
+                <xs:simpleContent>
+                  <xs:extension base="xs:string">
+                    <xs:attribute name="countryCode" type="xs:string"/>
+                  </xs:extension>
+                </xs:simpleContent>
+              </xs:complexType>
+            </xs:element>
+            <xs:element maxOccurs="unbounded" name="PatentMilestone">
+              <xs:complexType>
+                <xs:sequence>
+                  <xs:element minOccurs="0" name="Id" type="xs:string"/>
+                  <xs:element minOccurs="0" name="Status" type="xs:anySimpleType"/>
+                  <xs:element minOccurs="0" name="Date" type="xs:anySimpleType"/>
+                </xs:sequence>
+              </xs:complexType>
+            </xs:element>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="Link" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PublicationHistoryType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="FormattedPublicationDescription">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="type" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Article" type="tns:ArticleType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Book" type="tns:BookType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ConferencePaper" type="tns:ConferencePaperType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OtherPublication" type="tns:OtherPublicationType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="ArticleType">
+    <xs:complexContent>
+      <xs:extension base="tns:BasicBibliographicRecordType">
+        <xs:sequence>
+          <xs:element minOccurs="0" name="JournalOrSerialName" type="xs:string"/>
+          <xs:element minOccurs="0" name="ISSN" type="xs:string"/>
+          <xs:element minOccurs="0" name="Volume" type="xs:string"/>
+          <xs:element minOccurs="0" name="Issue" type="xs:string"/>
+          <xs:element minOccurs="0" name="PageNumber" type="xs:string"/>
+          <xs:element minOccurs="0" name="PublicationLanguage" type="xs:language"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="BasicBibliographicRecordType">
+    <xs:sequence>
+      <xs:element name="Title" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Name">
+        <xs:complexType>
+          <xs:complexContent>
+            <xs:extension base="tns:PersonNameType">
+              <xs:sequence/>
+              <xs:attribute name="role" type="xs:string" use="required"/>
+            </xs:extension>
+          </xs:complexContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="PublicationDate" type="tns:FlexibleDatesType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Link" type="xs:string"/>
+      <xs:element minOccurs="0" name="Abstract" type="xs:string"/>
+      <xs:element minOccurs="0" name="Copyright" type="tns:CopyrightType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="CopyrightType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="CopyrightDates">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="OriginalDate" type="tns:FlexibleDatesType"/>
+            <xs:element minOccurs="0" name="MostRecentDate" type="tns:FlexibleDatesType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="CopyrightText" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="BookType">
+    <xs:complexContent>
+      <xs:extension base="tns:BasicBibliographicRecordType">
+        <xs:sequence>
+          <xs:element minOccurs="0" name="Edition" type="xs:string"/>
+          <xs:element minOccurs="0" name="Chapter" type="xs:string"/>
+          <xs:element minOccurs="0" name="ISSN" type="xs:string"/>
+          <xs:element minOccurs="0" name="ISBN" type="xs:string"/>
+          <xs:element minOccurs="0" name="NumberOfPages" type="xs:positiveInteger"/>
+          <xs:element minOccurs="0" name="PublisherName" type="xs:string"/>
+          <xs:element minOccurs="0" name="PublisherLocation" type="xs:string"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="ConferencePaperType">
+    <xs:complexContent>
+      <xs:extension base="tns:BasicBibliographicRecordType">
+        <xs:sequence>
+          <xs:element minOccurs="0" name="EventName" type="xs:string"/>
+          <xs:element minOccurs="0" name="ConferenceDate" type="tns:FlexibleDatesType"/>
+          <xs:element minOccurs="0" name="ConferenceLocation" type="xs:string"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="OtherPublicationType">
+    <xs:complexContent>
+      <xs:extension base="tns:BasicBibliographicRecordType">
+        <xs:sequence>
+          <xs:element minOccurs="0" name="ISSN" type="xs:string"/>
+          <xs:element minOccurs="0" name="ISBN" type="xs:string"/>
+          <xs:element minOccurs="0" name="NumberOfPages" type="xs:positiveInteger"/>
+          <xs:element minOccurs="0" name="PublisherName" type="xs:string"/>
+          <xs:element minOccurs="0" name="PublisherLocation" type="xs:string"/>
+        </xs:sequence>
+        <xs:attribute name="type" type="xs:string"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="SpeakingEventType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Title" type="xs:string"/>
+      <xs:element minOccurs="0" name="Role" type="xs:string"/>
+      <xs:element minOccurs="0" name="StartDate" type="tns:FlexibleDatesType"/>
+      <xs:element minOccurs="0" name="EndDate" type="tns:FlexibleDatesType"/>
+      <xs:element name="EventName" type="xs:string"/>
+      <xs:element minOccurs="0" name="EventType" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="Location" type="xs:string"/>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="AffiliatedOrganization" type="xs:string"/>
+      <xs:element minOccurs="0" name="Link" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="type" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="AchievementType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Date" type="tns:FlexibleDatesType"/>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+      <xs:element minOccurs="0" name="IssuingAuthority" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="AssociationType">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element minOccurs="0" name="Id" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Link" type="xs:string"/>
+      <xs:element minOccurs="0" name="StartDate" type="tns:FlexibleDatesType"/>
+      <xs:element minOccurs="0" name="EndDate" type="tns:FlexibleDatesType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Role">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="Name" type="xs:string"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="Deliverable" type="xs:string"/>
+            <xs:element minOccurs="0" name="StartDate" type="tns:FlexibleDatesType"/>
+            <xs:element minOccurs="0" name="EndDate" type="tns:FlexibleDatesType"/>
+            <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="ReferenceType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="PersonName" type="tns:PersonNameType"/>
+      <xs:element minOccurs="0" name="PositionTitle" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="type" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="AdditionalItemType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="EffectiveDate">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="StartDate" type="tns:FlexibleDatesType"/>
+            <xs:element minOccurs="0" name="EndDate" type="tns:FlexibleDatesType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" name="Description" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="type" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="StaffingSupportingMaterialsType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Link" type="xs:string"/>
+      <xs:element minOccurs="0" name="AttachmentReference">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="context" type="xs:string"/>
+              <xs:attribute name="mimeType" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="ProfessionalAssociationType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Association" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PositionMatchingType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Company" type="tns:EntityReferenceType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="CompanyScale" type="xs:anySimpleType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="IndustryCode" type="tns:IndustryCodeType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PhysicalLocation" type="tns:SEPPhysicalLocationType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="JobCategory" type="tns:OccupationalCategoryType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PositionTitle" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PositionClassification" type="xs:anySimpleType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PositionSchedule">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="percentage" type="xs:float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Shift" type="tns:WorkShiftScheduleType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Competency" type="tns:CompetencyType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Education" type="tns:EducationType"/>
+      <xs:element minOccurs="0" name="RemunerationPackage" type="tns:PrehireRemunerationPackageType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="WorkStyle" type="xs:anySimpleType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DressCode" type="tns:DressCodeType"/>
+      <xs:element minOccurs="0" name="Travel" type="tns:StaffingTravelType"/>
+      <xs:element minOccurs="0" name="Relocation" type="tns:StaffingRelocationType"/>
+      <xs:element minOccurs="0" name="PreferredLanguage" type="xs:language"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="EntityReferenceType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Id" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Name" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SEPPhysicalLocationType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Id" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Name" type="xs:string"/>
+      <xs:element minOccurs="0" name="SpatialLocation">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Latitude" type="xs:string"/>
+            <xs:element name="Longitude" type="xs:string"/>
+            <xs:element minOccurs="0" name="Altitude" type="xs:decimal"/>
+            <xs:element minOccurs="0" name="AltitudeMeanSeaLevel" type="xs:decimal"/>
+            <xs:element minOccurs="0" name="HorizontalAccuracy" type="xs:decimal"/>
+            <xs:element minOccurs="0" name="VerticalAccuracy" type="xs:decimal"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="TravelDirections" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Area" type="tns:AreaType"/>
+      <xs:element minOccurs="0" name="PostalAddress" type="tns:PostalAddressType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="AreaType">
+    <xs:sequence>
+      <xs:element name="Value" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Area" type="tns:AreaType"/>
+    </xs:sequence>
+    <xs:attribute name="type" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="WorkShiftScheduleType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Id" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Name" type="xs:string"/>
+      <xs:element minOccurs="0" name="Hours" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="StartTime" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="EndTime" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="PayTypeHours" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="shiftPeriod" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="EducationType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="EducationLevel" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="StaffingTravelType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Applicable" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="TravelFrequency" type="xs:string"/>
+      <xs:element minOccurs="0" name="TravelConsiderations" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="StaffingRelocationType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="relocationConsidered" type="xs:boolean" use="required"/>
+  </xs:complexType>
+  <xs:complexType name="BiologicalDescriptorsType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="DateOfBirth" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="MonthDayOfBirth" type="xs:gMonthDay"/>
+      <xs:element minOccurs="0" name="Age" type="xs:nonNegativeInteger"/>
+      <xs:element minOccurs="0" name="GenderCode" type="xs:integer"/>
+      <xs:element minOccurs="0" name="EyeColor" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="HairColor" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="Height">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="unitOfMeasure" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="Weight">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="unitOfMeasure" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="IdentifyingMarks" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DisabilityInfo" type="tns:DisabilityInfoType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="DisabilityInfoType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="LevelOfDisability" type="xs:string"/>
+      <xs:element minOccurs="0" name="Percentage" type="xs:integer"/>
+      <xs:element minOccurs="0" name="Type" type="xs:string"/>
+      <xs:element minOccurs="0" name="AccommodationsNeeded" type="xs:boolean"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="CandidateProfileType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="ProfileId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="ProfileName" type="xs:string"/>
+      <xs:element minOccurs="0" name="AvailabilityInfo">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="AvailabilityDates">
+              <xs:complexType>
+                <xs:sequence>
+                  <xs:element minOccurs="0" name="StartDate" type="xs:anySimpleType"/>
+                  <xs:element minOccurs="0" name="EndDate" type="xs:anySimpleType"/>
+                </xs:sequence>
+              </xs:complexType>
+            </xs:element>
+            <xs:element minOccurs="0" name="TermOfNotice">
+              <xs:complexType>
+                <xs:sequence>
+                  <xs:element name="Value" type="xs:integer"/>
+                  <xs:element name="Interval" type="xs:anySimpleType"/>
+                </xs:sequence>
+              </xs:complexType>
+            </xs:element>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DistributionGuidelines" type="tns:DistributionGuidelinesType"/>
+      <xs:element minOccurs="0" name="PersonalData" type="tns:CandidatePersonalDataType"/>
+      <xs:element minOccurs="0" name="PreferredPosition">
+        <xs:complexType>
+          <xs:complexContent>
+            <xs:extension base="tns:PositionMatchingType">
+              <xs:sequence>
+                <xs:element minOccurs="0" name="Commute" type="tns:CommuteType"/>
+              </xs:sequence>
+            </xs:extension>
+          </xs:complexContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="EmploymentHistory" type="tns:EmploymentHistoryType"/>
+      <xs:element minOccurs="0" name="EducationHistory" type="tns:EducationHistoryType"/>
+      <xs:element minOccurs="0" name="MilitaryHistory" type="tns:MilitaryHistoryType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" ref="tns:Associations"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="SupportingMaterials" type="tns:StaffingSupportingMaterialsType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute ref="xml:lang"/>
+  </xs:complexType>
+  <xs:complexType name="DistributionGuidelinesType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DistributeTo">
+        <xs:complexType>
+          <xs:complexContent>
+            <xs:extension base="tns:DistributionType">
+              <xs:sequence>
+                <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+              </xs:sequence>
+            </xs:extension>
+          </xs:complexContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DoNotDistributeTo" type="tns:DistributionType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="DistributionType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Id" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Name" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="validFrom" type="xs:string"/>
+    <xs:attribute name="validTo" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="CandidatePersonalDataType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="PersonId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="PersonName" type="tns:PersonNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+      <xs:element minOccurs="0" name="PersonDescriptors" type="tns:PersonDescriptorsType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PersonDescriptorsType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="LegalIdentifiers" type="tns:LegalIdentifiersType"/>
+      <xs:element minOccurs="0" name="DemographicDescriptors" type="tns:DemographicDescriptorsType"/>
+      <xs:element minOccurs="0" name="BiologicalDescriptors" type="tns:BiologicalDescriptorsType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="SupportingMaterials" type="tns:StaffingSupportingMaterialsType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OtherDescriptors" type="tns:OtherDescriptorsType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="LegalIdentifiersType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PersonLegalId" type="tns:PersonLegalIdType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="MilitaryStatus">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="type" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="VisaStatus">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="countryCode" type="xs:string"/>
+              <xs:attribute name="validFrom" type="xs:string"/>
+              <xs:attribute name="validTo" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Citizenship" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Residency" type="xs:string"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="DemographicDescriptorsType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Race" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Ethnicity" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Nationality" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PrimaryLanguage" type="xs:language"/>
+      <xs:element minOccurs="0" name="BirthPlace" type="xs:string"/>
+      <xs:element minOccurs="0" name="Religion" type="xs:string"/>
+      <xs:element minOccurs="0" name="MaritalStatus" type="xs:anySimpleType"/>
+      <xs:element minOccurs="0" name="ChildrenInfo">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="NumberOfChildren" type="xs:nonNegativeInteger"/>
+            <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OtherDescriptorsType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Name" type="xs:string"/>
+      <xs:element minOccurs="0" name="Applicable" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="Value" type="xs:string"/>
+      <xs:element minOccurs="0" name="List">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" name="Item" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PhysicalLocationType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Id" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Name" type="xs:string"/>
+      <xs:element minOccurs="0" name="EffectiveDate">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="StartDate" type="xs:anySimpleType"/>
+            <xs:element minOccurs="0" name="EndDate" type="xs:anySimpleType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="SpatialLocation" type="tns:SpatialLocationType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="TravelDirections" type="xs:string"/>
+      <xs:element minOccurs="0" name="PostalAddress" type="tns:PostalAddressType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Area" type="tns:LocationAreaType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SpatialLocationType">
+    <xs:sequence>
+      <xs:element name="Latitude" type="xs:decimal"/>
+      <xs:element name="Longitude" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="Altitude" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="AltitudeMeanSeaLevel" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="HorizontalAccuracy" type="xs:decimal"/>
+      <xs:element minOccurs="0" name="VerticalAccuracy" type="xs:decimal"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="LocationAreaType">
+    <xs:sequence>
+      <xs:element name="Description" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="Area" type="tns:LocationAreaType"/>
+    </xs:sequence>
+    <xs:attribute name="type" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="ExceptionType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="ExceptionIdentifier" type="xs:string"/>
+      <xs:element name="ExceptionSeverity" type="xs:string"/>
+      <xs:element name="ExceptionMessage" type="xs:string"/>
+      <xs:element minOccurs="0" name="ExceptionScopeSchemaXPath" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="SubordinateEntityXPath" type="xs:string"/>
+      <xs:element minOccurs="0" name="Followup">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="OrganizationId" type="tns:EntityIdType"/>
+            <xs:element minOccurs="0" name="OrganizationName" type="xs:string"/>
+            <xs:element minOccurs="0" name="PersonName" type="tns:PersonNameType"/>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactInfo" type="tns:ContactMethodType"/>
+          </xs:sequence>
+          <xs:attribute name="responsibleForFollowup" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="AdditionalData">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Description" type="xs:string"/>
+            <xs:element name="Value" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PayloadDispositionType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="EntityDisposition">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="EntityIdentifier" type="tns:EntityIdType"/>
+            <xs:element minOccurs="0" name="EntityShortName" type="xs:string"/>
+            <xs:element minOccurs="0" name="EntitySchemaXPath" type="xs:string"/>
+            <xs:element name="EntityInstanceXPath" type="xs:string"/>
+            <xs:element minOccurs="0" name="EntityNoException" type="xs:string"/>
+            <xs:element minOccurs="0" name="EntityException" type="tns:EntityExceptionType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="EntityExceptionType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="EntityXMLFragment" type="xs:anyType"/>
+      <xs:element maxOccurs="unbounded" name="Exception" type="tns:ExceptionType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SourceTypeType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="StandardValue" type="xs:string"/>
+      <xs:element minOccurs="0" name="NonStandardValue" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SourceDataType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="SourceId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="SourceName" type="xs:string"/>
+      <xs:element minOccurs="0" name="SourceType" type="tns:SourceTypeType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="AcknowledgeType">
+    <xs:sequence>
+      <xs:element name="PayloadResponseSummary" type="tns:PayloadResponseSummaryType"/>
+      <xs:element minOccurs="0" name="PayloadDisposition" type="tns:PayloadDispositionType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute ref="xml:lang"/>
+  </xs:complexType>
+  <xs:complexType name="OpenPositionResponseTypeApec">
+    <xs:complexContent>
+      <xs:extension base="tns:AcknowledgeType">
+        <xs:sequence>
+          <xs:element name="positionStatus" type="xs:string"/>
+          <xs:element name="urlOffre" type="xs:string"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="RelatedOrganizationType">
+    <xs:complexContent>
+      <xs:extension base="tns:OrganizationType">
+        <xs:sequence/>
+        <xs:attribute name="relationship" type="xs:string"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="SupplierType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="SupplierId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="EntityName" type="xs:string"/>
+      <xs:element minOccurs="0" name="ContactName" type="tns:PersonNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+      <xs:element minOccurs="0" name="SourceType" type="tns:SourceTypeType"/>
+    </xs:sequence>
+    <xs:attribute name="relationship" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="NonXMLResumeType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="TextResume" type="xs:string"/>
+      <xs:element minOccurs="0" name="LinkToResume" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="SupportingMaterials" type="tns:StaffingSupportingMaterialsType"/>
+      <xs:element minOccurs="0" name="Comments" type="xs:string"/>
+      <xs:element minOccurs="0" name="RevisionDate" type="xs:anySimpleType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="CandidateType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="CandidateRecordInfo" type="tns:RecordInfoType"/>
+      <xs:element minOccurs="0" name="RelatedPositionPostings" type="tns:PositionPostingsType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="CandidateSupplier" type="tns:SupplierType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="DistributionGuidelines" type="tns:DistributionGuidelinesType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="CandidateProfile" type="tns:CandidateProfileType"/>
+      <xs:element minOccurs="0" ref="tns:Resume"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute ref="xml:lang"/>
+  </xs:complexType>
+  <xs:complexType name="TelcomNumberListType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="Telephone" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="Mobile" type="tns:MobileTelcomNumberType"/>
+      <xs:element minOccurs="0" name="Fax" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="Pager" type="tns:TelcomNumberType"/>
+      <xs:element minOccurs="0" name="TTYTDD" type="tns:TelcomNumberType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="LocationSummaryType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="CountryCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="PostalCode" type="xs:string"/>
+      <xs:element minOccurs="0" name="Municipality" type="xs:string"/>
+      <xs:element minOccurs="0" name="Region" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="EEOCJobCategoryType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="StandardValue" type="xs:string"/>
+      <xs:element minOccurs="0" name="NonStandardValue" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="AccountingCodeType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="description" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="OrganizationalUnitType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="OrganizationalUnitName" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="OrganizationalUnitId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="OrganizationId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="IndustryCode" type="tns:IndustryCodeType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="AccountingCode" type="tns:AccountingCodeType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="WorkSite" type="tns:WorkSiteType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="RelatedOrganizationalUnit" type="tns:RelatedOrganizationalUnitType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PersonMember" type="tns:OrganizationalUnitPersonMemberType"/>
+      <xs:element minOccurs="0" name="UserArea" type="tns:UserAreaType"/>
+    </xs:sequence>
+    <xs:attribute name="typeOfGroup" type="xs:string"/>
+    <xs:attribute name="hierarchicalRole" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="RelatedOrganizationalUnitType">
+    <xs:complexContent>
+      <xs:extension base="tns:OrganizationalUnitType">
+        <xs:sequence/>
+        <xs:attribute name="relationship" type="xs:string"/>
+        <xs:attribute name="natureOfRelationship" type="xs:string"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="OrganizationalUnitPersonMemberType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="PersonName" type="tns:PersonNameType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PersonId" type="tns:EntityIdType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="PersonRole" type="tns:OrganizationalUnitPersonMemberRoleType"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OrganizationalUnitPersonMemberRoleType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="RoleName" type="xs:string"/>
+      <xs:element minOccurs="0" name="RoleId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="Description" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="leader" type="xs:boolean"/>
+  </xs:complexType>
+  <xs:complexType name="USLocalizedPositionClassificationType">
+    <xs:sequence>
+      <xs:element name="FLSAStatus" type="xs:string"/>
+      <xs:element minOccurs="0" name="EEOCJobCategory" type="tns:EEOCJobCategoryType"/>
+      <xs:element minOccurs="0" name="AffirmativeActionPlanJobGroupId" type="tns:EntityIdType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="DELocalizedPositionClassificationType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="BKZClassification">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" name="BKZId" type="tns:EntityIdType"/>
+            <xs:element minOccurs="0" name="BKZName" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" name="EducationAuthorization" type="xs:boolean"/>
+      <xs:element minOccurs="0" name="HandicapStatus" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="LocalizedPositionClassificationType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="USClassification" type="tns:USLocalizedPositionClassificationType"/>
+      <xs:element minOccurs="0" name="DEClassification" type="tns:DELocalizedPositionClassificationType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OrganizationContactType">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="ContactName" type="tns:PersonNameType"/>
+      <xs:element minOccurs="0" name="ContactId" type="tns:EntityIdType"/>
+      <xs:element minOccurs="0" name="ContactMethod" type="tns:ContactMethodType"/>
+    </xs:sequence>
+    <xs:attribute name="purpose" type="xs:string"/>
+  </xs:complexType>
+  <xs:simpleType name="AcademicCreditCodeType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="A"/>
+      <xs:enumeration value="C"/>
+      <xs:enumeration value="G"/>
+      <xs:enumeration value="N"/>
+      <xs:enumeration value="Q"/>
+      <xs:enumeration value="S"/>
+      <xs:enumeration value="U"/>
+      <xs:enumeration value="V"/>
+      <xs:enumeration value="X"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="SchoolTypeType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="current"/>
+      <xs:enumeration value="prior"/>
+      <xs:enumeration value="joint"/>
+      <xs:enumeration value="degree"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="GraduatingDegreeType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="graduating"/>
+      <xs:enumeration value="qualifying"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="SourceEnumType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Job Board"/>
+      <xs:enumeration value="Staffing Agency"/>
+      <xs:enumeration value="Intermediary"/>
+      <xs:enumeration value="Referrer"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="EEOCJobCategoryEnumType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Officials and Managers"/>
+      <xs:enumeration value="Professionals"/>
+      <xs:enumeration value=" Technicians"/>
+      <xs:enumeration value="Sales"/>
+      <xs:enumeration value="Official and Clerical"/>
+      <xs:enumeration value="Craft Workers Skilled"/>
+      <xs:enumeration value="Operative SemiSkilled"/>
+      <xs:enumeration value="Laborers Unskilled"/>
+      <xs:enumeration value="Service Workers"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="FLSAStatusEnumType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="exempt"/>
+      <xs:enumeration value="non-exempt"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="HandicapStatusEnumType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="HandicapOnly"/>
+      <xs:enumeration value="All"/>
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:tns="http://adep.apec.fr/hrxml/sep" xmlns:ns1="http://ns.hr-xml.org/2006-02-28" attributeFormDefault="unqualified" elementFormDefault="qualified" targetNamespace="http://adep.apec.fr/hrxml/sep">
+  <xs:import namespace="http://ns.hr-xml.org/2006-02-28"/>
+  <xs:element name="DatePositionTaken">
+    <xs:simpleType>
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="DisplayedPay">
+    <xs:simpleType>
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="Duration">
+    <xs:simpleType>
+      <xs:restriction base="xs:integer"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="JobType">
+    <xs:simpleType>
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="PartTime">
+    <xs:simpleType>
+      <xs:restriction base="xs:boolean"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="PartTimeDuration">
+    <xs:simpleType>
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="ReleaseDate">
+    <xs:simpleType>
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="RemoteWork">
+    <xs:simpleType>
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="StatusJob">
+    <xs:simpleType>
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="UrlVideo">
+    <xs:simpleType>
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:element name="ValidationErrorsCollectionType">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" minOccurs="0" name="validationErrors" nillable="true" type="tns:XmlValidationErrorType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="competencies" type="xs:string"/>
+  <xs:element name="coverLetter" type="xs:string"/>
+  <xs:element name="cv" type="tns:BinaryFileType"/>
+  <xs:element name="getCandidateFault" type="xs:string"/>
+  <xs:element name="getCandidateRequest" type="tns:GetCandidateRequestType"/>
+  <xs:element name="getCandidateResponse" type="tns:SelectedCandidateType"/>
+  <xs:element name="getPositionFault" type="xs:string"/>
+  <xs:element name="getPositionRequest" type="tns:GetPositionRequestType"/>
+  <xs:element name="getPositionResponse" type="tns:GetPositionResponseType"/>
+  <xs:element name="getPositionStatusFault" type="xs:string"/>
+  <xs:element name="getPositionStatusRequest" type="tns:GetPositionStatusRequestType"/>
+  <xs:element name="getPositionStatusResponse" type="ns1:PositionStatusResponseTypeApec"/>
+  <xs:element name="hobbies" type="xs:string"/>
+  <xs:element name="listDomainValuesFault" type="xs:string"/>
+  <xs:element name="listDomainValuesRequest" type="tns:ListDomainValuesRequestType"/>
+  <xs:element name="listDomainValuesResponse" type="tns:XmlApecDomainType"/>
+  <xs:element name="listDomainsFault" type="xs:string"/>
+  <xs:element name="listDomainsRequest" type="tns:NoParamsRequestType"/>
+  <xs:element name="listDomainsResponse" type="tns:XmlApecDomainCollectionType"/>
+  <xs:element name="listPartnersFault" type="xs:string"/>
+  <xs:element name="listPartnersRequest" type="tns:ListPartnersRequestType"/>
+  <xs:element name="listPartnersResponse" type="tns:XmlApecPartnerCollectionType"/>
+  <xs:element name="listRecruiterPositionOpeningsFault" type="xs:string"/>
+  <xs:element name="listRecruiterPositionOpeningsRequest" type="tns:ListRecruiterPositionOpeningsRequestType"/>
+  <xs:element name="listRecruiterPositionOpeningsResponse" type="tns:PositionsCollectionType"/>
+  <xs:element name="listRecruitersFault" type="xs:string"/>
+  <xs:element name="listRecruitersRequest" type="tns:NoParamsRequestType"/>
+  <xs:element name="listRecruitersResponse" type="tns:OrganizationMembersCollectionType"/>
+  <xs:element name="openPositionFault" type="xs:string"/>
+  <xs:element name="openPositionRequest" type="tns:OpenPositionRequestType"/>
+  <xs:element name="openPositionResponse" type="tns:OpenPositionResponseTypeApec"/>
+  <xs:element name="searchCandidatesFault" type="xs:string"/>
+  <xs:element name="searchCandidatesRequest" type="tns:SearchCandidatesRequestType"/>
+  <xs:element name="searchCandidatesResponse" type="tns:CandidatesCollectionType"/>
+  <xs:element name="serverTimeFault" type="xs:string"/>
+  <xs:element name="serverTimeRequest" type="tns:NoParamsRequestType"/>
+  <xs:element name="serverTimeResponse" type="xs:string"/>
+  <xs:element name="subscribeRecruiterFault" type="xs:string"/>
+  <xs:element name="subscribeRecruiterRequest" type="tns:SubscribeRecruiterRequestType"/>
+  <xs:element name="subscribeRecruiterResponse" type="ns1:AcknowledgeType"/>
+  <xs:element name="unsubscribeRecruiterFault" type="xs:string"/>
+  <xs:element name="unsubscribeRecruiterRequest" type="tns:UnsubscribeRecruiterRequestType"/>
+  <xs:element name="unsubscribeRecruiterResponse" type="ns1:AcknowledgeType"/>
+  <xs:element name="updatePositionFault" type="xs:string"/>
+  <xs:element name="updatePositionRequest" type="tns:UpdatePositionRequestType"/>
+  <xs:element name="updatePositionResponse" type="ns1:AcknowledgeType"/>
+  <xs:element name="updatePositionStatusFault" type="xs:string"/>
+  <xs:element name="updatePositionStatusRequest" type="tns:UpdatePositionStatusRequestType"/>
+  <xs:element name="updatePositionStatusResponse" type="ns1:AcknowledgeType"/>
+  <xs:element name="updateRecruiterFault" type="xs:string"/>
+  <xs:element name="updateRecruiterRequest" type="tns:UpdateRecruiterRequestType"/>
+  <xs:element name="updateRecruiterResponse" type="ns1:AcknowledgeType"/>
+  <xs:element name="validationErrors" type="tns:XmlValidationErrorType"/>
+  <xs:complexType name="GetPositionStatusRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="clientPositionId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="apecPositionNumero" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="numberLimit" type="xs:int"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="AuthenticationType">
+    <xs:sequence>
+      <xs:element name="atsId" type="xs:string"/>
+      <xs:element name="numeroDossier" type="xs:string"/>
+      <xs:element name="atsPassword" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="XmlValidationErrorType">
+    <xs:sequence>
+      <xs:element form="unqualified" minOccurs="0" name="lineNumber" type="xs:int"/>
+      <xs:element form="unqualified" minOccurs="0" name="columnNumber" type="xs:int"/>
+      <xs:element form="unqualified" name="message" type="xs:string"/>
+      <xs:element form="unqualified" minOccurs="0" name="localizedMessage" type="xs:string"/>
+      <xs:element form="unqualified" name="severity" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="GetPositionRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="apecPositionNumero" type="ns1:EntityIdType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="GetPositionResponseType">
+    <xs:sequence>
+      <xs:element name="position" type="ns1:PositionOpeningType"/>
+      <xs:element name="clientPositionId" type="ns1:EntityIdType"/>
+      <xs:element name="apecPositionNumero" type="ns1:EntityIdType"/>
+      <xs:element name="uniquePayloadTrackingId" type="ns1:EntityIdType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OpenPositionResponseTypeApec">
+    <xs:complexContent>
+      <xs:extension base="ns1:AcknowledgeType">
+        <xs:sequence>
+          <xs:element minOccurs="0" name="apecPositionNumero" type="xs:string"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="UpdatePositionRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="position" type="ns1:PositionOpeningType"/>
+      <xs:element minOccurs="0" name="apecPositionNumero" type="ns1:EntityIdType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OpenPositionRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="position" type="ns1:PositionOpeningType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="UpdatePositionStatusRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="clientPositionId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="apecPositionNumero" type="ns1:EntityIdType"/>
+      <xs:element name="newPositionStatus" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="ListRecruiterPositionOpeningsRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="recruiterId" type="ns1:EntityIdType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="PositionsCollectionType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="positions" nillable="true" type="ns1:PositionOpeningType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="NoParamsRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="CandidatesCollectionType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="candidates" nillable="true" type="tns:ListedCandidateType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="ListedCandidateType">
+    <xs:sequence>
+      <xs:element name="candidate" type="ns1:CandidateType"/>
+      <xs:element minOccurs="0" name="coverLetter" type="xs:string"/>
+      <xs:element minOccurs="0" name="competencies" type="xs:string"/>
+      <xs:element minOccurs="0" name="hobbies" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="XmlApecPartnerType">
+    <xs:sequence>
+      <xs:element name="partnerSid" type="xs:int"/>
+      <xs:element name="partnerNom" type="xs:string"/>
+      <xs:element name="partnerTyp" type="xs:int"/>
+      <xs:element name="partnerIndPay" type="xs:string"/>
+      <xs:element name="partnerMnt" type="xs:int"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SelectedCandidateType">
+    <xs:sequence>
+      <xs:element name="candidate" type="ns1:CandidateType"/>
+      <xs:element minOccurs="0" name="coverLetter" type="xs:string"/>
+      <xs:element minOccurs="0" name="competencies" type="xs:string"/>
+      <xs:element minOccurs="0" name="hobbies" type="xs:string"/>
+      <xs:element minOccurs="0" name="cv" type="tns:BinaryFileType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="BinaryFileType">
+    <xs:sequence>
+      <xs:element name="content" type="xs:base64Binary"/>
+      <xs:element name="mime" type="xs:string"/>
+      <xs:element minOccurs="0" name="fileName" type="xs:string"/>
+      <xs:element minOccurs="0" name="size" type="xs:int"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="ListPartnersRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="partnerIndPay" type="xs:string"/>
+      <xs:element minOccurs="0" name="partnerType" type="xs:int"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="XmlApecDomainType">
+    <xs:sequence>
+      <xs:element name="name" type="xs:string"/>
+      <xs:element minOccurs="0" name="version" type="xs:int"/>
+      <xs:element minOccurs="0" name="description" type="xs:string"/>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="apecDomainValues" nillable="true" type="tns:XmlApecDomainValueType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="XmlApecDomainValueType">
+    <xs:sequence>
+      <xs:element name="code" type="xs:string"/>
+      <xs:element minOccurs="0" name="value" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="UpdateRecruiterRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="recruiterId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="newRecruiterId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="newRecruiterPwd" type="xs:string"/>
+      <xs:element minOccurs="0" name="newRecruiterName" type="ns1:PersonNameType"/>
+      <xs:element minOccurs="0" name="newRecruiterContact" type="ns1:ContactMethodType"/>
+      <xs:element minOccurs="0" name="newCompanySiret" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SearchCandidatesRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="clientPositionId" type="ns1:EntityIdType"/>
+      <xs:element minOccurs="0" name="startDate" type="xs:date"/>
+      <xs:element minOccurs="0" name="endDate" type="xs:date"/>
+      <xs:element minOccurs="0" name="status" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="GetCandidateRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="candidateId" type="ns1:EntityIdType"/>
+      <xs:element name="joinCv" type="xs:boolean"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="ListDomainValuesRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="domainName" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="XmlApecDomainCollectionType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="apecDomains" nillable="true" type="tns:XmlApecDomainType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OrganizationMembersCollectionType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="recruiters" nillable="true" type="ns1:OrganizationalUnitPersonMemberType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="XmlApecPartnerCollectionType">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="0" name="apecPartners" nillable="true" type="tns:XmlApecPartnerType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SubscribeRecruiterRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="recruiterId" type="ns1:EntityIdType"/>
+      <xs:element name="recruiterPwd" type="xs:string"/>
+      <xs:element name="recruiterName" type="ns1:PersonNameType"/>
+      <xs:element name="recruiterContact" type="ns1:ContactMethodType"/>
+      <xs:element name="companySiret" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="UnsubscribeRecruiterRequestType">
+    <xs:sequence>
+      <xs:element name="authentication" type="tns:AuthenticationType"/>
+      <xs:element name="UniquePayloadTrackingId" type="ns1:EntityIdType"/>
+      <xs:element name="recruiterId" type="ns1:EntityIdType"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>
+  </wsdl:types>
+  <wsdl:message name="UpdatePositionStatusFault">
+    <wsdl:part element="tns:updatePositionStatusFault" name="UpdatePositionStatusFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="UpdatePositionFault">
+    <wsdl:part element="tns:updatePositionFault" name="UpdatePositionFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="listRecruiterPositionOpeningsResponse">
+    <wsdl:part element="tns:listRecruiterPositionOpeningsResponse" name="listRecruiterPositionOpeningsResponse">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="GetPositionStatusFault">
+    <wsdl:part element="tns:getPositionStatusFault" name="GetPositionStatusFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="openPositionResponse">
+    <wsdl:part element="tns:openPositionResponse" name="openPositionResponse">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="updatePosition">
+    <wsdl:part element="tns:updatePositionRequest" name="updatePositionRequest">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="getPositionStatusResponse">
+    <wsdl:part element="tns:getPositionStatusResponse" name="getPositionStatusResponse">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="GetPositionFault">
+    <wsdl:part element="tns:getPositionFault" name="GetPositionFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="updatePositionStatusResponse">
+    <wsdl:part element="tns:updatePositionStatusResponse" name="updatePositionStatusResponse">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="getPositionResponse">
+    <wsdl:part element="tns:getPositionResponse" name="getPositionResponse">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="updatePositionResponse">
+    <wsdl:part element="tns:updatePositionResponse" name="updatePositionResponse">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="getPositionStatus">
+    <wsdl:part element="tns:getPositionStatusRequest" name="getPositionStatusRequest">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="getPosition">
+    <wsdl:part element="tns:getPositionRequest" name="getPositionRequest">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="ValidationFault">
+    <wsdl:part element="tns:ValidationErrorsCollectionType" name="ValidationFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="OpenPositionFault">
+    <wsdl:part element="tns:openPositionFault" name="OpenPositionFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="openPosition">
+    <wsdl:part element="tns:openPositionRequest" name="openPositionRequest">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="updatePositionStatus">
+    <wsdl:part element="tns:updatePositionStatusRequest" name="updatePositionStatusRequest">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="ListRecruiterPositionOpeningsFault">
+    <wsdl:part element="tns:listRecruiterPositionOpeningsFault" name="ListRecruiterPositionOpeningsFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="listRecruiterPositionOpenings">
+    <wsdl:part element="tns:listRecruiterPositionOpeningsRequest" name="listRecruiterPositionOpeningsRequest">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:portType name="AdepHrxmlSepPositionsPort">
+    <wsdl:operation name="getPositionStatus">
+      <wsdl:input message="tns:getPositionStatus" name="getPositionStatus">
+    </wsdl:input>
+      <wsdl:output message="tns:getPositionStatusResponse" name="getPositionStatusResponse">
+    </wsdl:output>
+      <wsdl:fault message="tns:ValidationFault" name="ValidationFault">
+    </wsdl:fault>
+      <wsdl:fault message="tns:GetPositionStatusFault" name="GetPositionStatusFault">
+    </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="getPosition">
+      <wsdl:input message="tns:getPosition" name="getPosition">
+    </wsdl:input>
+      <wsdl:output message="tns:getPositionResponse" name="getPositionResponse">
+    </wsdl:output>
+      <wsdl:fault message="tns:ValidationFault" name="ValidationFault">
+    </wsdl:fault>
+      <wsdl:fault message="tns:GetPositionFault" name="GetPositionFault">
+    </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="updatePosition">
+      <wsdl:input message="tns:updatePosition" name="updatePosition">
+    </wsdl:input>
+      <wsdl:output message="tns:updatePositionResponse" name="updatePositionResponse">
+    </wsdl:output>
+      <wsdl:fault message="tns:ValidationFault" name="ValidationFault">
+    </wsdl:fault>
+      <wsdl:fault message="tns:UpdatePositionFault" name="UpdatePositionFault">
+    </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="openPosition">
+      <wsdl:input message="tns:openPosition" name="openPosition">
+    </wsdl:input>
+      <wsdl:output message="tns:openPositionResponse" name="openPositionResponse">
+    </wsdl:output>
+      <wsdl:fault message="tns:ValidationFault" name="ValidationFault">
+    </wsdl:fault>
+      <wsdl:fault message="tns:OpenPositionFault" name="OpenPositionFault">
+    </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="updatePositionStatus">
+      <wsdl:input message="tns:updatePositionStatus" name="updatePositionStatus">
+    </wsdl:input>
+      <wsdl:output message="tns:updatePositionStatusResponse" name="updatePositionStatusResponse">
+    </wsdl:output>
+      <wsdl:fault message="tns:ValidationFault" name="ValidationFault">
+    </wsdl:fault>
+      <wsdl:fault message="tns:UpdatePositionStatusFault" name="UpdatePositionStatusFault">
+    </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="listRecruiterPositionOpenings">
+      <wsdl:input message="tns:listRecruiterPositionOpenings" name="listRecruiterPositionOpenings">
+    </wsdl:input>
+      <wsdl:output message="tns:listRecruiterPositionOpeningsResponse" name="listRecruiterPositionOpeningsResponse">
+    </wsdl:output>
+      <wsdl:fault message="tns:ValidationFault" name="ValidationFault">
+    </wsdl:fault>
+      <wsdl:fault message="tns:ListRecruiterPositionOpeningsFault" name="ListRecruiterPositionOpeningsFault">
+    </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="AdepSepServiceSoapBinding" type="tns:AdepHrxmlSepPositionsPort">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="getPositionStatus">
+      <soap:operation soapAction="http://adep.apec.fr/hrxml/sep/getPositionStatus" style="document"/>
+      <wsdl:input name="getPositionStatus">
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output name="getPositionStatusResponse">
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ValidationFault">
+        <soap:fault name="ValidationFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="GetPositionStatusFault">
+        <soap:fault name="GetPositionStatusFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="getPosition">
+      <soap:operation soapAction="http://adep.apec.fr/hrxml/sep/getPosition" style="document"/>
+      <wsdl:input name="getPosition">
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output name="getPositionResponse">
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ValidationFault">
+        <soap:fault name="ValidationFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="GetPositionFault">
+        <soap:fault name="GetPositionFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="updatePosition">
+      <soap:operation soapAction="http://adep.apec.fr/hrxml/sep/updatePosition" style="document"/>
+      <wsdl:input name="updatePosition">
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output name="updatePositionResponse">
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ValidationFault">
+        <soap:fault name="ValidationFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UpdatePositionFault">
+        <soap:fault name="UpdatePositionFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="openPosition">
+      <soap:operation soapAction="http://adep.apec.fr/hrxml/sep/openPosition" style="document"/>
+      <wsdl:input name="openPosition">
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output name="openPositionResponse">
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ValidationFault">
+        <soap:fault name="ValidationFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="OpenPositionFault">
+        <soap:fault name="OpenPositionFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="updatePositionStatus">
+      <soap:operation soapAction="http://adep.apec.fr/hrxml/sep/updatePositionStatus" style="document"/>
+      <wsdl:input name="updatePositionStatus">
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output name="updatePositionStatusResponse">
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ValidationFault">
+        <soap:fault name="ValidationFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UpdatePositionStatusFault">
+        <soap:fault name="UpdatePositionStatusFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="listRecruiterPositionOpenings">
+      <soap:operation soapAction="http://adep.apec.fr/hrxml/sep/listRecruiterPositionOpenings" style="document"/>
+      <wsdl:input name="listRecruiterPositionOpenings">
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output name="listRecruiterPositionOpeningsResponse">
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="ValidationFault">
+        <soap:fault name="ValidationFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="ListRecruiterPositionOpeningsFault">
+        <soap:fault name="ListRecruiterPositionOpeningsFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="AdepSepService">
+    <wsdl:port binding="tns:AdepSepServiceSoapBinding" name="AdepSepServiceSoapBinding">
+      <soap:address location="https://testadepsep.apec.fr/v5/positions"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

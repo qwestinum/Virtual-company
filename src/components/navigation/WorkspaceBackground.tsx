@@ -1,63 +1,26 @@
 'use client';
 
 /**
- * Background commun « atelier » (Session 7).
+ * Le fond du produit — UNI, sand, rien d'autre.
  *
- * Replique l'arrière-plan utilisé sur la vue agents :
- *   - radial-gradient warm light en base (stone/sand),
- *   - trois blobs floutés animés (amber / yellow / slate),
- *   - overlay de dots subtils pour le repère « papier millimétré ».
+ * ⚠️ C'était un reste du vieux Bureau : un dégradé radial (#fdfcf9 → #ebe8e1),
+ * TROIS taches floutées animées (ambre, jaune, ardoise) et une grille de
+ * points à 10 % de slate-900. Sur une liste, ce décor se lit comme de
+ * l'information : un coin plus sombre qu'un autre fait chercher ce qui s'y
+ * trouve, et les cartes blanches n'ont plus le même contraste selon l'endroit
+ * de l'écran où elles tombent. Un fond de page ne doit rien dire.
  *
- * Le composant occupe la totalité de son parent en position fixed via
- * `inset-0` ; ses enfants directs (le contenu de la page) doivent
- * avoir un `position: relative` ou un z-index > 0 pour passer
- * au-dessus.
+ * Le composant reste — c'est lui que montent le workspace ET les pages de
+ * connexion, et le supprimer ferait diverger leurs fonds.
  */
 
 export function WorkspaceBackground() {
   return (
     <div
       aria-hidden
-      className="fixed inset-0 -z-10 overflow-hidden pointer-events-none"
-      style={{
-        background:
-          'radial-gradient(ellipse at top, #fdfcf9 0%, #f3f1ec 70%, #ebe8e1 100%)',
-      }}
-    >
-      <div
-        className="bg-blob bg-blob-1"
-        style={{
-          width: 520,
-          height: 520,
-          top: '6%',
-          left: '4%',
-          backgroundColor: '#fde68a',
-          opacity: 0.5,
-        }}
-      />
-      <div
-        className="bg-blob bg-blob-2"
-        style={{
-          width: 420,
-          height: 420,
-          bottom: '8%',
-          right: '6%',
-          backgroundColor: '#fde047',
-          opacity: 0.35,
-        }}
-      />
-      <div
-        className="bg-blob bg-blob-3"
-        style={{
-          width: 480,
-          height: 480,
-          top: '38%',
-          right: '28%',
-          backgroundColor: '#cbd5e1',
-          opacity: 0.4,
-        }}
-      />
-      <div className="absolute inset-0 bg-grid-dots" />
-    </div>
+      data-workspace-background
+      className="fixed inset-0 -z-10"
+      style={{ background: 'var(--dash-bg)' }}
+    />
   );
 }

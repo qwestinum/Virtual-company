@@ -13,9 +13,11 @@ import { INITIAL_EXPANSION, setSingle, toggleRow, type ExpansionState } from '@/
 import type { ProfilesView } from '@/lib/sourcing/profiles-view';
 import type { SourcingProfileView } from '@/types/sourcing';
 
-import { SourcingApproachPanel, type PreparedApproach } from './SourcingApproachPanel';
+import { ApproachPreparing, SourcingApproachDialog } from './SourcingApproachDialog';
+import { SourcingApproachPanel } from './SourcingApproachPanel';
 import { SourcingResultsList } from './SourcingResultsList';
 import { SourcingRowActions, SourcingRowMarks } from './SourcingRowMarks';
+import { useSourcingApproach } from './useSourcingApproach';
 
 type Prefs = { messageFormat: 'connection_note' | 'inmail'; availableFirst: boolean };
 type Payload = ProfilesView & { preferences: Prefs; myApproaches: number };
@@ -29,7 +31,7 @@ export function SourcingResults({ campaignId, version }: { campaignId: string; v
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [expansion, setExpansion] = useState<ExpansionState>(INITIAL_EXPANSION);
-  const [prepared, setPrepared] = useState<(PreparedApproach & { profileId: string }) | null>(null);
+  const { approche, preparer, changerFormat, fermer, confirmer } = useSourcingApproach();
   const url = `/api/sourcing/campaigns/${encodeURIComponent(campaignId)}/profiles`;
 
   const load = useCallback(async () => {
@@ -66,31 +68,10 @@ export function SourcingResults({ campaignId, version }: { campaignId: string; v
     else setNotice('Le profil n’a pas pu être décliné.');
   };
 
-  const prepare = async (p: SourcingProfileView, channel: 'linkedin' | 'email', format?: 'connection_note' | 'inmail') => {
-    setBusy(p.id);
-    setNotice(null);
-    const res = await post(`/api/sourcing/profiles/${p.id}/approaches`, { channel, ...(format ? { format } : {}) }).catch(() => null);
-    setBusy(null);
-    const json = res ? ((await res.json().catch(() => ({}))) as PreparedApproach & { message?: string }) : null;
-    if (!res?.ok || !json?.approachId) {
-      setNotice(json?.message ?? 'Le message n’a pas pu être préparé.');
-      return;
-    }
-    setPrepared({ ...json, profileId: p.id });
-  };
-
-  const cancel = async (reload: boolean) => {
-    if (prepared) await post(`/api/sourcing/approaches/${prepared.approachId}`, { action: 'cancel' }).catch(() => null);
-    setPrepared(null);
-    if (reload) await load();
-  };
-
-  const confirm = async (message: string): Promise<string | null> => {
-    if (!prepared) return null;
-    const res = await post(`/api/sourcing/approaches/${prepared.approachId}`, { action: 'confirm', message, url: prepared.url }).catch(() => null);
-    if (res?.ok) return null;
-    const json = res ? ((await res.json().catch(() => ({}))) as { message?: string }) : null;
-    return json?.message ?? 'L’approche n’a pas pu être enregistrée.';
+  // Fermer recharge la liste : une approche confirmée change l'état du profil.
+  const closeApproach = () => {
+    fermer();
+    void load();
   };
 
   const savePrefs = (patch: Partial<Prefs>) => {
@@ -127,22 +108,35 @@ export function SourcingResults({ campaignId, version }: { campaignId: string; v
         extras={{
           slot: (p) => <SourcingRowMarks profile={p} />,
           actions: (p) => (
-            <SourcingRowActions profile={p} busy={busy !== null || prepared !== null} onDecline={(x) => void decline(x)} onApproach={(x, c) => void prepare(x, c)} />
+            <SourcingRowActions profile={p} busy={busy !== null || approche !== null} onDecline={(x) => void decline(x)} onApproach={(x, c) => void preparer(x, c)} />
           ),
         }}
       />
-      {prepared ? (
-        <SourcingApproachPanel
-          key={prepared.approachId}
-          prepared={prepared}
-          onConfirm={confirm}
-          onCancel={() => void cancel(true)}
-          onFormatChange={(format) => {
-            const p = profileOf(prepared.profileId);
-            savePrefs({ messageFormat: format });
-            void cancel(false).then(() => (p ? prepare(p, 'linkedin', format) : undefined));
-          }}
-        />
+      {approche ? (
+        <SourcingApproachDialog
+          titre={approche.channel === 'linkedin' ? 'Message pour l’invitation LinkedIn' : 'Email d’approche'}
+          onClose={closeApproach}
+        >
+          {approche.prepared ? (
+            <SourcingApproachPanel
+              // Remonté à CHAQUE nouveau message : le texte édité suit la
+              // nouvelle rédaction. La FENÊTRE, elle, reste montée.
+              key={approche.prepared.approachId}
+              prepared={approche.prepared}
+              formatShown={approche.format ?? approche.prepared.format}
+              redrafting={approche.attente}
+              onConfirm={confirmer}
+              onCancel={closeApproach}
+              onFormatChange={(format) => {
+                const p = profileOf(approche.profileId);
+                savePrefs({ messageFormat: format });
+                if (p) changerFormat(p, format);
+              }}
+            />
+          ) : (
+            <ApproachPreparing onCancel={closeApproach} error={approche.erreur} />
+          )}
+        </SourcingApproachDialog>
       ) : null}
     </>
   );

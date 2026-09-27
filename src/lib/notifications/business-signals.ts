@@ -21,10 +21,16 @@ import {
 } from '@/lib/calendar/french-holidays';
 import { chunk } from '@/lib/db/paginate';
 import { listLiveJobPostings } from '@/lib/db/repos/job-postings';
-import { listCampaignSummaries } from '@/lib/db/repos/campaigns';
+import {
+  listActiveCampaignBriefs,
+  listCampaignSummaries,
+} from '@/lib/db/repos/campaigns';
 import { republishDaysLeft } from '@/lib/jobboards/adep/panel-state';
 import { listBriefsByStatus } from '@/lib/db/repos/interview-briefs';
-import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
+import {
+  countCandidateAnalyses,
+  listAllCandidateAnalyses,
+} from '@/lib/db/repos/candidate-analyses';
 import {
   countOverduePendingValidations,
   oldestPendingValidationCreatedAt,
@@ -37,6 +43,7 @@ import {
 import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
 import { getResource, isMeetingLocationComplete, listExceptions, listWeeklyRules } from '@/lib/scheduling';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
+import { listAwaitingWithoutRow } from '@/lib/hitl/orphan-scan';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import type { DecisionZone } from '@/types/hitl';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
@@ -78,31 +85,41 @@ export function buildInterviewsAwaitingMessage(count: number): string {
  * geste (remettre en file d'un côté, clore de l'autre), et les fondre dans un
  * total rendrait le signal inactionnable.
  */
+/**
+ * ⚠️ Ce message était écrit dans la langue du code : « fiche de validation »,
+ * « non décidable », « pas cohérent », « file », « analyse ». Six mots du
+ * modèle interne dans une phrase de quinze — et il décrivait un ÉTAT sans dire
+ * une seule fois quoi faire. Deux situations, deux gestes : on les sépare.
+ */
 export function buildQueueMismatchMessage(input: {
   awaitingWithoutRow: number;
   rowWithoutAwaiting: number;
 }): string {
   const parts: string[] = [];
   if (input.awaitingWithoutRow > 0) {
+    const n = input.awaitingWithoutRow;
+    // CAUSE puis GESTE. La cause exacte n'est pas « l'analyse doit être
+    // relancée » — l'analyse est bonne, c'est la fiche de décision qui manque,
+    // et la réparation est une remise en file, candidature par candidature
+    // (il n'existe aucun chemin groupé).
+    // Le message porte la CAUSE et sa conséquence ; le GESTE est le bouton.
+    // Écrire « ouvrez chacune » à côté d'un bouton qui les traite toutes
+    // ferait décrire un travail que le produit vient de supprimer.
     parts.push(
-      input.awaitingWithoutRow === 1
-        ? '1 attend sans fiche de validation (non décidable)'
-        : `${input.awaitingWithoutRow} attendent sans fiche de validation (non décidables)`,
+      n === 1
+        ? 'Une candidature attend votre décision mais sa fiche de décision manque : vous ne pouvez pas trancher tant qu’elle n’est pas rétablie.'
+        : `${n} candidatures attendent votre décision mais leur fiche de décision manque : vous ne pouvez pas trancher tant qu’elles ne sont pas rétablies.`,
     );
   }
   if (input.rowWithoutAwaiting > 0) {
+    const n = input.rowWithoutAwaiting;
     parts.push(
-      input.rowWithoutAwaiting === 1
-        ? '1 garde une fiche qui n’a plus lieu d’être'
-        : `${input.rowWithoutAwaiting} gardent une fiche qui n’a plus lieu d’être`,
+      n === 1
+        ? 'Une candidature vous est encore présentée alors qu’elle est déjà tranchée — refermez-la.'
+        : `${n} candidatures vous sont encore présentées alors qu’elles sont déjà tranchées — refermez-les.`,
     );
   }
-  const total = input.awaitingWithoutRow + input.rowWithoutAwaiting;
-  const head =
-    total === 1
-      ? '1 dossier n’est pas cohérent entre la file de validation et son analyse'
-      : `${total} dossiers ne sont pas cohérents entre la file de validation et leur analyse`;
-  return `${head} : ${parts.join(', ')}.`;
+  return parts.join(' ');
 }
 
 export function buildInterviewsPointingMessage(count: number): string {
@@ -158,8 +175,8 @@ export function buildHolidaysUnblockedMessage(
 ): string {
   const when = `${formatHolidayDay(nearest.day)} (${nearest.label})`;
   return holidayCount === 1
-    ? `Votre agenda propose encore des créneaux le ${when}, qui est férié.`
-    : `Votre agenda propose encore des créneaux sur ${holidayCount} jours fériés — le plus proche : ${when}.`;
+    ? `Un candidat peut encore réserver un rendez-vous avec vous le ${when}, qui est férié — bloquez cette journée dans vos disponibilités.`
+    : `Un candidat peut encore réserver un rendez-vous avec vous sur ${holidayCount} jours fériés, le prochain étant le ${when} — bloquez-les dans vos disponibilités.`;
 }
 
 /**
@@ -217,7 +234,7 @@ async function computePendingValidationsOverdue(
     count,
     oldestDays,
     message: buildPendingValidationsMessage(count, days, oldestDays),
-    ctaLabel: 'Ouvrir la validation suspendue',
+    ctaLabel: 'Ouvrir les dossiers à valider',
     target: { tab: 'validations' },
   };
 }
@@ -419,7 +436,7 @@ async function computeAvailabilityMeetingLocationMissing(
     // Ce signal ne vieillit pas : il est vrai ou il ne l'est pas.
     oldestDays: 0,
     message:
-      'Ton agenda n’indique aucun lieu d’entretien : aucune invitation ne peut partir pour les campagnes dont tu es référent.',
+      'Vos invitations à un entretien ne peuvent pas partir : votre agenda n’indique aucun lieu de rencontre. Renseignez-le dans vos disponibilités.',
     ctaLabel: 'Renseigner le lieu de l’entretien',
     target: { route: '/settings' },
   };
@@ -461,10 +478,10 @@ async function computeApecRepublicationWindow(
     oldestDays: warning - soonest,
     message:
       closing.length === 1
-        ? `1 offre APEC suspendue ne pourra plus être republiée dans ${soonest} jour${soonest > 1 ? 's' : ''} — il faudra en créer une nouvelle.`
-        : `${closing.length} offres APEC suspendues ne pourront plus être republiées d’ici ${soonest} jour${soonest > 1 ? 's' : ''}.`,
+        ? `Une offre APEC suspendue ne pourra plus être remise en ligne dans ${soonest} jour${soonest > 1 ? 's' : ''} — republiez-la maintenant, ou il faudra en créer une nouvelle.`
+        : `${closing.length} offres APEC suspendues ne pourront plus être remises en ligne d’ici ${soonest} jour${soonest > 1 ? 's' : ''} — republiez celles que vous comptez garder.`,
     ctaLabel: 'Voir les campagnes',
-    target: { route: '/rh/recrutement' },
+    target: { route: '/campagnes' },
   };
 }
 
@@ -500,10 +517,10 @@ async function computeApecLiveOnClosedCampaign(
     oldestDays: oldest,
     message:
       orphans.length === 1
-        ? 'Une offre est toujours en ligne sur l’APEC alors que sa campagne est clôturée — des candidats peuvent encore postuler.'
-        : `${orphans.length} offres sont toujours en ligne sur l’APEC alors que leur campagne est clôturée.`,
+        ? 'Une offre est toujours en ligne sur l’APEC alors que sa campagne est terminée — des candidats postulent pour un poste déjà pourvu. Retirez-la.'
+        : `${orphans.length} offres sont toujours en ligne sur l’APEC alors que leur campagne est terminée — des candidats postulent pour des postes déjà pourvus. Retirez-les.`,
     ctaLabel: 'Voir les campagnes',
-    target: { route: '/rh/recrutement' },
+    target: { route: '/campagnes' },
   };
 }
 
@@ -589,15 +606,12 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
   // pas l'étape d'un candidat — il ne dépend donc pas des signaux d'étape.
   // Sens A — analyses en attente : sélection bornée aux deux zones, jamais
   // décidées par un humain, jamais classées.
-  const zones: DecisionZone[] = ['gray', 'proposed_reject'];
-  const awaitingBatches = await Promise.all(
-    zones.map((zone) =>
-      listAllCandidateAnalyses({ decisionZone: zone, decidedBy: 'auto', dismissed: false }).catch(
-        () => [],
-      ),
-    ),
-  );
-  const awaiting = awaitingBatches.flat();
+  // Sens A — la MÊME sélection que le geste qui les répare (orphan-scan) :
+  // un bouton qui réparerait onze dossiers pendant que le compteur en annonce
+  // douze serait pire que pas de bouton du tout.
+  const orphelines = await listAwaitingWithoutRow().catch(() => []);
+  const awaitingWithoutRow = orphelines.length;
+  const oldest: number[] = orphelines.map((a) => Date.parse(a.createdAt));
 
   // Sens B — fiches ouvertes : la file entière (keyset, jamais tronquée).
   const openRows = await listPendingValidations().catch(() => []);
@@ -606,23 +620,6 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
       .map((v) => (typeof v.payload?.uid === 'string' ? v.payload.uid : null))
       .filter((u): u is string => u !== null),
   );
-
-  let awaitingWithoutRow = 0;
-  const oldest: number[] = [];
-  for (const a of awaiting) {
-    const mismatch = queueMismatch({
-      coherence: checkValidationCoherence({
-        decisionZone: a.decisionZone,
-        decidedBy: a.decidedBy,
-        dismissedAt: a.dismissedAt,
-      }),
-      hasOpenRow: openUids.has(a.uid),
-    });
-    if (mismatch === 'awaiting_without_row') {
-      awaitingWithoutRow++;
-      oldest.push(Date.parse(a.createdAt));
-    }
-  }
 
   // Les analyses des fiches ouvertes, rapprochées par uid comme partout
   // ailleurs. Chunké : la garantie ne dépend pas du volume.
@@ -664,8 +661,26 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
       ? daysSinceIso(new Date(oldestMs).toISOString(), nowMs)
       : 0,
     message: buildQueueMismatchMessage({ awaitingWithoutRow, rowWithoutAwaiting }),
-    ctaLabel: 'Ouvrir la validation suspendue',
-    target: { tab: 'validations' },
+    // La cible suit le GESTE, pas la catégorie : rouvrir une candidature se
+    // fait depuis la liste, refermer une présentation en trop depuis la revue.
+    // Envoyer les deux au même endroit ferait un bouton juste une fois sur deux.
+    // Le geste de réparation est un LOT, pas une navigation : on ne demande
+    // pas d'ouvrir douze dossiers un par un pour cliquer douze fois le même
+    // bouton. La cible reste renseignée pour qui préfère les voir d'abord.
+    ctaLabel:
+      awaitingWithoutRow > 0
+        ? `Remettre ${awaitingWithoutRow === 1 ? 'la candidature' : `les ${awaitingWithoutRow} candidatures`} en attente de décision`
+        : 'Ouvrir la revue',
+    action:
+      awaitingWithoutRow > 0
+        ? { kind: 'requeue_orphans' as const, count: awaitingWithoutRow }
+        : undefined,
+    target: {
+      route:
+        awaitingWithoutRow > 0
+          ? '/candidatures?statut=a_valider'
+          : '/candidatures/validation',
+    },
   };
 }
 
@@ -682,6 +697,71 @@ export type BusinessSignalDefinition = {
     shared?: SharedLoads,
   ) => Promise<BusinessSignal | null>;
 };
+
+// ─── Signal 9 — campagne active sans la moindre candidature ────────────────
+
+/**
+ * Une campagne tourne depuis plus d'une semaine et n'a RIEN reçu.
+ *
+ * Ce n'est pas un dossier en souffrance, c'est un tuyau qui ne coule pas —
+ * boîte jamais associée à la campagne, annonce jamais diffusée, référence
+ * `CAMP-YYYY-NNN` absente de l'objet des mails. Trois pannes silencieuses par
+ * construction : le chemin email SKIPPE sans journal une boîte non associée, et
+ * une campagne sans candidat ressemble à s'y méprendre à une campagne sans
+ * candidat MÉRITANT. La seule façon de les distinguer est le temps.
+ *
+ * Compté par `countCandidateAnalyses` en `head: true` — on demande s'il existe
+ * au moins une ligne, on ne rapatrie rien. Une campagne sans candidature est
+ * justement celle dont la lecture coûte le moins.
+ *
+ * ⚠️ Les CLASSÉES SANS SUITE comptent comme des candidatures reçues : le tuyau
+ * a coulé, ce qui est arrivé ensuite ne regarde pas ce signal.
+ */
+async function computeCampaignsWithoutCandidates(
+  nowMs: number,
+): Promise<BusinessSignal | null> {
+  const days = BUSINESS_NOTIFICATION_THRESHOLDS.campaignWithoutCandidatesDays;
+  const cutoff = nowMs - days * 86_400_000;
+  const briefs = await listActiveCampaignBriefs();
+
+  // Seules les campagnes assez anciennes sont interrogées : une campagne
+  // lancée hier n'a aucune raison d'avoir reçu quoi que ce soit.
+  const mûres = briefs.filter(
+    (c) => c.startedAt !== null && Date.parse(c.startedAt) <= cutoff,
+  );
+  if (mûres.length === 0) return null;
+
+  const counts = await Promise.all(
+    mûres.map((c) =>
+      countCandidateAnalyses({ campaignId: c.id }).catch(() => -1),
+    ),
+  );
+  // -1 = lecture en échec. On ne signale JAMAIS sur un comptage raté : « zéro
+  // candidature » serait alors une accusation fabriquée par une panne.
+  const muettes = mûres.filter((_, i) => counts[i] === 0);
+  if (muettes.length === 0) return null;
+
+  const oldest = Math.max(
+    ...muettes.map((c) => daysSinceIso(c.startedAt!, nowMs)),
+  );
+  return {
+    key: 'campaign_without_candidates',
+    count: muettes.length,
+    oldestDays: oldest,
+    message:
+      muettes.length === 1
+        ? `« ${muettes[0]!.name} » tourne depuis ${oldest} jours et n’a reçu aucune candidature — vérifiez la boîte associée et la diffusion.`
+        : `${muettes.length} campagnes actives n’ont reçu aucune candidature (la plus ancienne depuis ${oldest} jours).`,
+    ctaLabel:
+      muettes.length === 1 ? 'Ouvrir la campagne' : 'Voir les campagnes',
+    target: {
+      route:
+        muettes.length === 1
+          ? `/campagnes?campagne=${encodeURIComponent(muettes[0]!.id)}`
+          : '/campagnes',
+    },
+  };
+}
 
 export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
@@ -717,6 +797,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'validations_incoherentes',
     compute: (nowMs) => computeQueueMismatches(nowMs),
+  },
+  {
+    key: 'campaign_without_candidates',
+    compute: (nowMs) => computeCampaignsWithoutCandidates(nowMs),
   },
 ];
 

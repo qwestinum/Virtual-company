@@ -370,17 +370,50 @@ export async function getPendingValidation(
   return data ? rowToDomain(data as PendingValidationRow) : null;
 }
 
+/**
+ * Écrit une fiche de file — SANS JAMAIS rouvrir celle qui est déjà engagée.
+ *
+ * ⚠️ La garde ne peut pas vivre chez l'appelant. `enqueueValidationRow` et
+ * `POST /api/validations` lisaient la fiche, décidaient, puis écrivaient : un
+ * `pending → sending` posé ENTRE les deux (réservation d'envoi) était écrasé,
+ * et la fiche repassait `pending` alors qu'un envoi était en vol. Deux
+ * réservations concurrentes devenaient possibles — donc deux mails.
+ * Défaut observé le 22/09/2026 sur la régression S15, sous charge : la
+ * candidature sabotée en `sending` repartait quand même.
+ *
+ * D'où DEUX écritures conditionnelles, jamais un upsert aveugle :
+ *   1. insertion si la fiche n'existe pas (`ignoreDuplicates`) ;
+ *   2. sinon mise à jour conditionnée à `status = 'pending'`.
+ * `null` = la fiche existe et n'est plus ouverte : l'appelant traduit en
+ * « déjà engagée », un succès distinct.
+ */
 export async function upsertPendingValidation(
   v: PendingValidation,
-): Promise<PendingValidation> {
+): Promise<PendingValidation | null> {
   const supabase = requireServerSupabase();
-  const { data, error } = await supabase
+  const row = domainToRow(v);
+
+  const { data: inserted, error: insertError } = await supabase
     .from(TABLE)
-    .upsert(domainToRow(v), { onConflict: 'id' })
-    .select('*')
-    .single();
-  if (error) throw new Error(`upsertPendingValidation: ${error.message}`);
-  return rowToDomain(data as PendingValidationRow);
+    .upsert(row, { onConflict: 'id', ignoreDuplicates: true })
+    .select('*');
+  if (insertError) {
+    throw new Error(`upsertPendingValidation: ${insertError.message}`);
+  }
+  const first = (inserted ?? [])[0];
+  if (first) return rowToDomain(first as PendingValidationRow);
+
+  const { data: updated, error: updateError } = await supabase
+    .from(TABLE)
+    .update(row)
+    .eq('id', v.id)
+    .eq('status', 'pending')
+    .select('*');
+  if (updateError) {
+    throw new Error(`upsertPendingValidation: ${updateError.message}`);
+  }
+  const row2 = (updated ?? [])[0];
+  return row2 ? rowToDomain(row2 as PendingValidationRow) : null;
 }
 
 export type ReserveSendOutcome =

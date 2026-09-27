@@ -23,6 +23,14 @@ import {
 import { MailboxPicker } from '../MailboxPicker';
 
 export type FluxDraftEditorProps = {
+  /**
+   * Flux à PROPOSER. Par défaut tous ceux du domaine (édition d'une campagne
+   * existante, qui peut en porter d'anciens) ; l'assistant de création ne
+   * montre que ceux qui marchent vraiment — offrir un flux inerte à quelqu'un
+   * qui crée sa campagne, c'est lui promettre des candidatures qui
+   * n'arriveront pas.
+   */
+  sources?: CVSource[];
   selected: CVSource[];
   onChange: (next: CVSource[]) => void;
   mailboxIds: string[];
@@ -30,6 +38,7 @@ export type FluxDraftEditorProps = {
 };
 
 export function FluxDraftEditor({
+  sources = CV_SOURCES,
   selected,
   onChange,
   mailboxIds,
@@ -44,13 +53,14 @@ export function FluxDraftEditor({
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {CV_SOURCES.map((source) => {
+      {sources.map((source) => {
         const enabled = selected.includes(source);
         const operational = CV_SOURCE_OPERATIONAL[source];
         return (
           <div key={source}>
             <button
               type="button"
+              data-source={source}
               onClick={() => toggle(source)}
               aria-pressed={enabled}
               className="font-body"

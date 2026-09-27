@@ -77,16 +77,41 @@ export async function runSourcingSearch(input: RunSearchInput): Promise<RunSearc
     llmCostUsd: null,
   });
 
-  await insertSourcingProfiles(
-    input.campaignId,
-    selection.fresh.map((f) => ({
-      searchId,
-      fingerprint: f.fingerprint,
-      exaRank: f.rank,
-      state: f.state,
-      snapshot: f.snapshot,
-    })),
-  );
+  // ⚠️ L'ÉCHEC D'INSERTION NE DOIT PAS ÊTRE MUET. La ligne de recherche est
+  // écrite AVANT les profils — elle porte l'identifiant qu'ils référencent,
+  // l'ordre est donc forcé. Si l'insertion tombe, il reste une recherche
+  // PAYÉE (l'appel au moteur a eu lieu) et AUCUN profil : à l'écran, la
+  // campagne affiche « dernière recherche il y a 4 j · 0 vu », strictement
+  // indistinguable de « la recherche n'a rien trouvé de nouveau ».
+  //
+  // C'est arrivé le 17/09/2026 sur CAMP-2026-095 : deux recherches à 100
+  // résultats, 100 nouveaux après dédoublonnage, ZÉRO profil en base, et pas
+  // une ligne de journal — parce que `sourcing_search_run` s'écrit APRÈS
+  // l'insertion. On trace donc l'échec avant de relancer l'erreur.
+  try {
+    await insertSourcingProfiles(
+      input.campaignId,
+      selection.fresh.map((f) => ({
+        searchId,
+        fingerprint: f.fingerprint,
+        exaRank: f.rank,
+        state: f.state,
+        snapshot: f.snapshot,
+      })),
+    );
+  } catch (err) {
+    await appendJournalEntry({
+      action: 'sourcing_search_not_stored',
+      campaignId: input.campaignId,
+      actor: input.actorEmail ?? 'utilisateur',
+      payload: {
+        searchId,
+        attendus: selection.fresh.length,
+        cause: err instanceof Error ? err.message : String(err),
+      },
+    }).catch(() => undefined);
+    throw err;
+  }
 
   const result: RunSearchResult = {
     searchId,

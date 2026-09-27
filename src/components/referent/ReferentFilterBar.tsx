@@ -14,6 +14,12 @@
  */
 
 import {
+  Toolbar,
+  ToolbarReset,
+  ToolbarSegment,
+  ToolbarSelect,
+} from '@/components/ui/Toolbar';
+import {
   ALL_REFERENTS,
   referentSelectionKey,
   type ReferentOption,
@@ -44,19 +50,22 @@ export function ReferentFilterBar({
   const isFiltered = selection.kind !== 'all';
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    // ⚠️ LA BARRE D'OUTILS PARTAGÉE : une seule rangée, des contrôles de même
+    // hauteur. Le sélecteur et le raccourci vivaient côte à côte avec deux
+    // hauteurs différentes — ce qui se lit comme deux rangées.
+    <Toolbar>
       <label className="flex items-center gap-2 font-body text-[12.5px] font-semibold text-stone-600">
         Référent :
-        <select
+        <ToolbarSelect
+          ariaLabel="Filtrer par référent"
+          testId="referent"
           value={selectedKey}
-          onChange={(e) => {
+          onChange={(v) => {
             const next = options.find(
-              (o) =>
-                referentSelectionKey(o.selection) === e.currentTarget.value,
+              (o) => referentSelectionKey(o.selection) === v,
             );
             onChange(next?.selection ?? ALL_REFERENTS);
           }}
-          className="rounded-md border border-stone-300 bg-white px-2 py-1 font-body text-[12.5px] font-normal text-stone-800"
         >
           {options.map((o) => (
             <option
@@ -66,37 +75,23 @@ export function ReferentFilterBar({
               {o.label} ({o.count})
             </option>
           ))}
-        </select>
+        </ToolbarSelect>
       </label>
 
       {currentUserId && myCount > 0 ? (
-        <button
-          type="button"
+        <ToolbarSegment
+          active={isMine}
           onClick={() =>
             onChange(
               isMine ? ALL_REFERENTS : { kind: 'recruiter', id: currentUserId },
             )
           }
-          aria-pressed={isMine}
-          className={`rounded-md border px-2.5 py-1 font-body text-[12px] font-semibold ${
-            isMine
-              ? 'border-stone-800 bg-stone-800 text-white'
-              : 'border-stone-300 bg-white text-stone-600 hover:bg-stone-50'
-          }`}
         >
           Mes campagnes ({myCount})
-        </button>
+        </ToolbarSegment>
       ) : null}
 
-      {isFiltered ? (
-        <button
-          type="button"
-          onClick={() => onChange(ALL_REFERENTS)}
-          className="font-body text-[12px] font-semibold text-stone-500 hover:text-stone-800"
-        >
-          ✕ Réinitialiser
-        </button>
-      ) : null}
-    </div>
+      {isFiltered ? <ToolbarReset onClick={() => onChange(ALL_REFERENTS)} /> : null}
+    </Toolbar>
   );
 }

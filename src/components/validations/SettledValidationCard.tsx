@@ -65,23 +65,23 @@ export function SettledValidationCard({
   };
 
   return (
-    <article className="rounded-xl border border-orqa-ambre/50 bg-orqa-ambre-bg px-5 py-4">
+    <article className="rounded-xl border border-dash-orange/50 bg-dash-orange-light px-5 py-4">
       <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h3 className="font-display text-[15px] font-bold text-orqa-encre">
+        <h3 className="font-display text-[15px] font-bold text-dash-text">
           {v.candidateName}
         </h3>
-        <span className="font-data text-[12px] text-orqa-gris">{v.campaignId}</span>
+        <span className="font-data text-[12px] text-dash-text-secondary">{v.campaignId}</span>
         {typeof v.score === 'number' ? (
-          <span className="font-data text-[12px] text-orqa-gris">{v.score}/100</span>
+          <span className="font-data text-[12px] text-dash-text-secondary">{v.score}/100</span>
         ) : null}
         <ReferentMention referent={referent} />
       </header>
 
-      <p className="mt-2 font-body text-[13px] leading-relaxed text-orqa-encre">
+      <p className="mt-2 font-body text-[13px] leading-relaxed text-dash-text">
         <strong className="font-semibold">Cette fiche n’a plus lieu d’être.</strong>{' '}
         {SETTLED_LABELS[reason]}
       </p>
-      <p className="mt-1.5 font-body text-[12px] leading-relaxed text-orqa-gris">
+      <p className="mt-1.5 font-body text-[12px] leading-relaxed text-dash-text-secondary">
         Les boutons d’arbitrage sont retirés&nbsp;: trancher ici enverrait un
         message qui contredirait l’état réel du dossier. La clore ne décide rien
         et n’envoie aucun mail.
@@ -92,17 +92,17 @@ export function SettledValidationCard({
           type="button"
           onClick={() => void settle()}
           disabled={busy}
-          className="rounded-lg border border-orqa-nuit bg-orqa-nuit px-4 py-2 font-body text-[13px] font-semibold text-white disabled:opacity-60"
+          className="rounded-lg border border-dash-text bg-dash-text px-4 py-2 font-body text-[13px] font-semibold text-white disabled:opacity-60"
         >
           {busy ? 'Clôture…' : 'Clore cette fiche'}
         </button>
-        <span className="font-body text-[12px] text-orqa-gris">
+        <span className="font-body text-[12px] text-dash-text-secondary">
           Le dossier reste consultable dans Candidatures.
         </span>
       </div>
 
       {error ? (
-        <p role="alert" className="mt-2 font-body text-[12px] font-semibold text-orqa-rouge">
+        <p role="alert" className="mt-2 font-body text-[12px] font-semibold text-dash-red">
           {error}
         </p>
       ) : null}

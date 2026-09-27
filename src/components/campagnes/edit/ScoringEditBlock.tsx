@@ -161,9 +161,9 @@ function ScoringEditInner({ campaign }: ScoringEditBlockProps) {
             marginTop: 10,
             padding: '8px 10px',
             borderRadius: 8,
-            background: '#fffbeb',
-            border: '1px solid #fcd34d',
-            color: '#92400e',
+            background: 'var(--dash-orange-light)',
+            border: '1px solid var(--dash-orange)',
+            color: 'var(--dash-orange)',
             fontSize: 12,
             listStyle: 'none',
           }}

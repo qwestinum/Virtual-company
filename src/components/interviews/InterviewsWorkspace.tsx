@@ -20,6 +20,9 @@
  * deux.
  */
 
+import { PageShell } from '@/components/navigation/PageShell';
+import { DotTabs } from '@/components/ui/DotTabs';
+
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -29,19 +32,17 @@ import { markCandidateInterview } from '@/lib/dashboard/candidate-actions';
 import type { InterviewPipeline } from '@/lib/interviews/pipeline';
 import type { RowReferent } from '@/lib/interviews/referent-resolution';
 import {
-  ALL_REFERENTS,
   buildReferentOptionsBy,
   filterByReferentBy,
   myReferentCountBy,
-  type ReferentSelection,
 } from '@/lib/referent/filter';
 import type { FinalVerdict } from '@/types/verdict-comment';
 
 import { AwaitingList, type AwaitingItem } from './AwaitingList';
 import { InterviewSignals } from './InterviewSignals';
-import { InterviewTabs, type InterviewTabKey } from './InterviewTabs';
 import { NoShowDialog, type NoShowChoice } from './NoShowDialog';
 import { ScheduledList, type ScheduledItem } from './ScheduledList';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
 
 const EMPTY: InterviewPipeline = {
   awaiting: [],
@@ -52,6 +53,9 @@ const EMPTY: InterviewPipeline = {
 };
 
 type Row = AwaitingItem | ScheduledItem;
+/** Les trois vues de l'onglet. */
+type InterviewTabKey = 'scheduled' | 'awaiting' | 'verdict';
+
 type PageTab = InterviewTabKey;
 
 /**
@@ -63,15 +67,28 @@ const referentOfRow = (row: RowReferent) => row.referent;
 
 export function InterviewsWorkspace({
   initialSection = null,
+  campaignId = null,
 }: {
   /** Cible d'un signal métier : ouvre directement le bon onglet. */
   initialSection?: 'a_pointer' | 'awaiting' | null;
+  /**
+   * Filtre campagne porté par l'URL (`/entretiens?campagne=…`), typiquement
+   * posé depuis une carte campagne.
+   *
+   * ⚠️ Appliqué CÔTÉ CLIENT, aux listes seules — exactement comme le filtre par
+   * référent, et pour la même raison : le bandeau des cibles orphelines et le
+   * badge « à pointer » lisent le pipeline COMPLET. Le passer à l'API
+   * (`/api/interviews?campaignId=`, qui le supporte) restreindrait aussi les
+   * alertes, et un filtre de confort ne doit jamais éteindre une alerte.
+   */
+  campaignId?: string | null;
 }) {
   const [pipeline, setPipeline] = useState<InterviewPipeline>(EMPTY);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   // Commodité de LECTURE : aucune restriction d'accès, aucune persistance.
-  const [referentFilter, setReferentFilter] =
-    useState<ReferentSelection>(ALL_REFERENTS);
+  // ⚠️ UN SEUL ÉTAT pour tout le produit, mémorisé par recruteur : cocher
+  // « Mes campagnes » ici, c'est le retrouver coché sur les autres écrans.
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
   // Défaut : les entretiens. C'est l'agenda de la semaine — ce qu'on vient
   // regarder en ouvrant la page ; les invitations en attente sont une file
   // qu'on traite, pas ce qu'on consulte en premier.
@@ -207,36 +224,37 @@ export function InterviewsWorkspace({
   ];
   const options = buildReferentOptionsBy(allRows, referentOfRow);
   const myCount = myReferentCountBy(allRows, referentOfRow, currentUserId);
-  const filter = <T extends RowReferent>(rows: T[]) =>
-    filterByReferentBy(rows, referentOfRow, referentFilter);
+  const filter = <T extends RowReferent & { campaignId: string | null }>(
+    rows: T[],
+  ) =>
+    filterByReferentBy(rows, referentOfRow, referentFilter).filter(
+      (row) => !campaignId || row.campaignId === campaignId,
+    );
   const awaiting = filter(pipeline.awaiting);
   const scheduled = filter(pipeline.scheduled);
   const verdictRows = filter(pipeline.verdict);
 
   return (
-    <div className="h-full overflow-auto px-6 py-6">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <header className="flex items-start justify-between gap-3">
-          <div>
-            <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-              Cycle d’entretien
-            </p>
-            <h1 className="font-display text-3xl font-bold text-stone-900">
-              Entretiens
-            </h1>
-          </div>
-          <button
-            type="button"
-            className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-stone-300 px-2.5 py-1.5 font-body text-[12px] font-semibold text-stone-600 hover:bg-stone-50"
-            onClick={() => void load()}
-          >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-            Rafraîchir
-          </button>
-        </header>
-
-        <InterviewSignals orphans={pipeline.orphans} />
-
+    // ⚠️ GABARIT COMMUN : l'écran se bornait à 896 px (max-w-4xl), soit
+    // 504 px de moins que Campagnes — la page se rétrécissait en changeant
+    // d'onglet.
+    <PageShell
+      title="Entretiens"
+      subtitle="Le cycle d’entretien : ce qui attend une réservation, ce qui est programmé, ce qui attend un verdict."
+      actions={
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 px-2.5 py-1.5 font-body text-[12px] font-semibold text-stone-600 hover:bg-stone-50"
+          onClick={() => void load()}
+        >
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          Rafraîchir
+        </button>
+      }
+      // ⚠️ LES FENTES DU GABARIT : la barre d'outils et le ruban ne sont plus
+      // empilés par l'écran, ils se rangent dans la zone de tête. C'est là que
+      // les espacements sont NOMMÉS, une fois, pour les cinq onglets.
+      toolbar={
         <ReferentFilterBar
           options={options}
           selection={referentFilter}
@@ -244,40 +262,55 @@ export function InterviewsWorkspace({
           myCount={myCount}
           currentUserId={currentUserId}
         />
-
-        <InterviewTabs
-          active={tab}
-          onSelect={setTab}
+      }
+      counters={
+        /* ⚠️ LES PUCES À POINT COLORÉ, celles de Diffusion et de « Revue de
+           candidature » (essai du 22/09/2026). Elles portent le même « n sur
+           N » et la même alerte que le ruban qu'elles remplacent. */
+        <DotTabs
+          ariaLabel="Choisir les entretiens à voir"
+          current={tab}
+          onChange={setTab}
           tabs={[
             {
               key: 'scheduled',
-              label: 'Entretiens',
+              label: 'Programmés',
               count: scheduled.length,
               total: pipeline.counts.scheduled,
-              // Compte d'ALERTE : toujours celui du pipeline complet.
+              // ⚠️ Sur le pipeline COMPLET, jamais sur la vue filtrée : c'est
+              // une alerte, et un filtre de confort ne masque jamais un
+              // dossier en souffrance.
               alert: pipeline.counts.toPoint,
+              alertLabel: 'à confirmer',
+              dot: 'var(--dash-teal)',
             },
             {
               key: 'awaiting',
               label: 'En attente de réservation',
               count: awaiting.length,
               total: pipeline.counts.awaiting,
+              dot: 'var(--dash-purple)',
             },
             {
               key: 'verdict',
               label: 'En attente de verdict',
               count: verdictRows.length,
               total: pipeline.counts.verdict,
+              dot: 'var(--dash-yellow)',
             },
           ]}
         />
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <InterviewSignals orphans={pipeline.orphans} />
 
         {pipeline.counts.unresolved > 0 ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[12.5px] text-amber-900">
             {pipeline.counts.unresolved} briefing
             {pipeline.counts.unresolved > 1 ? 's' : ''} sans candidature
-            retrouvable {pipeline.counts.unresolved > 1 ? 'ne sont' : 'n’est'} pas
-            affiché{pipeline.counts.unresolved > 1 ? 's' : ''} — anomalie de
+            retrouvable {pipeline.counts.unresolved > 1 ? 'ne sont' : 'n’est'}{' '}
+            pas affiché{pipeline.counts.unresolved > 1 ? 's' : ''} — anomalie de
             données à signaler.
           </p>
         ) : null}
@@ -339,6 +372,6 @@ export function InterviewsWorkspace({
           }}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }

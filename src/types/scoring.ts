@@ -109,15 +109,15 @@ export const KEYWORD_BASED_METHODS: VerificationMethod[] = [
 export const VERIFICATION_METHOD_LABELS: Record<VerificationMethod, string> = {
   keywords_exact: 'Mots-clés exacts',
   keywords_with_variants: 'Mots-clés avec variantes',
-  llm_with_quote: 'Vérification LLM avec citation',
-  hybrid_keywords_llm: 'Hybride mots-clés + LLM',
+  llm_with_quote: 'Vérification IA avec citation',
+  hybrid_keywords_llm: 'Hybride mots-clés + IA',
 };
 
 /** Libellé court du badge de la vue récap. */
 export const VERIFICATION_METHOD_BADGES: Record<VerificationMethod, string> = {
   keywords_exact: 'MOTS-CLÉS',
   keywords_with_variants: 'MOTS-CLÉS',
-  llm_with_quote: 'LLM',
+  llm_with_quote: 'IA',
   hybrid_keywords_llm: 'HYBRIDE',
 };
 
@@ -230,7 +230,7 @@ export function validateScoringSheet(sheet: ScoringSheet): string[] {
     const hasKeyword = (c.keywords ?? []).some((k) => k.trim().length > 0);
     if (!hasKeyword) {
       errors.push(
-        `Le critère « ${c.label} » utilise la méthode « ${VERIFICATION_METHOD_LABELS[method]} » mais n'a aucun mot-clé. Ajoutez au moins un mot-clé ou choisissez la vérification LLM.`,
+        `Le critère « ${c.label} » utilise la méthode « ${VERIFICATION_METHOD_LABELS[method]} » mais n'a aucun mot-clé. Ajoutez au moins un mot-clé ou choisissez la vérification par IA.`,
       );
     }
   }

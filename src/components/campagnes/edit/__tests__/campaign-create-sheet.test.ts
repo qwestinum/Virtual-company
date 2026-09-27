@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { deriveCampaignName } from '@/lib/campaign/derive-campaign-name';
 import {
-  deriveCampaignName,
   nextOpenSection,
 } from '@/components/campagnes/edit/CampaignCreateSheet';
 import { buildSchedulingPatch } from '@/lib/campaign/apply-draft-scheduling';

@@ -21,12 +21,15 @@ import { useState } from 'react';
 
 import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
 import { canActivate } from '@/lib/campaign/lifecycle';
+
+import { ActionButton } from './ActionButton';
 import { formatMissingPhases } from '@/lib/campaign/phase-labels';
 import {
   pushManagerAcknowledgment,
   type AcknowledgmentAction,
 } from '@/lib/chat/manager-acknowledgments';
 import { triggerVivierPreselection } from '@/lib/vivier/trigger-preselection';
+import { nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
 import { useCampaignsStore } from '@/stores/campaigns-store';
 
 export type CampaignActionStatus =
@@ -116,6 +119,18 @@ export function CampaignStatusActions({
           onClick={onResume}
         />
       ) : null}
+      {/* Un brouillon se REPREND là où il en est — c'est la contrepartie du
+          « vous pouvez fermer » de l'assistant : sans porte de retour, la
+          promesse serait vide. « Continuer la création » et non « Reprendre »,
+          déjà pris par la sortie de pause. */}
+      {status === 'draft' || status === 'in_progress' ? (
+        <ActionButton
+          variant="neutral"
+          icon="✍️"
+          label="Continuer la création"
+          href={nouvelleCampagneHref(campaignId)}
+        />
+      ) : null}
       {status === 'draft' || status === 'in_progress' ? (
         <ActionButton
           variant="success"
@@ -153,70 +168,5 @@ export function CampaignStatusActions({
         />
       ) : null}
     </>
-  );
-}
-
-type Variant = 'success' | 'warning' | 'danger' | 'neutral';
-
-function ActionButton({
-  variant,
-  icon,
-  label,
-  onClick,
-  disabled = false,
-  title,
-}: {
-  variant: Variant;
-  icon: string;
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  const styles: Record<Variant, { bg: string; color: string }> = {
-    success: {
-      bg: 'rgba(21,163,100,0.1)',
-      color: 'var(--dash-green)',
-    },
-    warning: {
-      bg: 'rgba(213,160,0,0.12)',
-      color: 'var(--dash-yellow)',
-    },
-    danger: {
-      bg: 'rgba(229,72,77,0.08)',
-      color: 'var(--dash-red)',
-    },
-    neutral: {
-      bg: 'var(--dash-surface)',
-      color: 'var(--dash-text-secondary)',
-    },
-  };
-  const s = styles[variant];
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className="font-body"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        padding: '6px 14px',
-        borderRadius: 8,
-        border: variant === 'neutral' ? '1px solid var(--dash-border)' : 'none',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontSize: 12,
-        fontWeight: 600,
-        transition: 'filter 0.15s',
-        background: s.bg,
-        color: s.color,
-        opacity: disabled ? 0.45 : 1,
-      }}
-    >
-      <span aria-hidden>{icon}</span>
-      {label}
-    </button>
   );
 }

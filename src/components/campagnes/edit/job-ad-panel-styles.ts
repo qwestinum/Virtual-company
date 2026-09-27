@@ -77,9 +77,9 @@ export const primaryBtn: CSSProperties = {
 };
 export const errorStyle: CSSProperties = {
   fontSize: 12.5,
-  color: '#9c2b2b',
-  background: '#fdf1f1',
-  border: '1px solid #f3d5d5',
+  color: 'var(--dash-red-text)',
+  background: 'var(--dash-red-light)',
+  border: '1px solid color-mix(in srgb, var(--dash-red) 35%, transparent)',
   borderRadius: 8,
   padding: '7px 10px',
   margin: '0 0 8px',

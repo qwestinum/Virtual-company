@@ -15,7 +15,7 @@ export const SECTIONS: {
 }[] = [
   {
     key: 'a_pointer',
-    title: 'À pointer',
+    title: 'À confirmer',
     hint: 'Entretiens passés : dites ce qui s’est produit.',
   },
   { key: 'a_venir', title: 'À venir' },

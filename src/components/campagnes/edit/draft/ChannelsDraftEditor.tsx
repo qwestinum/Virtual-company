@@ -16,11 +16,21 @@ import {
 export type ChannelsDraftEditorProps = {
   selected: PublicationChannel[];
   onChange: (next: PublicationChannel[]) => void;
+  /** Canaux à proposer (défaut : tous — l'édition d'une campagne ancienne). */
+  channels?: readonly PublicationChannel[];
+  /**
+   * Canaux montrés mais PAS encore branchés : cochables, non. On les AFFICHE
+   * quand même, avec « bientôt » — masquer une destination qu'on prépare
+   * laisserait croire qu'elle n'existera jamais.
+   */
+  comingSoon?: readonly PublicationChannel[];
 };
 
 export function ChannelsDraftEditor({
   selected,
   onChange,
+  channels = PUBLICATION_CHANNEL_ORDER,
+  comingSoon = [],
 }: ChannelsDraftEditorProps) {
   const toggle = (channel: PublicationChannel) => {
     if (selected.includes(channel)) {
@@ -31,12 +41,15 @@ export function ChannelsDraftEditor({
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {PUBLICATION_CHANNEL_ORDER.map((channel) => {
+      {channels.map((channel) => {
         const enabled = selected.includes(channel);
+        const bientot = comingSoon.includes(channel);
         return (
           <button
             key={channel}
             type="button"
+            data-channel={channel}
+            disabled={bientot}
             onClick={() => toggle(channel)}
             aria-pressed={enabled}
             className="font-body"
@@ -55,10 +68,26 @@ export function ChannelsDraftEditor({
                 : 'var(--dash-text-secondary)',
               fontWeight: 600,
               fontSize: 13,
-              cursor: 'pointer',
+              cursor: bientot ? 'not-allowed' : 'pointer',
+              opacity: bientot ? 0.55 : 1,
             }}
           >
-            {PUBLICATION_CHANNEL_LABELS[channel]}
+            <span>
+              {PUBLICATION_CHANNEL_LABELS[channel]}
+              {bientot ? (
+                <span
+                  className="font-body"
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: 'var(--dash-text-secondary)',
+                  }}
+                >
+                  bientôt
+                </span>
+              ) : null}
+            </span>
             <span
               aria-hidden
               style={{

@@ -21,12 +21,10 @@ import { useState } from 'react';
 
 import {
   activeReferentOf,
-  ALL_REFERENTS,
   buildReferentOptions,
   filterByReferent,
   myCampaignsCount,
   referentSelectionKey,
-  type ReferentSelection,
 } from '@/lib/referent/filter';
 import {
   defaultValidationSubTab,
@@ -40,10 +38,11 @@ import { EmptyQueueNotice } from './EmptyQueueNotice';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
 import { RejectionProposalsTab } from './RejectionProposalsTab';
 import { SettledValidationCard } from './SettledValidationCard';
-import { SubTabButton } from './SubTabButton';
+import { DotTabs } from '@/components/ui/DotTabs';
 import { useValidationsQueue } from './use-validations-queue';
 import { ValidationCard } from './ValidationCard';
 import { ValidationsHistory } from './ValidationsHistory';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
 
 export function ValidationsHub() {
   const {
@@ -59,8 +58,9 @@ export function ValidationsHub() {
   } = useValidationsQueue();
   // Filtre de LECTURE, volontairement NON persisté (ni URL, ni localStorage) :
   // un filtre oublié qui masque des dossiers est pire que pas de filtre.
-  const [referentFilter, setReferentFilter] =
-    useState<ReferentSelection>(ALL_REFERENTS);
+  // ⚠️ UN SEUL ÉTAT pour tout le produit, mémorisé par recruteur : cocher
+  // « Mes campagnes » ici, c'est le retrouver coché sur les autres écrans.
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
   // `null` = « le sous-onglet d'arrivée n'est pas encore pris ». Il ne peut pas
   // l'être ici : à ce stade la file est en chargement et les comptes sont
   // inconnus. Il est donc pris PLUS BAS, pendant le rendu — pas dans un
@@ -170,22 +170,36 @@ export function ValidationsHub() {
         currentUserId={currentUserId}
       />
 
-      <div className="flex items-center gap-1 border-b border-stone-200">
-        <SubTabButton
-          active={activeTab === 'examine'}
-          label="À examiner"
-          count={visibleExamine.length}
-          total={toExamine.length}
-          onClick={() => setTab('examine')}
-        />
-        <SubTabButton
-          active={activeTab === 'proposals'}
-          label="Propositions de refus"
-          count={visibleProposals.length}
-          total={sortedProposals.length}
-          onClick={() => setTab('proposals')}
-        />
-      </div>
+      {/* ⚠️ LES PUCES PARTAGÉES (`DotTabs`), pas des onglets soulignés propres
+          à cet écran. Le compte affiché reste celui des dossiers VISIBLES ; le
+          total exhaustif est dit dans le libellé dès qu'un filtre en masque —
+          un dossier caché doit rester comptabilisé, sans quoi le filtre se lit
+          comme une disparition. */}
+      <DotTabs
+        ariaLabel="Choisir la file à traiter"
+        current={activeTab}
+        onChange={setTab}
+        tabs={[
+          {
+            key: 'examine' as const,
+            label:
+              visibleExamine.length === toExamine.length
+                ? 'À examiner'
+                : `À examiner (${visibleExamine.length} sur ${toExamine.length})`,
+            dot: 'var(--dash-yellow)',
+            count: visibleExamine.length,
+          },
+          {
+            key: 'proposals' as const,
+            label:
+              visibleProposals.length === sortedProposals.length
+                ? 'Propositions de refus'
+                : `Propositions de refus (${visibleProposals.length} sur ${sortedProposals.length})`,
+            dot: 'var(--dash-red)',
+            count: visibleProposals.length,
+          },
+        ]}
+      />
 
       {activeTab === 'proposals' ? (
         <RejectionProposalsTab

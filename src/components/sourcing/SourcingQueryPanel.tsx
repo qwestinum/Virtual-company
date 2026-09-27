@@ -93,7 +93,19 @@ export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: str
   const edited = generated !== null && text.trim() !== generated.query.trim();
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-stone-200 bg-white px-4 py-4">
+    // ⚠️ LE QUADRANT DE LA REQUÊTE EST MIS EN ÉVIDENCE. C'est le seul endroit
+    // de l'écran où l'on écrit quelque chose qui part chez un tiers et qui
+    // coûte : sur un fond blanc parmi d'autres cadres blancs, rien ne le
+    // distinguait d'un bloc de lecture. Beige, comme la surbrillance des
+    // campagnes sourcées — une NUANCE (1,22:1 sur le blanc), jamais une
+    // couleur d'alerte.
+    <section
+      className="flex flex-col gap-3 rounded-[14px] border px-4 py-4"
+      style={{
+        borderColor: 'var(--dash-beige-bord)',
+        background: 'var(--dash-beige)',
+      }}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label htmlFor="sourcing-query" className="font-body text-[13px] font-semibold text-stone-800">
           Requête
@@ -121,7 +133,8 @@ export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: str
         placeholder={generating ? 'Rédaction de la requête à partir de la fiche…' : ''}
         disabled={generating}
         onChange={(e) => setText(e.target.value)}
-        className="w-full resize-y rounded-md border border-stone-300 px-3 py-2 font-body text-[13.5px] text-stone-800 focus:border-stone-500 focus:outline-none"
+        className="orqa-field w-full resize-y rounded-[10px] border bg-white px-3 py-2 font-body text-[13.5px]"
+        style={{ borderColor: 'var(--dash-field-border)', color: 'var(--dash-text)' }}
       />
 
       {generated?.fallbackReason ? (
@@ -142,7 +155,12 @@ export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: str
           type="button"
           disabled={generating || running || text.trim().length < 3}
           onClick={() => void launch()}
-          className="rounded-md border border-stone-800 bg-stone-900 px-4 py-1.5 font-body text-[12.5px] font-semibold text-white hover:bg-stone-800 disabled:opacity-40"
+          className="rounded-lg border px-4 py-1.5 font-body text-[12.5px] font-semibold disabled:opacity-40"
+          style={{
+            borderColor: 'var(--dash-beige-encre)',
+            background: 'var(--dash-beige-encre)',
+            color: '#fff',
+          }}
         >
           {running ? <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" /> : null}
           {running ? 'Recherche en cours…' : 'Lancer'}

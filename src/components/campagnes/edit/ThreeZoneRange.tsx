@@ -82,7 +82,7 @@ export function ThreeZoneRange({
         onChange={(e) => onLow(Number(e.currentTarget.value))}
         onPointerUp={commit}
         onKeyUp={commit}
-        aria-label="Seuil bas (refus automatique en dessous)"
+        aria-label="Seuil bas (proposé au refus en dessous)"
       />
       {/* Poignée HAUTE. */}
       <input

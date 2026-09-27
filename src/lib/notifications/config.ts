@@ -30,4 +30,12 @@ export const BUSINESS_NOTIFICATION_THRESHOLDS = {
    * devienne du bruit de fond.
    */
   apecRepublishWarningDays: 7,
+  /**
+   * Signal 9 — campagne ACTIVE depuis plus de N jours sans la moindre
+   * candidature. 7 jours : assez pour qu'une diffusion ait eu le temps de
+   * produire quelque chose, assez court pour qu'un flux mal branché se voie
+   * dans la semaine plutôt qu'au bilan. En dessous, on accuserait à tort une
+   * campagne qui vient d'être lancée un vendredi.
+   */
+  campaignWithoutCandidatesDays: 7,
 } as const;

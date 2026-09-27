@@ -1,28 +1,17 @@
 import type { Metadata } from "next";
 import {
-  Fraunces,
   Geist,
   Geist_Mono,
-  Inter,
   JetBrains_Mono,
   Nunito,
   Plus_Jakarta_Sans,
 } from "next/font/google";
 import "./globals.css";
 
-// Identité visuelle ORQA (menu Candidatures) : Fraunces (titres/gros chiffres)
-// + Inter (corps). JetBrains Mono (données) est déjà chargé ci-dessous.
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
+// ⚠️ Fraunces (serif) et Inter ont été RETIRÉES le 21/09/2026 avec la peau
+// divergente du menu Candidatures : deux familles chargées sur chaque page
+// pour un seul écran. Le produit en emploie trois — Plus Jakarta (ce qui
+// porte), Nunito (ce qui se lit), JetBrains Mono (les chiffres).
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -65,7 +54,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${geistSans.variable} ${geistMono.variable} ${nunito.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} ${fraunces.variable} ${inter.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${nunito.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full m-0">{children}</body>
     </html>

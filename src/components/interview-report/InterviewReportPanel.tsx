@@ -14,6 +14,13 @@
  * compte rendu validé fait partie du dossier, avec sa mention. Un compte rendu
  * validé se modifie en étant validé de nouveau — il ne redevient pas
  * brouillon, il ne disparaît donc jamais du dossier en silence.
+ *
+ * ⚠️ `readOnly` (23/09/2026) : sur un dossier TRANCHÉ, l'écran annonce
+ * « consultation seule » — y offrir un champ prêt à écrire se contredisait.
+ * La zone s'y LIT et ne s'y écrit plus ; et quand il n'y a rien écrit, elle
+ * ne s'affiche pas du tout. Ce qui a été rédigé reste visible : le compte
+ * rendu fait partie du dossier, le faire disparaître à la clôture serait
+ * perdre une pièce, pas ranger l'écran.
  */
 
 import { useState } from 'react';
@@ -35,10 +42,14 @@ import { useInterviewReport } from './useInterviewReport';
 export function InterviewReportPanel({
   analysisId,
   step,
+  readOnly = false,
 }: {
   analysisId: string;
   /** Numéro d'étape dans le bloc de décision (absent hors de ce bloc). */
   step?: number;
+  /** Dossier tranché : on lit ce qui existe, on n'écrit plus, et rien ne
+   *  s'affiche s'il n'y a rien à lire. */
+  readOnly?: boolean;
 }) {
   const { view, error, save, setView } = useInterviewReport(analysisId);
   const [draft, setDraft] = useState<InterviewReportSections | null>(null);
@@ -46,10 +57,28 @@ export function InterviewReportPanel({
   const [busy, setBusy] = useState(false);
 
   if (!view) {
+    if (readOnly) return null;
     return <p className="font-body text-[12px] text-stone-400">Chargement du compte rendu…</p>;
   }
   const { report, criteria, writable } = view;
-  if (!report && !writable) return null;
+  if (!report && (readOnly || !writable)) return null;
+
+  if (readOnly && report) {
+    return (
+      <ZoneCard
+        tone="report"
+        step={step}
+        title="Compte rendu d’entretien"
+        hint={
+          report.status === 'draft'
+            ? 'Brouillon — il ne fait pas partie du dossier.'
+            : undefined
+        }
+      >
+        <InterviewReportReadOnly report={report} />
+      </ZoneCard>
+    );
+  }
 
   // Ce qui est dans l'éditeur : la saisie en cours, sinon un champ vide
   // (aucun compte rendu), sinon le brouillon enregistré. Un compte rendu

@@ -260,7 +260,7 @@ export function describeValidationMark(
 ): MarkDescription {
   switch (value) {
     case 'validated':
-      return { label: 'Retenu — GO définitif', tone: 'positive' };
+      return { label: 'Retenu', tone: 'positive' };
     case 'rejected':
       return { label: 'Non retenu', tone: 'negative' };
     case 'cleared':

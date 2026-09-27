@@ -303,3 +303,68 @@ En l'absence de plafond, le seuil du bloc 2 est le **seul critère d'inclusion**
 ### 14.4. Recherche libre & garde-fou
 
 Recherche libre = bloc 2 sémantique seul (texte embeddé ⇄ titres), éphémère. Le **garde-fou d'espace d'embeddings** s'applique aux `title_embedding` : si le modèle de la requête ≠ celui des titres indexés, on échoue FORT (`embedding_model_mismatch`) au lieu de classer au hasard. Tout changement de modèle ⇒ `reindex:vivier` + redémarrage serveur.
+
+---
+
+## 15. L'indexation ne peut plus rester « en cours » (23/09/2026)
+
+**Constat de production : 124 dossiers bloqués en `pending`.** Le statut ne passe
+à `indexed` qu'à la dernière ligne d'`indexVivierCandidate`, et un échec écrit
+`failed`. Rester `pending` signifie donc que le traitement **n'est jamais allé au
+bout** — ni réussi, ni échoué.
+
+### 15.1 La cause : une promesse flottante sur une instance gelée
+
+Trois portes alimentent le vivier, et elles ne se valent pas :
+
+| Porte | Déclenchement | Sur Vercel |
+|---|---|---|
+| Dépôt manuel (`/api/vivier`) | `after()` | tient |
+| Dépôt par le chat (`/api/cv-analyzer`) | `after()` | tient |
+| **Candidature reçue par email (poller)** | `void feedVivierFromApplication(…)` | **coupée** |
+
+La relève tourne dans `/api/cron/imap-poll`, qui `await` le poll puis rend sa
+réponse : la promesse flottante n'est rattachée à rien, et l'instance est gelée
+dès la réponse (`maxDuration = 60` borne de toute façon l'ensemble). Or indexer
+un CV coûte un appel au modèle plus plusieurs embeddings. Même motif dans
+l'admission sourcing (`admit.ts`).
+
+**Ce n'est pas cosmétique** : les vues de recherche filtrent
+`indexing_status = 'indexed'` (trois occurrences dans `migrate.sql`). Un dossier
+`pending` est dans le vivier et n'en sort jamais — une perte de couverture
+silencieuse.
+
+### 15.2 Le rail — `runVivierIndexingMaintenance`
+
+Branché sur le même tour que les autres rails (cron de relève en prod, tick du
+scheduler en dev/VPS) :
+
+- **la ligne `pending` EST la file d'attente** : aucune table, aucune migration ;
+- **lot borné à 2 par passage** — le cron partage ses 60 s avec la relève, le
+  drain des rendez-vous et le sourcing ;
+- **réservation par contrôle optimiste sur `updated_at`**
+  (`claimVivierIndexing`), comme `claimAdmissionAttempt` : deux invocations
+  concurrentes ne paient pas deux fois le même dossier. ⚠️ Le déclencheur
+  `touch_updated_at` réécrit la valeur — c'est la CLAUSE qui fait le verrou, pas
+  la valeur écrite ;
+- **âge minimal de 5 min** (TTL partagé) : on ne reprend pas un dossier qu'une
+  passe indexe, et le chemin nominal garde sa chance ;
+- **fail-soft intégral** : le vivier ne fait jamais échouer une relève.
+
+La promesse flottante reste, comme chemin rapide quand l'instance survit. Ce qui
+change : on ne compte plus dessus.
+
+### 15.3 Le rattrapage d'un stock existant
+
+`npm run reindex:vivier -- --env=<fichier> --only-pending` reprend les dossiers
+déjà bloqués (`--dry-run` pour compter d'abord). ⚠️ `--env` est **obligatoire,
+sans repli**, et la référence du projet visé est imprimée puis retapée
+(`--confirm-project=<ref>` hors terminal) : le script ÉCRIT, et un fichier au nom
+de développement peut pointer la base du client.
+
+⚠️ **Vérifier le modèle d'embeddings du fichier d'environnement** avant de
+lancer : un modèle différent de celui déjà en base écrirait des vecteurs dans un
+espace non comparable, et la présélection refuserait de chercher
+(`embedding_model_mismatch`).
+
+Exécuté le 23/09/2026 sur la production : **124 dossiers, 124 indexés, 0 échec**.

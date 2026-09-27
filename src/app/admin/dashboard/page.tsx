@@ -22,7 +22,7 @@ export default function AdminDashboardPage() {
       <WorkspaceBackground />
       <TopBanner
         breadcrumb={[
-          { label: 'Lobby', href: '/app' },
+          { label: 'Aujourd’hui', href: '/aujourdhui' },
           { label: 'Dashboard (admin)' },
         ]}
       />

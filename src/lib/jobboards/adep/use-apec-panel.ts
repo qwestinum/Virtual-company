@@ -18,9 +18,10 @@ import {
   transitionApec,
   type AdepState,
 } from './panel-client';
+import { checkAdepDraft } from './draft-check';
 import { adepPhase } from './panel-state';
 import type { AdepPrefill } from './prefill';
-import { validateAdepOffer, type AdepIssue } from './validate';
+import type { AdepIssue } from './validate';
 
 /**
  * Provenance d'un texte écrit par le modèle. Le libellé doit tenir dans la
@@ -323,20 +324,11 @@ export function useApecPanel(campaignId: string): ApecPanelState {
     [offer],
   );
 
-  const runVerify = useCallback((): AdepIssue[] => {
-    if (!complete) {
-      return [
-        {
-          level: 'error',
-          field: 'draft',
-          message: 'Certains champs demandés par l’Apec ne sont pas encore renseignés.',
-          preventsCode: '023',
-        },
-      ];
-    }
-    const report = validateAdepOffer(complete, todayInParis());
-    return [...report.errors, ...report.warnings];
-  }, [complete]);
+  // Champ par champ : un « certains champs manquent » laissait deviner lesquels.
+  const runVerify = useCallback(
+    (): AdepIssue[] => (offer ? checkAdepDraft(offer, todayInParis()) : []),
+    [offer],
+  );
 
   const verify = useCallback(() => {
     setIssues(runVerify());

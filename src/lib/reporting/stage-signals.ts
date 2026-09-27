@@ -37,6 +37,7 @@ import {
   type CandidateStageCounts,
   deriveCandidateStage,
   tallyStages,
+  emptyStageCounts,
 } from '@/lib/reporting/candidate-stage';
 import {
   countCandidateAnalyses,
@@ -220,6 +221,67 @@ export async function computeStageCounts(
   ]);
   const counts = tallyStages(all.map((c) => stageFor(c, signals)));
   return { counts, total: all.length };
+}
+
+/**
+ * Les mêmes compteurs, mais GROUPÉS PAR CAMPAGNE — une seule lecture.
+ *
+ * ⚠️ `computeStageCounts({ campaignIds })` AGRÈGE : elle rend un seul jeu de
+ * compteurs pour tout le périmètre. La liste des campagnes, elle, a besoin du
+ * détail de chacune — et appeler la version simple quinze fois ferait quinze
+ * lectures pour un écran qui en demande une.
+ *
+ * Même source, même exhaustivité, même dérivation d'étape : les compteurs
+ * d'une carte et ceux du ruban ne peuvent pas diverger, puisqu'ils sortent du
+ * même calcul.
+ *
+ * Rend aussi l'ancienneté du plus ancien dossier EN ATTENTE : elle se lit dans
+ * les données déjà chargées, donc elle ne coûte rien de plus — et sans elle
+ * « ce qui attend » devrait être rechargé au dépliage, ce qui ferait sauter la
+ * mise en page.
+ */
+export async function computeStageCountsByCampaign(
+  campaignIds: readonly string[],
+  nowMs: number = Date.now(),
+): Promise<
+  Map<string, { counts: CandidateStageCounts; total: number; oldestWaitingDays: number | null }>
+> {
+  const out = new Map<
+    string,
+    { counts: CandidateStageCounts; total: number; oldestWaitingDays: number | null }
+  >();
+  const ids = [...new Set(campaignIds)];
+  if (ids.length === 0) return out;
+
+  const [all, signals] = await Promise.all([
+    listAllCandidateAnalyses({ campaignIds: ids }),
+    loadStageSignals({ campaignIds: ids }),
+  ]);
+
+  // Une campagne sans aucune candidature doit rendre des ZÉROS, pas une
+  // absence : la carte affiche « 0 Reçues », elle ne masque pas son bloc.
+  for (const id of ids) {
+    out.set(id, { counts: emptyStageCounts(), total: 0, oldestWaitingDays: null });
+  }
+
+  for (const analysis of all) {
+    const entry = analysis.campaignId ? out.get(analysis.campaignId) : undefined;
+    if (!entry) continue;
+    const stage = stageFor(analysis, signals);
+    entry.counts[stage] += 1;
+    entry.total += 1;
+    if (stage === 'a_valider') {
+      const jours = Math.max(
+        0,
+        Math.floor((nowMs - Date.parse(analysis.createdAt)) / 86_400_000),
+      );
+      entry.oldestWaitingDays =
+        entry.oldestWaitingDays === null
+          ? jours
+          : Math.max(entry.oldestWaitingDays, jours);
+    }
+  }
+  return out;
 }
 
 /** Total exact du périmètre (sans dériver les étapes) — secours / cohérence. */

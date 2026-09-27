@@ -38,6 +38,9 @@ import { SaveBanner } from './SaveBanner';
 
 const FLASH_MS = 3000;
 
+/** Ordre canonique — le filtre se pose dessus, il ne le redéfinit pas. */
+const SOURCES_MONTREES = CV_SOURCES;
+
 export type FluxEditBlockProps = {
   campaign: ActiveCampaign;
 };
@@ -150,7 +153,15 @@ export function FluxEditBlock({ campaign }: FluxEditBlockProps) {
         l&apos;entrée.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {CV_SOURCES.map((source) => {
+        {SOURCES_MONTREES.filter(
+          // ⚠️ On MASQUE ce qui n'est pas branché — mais JAMAIS ce que la
+          // campagne utilise déjà. Une campagne ancienne peut porter un flux
+          // qu'on ne propose plus : le cacher la laisserait avec un réglage
+          // qu'elle ne peut ni voir ni retirer. Offrir un flux inerte promet
+          // des candidatures qui n'arriveront pas ; cacher un flux actif
+          // supprime le moyen d'y mettre fin.
+          (source) => CV_SOURCE_OPERATIONAL[source] || isActive(source),
+        ).map((source) => {
           const enabled = isActive(source);
           const operational = CV_SOURCE_OPERATIONAL[source];
           return (

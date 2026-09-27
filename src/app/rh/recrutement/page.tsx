@@ -1,46 +1,19 @@
-import { ManagerChatLayout } from '@/components/chat/ManagerChatLayout';
-import { HydrationGate } from '@/components/HydrationGate';
-import { SiteFooter } from '@/components/navigation/SiteFooter';
-import { TopBanner } from '@/components/navigation/TopBanner';
-import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
-import { WorkspacePane } from '@/components/workspace/WorkspacePane';
-import { isSourcingEnabled } from '@/lib/sourcing/flag';
+import { redirect } from 'next/navigation';
 
-export const metadata = {
-  title: 'Recrutement — QWESTINUM',
-};
+import { legacyTarget } from '@/lib/navigation/legacy-routes';
 
 /**
- * Service Recrutement — page MVP.
+ * ANCIENNE ADRESSE, conservée — elle ne rendra jamais 404 : des liens collés
+ * dans des comptes rendus, des favoris et des captures de démonstration la
+ * portent.
  *
- * Bandeau ORQA + fond atelier commun à toutes les pages applicatives.
- * Le breadcrumb est porté par `TopBanner` ; le `WorkspacePane` ne
- * duplique plus son propre fil d'Ariane.
+ * Le workspace n'est plus une page unique à onglets : chaque entrée a son
+ * adresse. On atterrit sur ce qui attend une action.
  *
- * Le flag du module Sourcing se lit ICI, côté serveur (deux étages,
- * fail-closed) : le client ne reçoit qu'un booléen, jamais la configuration.
+ * La cible est LUE dans `src/lib/navigation/legacy-routes.ts` (source unique,
+ * testée) : la recopier ici ferait deux tableaux qui finiraient par diverger,
+ * et la divergence serait muette — une redirection ne fait rougir personne.
  */
-export default async function RecrutementPage() {
-  const sourcingEnabled = await isSourcingEnabled();
-  return (
-    <main className="relative flex flex-col h-[100svh] w-full overflow-hidden">
-      <WorkspaceBackground />
-      <TopBanner
-        breadcrumb={[
-          { label: 'Lobby', href: '/app' },
-          { label: 'RH', href: '/rh' },
-          { label: 'Recrutement' },
-        ]}
-        showSettings={false}
-      />
-      <div className="relative flex flex-1 min-h-0 w-full">
-        <HydrationGate />
-        <section className="relative flex-1 min-w-0 overflow-hidden">
-          <WorkspacePane sourcingEnabled={sourcingEnabled} />
-        </section>
-        <ManagerChatLayout />
-      </div>
-      <SiteFooter />
-    </main>
-  );
+export default function LegacyRedirectPage() {
+  redirect(legacyTarget('/rh/recrutement'));
 }

@@ -7,11 +7,20 @@
  * DRH). Les métriques par campagne arrivent du dashboard global puis
  * sont mémorisées dans une Map.
  *
- * Une seule campagne dépliée à la fois — cohérent avec la maquette et
- * évite que la page devienne illisible quand il y en a plusieurs.
+ * Une seule campagne dépliée à la fois — cohérent avec la maquette et évite
+ * que la page devienne illisible quand il y en a plusieurs. Et AUCUNE à
+ * l'arrivée (22/09/2026) : la seule exception est la campagne désignée par
+ * l'URL, où l'on revient justement pour elle.
  */
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
+
+import { AddCampaignButton } from './AddCampaignButton';
+import { nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
+import { useCampaignsCounters } from './useCampaignsCounters';
+
+import { resolveCampaignFocus } from '@/lib/navigation/campaign-focus';
 import { useShallow } from 'zustand/react/shallow';
 
 import {
@@ -21,19 +30,32 @@ import {
 
 import {
   CampaignCard,
-  type CampaignCandidaturesPreset,
 } from './CampaignCard';
-import type { DashboardData } from '@/hooks/useDashboardData';
+import { DotTabs } from '@/components/ui/DotTabs';
+import {
+  activeReferentOf,
+  ALL_REFERENTS,
+  filterByReferentBy,
+  type ReferentByCampaign,
+  type ReferentSelection,
+} from '@/lib/referent/filter';
 
 export type CampaignsListProps = {
-  candidates: DashboardData['candidates'];
   onEditCampaign: (campaignId: string) => void;
-  onCreateCampaign: () => void;
   /** Quadrant de carte cliqué → onglet Candidatures pré-filtré (campagne + préset). */
-  onOpenCandidatures?: (
-    campaignId: string,
-    preset: CampaignCandidaturesPreset,
-  ) => void;
+  /**
+   * Campagne désignée par l'URL (`/campagnes?campagne=…`) — « retour à la
+   * campagne ». Elle est dépliée, et le filtre comme la pagination s'écartent
+   * pour l'atteindre, jusqu'au premier geste de l'utilisateur.
+   */
+  focusCampaignId?: string | null;
+  /**
+   * Filtre « Référent » posé par l'écran — partagé avec les autres onglets et
+   * mémorisé par recruteur. Il ne RESTREINT rien : il réduit seulement ce qui
+   * s'affiche, et le compte de chaque puce de statut suit.
+   */
+  referentFilter?: ReferentSelection;
+  referents?: ReferentByCampaign;
 };
 
 const PAGE_SIZE = 5;
@@ -49,12 +71,19 @@ const STATUS_FILTERS: { id: StatusFilter; label: string; dot: string }[] = [
 ];
 
 export function CampaignsList({
-  candidates,
   onEditCampaign,
-  onCreateCampaign,
-  onOpenCandidatures,
+  focusCampaignId = null,
+  referentFilter = ALL_REFERENTS,
+  referents = {},
 }: CampaignsListProps) {
-  const rawCampaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
+  const rawCampaignsBrutes = useCampaignsStore(useShallow(selectActiveCampaigns));
+  const rawCampaigns = useMemo(
+    () =>
+      filterByReferentBy(rawCampaignsBrutes, (c) =>
+        activeReferentOf(c.id, referents),
+      referentFilter),
+    [rawCampaignsBrutes, referents, referentFilter],
+  );
   // Tri par récence (createdAt desc). Fallback sur l'ordre d'insertion si
   // createdAt est manquant (campagnes seedées sans timestamp).
   const allCampaigns = useMemo(
@@ -68,27 +97,54 @@ export function CampaignsList({
   // Filtre statut — par défaut « Actives » pour démarrer en focus sur
   // ce qui tourne. `draft` agrège draft + in_progress (cadrage en
   // cours) pour éviter de fragmenter la vue à l'écran.
+  // Campagne désignée par l'URL (« retour à la campagne ») : elle décide du
+  // filtre et de la page tant que l'utilisateur n'a rien touché. Résolu à
+  // CHAQUE rendu, pas au montage : la liste arrive du store après coup, et un
+  // état initial calculé sur une liste vide ne déplierait jamais rien.
+  const focus = resolveCampaignFocus(
+    allCampaigns.map((c) => c.id),
+    focusCampaignId,
+    PAGE_SIZE,
+  );
+  const [touched, setTouched] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  const effectiveStatusFilter: StatusFilter =
+    !touched && focus.showAllStatuses ? 'all' : statusFilter;
   const campaigns = useMemo(() => {
-    if (statusFilter === 'all') return allCampaigns;
-    if (statusFilter === 'draft') {
+    if (effectiveStatusFilter === 'all') return allCampaigns;
+    if (effectiveStatusFilter === 'draft') {
       return allCampaigns.filter(
         (c) => c.status === 'draft' || c.status === 'in_progress',
       );
     }
-    return allCampaigns.filter((c) => c.status === statusFilter);
-  }, [allCampaigns, statusFilter]);
+    return allCampaigns.filter((c) => c.status === effectiveStatusFilter);
+  }, [allCampaigns, effectiveStatusFilter]);
 
+  // ⚠️ UN SEUL appel pour toutes les cartes de la page : les compteurs
+  // arrivent AVEC la liste. Un appel par carte aurait fait quinze lectures
+  // pour un écran qui en demande une, et les chiffres seraient apparus après
+  // les cartes — sur un écran dont c'est la première information.
   const [page, setPage] = useState(0);
   const totalPages = Math.max(1, Math.ceil(campaigns.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);
+  const safePage = Math.min(!touched ? focus.page : page, totalPages - 1);
   const pageCampaigns = campaigns.slice(
     safePage * PAGE_SIZE,
     safePage * PAGE_SIZE + PAGE_SIZE,
   );
-  const [expandedId, setExpandedId] = useState<string | null>(
-    pageCampaigns[0]?.id ?? null,
-  );
+  // Compteurs de la PAGE affichée, en un appel (cf. useCampaignsCounters).
+  const counters = useCampaignsCounters(pageCampaigns.map((c) => c.id));
+
+  const [openedId, setOpenedId] = useState<string | null>(null);
+  // Déplié : le choix de l'utilisateur s'il a cliqué, sinon la campagne de
+  // l'URL (« retour à la campagne »). Sinon RIEN : toutes les campagnes
+  // arrivent pliées (22/09/2026, demande du donneur d'ordre) — la page se lit
+  // comme une liste, et déplier d'office la première lui donnait un rang
+  // qu'elle n'a pas.
+  const expandedId = touched ? openedId : (focus.expandedId ?? null);
+  const setExpandedId = (id: string | null) => {
+    setTouched(true);
+    setOpenedId(id);
+  };
 
   // Compteurs basés sur la liste totale (pas filtrée) pour informer
   // l'utilisateur du volume disponible derrière chaque chip.
@@ -127,43 +183,15 @@ export function CampaignsList({
   // Bug fixé en Session 6 v4 : goCount partait sur recommendation === 'go',
   // ce qui montrait « 6 GO » dans la carte alors que la liste candidats
   // n'en affichait que ceux validés. Maintenant les deux vues s'accordent.
-  const statsByCampaign = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        candidates: number;
-        shortlisted: number;
-        invited: number;
-        interviews: number;
-        goCount: number;
-      }
-    >();
-    for (const c of candidates) {
-      if (!c.campaignId) continue;
-      const cur = map.get(c.campaignId) ?? {
-        candidates: 0,
-        shortlisted: 0,
-        invited: 0,
-        interviews: 0,
-        goCount: 0,
-      };
-      cur.candidates += 1;
-      if (c.recommendation === 'go') {
-        cur.shortlisted += 1;
-      }
-      if (c.status !== 'analyzed') cur.invited += 1;
-      if (c.interviewMarked === 'realized') cur.interviews += 1;
-      if (c.validationMarked === 'validated') cur.goCount += 1;
-      map.set(c.campaignId, cur);
-    }
-    return map;
-  }, [candidates]);
 
   const selectStatus = (next: StatusFilter) => {
-    if (next === statusFilter) return;
+    if (next === effectiveStatusFilter) return;
+    // Premier geste de l'utilisateur : il reprend la main sur le focus venu
+    // de l'URL (sinon le filtre reviendrait à « Toutes » au rendu suivant).
+    setTouched(true);
     setStatusFilter(next);
     setPage(0);
-    setExpandedId(null);
+    setOpenedId(null);
   };
 
   return (
@@ -179,7 +207,7 @@ export function CampaignsList({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <AddCampaignButton onClick={onCreateCampaign} />
+          <AddCampaignButton href={nouvelleCampagneHref()} />
           <h2
             className="font-display"
             style={{
@@ -193,7 +221,7 @@ export function CampaignsList({
           </h2>
         </div>
         <StatusFilterChips
-          current={statusFilter}
+          current={effectiveStatusFilter}
           counts={statusCounts}
           onChange={selectStatus}
         />
@@ -201,8 +229,7 @@ export function CampaignsList({
 
       {campaigns.length === 0 ? (
         <EmptyState
-          onCreate={onCreateCampaign}
-          filter={statusFilter}
+          filter={effectiveStatusFilter}
           totalCampaigns={allCampaigns.length}
           onReset={() => selectStatus('all')}
         />
@@ -212,83 +239,31 @@ export function CampaignsList({
             <CampaignCard
               key={camp.id}
               campaign={camp}
-              stats={
-                statsByCampaign.get(camp.id) ?? {
-                  candidates: 0,
-                  shortlisted: 0,
-                  invited: 0,
-                  interviews: 0,
-                  goCount: 0,
-                }
-              }
+              counters={counters[camp.id] ?? null}
               expanded={expandedId === camp.id}
               onToggle={() =>
                 setExpandedId(expandedId === camp.id ? null : camp.id)
               }
               onEdit={() => onEditCampaign(camp.id)}
-              onOpenCandidatures={
-                onOpenCandidatures
-                  ? (preset) => onOpenCandidatures(camp.id, preset)
-                  : undefined
-              }
             />
           ))}
           {totalPages > 1 ? (
             <Pager
               page={safePage}
               total={totalPages}
-              onPrev={() => setPage(Math.max(0, safePage - 1))}
-              onNext={() => setPage(Math.min(totalPages - 1, safePage + 1))}
+              onPrev={() => {
+                setTouched(true);
+                setPage(Math.max(0, safePage - 1));
+              }}
+              onNext={() => {
+                setTouched(true);
+                setPage(Math.min(totalPages - 1, safePage + 1));
+              }}
             />
           ) : null}
         </>
       )}
     </section>
-  );
-}
-
-function AddCampaignButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Ajouter une nouvelle campagne"
-      className="font-display"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '6px 12px 6px 8px',
-        borderRadius: 999,
-        border: 'none',
-        cursor: 'pointer',
-        background:
-          'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: 700,
-        letterSpacing: '0.02em',
-        boxShadow: '0 2px 10px rgba(47,110,235,0.3)',
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: '50%',
-          background: 'rgba(255,255,255,0.22)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 14,
-          lineHeight: 1,
-        }}
-      >
-        +
-      </span>
-      Nouvelle campagne
-    </button>
   );
 }
 
@@ -365,6 +340,10 @@ function PagerBtn({
   );
 }
 
+/**
+ * Les puces de statut — le COMPOSANT PARTAGÉ (`DotTabs`), dont cet écran était
+ * le modèle. Il n'en garde que la liste et les comptes.
+ */
 function StatusFilterChips({
   current,
   counts,
@@ -375,81 +354,25 @@ function StatusFilterChips({
   onChange: (next: StatusFilter) => void;
 }) {
   return (
-    <div
-      role="tablist"
-      aria-label="Filtrer les campagnes par statut"
-      style={{
-        display: 'flex',
-        gap: 3,
-        padding: 3,
-        background: 'var(--dash-warm)',
-        borderRadius: 10,
-        flexWrap: 'wrap',
-      }}
-    >
-      {STATUS_FILTERS.map((filter) => {
-        const active = filter.id === current;
-        const count = counts[filter.id];
-        return (
-          <button
-            key={filter.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(filter.id)}
-            className="font-body"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              borderRadius: 8,
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: active ? 700 : 500,
-              background: active ? 'var(--dash-surface)' : 'transparent',
-              color: active ? 'var(--dash-text)' : 'var(--dash-text-tertiary)',
-              boxShadow: active ? '0 1px 4px rgba(0,0,0,0.06)' : undefined,
-              transition: 'all 0.15s',
-            }}
-          >
-            <span
-              aria-hidden
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: filter.dot,
-              }}
-            />
-            {filter.label}
-            <span
-              className="font-data"
-              style={{
-                fontSize: 10,
-                padding: '1px 6px',
-                borderRadius: 4,
-                background: active ? 'var(--dash-blue-light)' : 'transparent',
-                color: active ? 'var(--dash-blue)' : 'inherit',
-              }}
-            >
-              {count}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <DotTabs
+      ariaLabel="Filtrer les campagnes par statut"
+      current={current}
+      onChange={onChange}
+      tabs={STATUS_FILTERS.map((f) => ({
+        key: f.id,
+        label: f.label,
+        dot: f.dot,
+        count: counts[f.id],
+      }))}
+    />
   );
 }
 
 function EmptyState({
-  onCreate,
   filter,
   totalCampaigns,
   onReset,
 }: {
-  onCreate: () => void;
   filter: StatusFilter;
   totalCampaigns: number;
   onReset: () => void;
@@ -473,25 +396,25 @@ function EmptyState({
         <p className="font-body" style={{ margin: 0, fontSize: 14 }}>
           Aucune campagne pour l&apos;instant.
         </p>
-        <button
-          type="button"
-          onClick={onCreate}
+        <Link
+          href={nouvelleCampagneHref()}
           className="font-display"
           style={{
+            display: 'inline-block',
             marginTop: 14,
             padding: '8px 16px',
             borderRadius: 999,
             border: 'none',
-            cursor: 'pointer',
             background:
               'linear-gradient(135deg, var(--dash-blue), var(--dash-purple))',
             color: '#fff',
             fontWeight: 700,
             fontSize: 12,
+            textDecoration: 'none',
           }}
         >
           + Créer la première campagne
-        </button>
+        </Link>
       </div>
     );
   }

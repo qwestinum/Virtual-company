@@ -1,40 +1,18 @@
-import { SiteFooter } from '@/components/navigation/SiteFooter';
-import { TopBanner } from '@/components/navigation/TopBanner';
-import { WorkspaceBackground } from '@/components/navigation/WorkspaceBackground';
-import { ReportingHub } from '@/components/reporting/ReportingHub';
+import { redirect } from 'next/navigation';
 
-export const metadata = {
-  title: 'Reporting — QWESTINUM',
-};
+import { legacyTarget } from '@/lib/navigation/legacy-routes';
 
 /**
- * Module Reporting (cf. docs/specs/reporting.md). Onglet principal regroupant
- * rapports de campagne, multi-campagnes et audits. Bandeau ORQA + fond
- * atelier commun aux pages applicatives.
+ * ANCIENNE ADRESSE, conservée — elle ne rendra jamais 404 : des liens collés
+ * dans des comptes rendus, des favoris et des captures de démonstration la
+ * portent.
+ *
+ * Même contenu, autre nom de section : on pilote, on ne « reporte » pas.
+ *
+ * La cible est LUE dans `src/lib/navigation/legacy-routes.ts` (source unique,
+ * testée) : la recopier ici ferait deux tableaux qui finiraient par diverger,
+ * et la divergence serait muette — une redirection ne fait rougir personne.
  */
-export default function ReportingPage() {
-  return (
-    <main className="relative flex min-h-[100svh] flex-col">
-      <WorkspaceBackground />
-      <TopBanner
-        breadcrumb={[{ label: 'Lobby', href: '/app' }, { label: 'Reporting' }]}
-      />
-      <div className="relative mx-auto w-full max-w-4xl flex-1 px-6 py-8">
-        <header className="mb-8">
-          <p className="mb-1 font-display text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-            Rapports & audits
-          </p>
-          <h1 className="font-display text-3xl font-bold text-stone-900">
-            Reporting
-          </h1>
-          <p className="mt-2 max-w-2xl font-body text-[14px] text-stone-600">
-            Bilans de campagne, analyses consolidées et audits à la demande.
-            Chaque rapport matérialise la traçabilité native d&apos;ORQA.
-          </p>
-        </header>
-        <ReportingHub />
-      </div>
-      <SiteFooter />
-    </main>
-  );
+export default function LegacyRedirectPage() {
+  redirect(legacyTarget('/reporting'));
 }

@@ -12,7 +12,7 @@
 export type PeriodKey = 'all' | '7' | '30';
 
 const SELECT_CLASS =
-  'h-10 rounded-[10px] border border-orqa-ligne bg-white px-3.5 font-inter text-[13.5px] text-orqa-encre cursor-pointer transition hover:border-orqa-ciel focus:border-orqa-ciel focus:outline-none focus:ring-2 focus:ring-orqa-ciel/20';
+  'h-10 rounded-[10px] border border-dash-border bg-white px-3.5 font-body text-[13.5px] text-dash-text cursor-pointer transition hover:border-dash-blue focus:border-dash-blue focus:outline-none focus:ring-2 focus:ring-dash-blue/20';
 
 export function CandidaturesFilters({
   campaignOptions,
@@ -60,7 +60,7 @@ export function CandidaturesFilters({
         value={search}
         onChange={(e) => onSearch(e.currentTarget.value)}
         placeholder="Rechercher un candidat…"
-        className="h-10 min-w-[200px] max-w-[280px] flex-1 rounded-[10px] border border-orqa-ligne bg-white px-3.5 font-inter text-[13.5px] text-orqa-encre transition focus:border-orqa-ciel focus:outline-none focus:ring-2 focus:ring-orqa-ciel/20"
+        className="h-10 min-w-[200px] max-w-[280px] flex-1 rounded-[10px] border border-dash-border bg-white px-3.5 font-body text-[13.5px] text-dash-text transition focus:border-dash-blue focus:outline-none focus:ring-2 focus:ring-dash-blue/20"
       />
 
       <select
@@ -133,7 +133,7 @@ function TrajectoryChip({
       type="button"
       onClick={onClear}
       title={title}
-      className="inline-flex items-center gap-1.5 rounded-full border border-orqa-ciel bg-orqa-ciel/10 px-3.5 py-2 font-inter text-[12.5px] text-orqa-encre transition hover:border-orqa-nuit"
+      className="inline-flex items-center gap-1.5 rounded-full border border-dash-blue bg-dash-blue/10 px-3.5 py-2 font-body text-[12.5px] text-dash-text transition hover:border-dash-text"
     >
       {children}
       <span aria-hidden className="font-bold">×</span>
@@ -155,10 +155,10 @@ function Segment({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`rounded-full border px-3.5 py-2 font-inter text-[12.5px] transition ${
+      className={`rounded-full border px-3.5 py-2 font-body text-[12.5px] transition ${
         active
-          ? 'border-orqa-nuit bg-orqa-nuit text-white'
-          : 'border-orqa-ligne bg-white text-orqa-gris hover:border-orqa-ciel hover:text-orqa-encre'
+          ? 'border-dash-text bg-dash-text text-white'
+          : 'border-dash-border bg-white text-dash-text-secondary hover:border-dash-blue hover:text-dash-text'
       }`}
     >
       {children}

@@ -18,7 +18,7 @@ export default function MailboxesSettingsPage() {
       <WorkspaceBackground />
       <TopBanner
         breadcrumb={[
-          { label: 'Lobby', href: '/app' },
+          { label: 'Aujourd’hui', href: '/aujourdhui' },
           { label: 'Paramètres', href: '/settings' },
           { label: 'Boîtes mail' },
         ]}

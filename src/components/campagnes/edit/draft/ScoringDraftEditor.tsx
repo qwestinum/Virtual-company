@@ -84,16 +84,31 @@ export function ScoringDraftEditor({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* ⚠️ LE BANDEAU EST UN CRAN AU-DESSUS, et ça doit se VOIR : il commande
+          TOUS les critères d'en dessous. Posé à plat, à la même largeur et
+          dans le même ton qu'eux, il se lisait comme une ligne de plus — on ne
+          savait pas sur quoi « Tout confirmer » agissait.
+          La hiérarchie se joue sur la STRUCTURE (pleine largeur, liste rentrée
+          et rattachée par un filet), pas sur la saturation : un aplat violet
+          plein criait plus fort que les critères qu'il commande. Il reprend
+          donc le ton des blocs, et les blocs s'allègent d'un cran — ce qui
+          distingue le chapeau de son contenu, c'est la place, pas le bruit. */}
       {untreated > 0 ? (
         <div
           role="status"
+          data-role="suggestions-master"
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 10,
             flexWrap: 'wrap',
-            padding: '8px 10px',
+            padding: '10px 14px',
+            // Un bandeau fermé sur ses quatre côtés, et quatre angles
+            // identiques : accolé à la liste par le bas, il se lisait comme
+            // l'en-tête d'un tableau, alors qu'il commande des blocs qui ont
+            // chacun leur propre cadre arrondi. C'est le filet en dessous qui
+            // dit le rattachement, pas une arête partagée.
             borderRadius: 10,
             background: 'var(--dash-purple-light)',
             border: '1px solid var(--dash-purple)',
@@ -110,7 +125,9 @@ export function ScoringDraftEditor({
             }}
           >
             ✨ {untreated} pondération{untreated > 1 ? 's' : ''} suggérée
-            {untreated > 1 ? 's' : ''} par l’IA à traiter avant le lancement.
+            {untreated > 1 ? 's' : ''} par l’IA, sur les {criteria.length} critère
+            {criteria.length > 1 ? 's' : ''} ci-dessous — à traiter avant le
+            lancement.
           </span>
           <button
             type="button"
@@ -130,6 +147,22 @@ export function ScoringDraftEditor({
           </button>
         </div>
       ) : null}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          // Rentrée + filet : la liste est le CONTENU du bandeau, pas sa suite.
+          marginLeft: untreated > 0 ? 14 : 0,
+          marginTop: untreated > 0 ? 8 : 0,
+          paddingLeft: untreated > 0 ? 12 : 0,
+          paddingTop: untreated > 0 ? 10 : 0,
+          borderLeft:
+            untreated > 0
+              ? '2px solid color-mix(in srgb, var(--dash-purple) 45%, transparent)'
+              : 'none',
+        }}
+      >
       {criteria.map((c) => {
         const suggested = c.suggere === true;
         const method: VerificationMethod =
@@ -146,11 +179,13 @@ export function ScoringDraftEditor({
               gap: 8,
               padding: '8px 10px',
               borderRadius: 10,
+              // Un cran plus transparent que le chapeau : c'est lui qui les
+              // commande, ils n'ont pas à peser autant.
               background: suggested
-                ? 'var(--dash-purple-light)'
+                ? 'color-mix(in srgb, var(--dash-purple-light) 45%, var(--dash-surface))'
                 : 'var(--dash-warm)',
               border: suggested
-                ? '1px solid var(--dash-purple)'
+                ? '1px solid color-mix(in srgb, var(--dash-purple) 35%, transparent)'
                 : '1px solid var(--dash-border)',
             }}
           >
@@ -328,17 +363,18 @@ export function ScoringDraftEditor({
       >
         + Ajouter un critère
       </button>
+      </div>
     </div>
   );
 }
 
 /** Style partagé des boutons « confirmer / rejeter » (unitaire + en masse). */
-function massBtnStyle(color: string): React.CSSProperties {
+function massBtnStyle(color: string, background = 'var(--dash-surface)'): React.CSSProperties {
   return {
     padding: '4px 10px',
     borderRadius: 8,
     border: `1px solid ${color}`,
-    background: 'var(--dash-surface)',
+    background,
     color,
     fontSize: 11,
     fontWeight: 700,

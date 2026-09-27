@@ -41,6 +41,7 @@ import {
 import { postFdpProposal, postManagerScoring } from '@/lib/chat/api-client';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import { associateMailbox } from '@/lib/campaign/mailbox-association';
+import { deriveCampaignName } from '@/lib/campaign/derive-campaign-name';
 import { generateCampaignId } from '@/lib/dashboard/campaign-id';
 import {
   cancelScheduledCampaignPush,
@@ -1369,21 +1370,6 @@ type DocumentHint = {
   suggestionCount: number;
 };
 
-/**
- * Nom de la campagne à la création. Le champ `job_title` de la FDP est la SOURCE
- * DE VÉRITÉ (il a pu être édité en étape 2) ; on retombe sur l'intitulé saisi à
- * l'étape 1 s'il a été vidé, puis sur un défaut. Pur — testé.
- */
-export function deriveCampaignName(
-  fdp: FDPInProgress,
-  step1Title: string,
-): string {
-  const editedTitle =
-    typeof fdp.fields.job_title?.value === 'string'
-      ? fdp.fields.job_title.value.trim()
-      : '';
-  return editedTitle || step1Title.trim() || 'Nouvelle campagne';
-}
 
 /** Clés des sections pliables de l'étape d'édition à la création. */
 type EditSectionKey =

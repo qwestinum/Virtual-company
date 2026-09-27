@@ -7,13 +7,23 @@
  * (volume MVP faible) via helpers purs.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { CampaignReportCard } from '@/components/reporting/CampaignReportCard';
 import { CampaignReportDetail } from '@/components/reporting/CampaignReportDetail';
 import { CampaignReportFilters } from '@/components/reporting/CampaignReportFilters';
 import type { DonneurOption } from '@/components/reporting/DonneurOrdreSelect';
 import { SendReportModal } from '@/components/reporting/SendReportModal';
+import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
+import { useReferentContext } from '@/components/referent/useReferentContext';
+import { useReferentFilter } from '@/components/referent/useReferentFilter';
+import { PilotageShell } from '@/components/reporting/PilotageShell';
+import {
+  activeReferentOf,
+  buildReferentOptionsBy,
+  filterByReferentBy,
+  myReferentCountBy,
+} from '@/lib/referent/filter';
 import { SentHistoryModal } from '@/components/reporting/SentHistoryModal';
 import {
   campaignSendDefaults,
@@ -35,7 +45,7 @@ function download(url: string) {
   a.remove();
 }
 
-export function CampaignReportList() {
+export function CampaignReportList({ tabs }: { tabs: ReactNode }) {
   const [items, setItems] = useState<CampaignReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -104,10 +114,32 @@ export function CampaignReportList() {
     return [...by.entries()].map(([id, label]) => ({ id, label }));
   }, [items]);
 
+  // ⚠️ LE MÊME FILTRE, AU MÊME ENDROIT, et le MÊME ÉTAT que sur les autres
+  // onglets. Ici la liste est chargée ENTIÈRE puis paginée côté client : on
+  // filtre donc les lignes, et le compte « N campagnes clôturées » suit.
+  const { referents, currentUserId } = useReferentContext();
+  const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
+  const referentDe = useCallback(
+    (s: CampaignReportSummary) => activeReferentOf(s.campaignId, referents),
+    [referents],
+  );
+  const referentOptions = useMemo(
+    () => buildReferentOptionsBy(items, referentDe),
+    [items, referentDe],
+  );
+  const myCount = useMemo(
+    () => myReferentCountBy(items, referentDe, currentUserId),
+    [items, referentDe, currentUserId],
+  );
+  const duReferent = useMemo(
+    () => filterByReferentBy(items, referentDe, referentFilter),
+    [items, referentDe, referentFilter],
+  );
+
   const filtered = useMemo(
     () =>
       sortCampaignSummaries(
-        filterCampaignSummaries(items, {
+        filterCampaignSummaries(duReferent, {
           search,
           from: period.from,
           to: period.to,
@@ -115,7 +147,7 @@ export function CampaignReportList() {
         }),
         sortKey,
       ),
-    [items, search, period.from, period.to, donneurId, sortKey],
+    [duReferent, search, period.from, period.to, donneurId, sortKey],
   );
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -137,10 +169,12 @@ export function CampaignReportList() {
 
   if (offline) {
     return (
-      <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 font-body text-[13px] text-amber-800">
-        Supabase non configuré — aucune campagne persistée. Configurez la base
-        pour activer les rapports de campagne.
-      </p>
+      <PilotageShell tabs={tabs}>
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 font-body text-[13px] text-amber-800">
+          Supabase non configuré — aucune campagne persistée. Configurez la base
+          pour activer les rapports de campagne.
+        </p>
+      </PilotageShell>
     );
   }
 
@@ -180,7 +214,7 @@ export function CampaignReportList() {
   // Vue détail (consultation du rapport à l'écran) au clic sur une carte.
   if (detailTarget) {
     return (
-      <>
+      <PilotageShell tabs={tabs}>
         <CampaignReportDetail
           summary={detailTarget}
           onBack={() => setDetailTarget(null)}
@@ -189,26 +223,38 @@ export function CampaignReportList() {
           onSend={() => setSendTarget(detailTarget)}
         />
         {modals}
-      </>
+      </PilotageShell>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <CampaignReportFilters
-        search={search}
-        onSearchChange={setSearchReset}
-        period={period}
-        onPeriodChange={setPeriodReset}
-        referenceDate={referenceDate}
-        donneurOrdreId={donneurId}
-        onDonneurChange={setDonneurReset}
-        donneurOptions={donneurOptions}
-        sortKey={sortKey}
-        onSortChange={setSortReset}
-      />
-
-      <p className="font-body text-[12px] font-semibold text-stone-500">
+    <PilotageShell
+      tabs={tabs}
+      toolbar={
+        <div className="flex flex-col gap-2.5">
+          <ReferentFilterBar
+            options={referentOptions}
+            selection={referentFilter}
+            onChange={setReferentFilter}
+            myCount={myCount}
+            currentUserId={currentUserId}
+          />
+          <CampaignReportFilters
+          search={search}
+          onSearchChange={setSearchReset}
+          period={period}
+          onPeriodChange={setPeriodReset}
+          referenceDate={referenceDate}
+          donneurOrdreId={donneurId}
+          onDonneurChange={setDonneurReset}
+          donneurOptions={donneurOptions}
+          sortKey={sortKey}
+            onSortChange={setSortReset}
+          />
+        </div>
+      }
+    >
+      <p className="mb-3 font-body text-[12px] font-semibold text-stone-500">
         {loading ? 'Chargement…' : resultCountLabel(filtered.length)}
       </p>
 
@@ -217,7 +263,7 @@ export function CampaignReportList() {
           Aucune campagne clôturée ne correspond aux filtres.
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {paged.map((s) => (
             <CampaignReportCard
               key={s.campaignId}
@@ -233,7 +279,7 @@ export function CampaignReportList() {
       )}
 
       {pageCount > 1 ? (
-        <div className="flex items-center justify-center gap-3 font-body text-[13px]">
+        <div className="mt-5 flex items-center justify-center gap-3 font-body text-[13px]">
           <button
             type="button"
             disabled={page === 0}
@@ -257,6 +303,6 @@ export function CampaignReportList() {
       ) : null}
 
       {modals}
-    </div>
+    </PilotageShell>
   );
 }

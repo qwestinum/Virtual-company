@@ -268,7 +268,7 @@ function AuditDocument({
               Décision : {detail.journey.humanIntervention ? 'tranchée par un humain' : 'automatique (système)'}
               {detail.journey.humanIntervention
                 ? ' — candidature de la zone grise validée manuellement.'
-                : ' — hors zone grise (acceptation ou refus automatique).'}
+                : ' — hors zone d’examen (acceptation automatique, ou refus de l’ancien régime).'}
             </Text>
           </>
         ) : null}

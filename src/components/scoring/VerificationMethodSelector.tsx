@@ -24,7 +24,7 @@ export function VerificationMethodSelector({
   return (
     <label className="flex items-center gap-1.5">
       <span className="font-body text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-        Méthode
+        Méthode de recherche
       </span>
       <select
         value={value}

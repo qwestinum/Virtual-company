@@ -30,7 +30,7 @@ export function StagePill({ stage, compact = false }: StagePillProps) {
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-inter text-[12px] font-medium"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-body text-[12px] font-medium"
       style={{
         color,
         background,

@@ -107,9 +107,9 @@ export function buildCampaignFollowupResponse(
     `Voici où en est ${c.name} (${c.id}) — statut : ${statusLabel}.`,
     '',
     `- CV reçus : ${m.candidates}`,
-    `- Shortlistés / Invités : ${m.shortlisted}`,
-    `- Entretiens : ${m.interviews}`,
-    `- GO : ${m.goCount}`,
+    `- Passés par l’invitation : ${m.shortlisted}`,
+    `- Passés par l’entretien : ${m.interviews}`,
+    `- Retenus : ${m.goCount}`,
     `- Score moyen : ${m.avgScore != null ? `${m.avgScore}/100` : '—'}`,
   ].join('\n');
 
@@ -135,16 +135,16 @@ export function buildReportingResponse(
     `Point global — ${campaigns.length} campagne${campaigns.length > 1 ? 's' : ''} (${open.length} ouverte${open.length > 1 ? 's' : ''}).`,
     '',
     `- CV reçus : ${kpis.cvReceived}`,
-    `- Shortlistés / Invités : ${kpis.shortlisted}`,
-    `- Entretiens : ${kpis.interviews}`,
-    `- GO : ${kpis.go}`,
+    `- Passés par l’invitation : ${kpis.shortlisted}`,
+    `- Passés par l’entretien : ${kpis.interviews}`,
+    `- Retenus : ${kpis.go}`,
     `- Conversion : ${kpis.conversion}%`,
     `- Coût IA estimé : ${kpis.costEstimate.toFixed(2)} €`,
   ];
 
   const perCampaign = open.slice(0, 8).map((c) => {
     const m = journalToCampaignMetric(journal, c.id);
-    return `- ${c.name} (${c.id}) — ${CAMPAIGN_STATUS_LABELS[c.status]} : ${m.candidates} CV, ${m.shortlisted} shortlistés, ${m.goCount} GO`;
+    return `- ${c.name} (${c.id}) — ${CAMPAIGN_STATUS_LABELS[c.status]} : ${m.candidates} CV, ${m.shortlisted} passés par l’invitation, ${m.goCount} retenus`;
   });
 
   const body =

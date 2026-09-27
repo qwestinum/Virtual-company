@@ -1,12 +1,16 @@
 'use client';
 
 /**
- * Ouverture/fermeture des sections de réglages, MÉMORISÉE.
+ * Ouverture/fermeture des sections de réglages, MÉMORISÉE LE TEMPS DE LA
+ * SESSION.
  *
- * Toutes repliées au premier passage : la page devient une liste qu'on
- * parcourt des yeux. Ensuite, ce qu'on a ouvert le reste d'une visite à
- * l'autre — quelqu'un qui revient trois fois dans la même journée sur les
- * boîtes de réception ne doit pas les rouvrir trois fois.
+ * Tout replié à l'ouverture de l'application : la page devient une liste
+ * qu'on parcourt des yeux. Ce qu'on ouvre reste ouvert d'une page à l'autre
+ * de la même session (`sessionStorage`) — revenir trois fois sur les boîtes de
+ * réception ne demande pas de les rouvrir trois fois — mais une NOUVELLE
+ * ouverture de l'application repart fermée (demande du donneur d'ordre,
+ * 22/09/2026 ; c'était `localStorage` avant, et la page rouvrait ce qu'on
+ * avait laissé ouvert la veille).
  *
  * Plusieurs sections peuvent être ouvertes en même temps (ce n'est PAS un
  * accordéon) : comparer deux réglages est un geste courant, et fermer l'un
@@ -24,14 +28,29 @@ export type SectionToggles = {
   openCount: number;
 };
 
-export function useSectionToggles(allIds: string[]): SectionToggles {
-  const [open, setOpen] = useState<string[]>([]);
+/**
+ * @param allIds les identifiants qui existent — une préférence portant sur un
+ *   identifiant disparu est ignorée.
+ * @param cle la clé de stockage. Les FAMILLES ont la leur : mélangées aux
+ *   sections, elles fausseraient le « n sur N » de la barre d'outils et
+ *   « Tout ouvrir » replierait les familles en croyant ouvrir des sections.
+ * @param ouvertesParDefaut l'état de départ. Les sections partent REPLIÉES
+ *   (la page devient une liste qu'on parcourt) ; les familles partent
+ *   DÉPLIÉES — les replier toutes d'emblée cacherait la page entière derrière
+ *   quatre titres.
+ */
+export function useSectionToggles(
+  allIds: string[],
+  cle: string = STORAGE_KEY,
+  ouvertesParDefaut = false,
+): SectionToggles {
+  const [open, setOpen] = useState<string[]>(ouvertesParDefaut ? allIds : []);
 
-  // Lecture au montage seulement : `localStorage` n'existe pas au rendu
+  // Lecture au montage seulement : `sessionStorage` n'existe pas au rendu
   // serveur, et lire pendant le rendu produirait une hydratation divergente.
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.sessionStorage.getItem(cle);
       if (!raw) return;
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
@@ -45,8 +64,12 @@ export function useSectionToggles(allIds: string[]): SectionToggles {
       // distinguer. Un initialiseur paresseux ne convient pas — il
       // s'exécuterait aussi au rendu serveur, où `window` n'existe pas, et
       // produirait une hydratation divergente.
+      // ⚠️ On applique la préférence MÊME VIDE quand le défaut est « tout
+      // ouvert » : sinon, quelqu'un qui a tout replié retrouverait tout
+      // déplié au rechargement — sa préférence serait prise pour une absence
+      // de préférence.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (known.length > 0) setOpen(known);
+      if (known.length > 0 || ouvertesParDefaut) setOpen(known);
     } catch {
       // Préférence illisible : on repart de « tout replié », sans bruit.
     }
@@ -57,12 +80,12 @@ export function useSectionToggles(allIds: string[]): SectionToggles {
   const persist = useCallback((next: string[]) => {
     setOpen(next);
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      window.sessionStorage.setItem(cle, JSON.stringify(next));
     } catch {
       // Stockage refusé (navigation privée) : l'écran marche quand même,
       // la préférence ne survit simplement pas au rechargement.
     }
-  }, []);
+  }, [cle]);
 
   return {
     isOpen: useCallback((id: string) => open.includes(id), [open]),

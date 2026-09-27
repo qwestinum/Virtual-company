@@ -64,6 +64,7 @@ export function SchedulingDraftEditor({
       >
         <input
           type="checkbox"
+          data-role="scheduling-native"
           checked={native}
           disabled={blocked && !native}
           onChange={(e) => onNativeChange(e.currentTarget.checked)}
@@ -74,11 +75,18 @@ export function SchedulingDraftEditor({
         </span>
       </label>
 
-      {blocked && !native ? (
+      {/* ⚠️ L'avertissement se disait UNIQUEMENT quand le natif était éteint —
+          c'est-à-dire quand il n'avait aucune conséquence. Avec le natif actif
+          et un agenda vide, l'écran se taisait alors que c'est LE cas où
+          personne ne pourra réserver. Il parle maintenant dans les deux cas,
+          et il dit la conséquence, pas l'empêchement. */}
+      {blocked ? (
         <p className="font-body" style={{ fontSize: 12, color: 'var(--dash-yellow)' }}>
           {owner === null
-            ? 'Choisissez d’abord un recruteur référent (section précédente) : la réservation native s’appuie sur ses disponibilités.'
-            : 'Ce référent n’a aucune disponibilité déclarée — configurez son agenda (Paramètres → Agendas & disponibilités) pour pouvoir activer la réservation native.'}
+            ? 'Aucun référent choisi (section précédente) : la réservation s’appuiera sur l’agenda général des paramètres.'
+            : native
+              ? `${owner.displayName} n’a aucune disponibilité déclarée : aucun candidat ne pourra réserver tant que son agenda est vide (Paramètres → Agendas & disponibilités). La campagne, elle, peut être créée.`
+              : 'Ce référent n’a aucune disponibilité déclarée — configurez son agenda (Paramètres → Agendas & disponibilités) pour pouvoir activer la réservation native.'}
         </p>
       ) : null}
 

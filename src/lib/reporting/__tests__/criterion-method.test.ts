@@ -24,14 +24,14 @@ function dec(p: Partial<CriterionDecision>): CriterionDecision {
 }
 
 describe('formatCriterionMethod', () => {
-  it('llm_with_quote (et défaut undefined) → « Vérification LLM », sans mots-clés', () => {
+  it('llm_with_quote (et défaut undefined) → « Vérification IA », sans mots-clés', () => {
     expect(formatCriterionMethod(dec({}))).toEqual({
-      label: 'Vérification LLM',
+      label: 'Vérification IA',
       foundKeywords: [],
     });
     expect(
       formatCriterionMethod(dec({ verificationMethodUsed: 'llm_with_quote' })).label,
-    ).toBe('Vérification LLM');
+    ).toBe('Vérification IA');
   });
 
   it('keywords_exact / variants → « Mots-clés détectés » + liste', () => {
@@ -42,12 +42,12 @@ describe('formatCriterionMethod', () => {
     ).toEqual({ label: 'Mots-clés détectés', foundKeywords: ['React', 'Redux'] });
   });
 
-  it('hybride AVEC match → « Mots-clés + Vérification LLM » + liste', () => {
+  it('hybride AVEC match → « Mots-clés + Vérification IA » + liste', () => {
     expect(
       formatCriterionMethod(
         dec({ verificationMethodUsed: 'hybrid_keywords_llm', matchedKeywords: ['management'] }),
       ),
-    ).toEqual({ label: 'Mots-clés + Vérification LLM', foundKeywords: ['management'] });
+    ).toEqual({ label: 'Mots-clés + Vérification IA', foundKeywords: ['management'] });
   });
 
   it('hybride SANS match ([]) → « Aucun mot-clé trouvé »', () => {

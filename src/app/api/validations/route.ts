@@ -187,8 +187,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!merged.write) {
       return NextResponse.json({ validation: existing });
     }
+    // `null` : la fiche s'est engagée entre la lecture et l'écriture (une
+    // réservation d'envoi). On rend l'état RÉEL, jamais celui qu'on voulait
+    // écrire.
     const saved = await upsertPendingValidation(merged.value);
-    return NextResponse.json({ validation: saved });
+    return NextResponse.json({
+      validation: saved ?? (await getPendingValidation(validation.id)),
+    });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json(

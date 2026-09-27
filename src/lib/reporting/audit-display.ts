@@ -33,11 +33,11 @@ export function formatCriterionMethod(decision: CriterionDecision): {
       return { label: 'Mots-clés détectés', foundKeywords: kw };
     case 'hybrid_keywords_llm':
       return kw.length > 0
-        ? { label: 'Mots-clés + Vérification LLM', foundKeywords: kw }
+        ? { label: 'Mots-clés + Vérification IA', foundKeywords: kw }
         : { label: 'Aucun mot-clé trouvé', foundKeywords: [] };
     case 'llm_with_quote':
     default:
-      return { label: 'Vérification LLM', foundKeywords: [] };
+      return { label: 'Vérification IA', foundKeywords: [] };
   }
 }
 
