@@ -152,7 +152,30 @@ describe('3. « 50 de plus » en fin de liste', () => {
   it('réserve vide : le message de fin prend la place du bouton, en fin de liste', () => {
     const html = renderList(view(0, true));
     expect(html).not.toContain('de plus');
-    expect(html.indexOf('100 profils examinés — modifiez la requête')).toBeGreaterThan(html.lastIndexOf('data-profile-row="id-3"'));
+    expect(html.indexOf('100 profils renvoyés par le moteur.')).toBeGreaterThan(html.lastIndexOf('data-profile-row="id-3"'));
+    expect(html).toContain('Modifiez la requête pour en trouver d’autres.');
+  });
+
+  it('le bilan dit le compte ENTIER — jamais « 99 examinés » quand 10 ont été montrés (CAMP-2026-034, 24/09)', () => {
+    const html = renderList({ ...view(0, true), latestYield: { returned: 99, unusable: 89, hidden: 0, kept: 10 } });
+    expect(html).toContain('99 profils renvoyés par le moteur, 89 illisibles, 10 affichés.');
+    expect(html).not.toContain('examinés');
+    // Réponse anormale : on ne renvoie PAS corriger une requête qui n'y est pour rien.
+    expect(html).toContain('data-testid="yield-anomaly"');
+    expect(html).toContain('relancez la même requête');
+    expect(html).not.toContain('Modifiez la requête');
+  });
+
+  it('réponse normale : ni alerte, ni relance', () => {
+    const html = renderList({ ...view(0, true), latestYield: { returned: 100, unusable: 2, hidden: 5, kept: 93 } });
+    expect(html).toContain('100 profils renvoyés par le moteur, 2 illisibles, 5 déjà vus ou écartés, 93 affichés.');
+    expect(html).not.toContain('yield-anomaly');
+  });
+
+  it('réponse anormale avec réserve : l’alerte s’affiche quand même', () => {
+    const html = renderList({ ...view(50), latestYield: { returned: 100, unusable: 40, hidden: 0, kept: 60 } });
+    expect(html).toContain('50 de plus');
+    expect(html).toContain('data-testid="yield-anomaly"');
   });
 });
 

@@ -108,6 +108,28 @@ describe('S40 — puces de Candidatures, Entretiens et Pilotage', () => {
     expect(alertes.every((c) => c === 'scheduled'), JSON.stringify(alertes)).toBe(true);
   }, 300_000);
 
+  it('S40.2bis — Entretiens : « Historique » montre le registre, et son adresse l’ouvre', async () => {
+    // Un clic sur la puce affiche le registre (ou le dit vide) — jamais un
+    // écran blanc ni la liste d'un autre onglet.
+    await page.click('[data-dot-tab="history"]');
+    await page.waitForTimeout(250);
+    expect(await actives(page)).toEqual(['history']);
+    const registre = await page.locator('[data-interview-history]').count();
+    const vide = await page.locator('text=Aucun entretien passé.').count();
+    expect(registre + vide).toBe(1);
+    // Chaque ligne porte un verdict lisible.
+    const verdicts = await page.$$eval('[data-history-verdict]', (ns) =>
+      ns.map((n) => (n.textContent ?? '').trim()),
+    );
+    expect(verdicts.every((v) => v.length > 0)).toBe(true);
+
+    // L'adresse ouvre directement l'onglet.
+    await page.goto(`${BASE_URL}/entretiens?section=historique`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-dot-tab="history"]', { timeout: 90_000 });
+    await attendreHydratation(page, '[data-dot-tab="history"]');
+    expect(await actives(page)).toEqual(['history']);
+  }, 300_000);
+
   it('S40.3 — Pilotage : « Audit » ouvre l’audit', async () => {
     await page.goto(`${BASE_URL}/pilotage`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-dot-tab="audit"]', { timeout: 90_000 });

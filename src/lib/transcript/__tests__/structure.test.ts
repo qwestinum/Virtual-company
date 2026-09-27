@@ -132,11 +132,22 @@ describe('critères de la campagne', () => {
 });
 
 describe('plafond : pas une transcription déguisée', () => {
-  it('au-delà du budget de citations : proposition REFUSÉE', () => {
-    const long = normalizeTranscript(`Jean : ${'la recette et les paiements instantanés '.repeat(60)}`);
-    const quote = 'la recette et les paiements instantanés '.repeat(4).trim();
-    const items = Array.from({ length: 6 }, () => item('Recette.', quote));
+  const phrase = ['la', 'recette', 'et', 'les', 'paiements', 'instantanés'];
+  const long = normalizeTranscript(`Jean : ${`${phrase.join(' ')} `.repeat(60)}`);
+  /** Une citation de ~160 caractères commençant au k-ième mot : six citations DISTINCTES. */
+  const rotated = (k: number) =>
+    Array.from({ length: 24 }, (_, i) => phrase[(i + k) % phrase.length]).join(' ');
+
+  it('au-delà du budget de citations DISTINCTES : proposition REFUSÉE', () => {
+    const items = Array.from({ length: 6 }, (_, k) => item('Recette.', rotated(k)));
     expect(checkAndRender(output({ topics: items }), long, [])).toEqual({ ok: false, reason: 'too_much_quoted' });
+  });
+
+  it('la même citation réutilisée ne se compte qu’une fois', () => {
+    const items = Array.from({ length: 6 }, () => item('Recette.', rotated(0)));
+    const r = checkAndRender(output({ topics: items }), long, []);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.stats.kept).toBe(6);
   });
 });
 

@@ -1,12 +1,14 @@
 'use client';
 
 /**
- * Hook de chargement et polling des métriques du dashboard (Session 6).
+ * Hook de chargement des métriques du dashboard (Session 6).
  *
- * Pattern : SWR-lite manuel. On évite d'ajouter une dépendance pour
- * juste un poll toutes les 5 secondes ; le hook gère lui-même
- * l'intervalle, le cleanup au unmount, et le re-fetch en cas de retour
- * de visibilité (l'onglet redevient actif).
+ * ⚠️ AUCUN SONDAGE (27/09/2026, diagnostic d'egress) : le hook relisait
+ * `/api/metrics/global` toutes les 5 s, MÊME ONGLET CACHÉ — ~1,8 Go/jour par
+ * onglet oublié, de quoi sortir seul du quota Supabase. Il lit désormais à
+ * l'ouverture, au retour sur l'onglet et sur demande (`refresh`, après une
+ * action). Retiré ICI, à la source, pour qu'aucun écran ne le rallume par
+ * défaut.
  *
  * Gestion des erreurs : un échec réseau ne casse pas l'UI — on garde
  * la dernière donnée valide affichée et on annote `isStale: true`.
@@ -18,7 +20,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type {
-  ActivityItem,
   AgentMetric,
   CandidateRow,
   GlobalKPIs,
@@ -30,7 +31,6 @@ export type DashboardData = {
   kpis: GlobalKPIs;
   agents: AgentMetric[];
   candidates: CandidateRow[];
-  activity: ActivityItem[];
   /** Répartition par zone de décision (Bureau « Process First »). */
   zones: ZoneCounts;
 };
@@ -43,22 +43,7 @@ export type DashboardState = {
   refresh: () => void;
 };
 
-const POLL_INTERVAL_MS = 5_000;
-
-export function useDashboardData({
-  poll = true,
-}: {
-  /**
-   * Sonder toutes les 5 s ? Vrai par défaut (le tableau de bord vit dessus).
-   *
-   * ⚠️ *Aujourd'hui* dit NON : il ne lit de cette route QUE la bande de
-   * répartition, et la sonder toutes les 5 secondes relançait une route
-   * lourde (697 ms, 36 Ko mesurés) pour un bandeau qui ne bouge pas entre
-   * deux clics. La donnée reste EXACTE et rechargée à chaque affichage — on
-   * ne cache rien, on cesse simplement de redemander sans raison.
-   */
-  poll?: boolean;
-} = {}): DashboardState {
+export function useDashboardData(): DashboardState {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [isStale, setStale] = useState(false);
@@ -93,21 +78,19 @@ export function useDashboardData({
     // sont planifiés après `await`, jamais en synchrone dans le body
     // de l'effet. La règle eslint react-hooks/set-state-in-effect ne
     // peut pas prouver cela statiquement — on documente ici le pattern
-    // « polling avec abort » qui est le cas d'usage canonique d'un
-    // useEffect de synchronisation avec un système externe.
+    // « chargement avec abort » d'un useEffect de synchronisation avec un
+    // système externe.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchOnce();
-    const id = poll ? window.setInterval(fetchOnce, POLL_INTERVAL_MS) : 0;
     const onVisible = () => {
       if (document.visibilityState === 'visible') void fetchOnce();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      if (id) window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
       inflight.current?.abort();
     };
-  }, [fetchOnce, poll]);
+  }, [fetchOnce]);
 
   return { data, isLoading, isStale, error, refresh: fetchOnce };
 }

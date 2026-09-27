@@ -27,6 +27,7 @@ vi.mock('@/lib/sourcing/server/run-search', () => ({
     searchId: 's1',
     returned: 100,
     unusable: 0,
+    unusableBreakdown: { malformed: 0, notAProfile: 0, noName: 0 },
     toReview: 50,
     reserve: 50,
     skipped: { alreadySeen: 0, excluded: 0, opposed: 0, duplicates: 0 },

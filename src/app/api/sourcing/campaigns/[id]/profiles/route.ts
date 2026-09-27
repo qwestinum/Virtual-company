@@ -10,9 +10,10 @@ import type { User } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
-import { listSourcingProfiles, listSourcingSearches, promoteReserve } from '@/lib/db/repos/sourcing';
+import { getSearchRunPayload, listSourcingProfiles, listSourcingSearches, promoteReserve } from '@/lib/db/repos/sourcing';
 import { countRecruiterApproachesForCampaign, getSourcingPreferences } from '@/lib/db/repos/sourcing-approaches';
 import { computeMentions } from '@/lib/sourcing/mentions';
+import { yieldFromRunPayload } from '@/lib/sourcing/search-yield';
 import { buildProfilesView } from '@/lib/sourcing/profiles-view';
 import { BATCH_SIZE } from '@/lib/sourcing/selection';
 import { guardSourcingCampaign } from '@/lib/sourcing/server/route-guard';
@@ -34,9 +35,15 @@ async function view(campaign: ActiveCampaign, user: User) {
   const base = buildProfilesView(searches, profiles, fdpText(campaign.fdp, 'location'));
   const criteria = campaign.scoringSheet?.criteria ?? [];
   const shown = base.groups.flatMap((g) => g.profiles);
-  const hints = await findVivierHints(shown);
+  const latest = searches.find((s) => s.id === base.groups[0]?.search.id) ?? null;
+  const [hints, runPayload] = await Promise.all([
+    findVivierHints(shown),
+    // Fail-soft : sans bilan, l'écran dit ce qu'il sait, il ne devine pas.
+    latest ? getSearchRunPayload(campaign.id, latest.id).catch(() => null) : Promise.resolve(null),
+  ]);
   return {
     ...base,
+    latestYield: latest ? yieldFromRunPayload(runPayload, latest.newAfterDedup) : null,
     groups: base.groups.map((g) => ({
       ...g,
       profiles: g.profiles.map((p) => ({

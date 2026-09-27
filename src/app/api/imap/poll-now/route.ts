@@ -22,7 +22,8 @@ export async function POST(): Promise<NextResponse> {
   if (denied) return denied;
 
   try {
-    const outcomes = await pollAllMailboxes();
+    // Relève MANUELLE : ignore les échéances (`poll-due.ts`).
+    const outcomes = await pollAllMailboxes({ force: true });
     return NextResponse.json({
       ok: true,
       polledAt: new Date().toISOString(),

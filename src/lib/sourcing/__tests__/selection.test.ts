@@ -109,7 +109,7 @@ describe('vue de liste', () => {
     expect(v.groups[0]!.profiles[0]!.inZone).toBe(true);
   });
 
-  it('réserve vide ⇒ « 100 profils examinés — modifiez la requête »', () => {
+  it('réserve vide ⇒ recherche épuisée', () => {
     const v = buildProfilesView([search('s', '2026-09-10T00:00:00Z')], [stored('a', 's', 1, 'to_review')], null);
     expect(v.exhausted).toBe(true);
   });

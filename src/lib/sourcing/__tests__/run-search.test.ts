@@ -44,6 +44,7 @@ beforeEach(() => {
       { rank: 61, result: ExaResultSchema.parse({ url: 'https://www.linkedin.com/company/banque-x', title: 'Banque X' }) },
     ],
     unreadable: 1,
+    malformedFields: ['url: invalid_type'],
     latencyMs: 1200,
   });
   vi.mocked(listKnownFingerprints).mockResolvedValue({
@@ -76,6 +77,17 @@ describe('runSourcingSearch', () => {
     expect(rows[0]!.exaRank).toBe(4); // l'ordre du moteur, les écartés en moins
     expect(r.skipped).toEqual({ alreadySeen: 1, excluded: 1, opposed: 1, duplicates: 0 });
     expect(r.unusable).toBe(2); // une page d'entreprise + un résultat illisible
+    expect(r.unusableBreakdown).toEqual({ malformed: 1, notAProfile: 1, noName: 0 });
+  });
+
+  it('le journal distingue les causes d’inexploitabilité et nomme les champs fautifs, sans valeur', async () => {
+    await runSourcingSearch(input);
+    const entry = vi.mocked(appendJournalEntry).mock.calls[0]![0];
+    expect(entry.payload).toMatchObject({
+      unusable: 2,
+      unusableBreakdown: { malformed: 1, notAProfile: 1, noName: 0 },
+      malformedFields: ['url: invalid_type'],
+    });
   });
 
   it('l’empreinte stockée est salée, jamais l’adresse', async () => {

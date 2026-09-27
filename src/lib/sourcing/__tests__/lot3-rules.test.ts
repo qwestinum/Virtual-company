@@ -159,4 +159,22 @@ describe('ordre « en recherche d’abord » (§4.3)', () => {
     expect(orderProfiles(list, true).map((x) => x.exaRank)).toEqual([2, 4, 1, 3]);
     expect(orderProfiles(list, false).map((x) => x.exaRank)).toEqual([1, 2, 3, 4]);
   });
+
+  it('les profils contactés passent en bas, l’ordre est conservé de chaque côté', () => {
+    const c = (rank: number, available: boolean) => ({ ...p(rank, available), state: 'contacted' }) as unknown as SourcingProfileView;
+    const list = [c(1, true), p(3, false), c(2, false), p(4, true), p(5, false)];
+    expect(orderProfiles(list, false).map((x) => x.exaRank)).toEqual([3, 4, 5, 1, 2]);
+    expect(orderProfiles(list, true).map((x) => x.exaRank)).toEqual([4, 3, 5, 1, 2]);
+  });
+});
+
+describe('révocation d’une approche (25/09/2026)', () => {
+  it('une approche confirmée (updated_at ≠ created_at) n’est jamais « intacte »', async () => {
+    const { isUntouchedApproach } = await import('@/lib/db/repos/sourcing-approaches');
+    const t = '2026-09-24T12:53:44.048876+00:00';
+    expect(isUntouchedApproach({ created_at: t, updated_at: t })).toBe(true);
+    // Confirmée dans la même milliseconde : la microseconde suffit à le voir.
+    expect(isUntouchedApproach({ created_at: t, updated_at: '2026-09-24T12:53:44.048877+00:00' })).toBe(false);
+    expect(isUntouchedApproach({ created_at: t, updated_at: '2026-09-24T12:55:06.573814+00:00' })).toBe(false);
+  });
 });

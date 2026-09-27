@@ -11,9 +11,12 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { PublicGeneratedQuery, SourcingLanguage } from '@/types/sourcing';
 
+import { ANOMALY_ADVICE, isAnomalousYield } from '@/lib/sourcing/search-yield';
+
 import { EncodedCriteria } from './EncodedCriteria';
 
 type SearchSummary = {
+  returned: number;
   toReview: number;
   reserve: number;
   unusable: number;
@@ -76,11 +79,15 @@ export function SourcingQueryPanel({ campaignId, onSearched }: { campaignId: str
       }
       const r = json.result;
       const hidden = r.skipped.alreadySeen + r.skipped.excluded + r.skipped.opposed + r.skipped.duplicates;
+      const kept = r.toReview + r.reserve;
+      const anomalous = isAnomalousYield({ returned: r.returned, unusable: r.unusable, hidden, kept });
       setNotice({
-        tone: 'info',
+        tone: anomalous ? 'error' : 'info',
         message:
-          `${r.toReview + r.reserve} nouveau${r.toReview + r.reserve > 1 ? 'x' : ''} profil${r.toReview + r.reserve > 1 ? 's' : ''}` +
-          (hidden > 0 ? ` · ${hidden} déjà vu${hidden > 1 ? 's' : ''} ou écarté${hidden > 1 ? 's' : ''}` : ''),
+          `${kept} nouveau${kept > 1 ? 'x' : ''} profil${kept > 1 ? 's' : ''}` +
+          (hidden > 0 ? ` · ${hidden} déjà vu${hidden > 1 ? 's' : ''} ou écarté${hidden > 1 ? 's' : ''}` : '') +
+          (r.unusable > 0 ? ` · ${r.unusable} illisible${r.unusable > 1 ? 's' : ''}` : '') +
+          (anomalous ? ` — ${ANOMALY_ADVICE}` : ''),
       });
       onSearched();
     } catch {

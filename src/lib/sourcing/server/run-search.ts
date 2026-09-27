@@ -14,6 +14,7 @@ import {
 } from '@/lib/db/repos/sourcing';
 import { normalizeProfileUrl, profileFingerprint, SOURCING_PEPPER_ENV } from '@/lib/sourcing/fingerprint';
 import { projectExaResult } from '@/lib/sourcing/ingest';
+import type { UnusableBreakdown } from '@/lib/sourcing/search-yield';
 import { selectFreshProfiles, type Candidate } from '@/lib/sourcing/selection';
 import { EXA_NUM_RESULTS, searchPeople } from '@/lib/sourcing/server/exa';
 import type { QueryMethod, SourcingLanguage } from '@/types/sourcing';
@@ -33,6 +34,8 @@ export type RunSearchResult = {
   searchId: string;
   returned: number;
   unusable: number;
+  /** Pourquoi les inexploitables le sont — pour qu'une réponse anormale se lise. */
+  unusableBreakdown: UnusableBreakdown;
   toReview: number;
   reserve: number;
   skipped: { alreadySeen: number; excluded: number; opposed: number; duplicates: number };
@@ -43,16 +46,25 @@ export async function runSourcingSearch(input: RunSearchInput): Promise<RunSearc
   const pepper = process.env[SOURCING_PEPPER_ENV];
 
   const candidates: Candidate[] = [];
-  let unusable = outcome.unreadable;
+  // ⚠️ Chaque cause COMPTÉE À PART (25/09/2026) : le 24/09, 89 résultats sur
+  // 100 sont tombés dans un compteur unique « inutilisable », et plus rien ne
+  // permettait de dire si le moteur avait changé de format ou renvoyé autre
+  // chose que des profils.
+  const breakdown: UnusableBreakdown = { malformed: outcome.unreadable, notAProfile: 0, noName: 0 };
   for (const { rank, result } of outcome.results) {
-    const snapshot = projectExaResult(result);
     const normalized = normalizeProfileUrl(result.url);
-    if (!snapshot || !normalized) {
-      unusable += 1;
+    if (!normalized) {
+      breakdown.notAProfile += 1;
+      continue;
+    }
+    const snapshot = projectExaResult(result);
+    if (!snapshot) {
+      breakdown.noName += 1;
       continue;
     }
     candidates.push({ rank, fingerprint: profileFingerprint(normalized, pepper), snapshot });
   }
+  const unusable = breakdown.malformed + breakdown.notAProfile + breakdown.noName;
 
   const known = await listKnownFingerprints(
     input.campaignId,
@@ -117,6 +129,7 @@ export async function runSourcingSearch(input: RunSearchInput): Promise<RunSearc
     searchId,
     returned: outcome.results.length + outcome.unreadable,
     unusable,
+    unusableBreakdown: breakdown,
     toReview: selection.fresh.filter((f) => f.state === 'to_review').length,
     reserve: selection.fresh.filter((f) => f.state === 'reserve').length,
     skipped: {
@@ -140,6 +153,9 @@ export async function runSourcingSearch(input: RunSearchInput): Promise<RunSearc
       queryEdited: input.query.trim() !== input.queryGenerated.trim(),
       returned: result.returned,
       unusable,
+      unusableBreakdown: breakdown,
+      // Chemins et natures des écarts, JAMAIS une valeur : aucune donnée personnelle.
+      malformedFields: outcome.malformedFields,
       newAfterDedup: selection.fresh.length,
       skipped: result.skipped,
       latencyMs: outcome.latencyMs,

@@ -1349,6 +1349,27 @@ campagne dérivée compte le CV reçu et le shortlisté. Les deux candidatures d
   données en pied. « Nom complet » ajouté aux coordonnées : il est requis pour créer la
   candidature.
 
+### Correctifs du 25/09/2026 — approche confirmée révoquée, réponse anormale du moteur
+
+- **Une approche CONFIRMÉE n'est plus révoquée.** Fermer la fenêtre d'approche annulait l'approche
+  affichée, y compris celle qu'on venait de confirmer : profil « Contacté », mais lien du message
+  déjà collé révoqué (page « indisponible » pour la personne) et carte « Aucune approche
+  préparée ». Client : une approche confirmée sort du champ de l'annulation. Serveur :
+  `revokeSourcingApproach` refuse une approche dont `updated_at` a quitté `created_at` (la
+  confirmation est la seule écriture sur une approche active jamais ouverte), écriture conditionnée
+  sur l'`updated_at` lu. Données de dev réparées (5 approches rétablies sur 034, 221, 680, 958).
+- **Les profils contactés passent en bas** de chaque recherche (`ordering.ts`).
+- **Réponse anormale du moteur.** Le 24/09, deux recherches (162, 034) ont eu **89 résultats
+  inexploitables sur 100** (0 sur les dix recherches précédentes, 3/99 à la relance du 25/09, sans
+  changement de code : réponse d'Exa). L'écran disait « 99 profils examinés — modifiez la
+  requête » à qui en avait vu 10. Désormais : le bilan ENTIER (« 99 profils renvoyés par le
+  moteur, 89 illisibles, 10 affichés », relu au journal — les recherches passées en profitent) ;
+  au-delà de **30 %** d'inexploitables (`ANOMALOUS_UNUSABLE_SHARE`), l'écran dit que le moteur a
+  mal répondu et conseille de relancer la MÊME requête. Le journal `sourcing_search_run` distingue
+  les causes (`unusableBreakdown` : `malformed` / `notAProfile` / `noName`) et nomme les champs
+  fautifs d'une réponse mal formée (`malformedFields`, chemin + nature, **jamais une valeur**).
+  Logique pure : `src/lib/sourcing/search-yield.ts`.
+
 ## 19. Backlog
 
 - Relance de la personne sur une admission qui reste en panne longtemps (aujourd'hui : cause

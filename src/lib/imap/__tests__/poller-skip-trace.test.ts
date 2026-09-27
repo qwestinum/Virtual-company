@@ -19,21 +19,21 @@ vi.mock('@/lib/crypto/mailbox-credentials', () => ({
 }));
 vi.mock('@/lib/db/repos/journal', () => ({ appendJournalEntry: vi.fn() }));
 vi.mock('@/lib/db/repos/mailboxes', () => ({
-  listCampaignsForMailbox: vi.fn(),
+  listCampaignLinksForMailbox: vi.fn(),
   updateMailboxPollState: vi.fn(),
   listEnabledMailboxes: vi.fn(),
 }));
 
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import {
-  listCampaignsForMailbox,
+  listCampaignLinksForMailbox,
   updateMailboxPollState,
 } from '@/lib/db/repos/mailboxes';
 import type { MailboxRow } from '@/lib/db/repos/mailboxes';
 import { pollMailbox } from '@/lib/imap/poller';
 
 const journal = vi.mocked(appendJournalEntry);
-const associations = vi.mocked(listCampaignsForMailbox);
+const associations = vi.mocked(listCampaignLinksForMailbox);
 const updateState = vi.mocked(updateMailboxPollState);
 
 function mailbox(over: Partial<MailboxRow> = {}): MailboxRow {

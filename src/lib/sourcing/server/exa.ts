@@ -9,6 +9,7 @@
  * Seul appel réseau du module vers un tiers. La clé ne quitte jamais le serveur.
  */
 import { ExaResultSchema, ExaSearchResponseSchema, type ExaResult } from '@/lib/sourcing/exa-schema';
+import { malformedFieldLabels, MAX_MALFORMED_FIELDS } from '@/lib/sourcing/search-yield';
 
 const ENDPOINT = 'https://api.exa.ai/search';
 export const EXA_NUM_RESULTS = 100;
@@ -33,6 +34,8 @@ export type ExaSearchOutcome = {
   results: { rank: number; result: ExaResult }[];
   /** Résultats illisibles écartés — comptés, jamais silencieux. */
   unreadable: number;
+  /** Les champs fautifs des résultats illisibles, sans valeur (`malformedFieldLabels`). */
+  malformedFields: string[];
   latencyMs: number;
 };
 
@@ -69,10 +72,16 @@ export async function searchPeople(query: string): Promise<ExaSearchOutcome> {
 
   const results: ExaSearchOutcome['results'] = [];
   let unreadable = 0;
+  const malformed = new Set<string>();
   parsed.data.results.forEach((raw, i) => {
     const r = ExaResultSchema.safeParse(raw);
     if (r.success) results.push({ rank: i + 1, result: r.data });
-    else unreadable += 1;
+    else {
+      unreadable += 1;
+      for (const label of malformedFieldLabels(r.error.issues)) {
+        if (malformed.size < MAX_MALFORMED_FIELDS) malformed.add(label);
+      }
+    }
   });
 
   return {
@@ -80,6 +89,7 @@ export async function searchPeople(query: string): Promise<ExaSearchOutcome> {
     costUsd: parsed.data.costDollars?.total ?? null,
     results,
     unreadable,
+    malformedFields: [...malformed],
     latencyMs: Date.now() - started,
   };
 }

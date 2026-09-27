@@ -30,6 +30,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { getUserFromMiddleware } from '@/lib/auth/middleware-helper';
+import { noteUserRequest } from '@/lib/imap/user-activity';
 
 const PROTECTED_PREFIXES = [
   '/app',
@@ -139,6 +140,10 @@ function isApiSelfAuthenticated(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Activité utilisateur : réveille le minuteur local de relève s'il est en
+  // pause (`src/lib/imap/user-activity.ts` — horodatage seul, aucune lecture).
+  noteUserRequest(pathname);
 
   // Surfaces de réservation : on sort AVANT de toucher à l'authentification.
   if (isPublicBooking(pathname)) return publicBookingResponse();

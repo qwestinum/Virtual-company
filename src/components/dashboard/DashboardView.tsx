@@ -14,13 +14,11 @@
  */
 
 import type {
-  ActivityItem,
   AgentMetric,
   CandidateRow,
 } from '@/lib/dashboard/derive-metrics';
 import { useDashboardData } from '@/hooks/useDashboardData';
 
-import { ActivityCard } from './ActivityCard';
 import { AgentsCard } from './AgentsCard';
 import { CandidatesCard } from './CandidatesCard';
 import { DashboardHeader } from './DashboardHeader';
@@ -48,7 +46,6 @@ export function DashboardView() {
     (c) => !c.awaitingValidation,
   );
   const agents = data?.agents ?? [];
-  const activity = data?.activity ?? [];
 
   return (
     <div
@@ -66,7 +63,6 @@ export function DashboardView() {
         <KPIGrid kpis={kpis} />
         <BottomGrid
           candidates={candidates}
-          activity={activity}
           agents={agents}
           onCandidateAction={refresh}
         />
@@ -77,12 +73,10 @@ export function DashboardView() {
 
 function BottomGrid({
   candidates,
-  activity,
   agents,
   onCandidateAction,
 }: {
   candidates: CandidateRow[];
-  activity: ActivityItem[];
   agents: AgentMetric[];
   onCandidateAction: () => void;
 }) {
@@ -97,7 +91,6 @@ function BottomGrid({
     >
       <CandidatesCard candidates={candidates} onAction={onCandidateAction} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <ActivityCard activity={activity} />
         <AgentsCard agents={agents} />
         <SourcingCostsCard />
       </div>

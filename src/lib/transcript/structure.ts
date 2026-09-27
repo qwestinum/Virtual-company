@@ -120,6 +120,14 @@ export function isEvaluative(text: string): boolean {
   return EVALUATIVE.some((re) => re.test(text));
 }
 
+/**
+ * Budget de citations d'une transcription (caractères). Partagé par le prompt
+ * — le modèle le CONNAÎT — et par le contrôle qui l'applique.
+ */
+export function quoteBudget(transcriptChars: number): number {
+  return Math.max(MIN_QUOTE_BUDGET, Math.floor(transcriptChars * MAX_QUOTED_SHARE));
+}
+
 export function checkAndRender(
   output: StructuringOutput,
   transcript: NormalizedTranscript,
@@ -127,6 +135,11 @@ export function checkAndRender(
 ): CheckedProposal {
   const haystack = comparable(transcript.plainText);
   const stats: StructuringStats = { kept: 0, removedUnproven: 0, flagged: 0, omittedCount: output.omittedCount };
+  // ⚠️ Une citation se compte UNE fois. Le plafond mesure la part de la
+  // transcription REPRISE ; la même phrase qui prouve un sujet ET un critère
+  // ne reprend pas deux fois le texte. La compter à chaque usage rejetait
+  // des propositions sobres (mesuré : 154 caractères cités, 770 comptés).
+  const counted = new Set<string>();
   let quoted = 0;
 
   const keep = (items: OutputItem[]): string[] => {
@@ -138,7 +151,10 @@ export function checkAndRender(
         continue;
       }
       stats.kept += 1;
-      quoted += quote.length;
+      if (!counted.has(quote)) {
+        counted.add(quote);
+        quoted += quote.length;
+      }
       const flagged = isEvaluative(item.text);
       if (flagged) stats.flagged += 1;
       const who = [item.speaker, item.at].filter(Boolean).join(', ');
@@ -176,7 +192,6 @@ export function checkAndRender(
   add(labels.followUps, keep(output.followUps));
   const sections: InterviewReportSections = { version: 2, body: blocks.join('\n\n') };
 
-  const budget = Math.max(MIN_QUOTE_BUDGET, Math.floor(haystack.length * MAX_QUOTED_SHARE));
-  if (quoted > budget) return { ok: false, reason: 'too_much_quoted' };
+  if (quoted > quoteBudget(haystack.length)) return { ok: false, reason: 'too_much_quoted' };
   return { ok: true, sections, stats };
 }

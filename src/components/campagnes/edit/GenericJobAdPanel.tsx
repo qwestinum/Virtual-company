@@ -10,9 +10,9 @@
  * preview d'un mail HITL — ce qui a été relu part tel quel, et aucune
  * génération ultérieure ne le réécrit.
  *
- * Le panneau se rend invisible tout seul quand la surface n'existe pas :
- * `GET …/job-post` répond 404 sans le flag de démonstration, et on retourne
- * `null`. Le flag n'a donc jamais besoin de voyager jusqu'au navigateur.
+ * Quand la surface n'existe pas (`GET …/job-post` répond 404 sans le flag de
+ * démonstration), le panneau le DIT au lieu de disparaître. Le flag n'a donc
+ * jamais besoin de voyager jusqu'au navigateur.
  */
 import { useCallback, useEffect, useState } from 'react';
 
@@ -24,6 +24,7 @@ import {
 } from '@/lib/jobboard/job-post-client';
 import type { DemoJobPost } from '@/types/job-post';
 
+import { JobboardUnavailableNotice } from './JobboardUnavailableNotice';
 import {
   errorStyle,
   formatPublishedAt,
@@ -75,9 +76,14 @@ export function GenericJobAdPanel({ campaignId }: { campaignId: string }) {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const outcome = await loadJobPost(campaignId).catch(() => null);
+      // Une panne n'est pas une absence : on l'affiche au lieu de se retirer.
+      const outcome = await loadJobPost(campaignId).catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Lecture de l’annonce impossible.');
+        return null;
+      });
       if (!alive) return;
-      if (!outcome || outcome.unavailable) return setPhase('absent');
+      if (!outcome) return setPhase('ready');
+      if (outcome.unavailable) return setPhase('absent');
       setPhase('ready');
       if (outcome.post) apply(outcome.post);
       else void generate();
@@ -87,7 +93,8 @@ export function GenericJobAdPanel({ campaignId }: { campaignId: string }) {
     };
   }, [campaignId, apply, generate]);
 
-  if (phase !== 'ready') return null;
+  if (phase === 'loading') return null;
+  if (phase === 'absent') return <JobboardUnavailableNotice />;
 
   const publish = async () => {
     setBusy('publish');

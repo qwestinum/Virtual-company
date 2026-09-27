@@ -34,6 +34,8 @@ import { runQueuedClosureDismissals } from '@/lib/candidatures/dismissal-batch';
 import { runSourcingMaintenance } from '@/lib/sourcing/server/maintenance';
 import { runVivierIndexingMaintenance } from '@/lib/vivier/maintenance';
 import { drainSchedulingEvents } from '@/lib/scheduling-host/drain';
+import { appendJournalEntry } from '@/lib/db/repos/journal';
+import { lastUserRequestAt, LOCAL_SCHEDULER_IDLE_MS, schedulerDecision } from '@/lib/imap/user-activity';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -49,7 +51,19 @@ declare global {
   var __imapSchedulerStartedAt__: string | undefined;
   var __imapSchedulerLastRun__: string | undefined;
   var __imapSchedulerInstance__: string | undefined;
+  /** Début de la pause en cours (ms), `undefined` si le minuteur relève. */
+  var __imapSchedulerPausedSince__: number | undefined;
+  var __imapSchedulerTickRunning__: boolean | undefined;
 }
+
+/**
+ * PAUSE SANS ACTIVITÉ (diagnostic d'egress du 25/09/2026) : en DÉVELOPPEMENT
+ * seulement. Sous `next start` (un VPS de production), une pause la nuit, faute
+ * de visite, arrêterait la réception des CV — là, le minuteur est le releveur
+ * et doit tourner sans public. En `next dev`, le cron externe relève déjà la
+ * base partagée : un poste où personne ne travaille n'a rien à relever.
+ */
+const PAUSES_WHEN_IDLE = process.env.NODE_ENV === 'development';
 
 export function ensureSchedulerStarted(): {
   alreadyRunning: boolean;
@@ -83,6 +97,15 @@ export function ensureSchedulerStarted(): {
   globalThis.__imapSchedulerStartedAt__ = startedAt;
   globalThis.__imapSchedulerInstance__ = MODULE_INSTANCE;
 
+  // L'activité démarre au lancement : un serveur qu'on vient d'ouvrir relève
+  // pendant 15 minutes, même sans visite.
+  globalThis.__orqaLastUserRequestAt__ ??= Date.now();
+  // Réveil appelé par le proxy à chaque requête utilisateur : un minuteur en
+  // pause reprend TOUT DE SUITE, sans attendre son prochain tick.
+  globalThis.__imapSchedulerWake__ = () => {
+    if (globalThis.__imapSchedulerPausedSince__ !== undefined) void runTick();
+  };
+
   // Premier tick immédiat (ne pas attendre 30s au boot). Puis tous
   // les POLL_INTERVAL_MS.
   void runTick();
@@ -93,7 +116,56 @@ export function ensureSchedulerStarted(): {
   return { alreadyRunning: false, startedAt };
 }
 
+/** Pause / reprise, journalisées. Rend `true` si ce tick doit relever. */
+async function applyIdlePolicy(): Promise<boolean> {
+  if (!PAUSES_WHEN_IDLE) return true;
+  const now = Date.now();
+  const last = lastUserRequestAt() ?? now;
+  const pausedSince = globalThis.__imapSchedulerPausedSince__;
+  const decision = schedulerDecision({ nowMs: now, lastUserRequestAtMs: last, paused: pausedSince !== undefined });
+  if (decision === 'skip') return false;
+  if (decision === 'pause') {
+    globalThis.__imapSchedulerPausedSince__ = now;
+    console.info('[imap-scheduler] pause — aucune requête utilisateur depuis 15 min');
+    await appendJournalEntry({
+      action: 'imap_local_scheduler_paused',
+      actor: 'imap_scheduler',
+      payload: {
+        idleMinutes: Math.round((now - last) / 60_000),
+        lastUserRequestAt: new Date(last).toISOString(),
+        idleThresholdMinutes: LOCAL_SCHEDULER_IDLE_MS / 60_000,
+      },
+    }).catch(() => {});
+    return false;
+  }
+  if (decision === 'resume' && pausedSince !== undefined) {
+    globalThis.__imapSchedulerPausedSince__ = undefined;
+    console.info('[imap-scheduler] reprise — requête utilisateur');
+    await appendJournalEntry({
+      action: 'imap_local_scheduler_resumed',
+      actor: 'imap_scheduler',
+      payload: {
+        pausedSince: new Date(pausedSince).toISOString(),
+        pausedMinutes: Math.round((now - pausedSince) / 60_000),
+      },
+    }).catch(() => {});
+  }
+  return true;
+}
+
 async function runTick(): Promise<void> {
+  // Un réveil peut tomber pendant un tick : jamais deux ticks à la fois.
+  if (globalThis.__imapSchedulerTickRunning__) return;
+  globalThis.__imapSchedulerTickRunning__ = true;
+  try {
+    if (!(await applyIdlePolicy())) return;
+    await runTickBody();
+  } finally {
+    globalThis.__imapSchedulerTickRunning__ = false;
+  }
+}
+
+async function runTickBody(): Promise<void> {
   globalThis.__imapSchedulerLastRun__ = new Date().toISOString();
   try {
     await pollAllMailboxes();
@@ -116,8 +188,11 @@ export function getSchedulerStatus(): {
   startedAt: string | null;
   lastRun: string | null;
   intervalMs: number;
+  pausedSince: string | null;
 } {
+  const paused = globalThis.__imapSchedulerPausedSince__;
   return {
+    pausedSince: paused !== undefined ? new Date(paused).toISOString() : null,
     running: Boolean(globalThis.__imapSchedulerHandle__),
     startedAt: globalThis.__imapSchedulerStartedAt__ ?? null,
     lastRun: globalThis.__imapSchedulerLastRun__ ?? null,
@@ -135,5 +210,7 @@ export function stopScheduler(): void {
     globalThis.__imapSchedulerHandle__ = undefined;
     globalThis.__imapSchedulerStartedAt__ = undefined;
     globalThis.__imapSchedulerInstance__ = undefined;
+    globalThis.__imapSchedulerWake__ = undefined;
+    globalThis.__imapSchedulerPausedSince__ = undefined;
   }
 }

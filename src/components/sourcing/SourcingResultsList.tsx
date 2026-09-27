@@ -6,7 +6,9 @@
  * Ordre de lecture voulu (ajustement du 14/09/2026) : en tête, le compteur et,
  * s'il y a lieu, le bandeau de couverture ; puis les lignes ; et SEULEMENT à la
  * fin, là où le recruteur arrive après avoir balayé, « 50 de plus » — ou, la
- * réserve vide, « 100 profils examinés — modifiez la requête » à sa place.
+ * réserve vide, le bilan de la recherche à sa place (« 99 profils renvoyés
+ * par le moteur, 89 illisibles, 10 affichés »). Une réponse ANORMALE du moteur
+ * est dite comme telle, réserve vide ou non (cf. `search-yield.ts`).
  */
 
 import type { ReactNode } from 'react';
@@ -14,6 +16,7 @@ import type { ReactNode } from 'react';
 import { BATCH_SIZE } from '@/lib/sourcing/selection';
 import type { ExpansionState } from '@/lib/sourcing/expansion';
 import { orderProfiles } from '@/lib/sourcing/ordering';
+import { ANOMALY_ADVICE, describeSearchYield, isAnomalousYield } from '@/lib/sourcing/search-yield';
 import type { ProfilesView } from '@/lib/sourcing/profiles-view';
 import type { SourcingProfileView } from '@/types/sourcing';
 
@@ -50,6 +53,7 @@ export function SourcingResultsList({
 }) {
   const latest = view.groups[0];
   const shown = latest?.profiles.length ?? 0;
+  const anomalous = view.latestYield ? isAnomalousYield(view.latestYield) : false;
 
   return (
     <section className="flex flex-col gap-3">
@@ -96,7 +100,12 @@ export function SourcingResultsList({
         </div>
       ))}
 
-      <div data-testid="list-end">
+      <div data-testid="list-end" className="flex flex-col gap-2">
+        {anomalous ? (
+          <p data-testid="yield-anomaly" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 font-body text-[13px] text-amber-900">
+            {ANOMALY_ADVICE}
+          </p>
+        ) : null}
         {view.reserveCount > 0 ? (
           <button
             type="button"
@@ -108,7 +117,8 @@ export function SourcingResultsList({
           </button>
         ) : view.exhausted ? (
           <p className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 font-body text-[13px] text-stone-700">
-            {latest?.search.returned ?? 100} profils examinés — modifiez la requête pour relancer.
+            {view.latestYield ? describeSearchYield(view.latestYield) : `${latest?.search.returned ?? 100} profils renvoyés par le moteur.`}
+            {anomalous ? '' : ' Modifiez la requête pour en trouver d’autres.'}
           </p>
         ) : null}
       </div>

@@ -1,16 +1,17 @@
 /**
- * Régression du 21/08/2026 — le fil d'activité du Bureau se vidait.
+ * GET /api/metrics/global — sans fil d'activité, sans sondage (27/09/2026).
  *
- * Cause : la route chargeait les 500 dernières lignes BRUTES du journal, puis
- * `journalToActivityFeed` jetait celles qu'il ne savait pas rendre. Une action
- * technique écrite à chaque relève (`imap_mailbox_skipped`, 1 440 lignes/jour
- * sur une boîte en timeout permanent) remplissait la fenêtre et EXPULSAIT les
- * évènements métier derrière son bord. Le fil n'accumule rien côté client : ce
- * qui sort de la fenêtre disparaît de l'écran.
- *
- * Ce test tient l'invariant : la limite porte sur les évènements AFFICHABLES,
- * jamais sur le journal brut.
+ * Historique : le 21/08/2026, le fil se vidait (fenêtre brute noyée de lignes
+ * techniques) ; la route avait appris à ne lire que les évènements affichables.
+ * Le 27/09/2026, le diagnostic d'egress a retiré le fil tout entier : son seul
+ * écran (Pilotage → Activité) n'existe plus, et la route, relue toutes les 5 s
+ * même onglet caché, sortait ~1,8 Go/jour par onglet oublié. Ce test tient :
+ * aucune lecture pour un fil, aucune clé `activity` rendue, et aucun sondage
+ * possible depuis le hook.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/auth/require-api-user', () => ({ getAdminApiUser: vi.fn() }));
@@ -27,10 +28,7 @@ vi.mock('@/lib/db/repos/metrics', () => ({
 }));
 
 import { getAdminApiUser } from '@/lib/auth/require-api-user';
-import {
-  ACTIVITY_FEED_ACTIONS,
-  AGENT_METRIC_ACTIONS,
-} from '@/lib/dashboard/derive-metrics';
+import { AGENT_METRIC_ACTIONS } from '@/lib/dashboard/derive-metrics';
 import { zoneDistribution } from '@/lib/dashboard/zone-counts';
 import { listCampaigns } from '@/lib/db/repos/campaigns';
 import type { JournalEntry } from '@/lib/db/repos/journal';
@@ -74,7 +72,7 @@ const BUSINESS_ROWS: JournalEntry[] = Array.from({ length: 50 }, (_, i) =>
   }),
 );
 
-describe('GET /api/metrics/global — fil d’activité', () => {
+describe('GET /api/metrics/global — sans fil d’activité', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     admin.mockResolvedValue(null);
@@ -93,59 +91,28 @@ describe('GET /api/metrics/global — fil d’activité', () => {
     });
   });
 
-  it('demande les évènements AFFICHABLES, pas les lignes brutes', async () => {
-    await GET();
-    expect(targeted).toHaveBeenCalledWith(
-      ACTIVITY_FEED_ACTIONS,
-      expect.any(Number),
-    );
-    // Et l'action qui avait saturé la fenêtre n'est pas demandée.
-    expect(ACTIVITY_FEED_ACTIONS).not.toContain('imap_mailbox_skipped');
+  it('un member : AUCUNE lecture ciblée (ni fil, ni métriques agents) et aucune clé `activity`', async () => {
+    const body = (await (await GET()).json()) as Record<string, unknown>;
+    expect(targeted).not.toHaveBeenCalled();
+    expect(body).not.toHaveProperty('activity');
   });
 
-  it('rend bien 50 items malgré un journal noyé de lignes techniques', async () => {
-    const body = (await (await GET()).json()) as { activity: unknown[] };
-    expect(body.activity).toHaveLength(50);
-  });
-
-  it('charge une marge de lignes — certaines sont écartées sur leur CONTENU', async () => {
-    await GET();
-    const [, limit] = targeted.mock.calls[0];
-    expect(limit).toBeGreaterThan(50);
-  });
-
-  it('un member ne paie pas la requête des métriques agents', async () => {
-    await GET();
-    const actionLists = targeted.mock.calls.map(([actions]) => actions);
-    expect(actionLists).toHaveLength(1);
-    expect(actionLists[0]).toBe(ACTIVITY_FEED_ACTIONS);
-  });
-
-  it('un admin obtient les métriques agents sur les actions d’agent SEULES', async () => {
+  it('un admin : la seule lecture ciblée est celle des métriques agents', async () => {
     admin.mockResolvedValue({ id: 'u1' } as never);
     await GET();
-    expect(targeted).toHaveBeenCalledWith(
-      AGENT_METRIC_ACTIONS,
-      expect.any(Number),
-    );
+    expect(targeted).toHaveBeenCalledTimes(1);
+    expect(targeted).toHaveBeenCalledWith(AGENT_METRIC_ACTIONS, expect.any(Number));
   });
 
-  it('fetch ciblé en échec ⇒ repli sur la fenêtre brute, jamais un fil vide', async () => {
-    targeted.mockRejectedValue(new Error('hoquet DB'));
-    rawWindow.mockResolvedValue({
-      rows: [...BUSINESS_ROWS.slice(0, 3), ...NOISY_RAW_WINDOW],
-    });
-    const body = (await (await GET()).json()) as { activity: unknown[] };
-    expect(body.activity).toHaveLength(3);
-  });
-
-  it('Supabase absent ⇒ payload offline cohérent', async () => {
+  it('Supabase absent ⇒ payload offline cohérent, sans fil', async () => {
     rawWindow.mockResolvedValue(null);
-    const body = (await (await GET()).json()) as {
-      offline: boolean;
-      activity: unknown[];
-    };
+    const body = (await (await GET()).json()) as Record<string, unknown>;
     expect(body.offline).toBe(true);
-    expect(body.activity).toEqual([]);
+    expect(body).not.toHaveProperty('activity');
+  });
+
+  it('garde structurelle : le hook ne peut plus sonder la route', () => {
+    const src = readFileSync(join(process.cwd(), 'src/hooks/useDashboardData.ts'), 'utf8');
+    expect(src).not.toMatch(/setInterval|POLL_INTERVAL/);
   });
 });

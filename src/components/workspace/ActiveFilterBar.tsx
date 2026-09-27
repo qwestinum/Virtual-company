@@ -37,7 +37,10 @@ export function ActiveFilterBar({
   if (filters.length === 0 && !back && !action) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-stone-200/70 bg-white/60 px-6 py-2.5">
+    <div
+      data-active-filters
+      className="flex flex-wrap items-center gap-2 border-b border-stone-200/70 bg-white/60 px-6 py-2.5"
+    >
       {back ? (
         <Link
           href={back.href}

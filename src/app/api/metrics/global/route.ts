@@ -18,10 +18,8 @@ import { NextResponse } from 'next/server';
 import { getAdminApiUser } from '@/lib/auth/require-api-user';
 
 import {
-  ACTIVITY_FEED_ACTIONS,
   AGENT_METRIC_ACTIONS,
   EMPTY_ZONE_COUNTS,
-  journalToActivityFeed,
   journalToAgentMetrics,
   journalToCandidatesList,
   journalToGlobalKPIs,
@@ -41,38 +39,28 @@ import { getAgentOrder } from '@/lib/agents/registry';
 
 export const runtime = 'nodejs';
 
-/** Nombre d'items visés par le fil d'activité. */
-const ACTIVITY_ITEMS = 50;
-
-/**
- * Marge de lignes chargées pour obtenir ces items. Le filtre en base retire le
- * bruit TECHNIQUE ; il reste un tri sur le CONTENU (un envoi dont le statut
- * n'est pas `sent` n'est pas un envoi, un mail HITL non parti a son propre
- * évènement). Cette part-là est bornée par la nature des lignes, pas par le
- * volume du journal — d'où une marge constante, et non un multiple à faire
- * grandir. Sans elle, un lot de lignes écartées sur leur contenu raccourcirait
- * le fil ; avec elle, on ne charge jamais 500 lignes pour en montrer 11.
- */
-const ACTIVITY_FETCH_ROWS = ACTIVITY_ITEMS * 3;
-
 /** Fenêtre « récente » des métriques par agent — sur les actions d'agent SEULES. */
 const AGENT_WINDOW_ROWS = 500;
 
 export async function GET(): Promise<NextResponse> {
   // Filet de sécurité : le scheduler IMAP démarre au boot (instrumentation),
-  // mais on le re-garantit ici — cette route est pollée toutes les 5 s tant que
-  // l'app est ouverte, donc la relève des candidatures par mail ne peut pas
-  // rester en panne silencieuse. Idempotent (garde sur globalThis).
+  // mais on le re-garantit ici, à chaque ouverture de l'écran. Idempotent
+  // (garde sur globalThis).
+  //
+  // ⚠️ PLUS AUCUN SONDAGE (27/09/2026, diagnostic d'egress) : la route était
+  // relue toutes les 5 s, même onglet caché — ~1,8 Go/jour par onglet oublié.
+  // Elle se lit à l'ouverture, au retour sur l'onglet et après une action.
+  // Le FIL D'ACTIVITÉ en est retiré : c'était sa lecture la plus bavarde, et
+  // son seul écran (Pilotage → Activité) n'existe plus.
   ensureSchedulerStarted();
 
   // Multi-utilisateur : la route sert le MÉTIER (Bureau : zones, activité,
   // candidats — accessible à toute session) ET l'admin (coûts IA, métriques
   // par agent). SCINDÉ plutôt que gaté en bloc : un member reçoit le payload
-  // avec `agents` vidé et `costEstimate` à 0 (cache de rôle 60 s — la route
-  // est pollée toutes les 5 s).
+  // avec `agents` vidé et `costEstimate` à 0 (cache de rôle 60 s).
   //
   // Toutes les lectures ci-dessous sont INDÉPENDANTES : elles partent ensemble
-  // (une route pollée toutes les 5 s enchaînait 9 étapes). Les résultats sont
+  // (la route enchaînait 9 étapes). Les résultats sont
   // consommés dans l'ordre d'origine, avec les mêmes replis et les mêmes
   // erreurs remontées ; une promesse dont le résultat n'est finalement pas
   // attendu (payload offline) est neutralisée pour ne pas lever en tâche de fond.
@@ -81,10 +69,6 @@ export async function GET(): Promise<NextResponse> {
   const campaignsPromise = listCampaigns();
   const pendingPromise = listPendingValidations();
   const totalRowsPromise = fetchCandidateTotalRows().catch(() => null);
-  const activityPromise = fetchRecentRowsForActions(
-    ACTIVITY_FEED_ACTIONS,
-    ACTIVITY_FETCH_ROWS,
-  ).catch(() => null);
   const agentPromise = isAdminPromise.then((isAdmin) =>
     isAdmin
       ? fetchRecentRowsForActions(AGENT_METRIC_ACTIONS, AGENT_WINDOW_ROWS).catch(
@@ -112,7 +96,6 @@ export async function GET(): Promise<NextResponse> {
       kpis: journalToGlobalKPIs([]),
       agents: journalToAgentMetrics([], agentIds),
       candidates: [],
-      activity: [],
       zones: EMPTY_ZONE_COUNTS,
     });
   }
@@ -153,13 +136,9 @@ export async function GET(): Promise<NextResponse> {
     }),
   );
 
-  // Fil d'activité et métriques agents : deux fenêtres CIBLÉES.
-  // Repli sur la fenêtre brute si le fetch ciblé échoue — dégradé, jamais vide.
-  const [activityResult, agentResult] = await Promise.all([
-    activityPromise,
-    agentPromise,
-  ]);
-  const activityRows = activityResult?.rows ?? result.rows;
+  // Métriques agents : fenêtre CIBLÉE. Repli sur la fenêtre brute si le fetch
+  // ciblé échoue — dégradé, jamais vide.
+  const agentResult = await agentPromise;
   const agentRows = agentResult?.rows ?? result.rows;
 
   // Répartition par zone (récit Bureau) — EXHAUSTIF depuis candidate_analyses.
@@ -174,14 +153,11 @@ export async function GET(): Promise<NextResponse> {
     offline: false,
     // Coût IA = donnée ADMIN (member : 0, jamais le chiffre réel).
     kpis: isAdmin ? kpis : { ...kpis, costEstimate: 0 },
-    // Agents + activité = fenêtres RÉCENTES assumées (limite légitime, pas un
-    // total) — mais des fenêtres sur les lignes QU'ELLES SAVENT UTILISER, et
-    // non sur le journal brut : charger large puis jeter laissait une action
-    // technique bavarde évincer tout le métier (21/08/2026). Métriques par
-    // agent = ADMIN uniquement.
+    // Agents = fenêtre RÉCENTE assumée (limite légitime, pas un total) — sur
+    // les lignes QU'ELLE SAIT UTILISER, et non sur le journal brut (21/08/2026).
+    // Métriques par agent = ADMIN uniquement.
     agents: isAdmin ? journalToAgentMetrics(agentRows, agentIds) : [],
     candidates,
-    activity: journalToActivityFeed(activityRows, ACTIVITY_ITEMS),
     zones,
   });
 }
