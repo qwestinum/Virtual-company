@@ -69,15 +69,20 @@ export const AGENT_BAND: readonly AgentBandEntry[] = [
     id: 'agent.mail-composer',
     name: 'Mail Composer',
     role: 'Écrit aux candidats',
-    // ⚠️ DEUX portes, et seulement les mails PARTIS (27/09/2026). La bande ne
-    // comptait que `imap_outreach_mail` — les envois AUTOMATIQUES : un mail
-    // d'acceptation envoyé par le recruteur après sa décision (carte de
-    // validation, Candidatures) s'écrit `hitl_validation_sent`, et le Mail
-    // Composer affichait 0 juste après un envoi. Et « message envoyé » ne
-    // compte pas une tentative échouée ni un envoi volontairement sauté.
+    // ⚠️ TOUS les mails écrits à un candidat, et seulement ceux PARTIS
+    // (27/09/2026). La bande ne comptait que `imap_outreach_mail` — les envois
+    // AUTOMATIQUES : une acceptation envoyée après la décision du recruteur,
+    // une invitation renvoyée depuis Entretiens, une invitation du vivier ou
+    // l'avis d'un classement sans suite restaient invisibles, et le Mail
+    // Composer affichait 0 juste après un envoi. « Message envoyé » ne compte
+    // ni une tentative échouée, ni un envoi volontairement sauté, ni un envoi
+    // sans service configuré. Un nouvel envoi au candidat s'AJOUTE ici.
     sources: [
       { action: 'imap_outreach_mail', payloadEquals: { status: 'sent' } },
       { action: 'hitl_validation_sent', payloadEquals: { mailSent: 'true' } },
+      { action: 'interview_link_reissued', payloadEquals: { mailSent: 'true' } },
+      { action: 'candidature_dismissed', payloadEquals: { mailSent: 'true' } },
+      { action: 'vivier_invitation_sent', payloadEquals: { status: 'sent' } },
     ],
     unit: { one: 'message envoyé', many: 'messages envoyés' },
   },

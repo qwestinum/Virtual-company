@@ -33,12 +33,18 @@ describe('fenêtre de la bande d’équipe', () => {
 describe('Mail Composer — un message ENVOYÉ, quelle que soit la porte', () => {
   const mail = AGENT_BAND.find((a) => a.id === 'agent.mail-composer');
 
-  it('compte les envois automatiques ET ceux validés par le recruteur (défaut du 27/09)', () => {
+  it('compte TOUS les mails écrits à un candidat (défaut du 27/09)', () => {
     const actions = mail?.sources.map((s) => s.action);
-    expect(actions).toContain('imap_outreach_mail');
-    // L'acceptation envoyée après une décision humaine : absente, le compteur
-    // restait à 0 juste après un envoi.
-    expect(actions).toContain('hitl_validation_sent');
+    // Absentes, le compteur restait à 0 juste après un envoi.
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'imap_outreach_mail', // envoi automatique
+        'hitl_validation_sent', // envoi après la décision du recruteur
+        'interview_link_reissued', // invitation renvoyée depuis Entretiens
+        'candidature_dismissed', // avis de classement sans suite
+        'vivier_invitation_sent', // invitation à candidater (vivier)
+      ]),
+    );
   });
 
   it('ne compte que les mails PARTIS — jamais une tentative échouée ni un envoi sauté', () => {
@@ -48,8 +54,13 @@ describe('Mail Composer — un message ENVOYÉ, quelle que soit la porte', () =>
     expect(mail?.sources.find((s) => s.action === 'imap_outreach_mail')?.payloadEquals).toEqual({
       status: 'sent',
     });
-    expect(mail?.sources.find((s) => s.action === 'hitl_validation_sent')?.payloadEquals).toEqual({
-      mailSent: 'true',
+    for (const action of ['hitl_validation_sent', 'interview_link_reissued', 'candidature_dismissed']) {
+      expect(mail?.sources.find((s) => s.action === action)?.payloadEquals, action).toEqual({
+        mailSent: 'true',
+      });
+    }
+    expect(mail?.sources.find((s) => s.action === 'vivier_invitation_sent')?.payloadEquals).toEqual({
+      status: 'sent',
     });
   });
 });
