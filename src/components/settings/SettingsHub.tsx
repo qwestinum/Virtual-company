@@ -490,7 +490,7 @@ export function SettingsHub({
         {...sectionProps('entretiens', states.entretiens)}
         icon="📅"
         title="Entretiens — messages candidat"
-        description="Templates d'acceptation+invitation et de refus (rendus tels quels, sans rédaction par l'IA) et lien d'agenda. L'invitation ne fixe pas de RDV : le candidat choisit son créneau via le lien d'agenda."
+        description="Agenda des entretiens (agenda interne ORQA par défaut) et templates d'acceptation+invitation et de refus, rendus tels quels, sans rédaction par l'IA. L'invitation ne fixe pas de RDV : le candidat choisit son créneau sur l'agenda du référent."
       >
         <InterviewConfigManager
           config={settings.interviewConfig ?? DEFAULT_INTERVIEW_CONFIG}

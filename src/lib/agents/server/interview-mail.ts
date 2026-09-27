@@ -33,6 +33,7 @@ import {
   renderInterviewMail,
   splitCandidateName,
 } from '@/lib/interview/mail-templates';
+import type { CampaignAgendaState } from '@/lib/interview/agenda-status';
 import type { MailCandidate } from '@/types/mail-candidate';
 import {
   DEFAULT_INTERVIEW_CONFIG,
@@ -107,6 +108,31 @@ export async function canInviteForCampaign(
     return canEmitBookingLink(campaignId, ctx);
   }
   return (await getResolvedAgendaLink(campaignId)).length > 0;
+}
+
+/**
+ * Ce qu'une invitation trouverait pour cette campagne — même sonde que le
+ * gate d'envoi (`canInviteForCampaign`), sans effet, détaillée pour l'écran
+ * des Paramètres (qui disait « non configuré » sur des campagnes natives
+ * qui n'ont jamais lu ce champ).
+ */
+export async function campaignAgendaState(
+  campaignId: string,
+): Promise<CampaignAgendaState> {
+  const ctx = createCampaignBookingContext(campaignId);
+  if (await isNativeSchedulingCampaign(campaignId, ctx)) {
+    return { regime: 'native', bookable: await canEmitBookingLink(campaignId, ctx) };
+  }
+  const facts = await fetchCampaignFacts(campaignId, ctx);
+  return {
+    regime: 'external',
+    source: (await ownerAgendaLink(facts.ownerUserId)) ? 'referent' : 'field',
+  };
+}
+
+/** Lien de secours hors écran (variable historique), jamais montré. */
+export function hasEnvAgendaFallback(): boolean {
+  return (process.env.CAL_COM_EVENT_URL ?? '').trim().length > 0;
 }
 
 /** Récupère nom + intitulé + référent d'une campagne (best-effort, jamais throw). */

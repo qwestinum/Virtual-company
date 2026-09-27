@@ -9,6 +9,8 @@
 
 import { useState } from 'react';
 
+import { AgendaLinkField } from '@/components/settings/AgendaLinkField';
+
 import {
   DEFAULT_INTERVIEW_CONFIG,
   type InterviewConfig,
@@ -23,7 +25,6 @@ export function InterviewConfigManager({
 }) {
   const [draft, setDraft] = useState<InterviewConfig>(config);
   const dirty = JSON.stringify(draft) !== JSON.stringify(config);
-  const agendaMissing = draft.agendaLink.trim().length === 0;
 
   function set<K extends keyof InterviewConfig>(
     key: K,
@@ -34,27 +35,10 @@ export function InterviewConfigManager({
 
   return (
     <div className="flex flex-col gap-4 font-body text-[13px]">
-      <label className="flex flex-col gap-1">
-        <span className="font-semibold text-stone-700">Lien d&apos;agenda</span>
-        <input
-          type="url"
-          value={draft.agendaLink}
-          onChange={(e) => set('agendaLink', e.currentTarget.value)}
-          placeholder="https://cal.com/votre-equipe/entretien"
-          className="w-full rounded-md border border-stone-200 px-2 py-1.5 text-stone-700 outline-none focus:border-emerald-400"
-        />
-        <span className="text-[11px] text-stone-400">
-          Lien Calendly / Cal.com sur lequel le candidat choisit lui-même son
-          créneau. Injecté dans <code>[lien d&apos;agenda]</code>. Sans lui,
-          l&apos;envoi d&apos;une acceptation est bloqué.
-        </span>
-        {agendaMissing ? (
-          <span className="text-[11px] font-semibold text-amber-600">
-            ⚠ Lien d&apos;agenda non configuré — les acceptations ne pourront
-            pas être envoyées tant qu&apos;il est vide.
-          </span>
-        ) : null}
-      </label>
+      <AgendaLinkField
+        value={draft.agendaLink}
+        onChange={(next) => set('agendaLink', next)}
+      />
 
       <div className="flex flex-wrap gap-4">
         <label className="flex flex-col gap-1">
