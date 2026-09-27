@@ -155,11 +155,28 @@ async function bumpAttempts(eventId: string): Promise<void> {
 }
 
 /**
+ * Âge minimal d'une réservation avant que le filet ne la rattrape.
+ *
+ * ⚠️ Sans lui, le filet voyait une réservation ENCORE EN COURS de
+ * confirmation — insérée, pas encore annoncée (quelques millisecondes entre
+ * le claim et l'outbox) — et émettait son `booking.created` à la place de la
+ * séquence. Deux effets : un second `booking.created` quand la séquence
+ * aboutit, et une compensation REFUSÉE quand elle échoue (lien consommé
+ * entre-temps, cible re-pointée) — la garde de `compensate` voit un
+ * événement et lève, la confirmation échoue et la réservation reste.
+ * Attrapé par la régression S13.3 le 27/09/2026. Un vrai crash laisse une
+ * réservation ancienne : deux minutes ne retardent que le rattrapage.
+ */
+export const REPAIR_GRACE_MS = 2 * 60_000;
+
+/**
  * Réservations confirmées récentes sans `booking.created` : on émet l'événement
  * manquant. C'est le filet du crash entre le claim et l'outbox.
  */
 async function repairMissingCreatedEvents(windowHours: number): Promise<number> {
-  const since = new Date(Date.parse(nowIso()) - windowHours * 3_600_000).toISOString();
+  const nowMs = Date.parse(nowIso());
+  const since = new Date(nowMs - windowHours * 3_600_000).toISOString();
+  const settledBefore = new Date(nowMs - REPAIR_GRACE_MS).toISOString();
 
   const bookings = await fetchAllKeyset<BookingRow>(
     'repair.bookings',
@@ -167,7 +184,8 @@ async function repairMissingCreatedEvents(windowHours: number): Promise<number> 
       let query = table(TABLES.bookings)
         .select('*')
         .eq('status', 'confirmed')
-        .gte('created_at', since);
+        .gte('created_at', since)
+        .lt('created_at', settledBefore);
       if (after !== null) query = query.gt('id', after);
       return query.order('id', { ascending: true }).limit(limit);
     },

@@ -145,6 +145,7 @@ export {
   drainPendingEvents,
   hasEventConsumer,
   registerEventConsumer,
+  REPAIR_GRACE_MS,
 } from './events';
 
 // Lieu de rencontre — opaque, résolu en un point unique

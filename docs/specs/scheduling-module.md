@@ -103,6 +103,12 @@ l'anon key ne lit rien).
 5. `INSERT` outbox, puis dispatch best-effort, puis mails (.ics) via le **port injecté**.
    Crash entre 4 et 5 ⇒ **réparation** au drain (réservation confirmée sans événement
    `booking.created` ⇒ émission de rattrapage) : jamais d'état final non rejouable.
+   ⚠️ La réparation ne considère que les réservations **plus anciennes que
+   `REPAIR_GRACE_MS` (2 min)** (27/09/2026) : sans ce délai, un drain tombant entre
+   les étapes 2 et 5 émettait le `booking.created` d'une confirmation EN COURS —
+   second événement si elle aboutit, compensation refusée (la garde voit un
+   événement) si elle échoue : la confirmation levait et la réservation restait.
+   Attrapé par S13.3 ; un vrai crash laisse une réservation ancienne.
 
 > **Rejeu de confirmation** : si le lien est déjà `used` et qu'une réservation confirmée existe
 > pour ce token au même créneau, on **renvoie cette réservation** (succès idempotent) plutôt
