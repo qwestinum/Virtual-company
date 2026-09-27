@@ -4,25 +4,37 @@
  * fait que la couleur d'affichage et le formatage de date relatif.
  */
 
-import type {
-  CandidateStage,
-  CandidateStageTone,
+import {
+  CANDIDATE_STAGE_TONES,
+  type CandidateStage,
+  type CandidateStageTone,
 } from '@/lib/reporting/candidate-stage';
 
-// ── Tokens ORQA par étape (classes Tailwind `orqa-*`, source unique) ────────
+// ── Palette d'étape (source unique) ────────────────────────────────────────
 
-/** Pastille de statut : texte + fond clair. */
-export const STAGE_PILL_CLASS: Record<CandidateStage, string> = {
-  retenu: 'text-orqa-vert bg-orqa-vert-bg',
-  entretien_fait: 'text-orqa-nuit2 bg-orqa-brume2',
-  rdv_pris: 'text-orqa-violet bg-orqa-violet-bg',
-  invite: 'text-orqa-ciel bg-orqa-cielbg',
-  a_valider: 'text-orqa-ambre bg-orqa-ambre-bg',
-  // Neutre (gris) : un sans-suite n'est ni un succès ni un refus.
-  sans_suite: 'text-stone-600 bg-stone-100',
-  non_retenu: 'text-orqa-rouge bg-orqa-rouge-bg',
-  refus_auto: 'text-orqa-rouge bg-orqa-rouge-bg',
-};
+/**
+ * Pastille de statut : couleur + fond, dérivés de la TONALITÉ de l'étape
+ * (`CANDIDATE_STAGE_TONES`) et non d'un jeton par étape.
+ *
+ * ⚠️ La palette ORQA par étape (`text-orqa-*` / `bg-orqa-*-bg`) qui vivait ici
+ * échouait au contraste AA sur 6 entrées sur 8 (mesuré : retenu 2,96 · invité
+ * 2,65 · à valider 2,50 · refus 3,43 · RDV pris 4,15 — WCAG 1.4.3 demande
+ * 4,5:1). Elle est remplacée par `STAGE_TONE_COLOR`/`STAGE_TONE_BG`, écrites
+ * plus bas dans ce même fichier et conformes — elles n'avaient jamais été
+ * importées. Le test de ce fichier RECALCULE les ratios : une couleur qui
+ * repasserait sous 4,5:1 fait rougir la suite.
+ *
+ * CONTREPARTIE ASSUMÉE : cinq tonalités pour huit étapes, donc « Invité »,
+ * « RDV pris » et « Entretien fait » partagent une couleur. C'est pour ça que
+ * la pastille porte AUSSI `stageStepMarks` — un repère non chromatique.
+ */
+export function stagePillStyle(stage: CandidateStage): {
+  color: string;
+  background: string;
+} {
+  const tone = CANDIDATE_STAGE_TONES[stage];
+  return { color: STAGE_TONE_COLOR[tone], background: STAGE_TONE_BG[tone] };
+}
 
 /** Point/tick de couleur pleine (ruban, légende, barre de carte). */
 export const STAGE_DOT_CLASS: Record<CandidateStage, string> = {
@@ -50,6 +62,29 @@ export const STAGE_STEP: Record<CandidateStage, number> = {
   non_retenu: 0,
   sans_suite: 0,
 };
+
+/** Longueur du pipeline : à valider → invité → RDV pris → entretien → retenu. */
+export const STAGE_PIPELINE_LENGTH = 5;
+
+/**
+ * Repère NON CHROMATIQUE de l'étape : un segment par position du pipeline,
+ * rempli jusqu'au rang courant (`STAGE_STEP`).
+ *
+ * Raison d'être : la palette conforme n'a que cinq tonalités pour huit étapes,
+ * donc « Invité », « RDV pris » et « Entretien fait » sortent de la MÊME
+ * couleur. Sans ce repère, trois étapes distinctes deviendraient
+ * indiscernables au balayage d'une liste — et le seraient AUSSI pour qui ne
+ * distingue pas les couleurs, ce que WCAG 1.4.1 interdit de toute façon.
+ *
+ * Les terminaux hors pipeline (rang 0 : non retenu, refus auto, sans suite)
+ * rendent un tableau VIDE : leurs tonalités sont déjà distinctes les unes des
+ * autres, et un compteur de progression sur un dossier clos n'a pas de sens.
+ */
+export function stageStepMarks(stage: CandidateStage): boolean[] {
+  const step = STAGE_STEP[stage];
+  if (step <= 0) return [];
+  return Array.from({ length: STAGE_PIPELINE_LENGTH }, (_, i) => i < step);
+}
 
 /** Initiales (max 2) pour l'avatar. */
 export function initials(name: string): string {

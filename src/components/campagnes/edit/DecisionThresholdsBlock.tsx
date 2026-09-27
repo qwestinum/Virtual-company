@@ -21,6 +21,11 @@
 
 import { useState } from 'react';
 
+import {
+  NO_AUTOMATIC_REJECTION,
+  thresholdZoneHint,
+  thresholdZoneLabels,
+} from '@/lib/campaign/threshold-labels';
 import { pushManagerAcknowledgment } from '@/lib/chat/manager-acknowledgments';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import { useCampaignsStore } from '@/stores/campaigns-store';
@@ -72,12 +77,8 @@ function DecisionThresholdsInner({ campaign }: DecisionThresholdsBlockProps) {
     window.setTimeout(() => setFlash(null), FLASH_MS);
   };
 
-  const hint =
-    low === high
-      ? `Aucune zone d’examen : sous ${low} proposé au refus, au-dessus accepté automatiquement.`
-      : low === 0 && high === 100
-        ? 'Toutes les candidatures passent en validation humaine.'
-        : `Proposé au refus < ${low} · à examiner ${low}–${high} · acceptation auto ≥ ${high}`;
+  const hint = thresholdZoneHint(low, high);
+  const labels = thresholdZoneLabels(low, high);
 
   return (
     <div>
@@ -93,11 +94,9 @@ function DecisionThresholdsInner({ campaign }: DecisionThresholdsBlockProps) {
           fontWeight: 700,
         }}
       >
-        <span style={{ color: 'var(--dash-orange)' }}>
-          Proposé au refus &lt; {low}
-        </span>
-        <span style={{ color: 'var(--dash-orange)' }}>À examiner</span>
-        <span style={{ color: 'var(--dash-green)' }}>Accept. auto ≥ {high}</span>
+        <span style={{ color: 'var(--dash-orange)' }}>{labels.low}</span>
+        <span style={{ color: 'var(--dash-orange)' }}>{labels.middle}</span>
+        <span style={{ color: 'var(--dash-green)' }}>{labels.high}</span>
       </div>
 
       {/* Slider unique, deux poignées, 3 zones colorées en direct. */}
@@ -120,7 +119,7 @@ function DecisionThresholdsInner({ campaign }: DecisionThresholdsBlockProps) {
           lineHeight: 1.5,
         }}
       >
-        {hint} <strong>Aucun refus n&apos;est envoyé automatiquement</strong> :
+        {hint} <strong>{NO_AUTOMATIC_REJECTION}</strong> :
         sous le seuil bas, la candidature part dans «&nbsp;Propositions de
         refus&nbsp;» (Validation suspendue) où vous la refusez en un geste. Seule
         l&apos;acceptation au-dessus du seuil haut déclenche un mail sans vous.

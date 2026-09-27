@@ -20,6 +20,28 @@ describe('chat-store (Session 3)', () => {
     expect(messages[0]?.content.length).toBeGreaterThan(0);
   });
 
+  it("l'accueil ne promet aucune action — le Manager est en lecture seule", () => {
+    const greeting = useChatStore.getState().messages[0]?.content ?? '';
+
+    // Verbes d'ACTION que le Manager ne peut pas tenir. La liste porte les
+    // formulations réellement servies avant le correctif ; une reformulation
+    // qui les ramènerait ramènerait aussi la promesse.
+    for (const promesse of [
+      'je m’occupe',
+      "je m'occupe",
+      'lancer un recrutement',
+      'je crée',
+      'je publie',
+      'je lance',
+    ]) {
+      expect(greeting.toLowerCase()).not.toContain(promesse.toLowerCase());
+    }
+
+    // Et il dit bien ce qu'il SAIT faire, sinon l'accueil devient muet.
+    expect(greeting).toContain('faire le point');
+    expect(greeting).toContain('analyser un CV');
+  });
+
   it('greeting message has deterministic id and createdAt (SSR safety)', () => {
     const { messages } = useChatStore.getState();
     expect(messages[0]?.id).toBe(GREETING_MESSAGE_ID);
