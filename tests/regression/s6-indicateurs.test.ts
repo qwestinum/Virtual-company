@@ -189,7 +189,7 @@ describe('S6 — cohérence des indicateurs', () => {
       body: { decision: 'accept', confirmed: true },
     });
     expect(patched.status).toBe(200);
-    const reserved = await callWithId(reserveSend, gray.validationId, { method: 'POST' });
+    const reserved = await callWithId(reserveSend, gray.validationId, { method: 'POST', body: { expectedDecision: 'accept' } });
     expect(reserved.json.reserved).toBe(true);
     const composed = await call(composeMail, {
       method: 'POST',

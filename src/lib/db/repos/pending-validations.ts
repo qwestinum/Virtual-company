@@ -13,6 +13,7 @@ import {
   requireServerSupabase,
   SupabaseNotConfiguredError,
 } from '@/lib/db/supabase-server';
+import { pickRefreshable, type EnqueueRefresh } from '@/lib/hitl/enqueue-merge';
 import type {
   DecidedBy,
   HitlDecision,
@@ -94,6 +95,24 @@ function domainToRow(v: PendingValidation): PendingValidationRow {
     decided_by: v.decidedBy,
     decided_by_user_id: v.decidedByUser?.userId ?? null,
     decided_by_user_email: v.decidedByUser?.email ?? null,
+  };
+}
+
+/**
+ * Colonnes écrites par une remise en file sur une fiche qui existe déjà —
+ * traduction de `ENQUEUE_REFRESHABLE`, et rien d'autre. Le type d'entrée
+ * n'a AUCUN champ de décision : en ajouter un ici ne compile pas.
+ */
+export function enqueueRefreshRow(r: EnqueueRefresh): Partial<PendingValidationRow> {
+  return {
+    campaign_id: r.campaignId,
+    candidate_name: r.candidateName,
+    candidate_email: r.candidateEmail,
+    score: r.score,
+    cv_artifact_id: r.cvArtifactId,
+    report_artifact_id: r.reportArtifactId,
+    payload: r.payload,
+    updated_at: r.updatedAt,
   };
 }
 
@@ -403,9 +422,14 @@ export async function upsertPendingValidation(
   const first = (inserted ?? [])[0];
   if (first) return rowToDomain(first as PendingValidationRow);
 
+  // ⚠️ Mise à jour PARTIELLE : seuls les champs de la remise en file partent
+  // dans la requête. Une décision humaine posée entre la lecture de
+  // l'appelant et cette écriture (PATCH juste avant la réservation d'envoi)
+  // ne peut donc PAS être écrasée — la garde tient dans la requête, pas dans
+  // une lecture préalable (cf. `enqueue-merge.ts`, régression S4).
   const { data: updated, error: updateError } = await supabase
     .from(TABLE)
-    .update(row)
+    .update(enqueueRefreshRow(pickRefreshable(v)))
     .eq('id', v.id)
     .eq('status', 'pending')
     .select('*');
@@ -420,7 +444,8 @@ export type ReserveSendOutcome =
   | 'reserved'
   | 'already_sent'
   | 'in_flight'
-  | 'not_found';
+  | 'not_found'
+  | { kind: 'decision_changed'; current: HitlDecision };
 
 /**
  * RÉSERVE l'envoi d'une validation (audit C6) — LE verrou atomique posé AVANT
@@ -433,9 +458,17 @@ export type ReserveSendOutcome =
  *      ne renverra pas un mail déjà parti.
  * Dès la réservation, la DÉCISION est immuable (le PATCH decision exige
  * `status='pending'`) : « invitation + refus » impossible par construction.
+ *
+ * ⚠️ `expectedDecision` = la décision que l'ÉCRAN montre et que le recruteur
+ * vient de confirmer (27/09/2026). Les deux transitions sont conditionnées
+ * à `decision = expectedDecision` : un envoi ne part JAMAIS sur une décision
+ * que l'écran ne montre pas. Le mail suit l'écran, la finalisation (journal,
+ * analyse, révocation du lien) suit la base — s'ils divergent, on refuse
+ * AVANT que quoi que ce soit parte (`decision_changed`, rien de réservé).
  */
 export async function reserveValidationSend(
   id: string,
+  expectedDecision: HitlDecision,
 ): Promise<ReserveSendOutcome> {
   const supabase = requireServerSupabase();
   const nowIso = new Date().toISOString();
@@ -446,19 +479,21 @@ export async function reserveValidationSend(
     .update({ status: 'sending', sending_at: nowIso })
     .eq('id', id)
     .eq('status', 'pending')
+    .eq('decision', expectedDecision)
     .select('id');
   if (reserveError) {
     throw new Error(`reserveValidationSend: ${reserveError.message}`);
   }
   if ((won?.length ?? 0) > 0) return 'reserved';
 
-  // 2. Reprise d'un `sending` périmé (TTL partagé claims-policy).
+  // 2. Reprise d'un `sending` PÉRIMÉ (TTL partagé claims-policy).
   const cutoff = new Date(Date.now() - CLAIM_TTL_MS).toISOString();
   const { data: retaken, error: retakeError } = await supabase
     .from(TABLE)
     .update({ status: 'sending', sending_at: nowIso })
     .eq('id', id)
     .eq('status', 'sending')
+    .eq('decision', expectedDecision)
     .lt('sending_at', cutoff)
     .select('id');
   if (retakeError) {
@@ -469,16 +504,19 @@ export async function reserveValidationSend(
   // 3. Perdu : rapporte l'état réel pour un message UX précis.
   const { data: current, error: readError } = await supabase
     .from(TABLE)
-    .select('status')
+    .select('status, decision')
     .eq('id', id)
     .maybeSingle();
   if (readError) {
     throw new Error(`reserveValidationSend: ${readError.message}`);
   }
   if (!current) return 'not_found';
-  return (current as { status: string }).status === 'sent'
-    ? 'already_sent'
-    : 'in_flight';
+  const found = current as { status: string; decision: HitlDecision };
+  if (found.status === 'sent') return 'already_sent';
+  if (found.decision !== expectedDecision) {
+    return { kind: 'decision_changed', current: found.decision };
+  }
+  return 'in_flight';
 }
 
 /**

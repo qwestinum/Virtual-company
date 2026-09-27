@@ -64,12 +64,25 @@ export async function sendValidation(
   // 0. RÉSERVATION (audit C6) — le verrou atomique AVANT tout envoi. Perdu ⇒
   //    on n'envoie rien : soit déjà traité, soit un envoi est en cours.
   try {
+    // La décision AFFICHÉE accompagne la réservation : si la base en porte
+    // une autre, le serveur refuse avant que quoi que ce soit parte.
     const res = await fetch(
       `/api/validations/${encodeURIComponent(v.id)}/reserve-send`,
-      { method: 'POST' },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedDecision: v.decision }),
+      },
     );
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (data.error === 'decision_changed') {
+        return {
+          ok: false,
+          message:
+            'La décision enregistrée pour ce dossier n’est plus celle affichée — rien n’a été envoyé. Recharge la liste et tranche à nouveau.',
+        };
+      }
       if (data.error === 'already_sent') {
         return {
           ok: false,
@@ -131,7 +144,20 @@ export async function sendValidation(
       const data = (await res.json()) as {
         status?: string;
         providerMessageId?: string | null;
+        error?: string;
       };
+      // Garde d'envoi : la décision en base n'est pas celle de ce mail. On
+      // S'ARRÊTE — finaliser enregistrerait l'inverse de ce qui est affiché.
+      if (
+        res.status === 409 &&
+        (data.error === 'decision_mismatch' || data.error === 'not_reserved')
+      ) {
+        return {
+          ok: false,
+          message:
+            'La décision enregistrée pour ce dossier n’est pas celle affichée — rien n’a été envoyé. Recharge la liste dans quelques minutes et tranche à nouveau.',
+        };
+      }
       mailStatus = res.ok ? (data.status ?? 'unknown') : `http_${res.status}`;
       if (res.ok) providerMessageId = data.providerMessageId ?? null;
     } catch {

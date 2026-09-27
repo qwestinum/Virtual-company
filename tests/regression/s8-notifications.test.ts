@@ -175,7 +175,7 @@ describe('S8 — notifications métier', () => {
       body: { decision: 'reject', confirmed: true },
     });
     expect(patched.status).toBe(200);
-    const reserved = await callWithId(reserveSend, grayValidationId, { method: 'POST' });
+    const reserved = await callWithId(reserveSend, grayValidationId, { method: 'POST', body: { expectedDecision: 'reject' } });
     expect(reserved.json.reserved).toBe(true);
     const composed = await call(composeMail, {
       method: 'POST',
