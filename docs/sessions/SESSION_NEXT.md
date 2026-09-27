@@ -1,10 +1,9 @@
-# Brief — prochaine session (réécrit le 21/09/2026, complété le 23/09/2026)
+# Brief — prochaine session (réécrit le 27/09/2026)
 
-Le chantier **REFONTE DES INTERFACES** est **terminé côté code**, sur la branche
-`feat/ux-refonte` (**70 commits en avance sur `main`**, jamais poussés). La **recette du
-donneur d'ordre a commencé** (22-23/09) : ses retours sont traités et commités ; ce qui
-en sort est consigné au § « Recette du donneur d'ordre » de
-`docs/ux/maquette-structure-v2-2026-09-20.md`. Reste à la terminer, puis le merge.
+La **REFONTE DES INTERFACES** est **mergée sur `main`**, et **`main` = `demo`** (même
+commit, rien de propre à l'une ou l'autre). Rien n'est poussé : **le donneur d'ordre
+pousse** après sa recette sur dev (`! git push origin main` puis `! git push origin
+demo` — le push est gaté pour l'assistant).
 
 Source de vérité de la refonte : **`docs/ux/maquette-structure-v2-2026-09-20.md`**
 (la v1 est supersédée ; l'audit de l'existant est dans `docs/ux/audit-ux-2026-09-20.md`).
@@ -12,20 +11,40 @@ Le lexique est publié en référence : **`docs/ux/lexique.md`**.
 
 ---
 
-## 0. ÉTAT AU 23/09/2026
+## 0. ÉTAT AU 27/09/2026
+
+Ce qui est entré dans `main`, dans l'ordre : `fix/validations-orphelines` →
+`fix/ux-mensonges` → `feat/ux-refonte` → la garde `CRON_ENABLED` de la maintenance du
+vivier → `demo` (egress, Vercel Cron, sourcing, S34) → **deux correctifs trouvés PAR
+la vérification du merge** :
+
+- **`fix/hitl-decision-preservee`** — une remise en file ne décide jamais. Elle
+  réécrivait la décision d'une fiche encore `pending` : un « accepter » posé juste avant
+  la réservation repassait « refuser », l'invitation partait pendant que la
+  finalisation enregistrait un refus et révoquait le lien. Mise à jour partielle dans la
+  requête, réservation conditionnée à la décision affichée, seconde ceinture à l'envoi,
+  garde structurelle. **Audit prod (lecture seule) : 155 envois, aucun écart.**
+  Cf. `docs/specs/hitl-3-zones.md` §6bis.8.
+- **`fix/sched-repair-grace`** — la réparation du drain de réservation ne touche plus
+  une confirmation en cours (délai de grâce de 2 min). Cf.
+  `docs/specs/scheduling-module.md`, étape 5.
 
 | Indicateur | Valeur |
 |---|---|
-| Branche | `feat/ux-refonte`, 70 commits devant `main` |
 | Typecheck | propre (`npm run typecheck`) |
-| Tests unitaires | **2 981 verts**, 1 ignoré |
-| Tests de clic (E2E) | **à relancer** — S38 et S42 modifiés par la recette, non rejoués |
-| Régression | **verte le 23/09** (26 fichiers, 232 tests), à rejouer juste avant le merge |
-| Migration base | **aucune** dans ce chantier |
+| Lint | **0 erreur**, 18 avertissements |
+| Tests unitaires | **3 089 verts**, 1 ignoré |
+| Régression | **234/234** (25 fichiers), application fermée |
+| Tests de clic (E2E) | **66/66** (15 fichiers), application ouverte |
+| Conflits au merge | **aucun** |
+| Migration base | **aucune** |
 
 > ⚠️ **Les deux suites ne se lancent jamais ensemble.** `npm run test:regression` exige
-> l'application **fermée** ; `npm run test:e2e` exige `npm run dev` **ouvert**. La
-> régression mesure des compteurs globaux qu'un serveur vivant décale.
+> l'application **fermée** ; `npm run test:e2e` exige `npm run dev` **ouvert**.
+>
+> ⚠️ **Un test rouge une fois sur trois est un défaut, pas un test fragile** — les deux
+> derniers intermittents (S4, S13.3) étaient deux vraies courses. On nomme le test et on
+> cherche la cause avant de relancer.
 
 ---
 
@@ -58,50 +77,42 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
 
 ## 2. Ce qui attend
 
-### 2.1 Bloquant avant le merge
+### 2.1 Avant de pousser
 
-1. **Recette du donneur d'ordre**, de bout en bout, sur le jeu de démonstration —
-   **commencée le 22-23/09**, retours traités (voir plus bas). À terminer.
-2. **`npm run test:regression`** (application fermée) — vert exigé. ⚠️ **Une seule suite
-   à la fois** : deux exécutions simultanées sur la base de dev s'effacent mutuellement
-   (chaque scénario commence par `cleanAll()`), et les échecs qui en sortent ne veulent
-   rien dire. Constaté le 23/09 — 32 suites rouges, aucun défaut réel.
-3. **`npm run test:e2e`** (application ouverte) : **S38** (sections repliées, filet des
-   familles) et **S42** (repère `data-verdict`) ont été modifiés par la recette et n'ont
-   pas été rejoués.
-3. Décider du sort de la vue **« Activité »** de *Pilotage* : elle est **masquée**
-   (elle hébergeait le vieux Bureau — cartes d'agents, lignes de flux). La rouvrir est une
-   ligne (`TABS` dans `ReportingHub`). Tant qu'elle est masquée, l'ancien écran d'agents
-   n'a plus de porte.
+1. **Recette du donneur d'ordre** sur dev (commencée le 22-23/09, retours traités —
+   § « Recette du donneur d'ordre » de la maquette v2).
+2. **Variables d'environnement, par instance** (`docs/ops/env-reference.md`) :
+   - `CRON_SECRET` — toutes les instances (facultatif en dev) ;
+   - `CRON_ENABLED=1` — client et démo, **la prod en dernier** ; **jamais en dev**. Le
+     cron Vercel remplace cron-job.org : désactiver le job cron-job.org de l'instance
+     AU MÊME MOMENT, sinon deux relèves (double brief) ;
+   - `CV_ANALYZER_LEDGER_MODEL` — posé en dev, sur les clients après recette ;
+   - `OPENAI_CHAT_MODEL=gpt-4o` — toutes ;
+   - `SOURCING_*` — là où le sourcing sert ; `DEMO_JOBBOARD_ENABLED` — démo seulement ;
+     `ADEP_ENABLED` — si APEC ; `NEXT_PUBLIC_APP_URL` — toutes.
+3. Après déploiement : 2ᵉ segment de `x-vercel-id` = **`cdg1`**.
 
 ### 2.2 Ouvert, non bloquant
 
-- **L'assistant de création n'occupe pas la largeur du gabarit** : sa carte fait ~980 px
-  dans un conteneur de 1400 et se cale à gauche. Ce n'est pas une rupture de cadre (le
-  conteneur est le bon), c'est un choix de composition à trancher.
-- **Dette de lint préexistante** hors périmètre : `ValidationCard`, `VivierList`,
-  `VivierPreselectionPanel`, `ManagerChat`, `SettingsHub`, `CampaignCard` (8 erreurs
-  `react-hooks`). Aucune n'a été introduite par la refonte ; aucune n'est corrigée par
-  elle.
-- **Coût d'hydratation du workspace** : `/api/campaigns` + `/api/artifacts` (~341 Ko) sont
-  chargés sur CHAQUE écran, y compris ceux qui n'en ont pas besoin. Mesuré, non traité.
-- **`PERF_TRACE=1`** : le comptage des requêtes Supabase par écran n'a pas été relevé (il
-  demande un redémarrage du serveur de dev).
-- **Mesure depuis le déploiement de dev (`cdg1`)** : pas d'accès, non faite.
+- **L'assistant de création n'occupe pas la largeur du gabarit** (~980 px dans 1400,
+  calé à gauche) — choix de composition à trancher.
+- **Coût d'hydratation du workspace** : `/api/campaigns` + `/api/artifacts` (~341 Ko)
+  chargés sur CHAQUE écran. Mesuré, non traité.
+- **`PERF_TRACE=1`** : comptage des requêtes Supabase par écran non relevé.
+- **Base de la démo** : l'audit « décision envoyée ≠ décision humaine » n'y a pas été
+  rejoué (prod seulement).
+- `scripts/_diag-transcript*.ts` : fichiers non suivis, à trancher (commiter ou
+  supprimer).
 
 ---
 
 ## 3. Ordre de mise en production
 
-1. `npm run typecheck` — propre.
-2. `npm test` — 2 981 verts.
-3. **Fermer l'application**, `npm run test:regression` — vert.
-4. **Rouvrir** `npm run dev`, `npm run test:e2e` — dont S38 et S42, modifiés le 23/09.
-5. Recette manuelle du donneur d'ordre sur le jeu de démonstration.
-6. `git merge --ff-only feat/ux-refonte` sur `main`, puis **le donneur d'ordre pousse**
-   (`! git push origin main` — le push est gaté pour l'assistant).
-7. **Aucune migration à appliquer.** Aucune variable d'environnement nouvelle.
-8. Après déploiement : vérifier que le 2ᵉ segment de `x-vercel-id` est bien **`cdg1`**.
+1. Recette du donneur d'ordre sur dev.
+2. `! git push origin main` et `! git push origin demo` (le donneur d'ordre).
+3. Variables par instance (§2.1), cron-job.org coupé au moment où `CRON_ENABLED` est posé.
+4. **Aucune migration à appliquer.**
+5. Vérifier `cdg1` sur chaque instance.
 
 ---
 
