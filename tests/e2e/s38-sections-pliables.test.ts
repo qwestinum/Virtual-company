@@ -106,7 +106,12 @@ describe('S38 — sections pliables', () => {
     expect(etats.filter((e) => e === 'true'), etats.join(' · ')).toHaveLength(0);
 
     // …et elles s'ouvrent toujours au clic.
-    const entete = page.locator('[data-campaign-card] [aria-expanded="false"]').first();
+    // ⚠️ La carte est FIXÉE avant le clic (position, pas attribut) : un
+    // sélecteur `[aria-expanded="false"]` se RÉ-ÉVALUE à chaque lecture — une
+    // fois la carte ouverte, il désignait la SUIVANTE, toujours pliée, et le
+    // test lisait « false » sur une carte qu'il n'avait pas touchée.
+    const entete = page.locator('[data-campaign-card] [aria-expanded]').first();
+    expect(await entete.getAttribute('aria-expanded')).toBe('false');
     await entete.click();
     await page.waitForTimeout(500);
     expect(await entete.getAttribute('aria-expanded')).toBe('true');
