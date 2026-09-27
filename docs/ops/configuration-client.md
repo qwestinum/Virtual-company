@@ -29,10 +29,47 @@ par client), l'ensemble vit dans l'instance et la base Supabase de ce client.
 | `EMAIL_DRH` | **Adresse du donneur d'ordre / recruteur** | Reçoit bilans & briefs d'entretien |
 | `CAL_COM_EVENT_URL` | Lien de réservation d'entretien du client (repli global — les référents de campagne ont leur lien perso, cf. docs/ops/multi-utilisateur.md) | `https://cal.com/<user>/<event>` |
 | `CAL_COM_WEBHOOK_SECRET` | Secret HMAC du webhook Cal.com (Settings → Developer → Webhooks — LE MÊME sur chaque compte recruteur) | chaîne aléatoire |
-| `CRON_SECRET` | Bearer du cron imap-poll — OBLIGATOIRE (fail-closed : sans lui, la relève mail s'arrête) | chaîne aléatoire |
+| `CRON_SECRET` | Bearer des crons — OBLIGATOIRE (fail-closed : sans lui, la relève mail s'arrête). Vercel l'**injecte lui-même** dans l'appel de ses Cron Jobs quand la variable porte exactement ce nom | chaîne aléatoire |
+| `CRON_ENABLED` | **`1`** = les crons de `vercel.json` travaillent sur ce projet ; toute autre valeur (ou absente) ⇒ 200 `{ enabled: false }`, rien n'est lu. Instances **client et démo** seulement — **JAMAIS la dev** (§1.1) | `1` |
 | `MAILBOX_ENCRYPTION_KEY` | Clé de chiffrement des mots de passe IMAP | `openssl rand -hex 32`, **unique par projet, jamais changée** (la roter invalide toutes les boîtes) |
 
 > `.env.local` est **gitignored** — ne jamais le committer. Le sauvegarder hors serveur.
+
+### 1.1 Relève périodique — Vercel Cron (depuis le 27/09/2026, remplace cron-job.org)
+
+Les crons sont déclarés dans **`vercel.json`** (à la minute, plan Pro) : `/api/cron/imap-poll`
+(relève des candidatures par mail, drain des réservations, maintenance). Le fichier est **commun
+à tous les projets** (dev, démo, clients) ; chaque projet Vercel qui le déploie en production
+déclenche donc ses crons. D'où deux variables par projet :
+
+- **`CRON_SECRET`** — authentification fail-closed (`src/lib/auth/cron-auth.ts`) : absente ⇒ 500,
+  mauvais secret ⇒ 401. Vercel injecte `Authorization: Bearer <CRON_SECRET>` lui-même.
+- **`CRON_ENABLED=1`** — garde par projet (`src/lib/auth/cron-enabled.ts`), vérifiée AVANT
+  l'authentification : sans elle, la route répond 200 `{ enabled: false }` sans rien lire ni
+  écrire. **Règle : un seul déclencheur par base.** La dev partage sa base avec la démo et le
+  minuteur local la relève déjà (pause après 15 min d'inactivité) : **`CRON_ENABLED` n'est
+  JAMAIS posée sur la dev.**
+
+**Vérification** : Vercel → projet → *Settings → Cron Jobs* : les exécutions de
+`/api/cron/imap-poll` répondent **200** avec un corps de compteurs (et non `{ enabled: false }`,
+qui signale une variable manquante). Les crons ne tournent que sur le déploiement de
+**production** du projet, pas sur les previews.
+
+**`/api/cron/busy-calendars`** (connecteur d'agenda externe, branche `feat/agenda-externe`,
+pas encore sur `main`) : son entrée `vercel.json` arrive avec la route, sous la même garde.
+L'ordre d'activation ne change pas — le job existe dès le déploiement, mais le module ne lit
+RIEN tant que `BUSY_CALENDAR_ENABLED` est absent : ce drapeau reste posé **en dernier**.
+
+**Runbook de migration cron-job.org → Vercel Cron**, projet par projet, **prod en dernier** :
+
+1. Poser `CRON_SECRET` (s'il n'existe pas déjà) et `CRON_ENABLED=1` sur le projet — **jamais sur
+   la dev**.
+2. Déployer (les variables ne sont lues qu'au déploiement).
+3. Vérifier dans *Cron Jobs* que les exécutions répondent 200 avec des compteurs.
+4. Supprimer le(s) job(s) cron-job.org de ce projet.
+5. Pendant 24 h, vérifier qu'aucun double poll n'apparaît au journal (un seul déclencheur :
+   `mailboxes.last_polled_at` avance d'environ une minute, pas deux relèves par minute ; aucun
+   doublon d'analyse ni de mail).
 
 ---
 
@@ -130,7 +167,7 @@ réception · Le suivi · La réservation · Récapitulatif*) ou plus tard par
 - [ ] Domaine d'envoi vérifié côté Resend (DKIM/SPF) + **DMARC** posé (cf. déploiement).
 - [ ] `CAL_COM_EVENT_URL` = lien de réservation du client (repli global).
 - [ ] `CAL_COM_WEBHOOK_SECRET` posé + webhook enregistré sur CHAQUE compte Cal.com recruteur (même URL, même secret — docs/ops/multi-utilisateur.md §4).
-- [ ] `CRON_SECRET` posé côté Vercel ET cron-job.org (fail-closed).
+- [ ] `CRON_SECRET` + `CRON_ENABLED=1` posés sur le projet Vercel, exécutions *Cron Jobs* en 200 (§1.1) — plus de cron-job.org.
 - [ ] Compte du client créé dans Supabase Auth (inscription publique désactivée).
 - [ ] Smoke test : login → *Campagnes* → assistant → activer → déposer un CV →
       la candidature apparaît dans *Candidatures*, et **aucun refus n'est parti

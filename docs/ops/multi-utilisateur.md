@@ -9,8 +9,10 @@ des candidatures par mail s'arrête au déploiement**.
 
 1. Vercel → Settings → Environment Variables → vérifier/poser `CRON_SECRET`
    (production ET preview si le cron y pointe).
-2. cron-job.org → vérifier que le job envoie bien
-   `Authorization: Bearer <CRON_SECRET>` (même valeur).
+2. Depuis le 27/09/2026, le cron est un **Vercel Cron Job** (`vercel.json`) : Vercel envoie
+   lui-même `Authorization: Bearer <CRON_SECRET>`, et la route ne travaille que si le projet
+   porte aussi `CRON_ENABLED=1` (jamais sur la dev) — cf. `configuration-client.md` §1.1.
+   (Avant : un job cron-job.org, à supprimer une fois la migration vérifiée.)
 3. Après déploiement : un hit manuel sans header doit répondre 401 (et le poll
    planifié doit continuer de tourner — vérifier `GET /api/imap/status`).
 
