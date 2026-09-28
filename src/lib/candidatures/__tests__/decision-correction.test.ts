@@ -152,6 +152,15 @@ describe('aucun envoi, jamais', () => {
           options: [{ target: 'dismissal_reopen', label: '', detail: '' }],
         }),
       },
+      {
+        // Annuler la désignation d'un recruté (lot 4) : la gomme, rien d'autre.
+        target: 'hire_cleared' as const,
+        context: contextWith({
+          stage: 'recrute',
+          current: { kind: 'hire' },
+          options: [{ target: 'hire_cleared', label: '', detail: '' }],
+        }),
+      },
     ];
     for (const c of cases) {
       const out = await applyDecisionCorrection({
@@ -303,5 +312,28 @@ describe('garde de cible', () => {
     });
     expect(out.status).toBe('not_correctable');
     expect(appendJournalEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('recruté — la gomme de la désignation', () => {
+  it('pose `candidate_hired_marked { cleared, corrected }`, et rien d’autre', async () => {
+    appendJournalEntry.mockClear();
+    const { applyDecisionCorrection } = await import('@/lib/candidatures/decision-correction');
+    const out = await applyDecisionCorrection({
+      analysis,
+      context: contextWith({
+        stage: 'recrute',
+        current: { kind: 'hire' },
+        options: [{ target: 'hire_cleared', label: '', detail: '' }],
+      }),
+      target: 'hire_cleared',
+      reason: 'mauvaise ligne',
+      actor: { userId: 'u-sarah', email: 'sarah@qwestinum.fr' },
+    });
+    expect(out.status).toBe('corrected');
+    const hired = appendJournalEntry.mock.calls.map((c) => c[0]).filter((e) => e.action === 'candidate_hired_marked');
+    expect(hired).toHaveLength(1);
+    expect(hired[0]!.payload).toMatchObject({ status: 'cleared', corrected: true });
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 });

@@ -108,6 +108,11 @@ function phraseFor(action: AcknowledgmentAction): string {
 }
 
 async function postJournal(action: AcknowledgmentAction): Promise<void> {
+  // `campaign_closed` a UN écrivain : la route de clôture, qui le pose avec
+  // l'issue et le recruté (feat/feedback-candidat, lot 4). La prise d'acte
+  // l'écrivait aussi — deux entrées pour une clôture, la seconde muette sur
+  // l'issue. Le message du chat, lui, reste.
+  if (action.kind === 'campaign_closed') return;
   try {
     await fetch('/api/journal', {
       method: 'POST',

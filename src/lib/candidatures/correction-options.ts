@@ -49,6 +49,8 @@ export function resolveCurrentDecision(
   if (input.stage === 'sans_suite') {
     return { kind: 'dismissal', reason: input.dismissalReason };
   }
+  // Désignation du recruté (clôture) — prime sur le verdict qu'elle suppose.
+  if (input.stage === 'recrute') return { kind: 'hire' };
   // 1-2 — verdict final, puis marquage d'entretien (mêmes rangs que la dérivation).
   if (input.validationEffect !== null) {
     return { kind: 'final_verdict', value: input.validationEffect };
@@ -70,10 +72,8 @@ export function resolveCurrentDecision(
     case 'a_valider':
     case 'proposition_refus':
       return null;
-    // `non_retenu` naît d'un marqueur, traité plus haut. `recrute` : sa
-    // correction (retirer la désignation) arrive avec le lot 4.
+    // `non_retenu` naît d'un marqueur, traité plus haut.
     case 'non_retenu':
-    case 'recrute':
       return null;
     // Traités plus haut par leurs marqueurs ; sans marqueur lisible, il n'y a
     // pas de décision à corriger (on ne devine pas). `sans_suite` est déjà
@@ -148,7 +148,7 @@ export function correctionOptionsFor(
         ? [
             {
               target: 'screening_rejected',
-              label: 'Requalifier en non retenu',
+              label: 'Requalifier en écarté',
               detail:
                 'La candidature est écartée. Aucun mail de refus ne part.',
             },
@@ -161,6 +161,15 @@ export function correctionOptionsFor(
                 'Le dossier repasse en « Invité ». Aucune invitation ne part — à déclencher depuis Entretiens.',
             },
           ];
+    case 'hire':
+      return [
+        {
+          target: 'hire_cleared',
+          label: 'Annuler la désignation',
+          detail:
+            'Le dossier revient à « Retenu ». Aucun message ne part ; les autres retenus gardent leur statut.',
+        },
+      ];
     case 'dismissal':
       return [
         {
@@ -215,6 +224,7 @@ export const CORRECTION_TARGET_STATE_LABELS: Record<CorrectionTarget, string> = 
   screening_accepted: 'Accepté — invité',
   screening_rejected: 'Écarté',
   dismissal_reopen: 'Candidature rouverte',
+  hire_cleared: 'Retenu',
 };
 
 /** Libellé de l'état courant tel qu'annoncé en tête du dialog. */
@@ -235,6 +245,8 @@ export function currentDecisionLabel(current: CurrentDecision): string {
         : 'Écarté';
     case 'dismissal':
       return 'Classée sans suite';
+    case 'hire':
+      return 'Recruté';
     default:
       return 'Décision';
   }

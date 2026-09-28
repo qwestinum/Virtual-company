@@ -20,7 +20,10 @@ const postFinalVerdict = vi.fn(async () => ({
   nextStage: 'non_retenu',
 }));
 const postNoShow = vi.fn(async () => ({ status: 'decided' as const, nextStage: 'non_retenu' }));
-const dismissCandidature = vi.fn(async () => ({ status: 'dismissed' as const, mailStatus: 'not_requested' }));
+const dismissCandidature = vi.fn(async (_analysis: unknown, _opts: { message: unknown }) => ({
+  status: 'dismissed' as const,
+  mailStatus: 'not_requested',
+}));
 const recordFeedback = vi.fn(async () => ({
   feedbackId: 'fb1',
   kind: 'non_retenu',
@@ -34,7 +37,9 @@ vi.mock('@/lib/db/repos/candidate-analyses', () => ({
 }));
 vi.mock('@/lib/candidatures/verdict', () => ({ postFinalVerdict: () => postFinalVerdict() }));
 vi.mock('@/lib/candidatures/no-show', () => ({ postNoShow: () => postNoShow() }));
-vi.mock('@/lib/candidatures/dismissal', () => ({ dismissCandidature: () => dismissCandidature() }));
+vi.mock('@/lib/candidatures/dismissal', () => ({
+  dismissCandidature: (a: unknown, o: { message: unknown }) => dismissCandidature(a, o),
+}));
 vi.mock('@/lib/candidatures/feedback', () => ({ recordFeedback: () => recordFeedback() }));
 
 const verdict = await import('@/app/api/candidatures/[id]/verdict/route');
@@ -128,12 +133,13 @@ describe('« sans suite » individuel', () => {
     const res = await call(dismiss.POST, { reason: 'doublon' });
     expect(res.status).toBe(200);
     expect(dismissCandidature).toHaveBeenCalledTimes(1);
-    expect(recordFeedback).not.toHaveBeenCalled();
+    expect(dismissCandidature.mock.calls[0]![1].message).toBeNull();
   });
 
-  it('avec choix ⇒ classement puis message', async () => {
+  it('avec choix ⇒ le classement PORTE le message (même verrou que l’envoi groupé)', async () => {
     const res = await call(dismiss.POST, { reason: 'candidat_retire', feedback: SEND });
     expect(res.status).toBe(200);
-    expect(recordFeedback).toHaveBeenCalledTimes(1);
+    expect(dismissCandidature).toHaveBeenCalledTimes(1);
+    expect(dismissCandidature.mock.calls[0]![1].message).toEqual(SEND);
   });
 });

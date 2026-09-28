@@ -156,3 +156,36 @@ describe('libellés d’état', () => {
     }
   });
 });
+
+describe('recruté — « Annuler la désignation » (feat/feedback-candidat, lot 4)', () => {
+  it('un recruté se corrige par la gomme de la désignation, jamais par un envoi', () => {
+    const current = resolveCurrentDecision(
+      input({ stage: 'recrute', validationEffect: 'validated' }),
+    );
+    expect(current).toEqual({ kind: 'hire' });
+    expect(currentDecisionLabel(current!)).toBe('Recruté');
+    const options = correctionOptionsFor(current!);
+    expect(options.map((o) => o.target)).toEqual(['hire_cleared']);
+    expect(options[0]!.detail).toContain('Aucun message');
+  });
+});
+
+describe('le mot dépend du moment (lexique, 28/09/2026)', () => {
+  it('AVANT l’entretien (décision de tri sur CV) : « Requalifier en écarté »', () => {
+    const current = resolveCurrentDecision(input({ stage: 'invite', interviewEffect: null }));
+    expect(current).toEqual({ kind: 'screening_decision', value: 'accepted', auto: false });
+    expect(correctionOptionsFor(current!).map((o) => o.label)).toEqual(['Requalifier en écarté']);
+  });
+
+  it('APRÈS l’entretien : « Non retenu », jamais « écarté »', () => {
+    // Entretien réalisé puis verdict « Retenu » : la correction propose « Non retenu ».
+    const verdict = correctionOptionsFor({ kind: 'final_verdict', value: 'validated' });
+    expect(verdict[0]!.label).toBe('Non retenu');
+    // Entretien marqué réalisé, sans verdict : l'absence mène à « Non retenu ».
+    const interview = correctionOptionsFor({ kind: 'interview', value: 'realized' });
+    expect(interview[0]!.detail).toContain('« Non retenu »');
+    for (const o of [...verdict, ...interview]) {
+      expect(`${o.label} ${o.detail}`).not.toMatch(/écart/i);
+    }
+  });
+});

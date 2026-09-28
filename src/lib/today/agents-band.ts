@@ -84,8 +84,13 @@ export const AGENT_BAND: readonly AgentBandEntry[] = [
       { action: 'candidature_dismissed', payloadEquals: { mailSent: 'true' } },
       { action: 'vivier_invitation_sent', payloadEquals: { status: 'sent' } },
       // Message après décision (feat/feedback-candidat) — seulement s'il est
-      // PARTI : ni un « je préviens moi-même », ni un doublon bloqué.
-      { action: 'candidate_feedback_recorded', payloadEquals: { mailStatus: 'sent' } },
+      // PARTI : ni un « je préviens moi-même », ni un doublon bloqué. Le
+      // « sans suite » n'est PAS listé ici : il est porté par le classement et
+      // déjà compté par `candidature_dismissed` (le compter deux fois ferait
+      // mentir la bande).
+      { action: 'candidate_feedback_recorded', payloadEquals: { kind: 'retenu', mailStatus: 'sent' } },
+      { action: 'candidate_feedback_recorded', payloadEquals: { kind: 'non_retenu', mailStatus: 'sent' } },
+      { action: 'candidate_feedback_recorded', payloadEquals: { kind: 'absent', mailStatus: 'sent' } },
     ],
     unit: { one: 'message envoyé', many: 'messages envoyés' },
   },

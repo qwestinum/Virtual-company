@@ -91,3 +91,6 @@ rapport-bisseg*.md
 
 # Captures E2E — preuves visuelles régénérables, jamais versionnées (3 Mo par passage)
 tests/e2e/captures/
+
+# Sorties horodatées des suites de tests (une par passage)
+/test-results

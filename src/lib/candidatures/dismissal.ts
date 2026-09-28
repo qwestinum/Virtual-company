@@ -11,29 +11,28 @@
  *   3. annulation des briefs d'entretien ouverts (booking posthume bloqué),
  *      puis, en réservation native, révocation du lien et décommande d'un
  *      rendez-vous à venir SANS notifier le candidat (une seule voix) ;
- *   4. mail d'information OPTIONNEL sous claim deux-phases
- *      (`candidature_dismissal`/analysisId/`dismiss` — claim AVANT sendEmail,
- *      confirm APRÈS, release sur échec : rails identiques à l'outreach) ;
+ *   4. message au candidat OPTIONNEL, par le chemin UNIQUE des messages après
+ *      décision (`recordFeedback`, feat/feedback-candidat) : gabarit « Sans
+ *      suite » des Réglages avec [motif], ou « je préviens moi-même ». Même
+ *      clé de verrou deux-phases qu'avant (`candidature_dismissal`/analysisId/
+ *      `dismiss`) : un seul message sans suite par candidature, quel que soit
+ *      le chemin (individuel, clôture, rail) ;
  *   5. journal honnête : `candidature_dismissed` (+ statut mail réel),
  *      `candidature_dismissal_mail_not_sent` si le mail demandé n'est pas parti.
  */
 
-import { resolveCampaignReceptionAddress } from '@/lib/campaign/reception-address';
 import {
-  dismissalTextToHtml,
-  renderDismissalMail,
-} from '@/lib/candidatures/dismissal-template';
-import { getAppSettings } from '@/lib/db/repos/app-settings';
-import { getCampaign } from '@/lib/db/repos/campaigns';
+  feedbackContextFor,
+  loadFeedbackBase,
+  recordFeedback,
+  type FeedbackBase,
+  type RecordFeedbackOutcome,
+} from '@/lib/candidatures/feedback';
+import { dismissalMotif, renderFeedbackProposal } from '@/lib/candidatures/feedback-template';
 import {
   dismissCandidateAnalysis,
   revertCandidateAnalysisDismissal,
 } from '@/lib/db/repos/candidate-analyses';
-import {
-  claimOutreach,
-  confirmOutreachClaim,
-  releaseOutreachClaim,
-} from '@/lib/db/repos/imap-outreach-claims';
 import {
   cancelOpenBriefsForCandidate,
   getLatestBriefByUid,
@@ -47,7 +46,6 @@ import {
   unvoidPendingValidation,
   voidPendingValidation,
 } from '@/lib/db/repos/pending-validations';
-import { getSenderEmail } from '@/lib/email/addresses';
 import {
   cancelBookingForAnalysis,
   createCampaignBookingContext,
@@ -55,14 +53,10 @@ import {
   isBookingStillConfirmed,
   revokeCampaignBookingLink,
 } from '@/lib/scheduling-host/campaign-booking';
-import { sendEmail } from '@/lib/email/client';
 import { dismissalMailAllowed, type DismissalReason } from '@/types/dismissal';
 import type { DecidedBy, HumanDecider } from '@/types/hitl';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
-import { DEFAULT_VIVIER_CONFIG } from '@/types/vivier-settings';
-
-/** Pseudo-mailbox du claim (même table que l'outreach IMAP/HITL). */
-const DISMISSAL_CLAIM_MAILBOX = 'candidature_dismissal';
+import type { FeedbackChoice } from '@/types/candidate-feedback';
 
 export type DismissalMailStatus =
   | 'sent'
@@ -71,79 +65,62 @@ export type DismissalMailStatus =
   | 'skipped_no_config'
   | 'send_failed'
   | 'not_requested'
-  | 'not_applicable';
+  | 'not_applicable'
+  /** « Je préviens moi-même » : aucun envoi, le canal est tracé. */
+  | 'self_informed';
 
 export type DismissCandidatureResult =
-  | { status: 'dismissed'; mailStatus: DismissalMailStatus }
+  | {
+      status: 'dismissed';
+      mailStatus: DismissalMailStatus;
+      /** Le message au candidat (ligne `candidate_feedback`), s'il y en a un. */
+      feedback: RecordFeedbackOutcome | { error: 'record_failed' } | null;
+    }
   | { status: 'already_dismissed' }
   | { status: 'deferred_sending' }
   | { status: 'not_found' };
 
-function firstName(nom: string): string {
-  return nom.trim().split(/\s+/)[0] ?? nom;
-}
-
-async function jobTitleFor(
-  campaignId: string | null,
-  ctx?: CampaignBookingContext,
-): Promise<string> {
-  if (!campaignId) return 'le poste visé';
-  const campaign = await (ctx ? ctx.campaign() : getCampaign(campaignId)).catch(() => null);
-  const v = campaign?.fdp.fields.job_title?.value;
-  return typeof v === 'string' && v.trim() ? v.trim() : 'le poste visé';
-}
-
-/** Faits du mail d'information communs à toute une campagne. */
-type DismissalMailFacts = {
-  organisation: string;
-  reception: string | null;
-  rgpdContact: string;
-  jobTitle: string;
-};
-
-/**
- * Lectures du mail d'information (réglages, adresse de réception, expéditeur,
- * intitulé) — mêmes replis qu'avant, lancées ENSEMBLE quand elles sont
- * indépendantes. Une clôture les partage pour tous ses dossiers.
- */
-async function loadDismissalMailFacts(
-  campaignId: string | null,
-  ctx?: CampaignBookingContext,
-): Promise<DismissalMailFacts> {
-  const settingsPromise = getAppSettings().catch(() => null);
-  const jobTitlePromise = jobTitleFor(campaignId, ctx);
-  const senderPromise = getSenderEmail().catch(() => null);
-  const settings = await settingsPromise;
-  const organisation =
-    settings?.vivierConfig?.organisationName?.trim() ||
-    DEFAULT_VIVIER_CONFIG.organisationName.trim() ||
-    'L’équipe recrutement';
-  const reception = campaignId
-    ? await resolveCampaignReceptionAddress(campaignId, settings?.intakeEmail).catch(
-        () => null,
-      )
-    : (settings?.intakeEmail ?? null);
-  const rgpdContact = reception || (await senderPromise) || '';
-  return { organisation, reception, rgpdContact, jobTitle: await jobTitlePromise };
-}
-
 /**
  * Ce qu'une série de classements d'une MÊME campagne peut partager : le
- * contexte de réservation (campagne, cible) et les faits du mail. Créé par
- * l'appelant pour la durée de SA requête — jamais conservé au-delà.
+ * contexte de réservation (campagne, cible) et la base des messages
+ * (gabarits, signataire, poste). Créé par l'appelant pour la durée de SA
+ * requête — jamais conservé au-delà.
  */
 export type DismissalSharedContext = {
   bookingContext?: CampaignBookingContext;
-  mailFacts?: () => Promise<DismissalMailFacts>;
+  feedbackBase?: () => Promise<FeedbackBase>;
 };
 
-export function createDismissalSharedContext(campaignId: string): DismissalSharedContext {
+export function createDismissalSharedContext(
+  campaignId: string,
+  actor: HumanDecider | null = null,
+): DismissalSharedContext {
   const bookingContext = createCampaignBookingContext(campaignId);
-  let facts: Promise<DismissalMailFacts> | null = null;
+  let base: Promise<FeedbackBase> | null = null;
   return {
     bookingContext,
-    mailFacts: () => (facts ??= loadDismissalMailFacts(campaignId, bookingContext)),
+    feedbackBase: () => (base ??= loadFeedbackBase(campaignId, actor)),
   };
+}
+
+/**
+ * Le message « Sans suite » PROPOSÉ par les Réglages, tel qu'un envoi groupé
+ * le fait partir (aucun aperçu par dossier : c'est le comportement de la
+ * clôture). `null` : raison sans message (doublon, invalide) ou pas d'adresse.
+ */
+export function groupDismissalMessage(
+  base: FeedbackBase,
+  analysis: Pick<CandidateAnalysisSummary, 'candidateName' | 'candidateEmail'>,
+  reason: DismissalReason,
+): FeedbackChoice | null {
+  const motif = dismissalMotif(reason);
+  if (!motif || !analysis.candidateEmail) return null;
+  const ctx = feedbackContextFor(base, analysis);
+  const { subject, body } = renderFeedbackProposal(ctx.templates.feedbackDismissedTemplate, {
+    ...ctx.vars,
+    motif,
+  });
+  return { mode: 'send', subject, body };
 }
 
 /**
@@ -164,71 +141,19 @@ async function findOpenValidationId(
   return match?.id ?? null;
 }
 
-async function sendDismissalMail(
-  analysis: CandidateAnalysisSummary,
-  reason: DismissalReason,
-  factsPromise: Promise<DismissalMailFacts>,
-): Promise<DismissalMailStatus> {
-  if (!dismissalMailAllowed(reason)) return 'not_applicable';
-  if (!analysis.candidateEmail) return 'skipped_no_email';
-
-  const { organisation, reception, rgpdContact, jobTitle } = await factsPromise;
-
-  const mail = renderDismissalMail(reason, {
-    prenom: firstName(analysis.candidateName),
-    jobTitle,
-    organisation,
-    rgpdContact,
-  });
-  if (!mail) return 'not_applicable';
-
-  // Claim deux-phases AVANT l'envoi — un classement rejoué ne renvoie jamais.
-  const claimKey = {
-    mailboxId: DISMISSAL_CLAIM_MAILBOX,
-    uid: analysis.id,
-    mode: 'dismiss',
-  } as const;
-  const verdict = await claimOutreach(claimKey);
-  if (verdict === 'already_sent' || verdict === 'in_flight') return 'duplicate';
-
-  let result;
-  try {
-    result = await sendEmail({
-      to: analysis.candidateEmail,
-      subject: mail.subject,
-      html: dismissalTextToHtml(mail.text),
-      replyTo: reception || undefined,
-    });
-  } catch (err) {
-    await releaseOutreachClaim(claimKey);
-    throw err;
-  }
-  if (result.ok) {
-    await confirmOutreachClaim(claimKey);
-    return 'sent';
-  }
-  await releaseOutreachClaim(claimKey);
-  return result.error === 'email_not_configured'
-    ? 'skipped_no_config'
-    : 'send_failed';
-}
-
 export type DismissCandidatureOptions = {
   reason: DismissalReason;
-  /** Envoyer le mail d'information (le choix UI ; la matrice par raison
-   * garde-fou en aval — jamais de mail doublon/invalide). */
-  sendMail: boolean;
+  /**
+   * Le message au candidat : le choix de l'écran (individuel) ou le gabarit
+   * rendu par le lot (clôture). `null` : aucun message. La matrice par raison
+   * reste le garde-fou en aval — jamais de message pour doublon/invalide.
+   */
+  message: FeedbackChoice | null;
   /** 'user' = action individuelle / confirmation humaine ; 'auto' réservé aux
    * flux système futurs (aujourd'hui tous les chemins passent par un humain). */
   dismissedBy: DecidedBy;
   dismissedByUser: HumanDecider | null;
   actor: string;
-  /**
-   * Le message au candidat est porté À PART, par `feedback.ts` (classement
-   * individuel, feat/feedback-candidat) : `sendMail` vaut alors `false` et le
-   * journal le DIT, pour qu'un lecteur ne conclue pas « aucun message ».
-   */
-  messageViaFeedback?: boolean;
 };
 
 /**
@@ -269,13 +194,13 @@ export async function dismissCandidature(
   const bookingContext = analysis.campaignId
     ? (shared?.bookingContext?.fork() ?? createCampaignBookingContext(analysis.campaignId))
     : undefined;
-  // Les lectures du mail partent dès maintenant (elles ne dépendent de rien
-  // de ce qui suit) ; l'ENVOI, lui, reste après les étapes 3 et 3 bis.
-  const factsPromise =
-    opts.sendMail && dismissalMailAllowed(opts.reason) && analysis.candidateEmail
-      ? (shared?.mailFacts?.() ?? loadDismissalMailFacts(analysis.campaignId, bookingContext))
-      : null;
-  factsPromise?.catch(() => undefined);
+  // La base du message part dès maintenant (elle ne dépend de rien de ce qui
+  // suit) ; l'ENVOI, lui, reste après les étapes 3 et 3 bis.
+  const wantsMessage = opts.message !== null && dismissalMailAllowed(opts.reason);
+  const baseP = wantsMessage
+    ? (shared?.feedbackBase?.() ?? loadFeedbackBase(analysis.campaignId, opts.dismissedByUser))
+    : null;
+  baseP?.catch(() => undefined);
 
   // 3. Briefs d'entretien : annulation best-effort (un échec ne doit pas
   // annuler le classement déjà posé — signalé au journal via mailStatus).
@@ -316,18 +241,32 @@ export async function dismissCandidature(
     console.error('[dismissal] révocation/annulation de réservation KO', err);
   }
 
-  // 4. Mail d'information (optionnel, sous claim).
-  let mailStatus: DismissalMailStatus = 'not_requested';
-  if (opts.sendMail) {
+  // 4. Message au candidat — le chemin unique des messages après décision.
+  let mailStatus: DismissalMailStatus = dismissalMailAllowed(opts.reason)
+    ? 'not_requested'
+    : 'not_applicable';
+  let feedback: RecordFeedbackOutcome | { error: 'record_failed' } | null = null;
+  if (wantsMessage && opts.message && baseP) {
     try {
-      mailStatus = await sendDismissalMail(
+      feedback = await recordFeedback({
         analysis,
-        opts.reason,
-        factsPromise ?? loadDismissalMailFacts(analysis.campaignId, bookingContext),
-      );
+        kind: 'sans_suite',
+        choice: opts.message,
+        actor: opts.dismissedByUser,
+        cause: opts.reason,
+        context: feedbackContextFor(await baseP, analysis),
+      });
+      const sent = feedback.mailStatus;
+      mailStatus =
+        feedback.channel !== 'mail'
+          ? 'self_informed'
+          : sent === null || sent === 'pending'
+            ? 'send_failed'
+            : sent;
     } catch (err) {
-      console.error('[dismissal] mail send threw', err);
-      mailStatus = 'send_failed';
+      console.error('[dismissal] message au candidat KO', err);
+      feedback = { error: 'record_failed' };
+      mailStatus = opts.message.mode === 'send' ? 'send_failed' : 'not_requested';
     }
   }
 
@@ -348,10 +287,10 @@ export async function dismissCandidature(
       bookingCancelled,
       mailStatus,
       mailSent: mailStatus === 'sent' || mailStatus === 'duplicate',
-      ...(opts.messageViaFeedback ? { messageViaFeedback: true } : {}),
+      ...(feedback && !('error' in feedback) ? { feedbackId: feedback.feedbackId } : {}),
     },
   });
-  if (opts.sendMail && mailStatus !== 'sent' && mailStatus !== 'duplicate') {
+  if (opts.message?.mode === 'send' && wantsMessage && mailStatus !== 'sent' && mailStatus !== 'duplicate') {
     await appendJournalEntry({
       action: 'candidature_dismissal_mail_not_sent',
       actor: opts.actor,
@@ -367,7 +306,7 @@ export async function dismissCandidature(
     });
   }
 
-  return { status: 'dismissed', mailStatus };
+  return { status: 'dismissed', mailStatus, feedback };
 }
 
 export type ReopenResult = 'reopened' | 'not_dismissed';

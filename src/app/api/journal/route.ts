@@ -13,6 +13,7 @@ import {
   INTERVIEW_MARKER_ACTION,
   VALIDATION_MARKER_ACTION,
 } from '@/lib/candidatures/decision-markers';
+import { CAMPAIGN_CLOSED_ACTION } from '@/lib/campagnes/closure-constants';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 
@@ -71,6 +72,18 @@ export async function POST(request: Request): Promise<NextResponse> {
         error: 'use_verdict_route',
         message:
           'Un verdict final se pose par POST /api/candidatures/[id]/verdict, avec son commentaire.',
+      },
+      { status: 409 },
+    );
+  }
+
+  // La clôture a SON chemin, qui écrit `campaign_closed` avec l'issue et le
+  // recruté : une seconde entrée, muette sur l'issue, ferait mentir le journal.
+  if (parsed.action === CAMPAIGN_CLOSED_ACTION) {
+    return NextResponse.json(
+      {
+        error: 'use_close_route',
+        message: 'Une clôture se pose par POST /api/campaigns/[id]/close.',
       },
       { status: 409 },
     );

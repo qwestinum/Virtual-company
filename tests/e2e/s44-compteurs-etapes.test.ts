@@ -1,13 +1,15 @@
 /**
- * S44 — LES DIX ÉTAPES À L'ÉCRAN (feat/feedback-candidat, lot 3).
+ * S44 — LES ÉTAPES À L'ÉCRAN (feat/feedback-candidat, lot 3, carte revue le
+ * 28/09/2026).
  *
- *   1. La carte campagne dépliée montre « Reçues » puis DIX compteurs, et
- *      leur somme fait « Reçues » — un tableau dont les chiffres se recoupent
- *      est un tableau qu'on croit (arbitrage du 28/09/2026).
- *   2. Chaque compteur porte sa définition au survol (le libellé reste court).
- *   3. Cliquer « Recruté » — une puce à zéro est un état normal — ouvre
- *      Candidatures avec LA MÊME puce active, et le même chiffre.
- *   4. Le ruban de Candidatures porte les dix puces, dans l'ordre du lexique.
+ *   1. La carte campagne dépliée montre le FUNNEL POSITIF sur une rangée —
+ *      Reçues · À valider · Invité · Entretien fait · Retenu · Recruté — et
+ *      chaque compteur porte sa définition au survol.
+ *   2. CHAQUE compteur de la carte égale SA puce dans Candidatures (même
+ *      campagne), et « Reçues » égale le total de Candidatures filtré sur la
+ *      campagne. La partition « dix étapes = Reçues » est tenue sur les PUCES
+ *      (régression S6), plus sur la carte.
+ *   3. Le ruban de Candidatures porte les dix puces, dans l'ordre du lexique.
  */
 import type { Browser, Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -28,6 +30,8 @@ const ORDRE = [
   'Non retenu',
   'Sans suite',
 ];
+
+const CARTE = ['Reçues', 'À valider', 'Invité', 'Entretien fait', 'Retenu', 'Recruté'];
 
 let browser: Browser;
 let page: Page;
@@ -64,8 +68,10 @@ async function lireTuiles(): Promise<Tuile[]> {
   );
 }
 
-describe('S44 — les dix étapes, de la carte à la puce', () => {
-  it('S44.1 — la carte : Reçues + dix compteurs dont la somme fait Reçues ; définition au survol', async () => {
+describe('S44 — de la carte à la puce', () => {
+  let tuiles: Tuile[] = [];
+
+  it('S44.1 — la carte : le funnel positif, définition au survol', async () => {
     await page.goto(`${BASE_URL}/campagnes`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-campaign-card]', { timeout: 90_000 });
     await attendreHydratation(page, '[data-campaign-card]');
@@ -73,24 +79,30 @@ describe('S44 — les dix étapes, de la carte à la puce', () => {
     if (await entete.count()) await entete.click();
     await page.waitForSelector('[data-role="campaign-card-counters"] a', { timeout: 30_000 });
 
-    const tuiles = await lireTuiles();
-    expect(tuiles.map((t) => t.label)).toEqual(['Reçues', ...ORDRE]);
-    const [recues, ...etapes] = tuiles;
-    const somme = etapes.reduce((n, t) => n + t.valeur, 0);
-    expect(somme, JSON.stringify(tuiles.map((t) => [t.label, t.valeur]))).toBe(recues!.valeur);
-    for (const t of etapes) {
+    tuiles = await lireTuiles();
+    expect(tuiles.map((t) => t.label)).toEqual(CARTE);
+    for (const t of tuiles.slice(1)) {
       expect(t.titre, t.label).toMatch(new RegExp(`^${t.label} — .{6,}`));
     }
   }, 300_000);
 
-  it('S44.2 — cliquer « Recruté » ouvre la MÊME puce, avec le même chiffre', async () => {
-    const tuile = (await lireTuiles()).find((t) => t.label === 'Recruté')!;
-    await page.click('[data-role="campaign-card-counters"] a[href*="statut=recrute"]');
-    await page.waitForURL(/statut=recrute/, { timeout: 30_000 });
-    await page.waitForSelector('[data-dot-tab="recrute"][aria-selected="true"]', { timeout: 60_000 });
-    const texte = (await page.textContent('[data-dot-tab="recrute"]')) ?? '';
-    expect(texte).toContain('Recruté');
-    expect(Number(texte.match(/\d+/)?.[0] ?? NaN)).toBe(tuile.valeur);
+  it('S44.2 — chaque compteur égale sa puce ; « Reçues » égale le total filtré campagne', async () => {
+    expect(tuiles.length).toBe(CARTE.length);
+    for (const t of tuiles) {
+      const statut = new URL(t.href, BASE_URL).searchParams.get('statut') ?? 'toutes';
+      await page.goto(`${BASE_URL}${t.href}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector(`[data-dot-tab="${statut}"][aria-selected="true"]`, {
+        timeout: 60_000,
+      });
+      // Les compteurs se chargent après la page : on attend qu'ils portent un chiffre.
+      await expect
+        .poll(async () => (await page.textContent(`[data-dot-tab="${statut}"]`)) ?? '', {
+          timeout: 30_000,
+        })
+        .toMatch(/\d/);
+      const texte = (await page.textContent(`[data-dot-tab="${statut}"]`)) ?? '';
+      expect(Number(texte.match(/\d+/)?.[0] ?? NaN), `${t.label} (${statut})`).toBe(t.valeur);
+    }
   }, 300_000);
 
   it('S44.3 — le ruban de Candidatures porte les dix puces, dans l’ordre', async () => {

@@ -54,9 +54,11 @@ import type { HumanDecider } from '@/types/hitl';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
 import {
+  buildHiredMarkerEntry,
   buildInterviewMarkerEntry,
   buildValidationMarkerEntry,
   DECISION_CORRECTED_ACTION,
+  type HiredMarkValue,
   type InterviewMarkValue,
   type ValidationMarkValue,
 } from './decision-markers';
@@ -76,7 +78,8 @@ type Plan =
   | { family: 'interview'; value: InterviewMarkValue }
   | { family: 'verdict'; value: ValidationMarkValue }
   | { family: 'screening'; status: 'accepted' | 'rejected' }
-  | { family: 'reopen' };
+  | { family: 'reopen' }
+  | { family: 'hire'; value: HiredMarkValue };
 
 function planFor(target: CorrectionTarget): Plan {
   switch (target) {
@@ -98,6 +101,8 @@ function planFor(target: CorrectionTarget): Plan {
       return { family: 'screening', status: 'rejected' };
     case 'dismissal_reopen':
       return { family: 'reopen' };
+    case 'hire_cleared':
+      return { family: 'hire', value: 'cleared' };
     default: {
       const never: never = target;
       throw new Error(`Cible de correction non traitée : ${String(never)}`);
@@ -184,6 +189,20 @@ export async function applyDecisionCorrection(args: {
         // Best-effort : la correction est posée, elle ne se défait pas pour
         // une fiche qu'on n'a pas su fermer. Le signal d'incohérence la verra.
         console.error('[correction] clôture de la fiche de validation échouée', err);
+      });
+      break;
+    case 'hire':
+      // La gomme de la désignation : le dossier retombe sur son verdict
+      // (« Retenu »). Aucun envoi, comme tout ce module.
+      await appendJournalEntry({
+        ...buildHiredMarkerEntry({
+          uid: analysis.uid,
+          candidateName: analysis.candidateName,
+          campaignId: analysis.campaignId,
+          value: plan.value,
+          corrected: true,
+        }),
+        actor: 'user',
       });
       break;
     case 'reopen': {

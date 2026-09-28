@@ -1,21 +1,23 @@
 'use client';
 
 /**
- * Compteurs-filtres d'une carte campagne : « Reçues » en tête, puis deux
- * rangées de cinq — « en cours » et « issues » (arbitrage du 28/09/2026).
- * Les dix étapes font « Reçues » : un tableau dont les chiffres se recoupent
- * est un tableau qu'on croit. Même tuile, même taille partout ; une rangée
- * trop large passe à la ligne, elle ne rétrécit jamais ses tuiles.
+ * Compteurs-filtres d'une carte campagne : le FUNNEL POSITIF sur une rangée —
+ * Reçues · À valider · Invité · Entretien fait · Retenu · Recruté (arbitrage
+ * du 28/09/2026). Les issues négatives et les étapes intermédiaires se lisent
+ * dans Candidatures et Pilotage. Chaque compteur mène à la puce du même mot ;
+ * les six tuiles occupent toute la largeur (auto-fit : aucune colonne vide
+ * en bout de rangée) ; trop étroite, la rangée passe à la ligne sans jamais
+ * rétrécir ses tuiles sous 110 px.
  */
 
-import { buildCardCounters, type CardCounter } from '@/lib/campagnes/card-detail';
+import { buildCardCounters } from '@/lib/campagnes/card-detail';
 import type { CandidateStageCounts } from '@/lib/reporting/candidate-stage';
 
 import { CampaignStatTile } from './CampaignStatTile';
 
 const RANGEE = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
   gap: 12,
 } as const;
 
@@ -28,42 +30,19 @@ export function CampaignCardStageCounters({
   received: number;
   counts: CandidateStageCounts;
 }) {
-  const rows = buildCardCounters(campaignId, received, counts);
   return (
-    <div className="flex flex-col gap-3" data-role="campaign-card-counters">
-      <div style={RANGEE}>
-        <Tile c={rows.recues} />
-      </div>
-      <Rangee titre="En cours" tuiles={rows.enCours} />
-      <Rangee titre="Issues" tuiles={rows.issues} />
+    <div style={RANGEE} data-role="campaign-card-counters">
+      {buildCardCounters(campaignId, received, counts).map((c) => (
+        <CampaignStatTile
+          key={c.key}
+          icon={c.icon}
+          color={c.color}
+          value={c.count}
+          label={c.label}
+          hint={c.definition}
+          href={c.href}
+        />
+      ))}
     </div>
-  );
-}
-
-function Rangee({ titre, tuiles }: { titre: string; tuiles: CardCounter[] }) {
-  return (
-    <section aria-label={titre} className="flex flex-col gap-1.5">
-      <h5 className="font-body text-[11px] font-semibold uppercase tracking-wide text-dash-text-secondary">
-        {titre}
-      </h5>
-      <div style={RANGEE}>
-        {tuiles.map((c) => (
-          <Tile key={c.key} c={c} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function Tile({ c }: { c: CardCounter }) {
-  return (
-    <CampaignStatTile
-      icon={c.icon}
-      color={c.color}
-      value={c.count}
-      label={c.label}
-      hint={c.definition}
-      href={c.href}
-    />
   );
 }

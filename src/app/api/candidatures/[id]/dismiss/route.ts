@@ -12,14 +12,13 @@
  * OBLIGATOIRE — envoyer le gabarit « sans suite » relu à l'écran, ou prévenir
  * soi-même — et contrôlé AVANT le classement. Doublon / invalide : jamais de
  * message, aucun choix demandé. Le message part par `feedback.ts`, sous la
- * MÊME clé de verrou que l'ancien mail d'information : un seul par candidature.
+ * MÊME clé de verrou que l'envoi groupé de la clôture : un seul par candidature.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getApiUser } from '@/lib/auth/require-api-user';
 import { dismissCandidature } from '@/lib/candidatures/dismissal';
-import { recordFeedback, type RecordFeedbackOutcome } from '@/lib/candidatures/feedback';
 import {
   checkFeedbackChoice,
   FEEDBACK_REFUSAL_MESSAGES,
@@ -88,8 +87,7 @@ export async function POST(
     const actor = user ? { userId: user.id, email: user.email ?? null } : null;
     const result = await dismissCandidature(analysis, {
       reason: parsed.reason,
-      sendMail: false,
-      messageViaFeedback: Boolean(feedback),
+      message: feedback ?? null,
       dismissedBy: 'user',
       dismissedByUser: actor,
       actor: 'user',
@@ -102,21 +100,9 @@ export async function POST(
       // sous incertitude ; le client réessaie après résolution.
       return NextResponse.json({ error: 'send_in_flight' }, { status: 409 });
     }
-    if (result.status !== 'dismissed' || !feedback) return NextResponse.json(result);
-
-    let recorded: RecordFeedbackOutcome | { error: 'record_failed' };
-    try {
-      recorded = await recordFeedback({
-        analysis,
-        kind: 'sans_suite',
-        choice: feedback,
-        actor,
-        cause: parsed.reason,
-      });
-    } catch {
-      recorded = { error: 'record_failed' };
-    }
-    return NextResponse.json({ ...result, feedback: recorded });
+    // Le message est porté PAR le classement (même verrou que l'envoi groupé) :
+    // `result.feedback` dit ce qu'il en est advenu.
+    return NextResponse.json(result);
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json(

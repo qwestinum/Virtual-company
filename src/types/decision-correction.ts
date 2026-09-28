@@ -17,7 +17,8 @@ export type CorrectionKind =
   | 'interview' // marqueur journal candidate_interview_marked
   | 'final_verdict' // marqueur journal candidate_validation_marked
   | 'screening_decision' // colonnes candidate_analyses (décision HITL / refus auto)
-  | 'dismissal'; // colonnes dismissed_* + satellites (réouverture)
+  | 'dismissal' // colonnes dismissed_* + satellites (réouverture)
+  | 'hire'; // marqueur journal candidate_hired_marked (désignation à la clôture)
 
 /**
  * Cibles de correction. Union FERMÉE : le serveur en fait un `switch`
@@ -33,6 +34,7 @@ export const CORRECTION_TARGETS = [
   'screening_accepted',
   'screening_rejected',
   'dismissal_reopen',
+  'hire_cleared',
 ] as const;
 export type CorrectionTarget = (typeof CORRECTION_TARGETS)[number];
 
@@ -70,7 +72,8 @@ export type CurrentDecision =
   | { kind: 'interview'; value: 'realized' | 'missed' }
   | { kind: 'final_verdict'; value: 'validated' | 'rejected' }
   | { kind: 'screening_decision'; value: 'accepted' | 'rejected'; auto: boolean }
-  | { kind: 'dismissal'; reason: DismissalReason | null };
+  | { kind: 'dismissal'; reason: DismissalReason | null }
+  | { kind: 'hire' };
 
 /** Ce que sert `GET /api/candidatures/[id]/correction-context`. */
 export type DecisionCorrectionContext = {

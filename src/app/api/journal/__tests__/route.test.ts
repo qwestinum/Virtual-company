@@ -57,4 +57,16 @@ describe('/api/journal — le verdict final n’y passe plus', () => {
     expect((await res.json()).error).toBe('use_no_show_route');
     expect(appendJournalEntry).not.toHaveBeenCalled();
   });
+
+  it('`campaign_closed` n’y passe plus : la route de clôture en est le seul écrivain', async () => {
+    const res = await post({
+      action: 'campaign_closed',
+      campaignId: 'CAMP-2026-001',
+      actor: 'user',
+      payload: { campaignName: 'X' },
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe('use_close_route');
+    expect(appendJournalEntry).not.toHaveBeenCalled();
+  });
 });

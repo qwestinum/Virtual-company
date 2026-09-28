@@ -257,6 +257,12 @@ export function buildValidationMarkerEntry(args: {
    * corrections et de la gomme.
    */
   commentId?: string;
+  /**
+   * Contexte du verdict, jamais un nom : `not_selected_at_closure` pour un
+   * retenu non sélectionné à la clôture (feat/feedback-candidat, lot 4).
+   * N'agit sur AUCUNE dérivation — c'est le même « Non retenu ».
+   */
+  cause?: string;
 }): JournalMarkerEntry {
   return {
     action: VALIDATION_MARKER_ACTION,
@@ -267,6 +273,7 @@ export function buildValidationMarkerEntry(args: {
       status: args.value,
       ...(args.corrected ? { corrected: true } : {}),
       ...(args.commentId ? { commentId: args.commentId } : {}),
+      ...(args.cause ? { cause: args.cause } : {}),
     },
   };
 }

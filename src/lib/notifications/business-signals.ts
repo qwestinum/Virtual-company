@@ -45,6 +45,13 @@ import { getResource, isMeetingLocationComplete, listExceptions, listWeeklyRules
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import { listAwaitingWithoutRow } from '@/lib/hitl/orphan-scan';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
+import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
+import { CAMPAIGN_CLOSED_ACTION } from '@/lib/campagnes/closure-constants';
+import { findIncompleteClosures } from '@/lib/campagnes/closure-coherence';
+import {
+  HIRED_MARKER_ACTION,
+  VALIDATION_MARKER_ACTION,
+} from '@/lib/candidatures/decision-markers';
 import type { DecisionZone } from '@/types/hitl';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 import type { BusinessSignal } from '@/types/notifications';
@@ -761,6 +768,74 @@ async function computeCampaignsWithoutCandidates(
   };
 }
 
+/**
+ * Clôtures INCOMPLÈTES — `campaign_closed` annonce un recruté ou des retenus
+ * non sélectionnés dont les marqueurs manquent (règle pure :
+ * `findIncompleteClosures`). Volume borné par les clôtures AVEC désignation.
+ */
+async function computeIncompleteClosures(nowMs: number): Promise<BusinessSignal | null> {
+  const closures = await listJournalEntriesByActions([CAMPAIGN_CLOSED_ACTION]);
+  const withDesignation = closures.filter(
+    (c) =>
+      c.campaignId !== null &&
+      (typeof c.payload.hiredAnalysisId === 'string' ||
+        (Array.isArray(c.payload.notSelectedAnalysisIds) &&
+          c.payload.notSelectedAnalysisIds.length > 0)),
+  );
+  const campaignIds = [...new Set(withDesignation.map((c) => c.campaignId!))];
+  if (campaignIds.length === 0) return null;
+
+  const perCampaign = await Promise.all(
+    campaignIds.map(async (campaignId) => {
+      const [analyses, markers] = await Promise.all([
+        listAllCandidateAnalyses({ campaignId }),
+        listJournalEntriesByActions([HIRED_MARKER_ACTION, VALIDATION_MARKER_ACTION], { campaignId }),
+      ]);
+      return { analyses, markers };
+    }),
+  );
+  const uidById = new Map(perCampaign.flatMap((p) => p.analyses.map((a) => [a.id, a.uid] as const)));
+  const incomplete = findIncompleteClosures(
+    closures,
+    (id) => uidById.get(id) ?? null,
+    perCampaign.flatMap((p) => p.markers),
+  );
+  if (incomplete.length === 0) return null;
+
+  const oldest = Math.max(
+    ...incomplete.map((i) => {
+      const at = closures.find((c) => c.campaignId === i.campaignId)?.createdAt;
+      return at ? daysSinceIso(at, nowMs) : 0;
+    }),
+  );
+  const first = incomplete[0]!;
+  const manque = (i: (typeof incomplete)[number]) =>
+    [
+      i.missingHire ? 'la désignation du recruté' : null,
+      i.missingNotSelected.length > 0
+        ? `${i.missingNotSelected.length} retenu${i.missingNotSelected.length > 1 ? 's' : ''} non sélectionné${i.missingNotSelected.length > 1 ? 's' : ''}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' et ');
+  return {
+    key: 'closure_incomplete',
+    count: incomplete.length,
+    oldestDays: oldest,
+    message:
+      incomplete.length === 1
+        ? `La clôture de ${first.campaignId} ne s’est pas enregistrée jusqu’au bout : ${manque(first)} manque${first.missingHire && first.missingNotSelected.length === 0 ? '' : 'nt'} au dossier.`
+        : `${incomplete.length} clôtures ne se sont pas enregistrées jusqu’au bout : désignations ou retenus non sélectionnés manquants.`,
+    ctaLabel: incomplete.length === 1 ? 'Ouvrir la campagne' : 'Voir les campagnes',
+    target: {
+      route:
+        incomplete.length === 1
+          ? `/campagnes?campagne=${encodeURIComponent(first.campaignId)}`
+          : '/campagnes',
+    },
+  };
+}
+
 export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'pending_validations_overdue',
@@ -799,6 +874,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'campaign_without_candidates',
     compute: (nowMs) => computeCampaignsWithoutCandidates(nowMs),
+  },
+  {
+    key: 'closure_incomplete',
+    compute: (nowMs) => computeIncompleteClosures(nowMs),
   },
 ];
 

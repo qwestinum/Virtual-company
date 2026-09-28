@@ -7,19 +7,16 @@ import {
   buildCardAwaiting,
   buildCardCounters,
   buildCardSources,
-  CARD_ROW_EN_COURS,
-  CARD_ROW_ISSUES,
 } from '@/lib/campagnes/card-detail';
 import {
   CANDIDATE_STAGE_DEFINITIONS,
   CANDIDATE_STAGE_LABELS,
-  CANDIDATE_STAGES,
   emptyStageCounts,
 } from '@/lib/reporting/candidate-stage';
 
 const CAMP = 'CAMP-2026-221';
 
-describe('① compteurs — les DIX étapes, qui font « Reçues »', () => {
+describe('① compteurs — le funnel positif, sur une rangée', () => {
   const counts = {
     ...emptyStageCounts(),
     a_valider: 2,
@@ -29,42 +26,24 @@ describe('① compteurs — les DIX étapes, qui font « Reçues »', () => {
     ecarte: 4,
     sans_suite: 1,
   };
-  const received = 12;
-  const tiles = () => {
-    const rows = buildCardCounters(CAMP, received, counts);
-    return [rows.recues, ...rows.enCours, ...rows.issues];
-  };
+  const tiles = () => buildCardCounters(CAMP, 12, counts);
 
-  it('deux rangées de cinq, dans l’ordre du donneur d’ordre', () => {
-    const rows = buildCardCounters(CAMP, received, counts);
-    expect(rows.enCours.map((t) => t.label)).toEqual([
+  it('Reçues · À valider · Invité · Entretien fait · Retenu · Recruté — et rien d’autre', () => {
+    expect(tiles().map((t) => t.label)).toEqual([
+      'Reçues',
       'À valider',
-      'Propositions de refus',
       'Invité',
-      'RDV pris',
       'Entretien fait',
-    ]);
-    expect(rows.issues.map((t) => t.label)).toEqual([
       'Retenu',
       'Recruté',
-      'Écarté',
-      'Non retenu',
-      'Sans suite',
     ]);
+    // Sortis de la carte (arbitrage du 28/09/2026) : lisibles ailleurs.
+    for (const absent of ['rdv_pris', 'proposition_refus', 'ecarte', 'non_retenu', 'sans_suite']) {
+      expect(tiles().some((t) => t.key === absent), absent).toBe(false);
+    }
   });
 
-  it('les deux rangées couvrent EXACTEMENT les étapes du domaine', () => {
-    // Une étape ajoutée sans place ici ferait mentir la somme.
-    expect([...CARD_ROW_EN_COURS, ...CARD_ROW_ISSUES].sort()).toEqual([...CANDIDATE_STAGES].sort());
-  });
-
-  it('la somme des dix compteurs fait « Reçues » (partition)', () => {
-    const rows = buildCardCounters(CAMP, received, counts);
-    const somme = [...rows.enCours, ...rows.issues].reduce((n, t) => n + t.count, 0);
-    expect(somme).toBe(rows.recues.count);
-  });
-
-  it('chaque compteur porte LE MÊME MOT que la puce vers laquelle il mène', () => {
+  it('chaque compteur porte LE MÊME MOT et LE MÊME CHIFFRE que la puce vers laquelle il mène', () => {
     // « Invités 2 » menant à une liste « Invité » VIDE est pire que deux mots
     // différents : mesuré sur CAMP-2026-221, la carte affichait 2 quand la
     // puce affichait 0.
@@ -73,26 +52,15 @@ describe('① compteurs — les DIX étapes, qui font « Reçues »', () => {
       expect(item.label).toBe(CANDIDATE_STAGE_LABELS[stage]);
       expect(item.count).toBe(counts[stage]);
       expect(item.definition).toBe(CANDIDATE_STAGE_DEFINITIONS[stage]);
+      expect(item.href).toBe(`/candidatures?campagne=CAMP-2026-221&statut=${stage}`);
     }
   });
 
   it('« Reçues » reste un TOTAL cliquable, tous statuts confondus', () => {
-    const { recues } = buildCardCounters(CAMP, received, counts);
+    const recues = tiles()[0]!;
     expect(recues.label).toBe('Reçues');
     expect(recues.count).toBe(12);
     expect(recues.href).toBe('/candidatures?campagne=CAMP-2026-221');
-    expect(recues.href).not.toContain('statut=');
-  });
-
-  it('TOUS les compteurs ouvrent Candidatures avec la puce du même mot', () => {
-    for (const item of tiles()) {
-      expect(item.href, item.key).toMatch(/^\/candidatures\?campagne=CAMP-2026-221/);
-    }
-    for (const stage of ['invite', 'proposition_refus', 'recrute', 'ecarte'] as const) {
-      expect(tiles().find((i) => i.key === stage)!.href).toBe(
-        `/candidatures?campagne=CAMP-2026-221&statut=${stage}`,
-      );
-    }
   });
 
   it('aucun compteur ne mène à Entretiens', () => {
@@ -106,9 +74,8 @@ describe('① compteurs — les DIX étapes, qui font « Reçues »', () => {
     }
   });
 
-  it('une puce à zéro reste affichée : c’est un état normal (Recruté avant le lot 4)', () => {
+  it('une puce à zéro reste affichée : c’est un état normal', () => {
     expect(tiles().find((i) => i.key === 'recrute')!.count).toBe(0);
-    expect(tiles().find((i) => i.key === 'invite')!.count).toBe(0);
   });
 });
 

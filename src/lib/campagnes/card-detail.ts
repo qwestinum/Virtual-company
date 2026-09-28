@@ -47,80 +47,59 @@ export type CardCounter = {
 };
 
 /**
- * Les étapes de la carte : TOUTES, en deux rangées (arbitrage du 28/09/2026 —
- * « un tableau dont les chiffres se recoupent est un tableau qu'on croit » :
- * les dix font « Reçues »). Rangée « en cours », puis rangée « issues ».
- *
- * ⚠️ TABLEAUX, pas un Record : un test vérifie que les deux rangées couvrent
- * exactement `CANDIDATE_STAGES` — une étape ajoutée au domaine sans place ici
- * ferait mentir la somme.
+ * Les étapes de la carte : le FUNNEL POSITIF seulement, sur UNE rangée
+ * (arbitrage du 28/09/2026, second temps). Sortent de la carte : RDV pris
+ * (étape intermédiaire), Propositions de refus (déjà dans « Ce qui attend »),
+ * Écarté, Non retenu, Sans suite (issues négatives, lisibles dans Candidatures
+ * et Pilotage). La partition « dix étapes = Reçues » reste tenue sur les
+ * PUCES (régression S6) ; la carte, elle, n'additionne pas.
  */
-export const CARD_ROW_EN_COURS: readonly CandidateStage[] = [
+export const CARD_STAGES = [
   'a_valider',
-  'proposition_refus',
   'invite',
-  'rdv_pris',
   'entretien_fait',
-];
-export const CARD_ROW_ISSUES: readonly CandidateStage[] = [
   'retenu',
   'recrute',
-  'ecarte',
-  'non_retenu',
-  'sans_suite',
-];
+] as const satisfies readonly CandidateStage[];
 
 /** Icône + couleur par étape — les jetons de la carte existante. */
-const APPARENCE: Record<'recues' | CandidateStage, { icon: string; color: string }> = {
+const APPARENCE: Record<'recues' | (typeof CARD_STAGES)[number], { icon: string; color: string }> = {
   recues: { icon: '📄', color: 'var(--dash-blue)' },
   a_valider: { icon: '⏳', color: 'var(--dash-yellow)' },
-  proposition_refus: { icon: '🗂️', color: 'var(--dash-orange)' },
   invite: { icon: '✉️', color: 'var(--dash-purple)' },
-  rdv_pris: { icon: '📅', color: 'var(--dash-teal)' },
   entretien_fait: { icon: '🤝', color: 'var(--dash-blue)' },
   retenu: { icon: '✅', color: 'var(--dash-green)' },
   recrute: { icon: '🏁', color: 'var(--dash-green)' },
-  ecarte: { icon: '✖️', color: 'var(--dash-red)' },
-  non_retenu: { icon: '⛔', color: 'var(--dash-red)' },
-  sans_suite: { icon: '📁', color: 'var(--dash-text-secondary)' },
-};
-
-export type CardCounterRows = {
-  recues: CardCounter;
-  enCours: CardCounter[];
-  issues: CardCounter[];
 };
 
 export function buildCardCounters(
   campaignId: string,
   received: number,
   counts: CandidateStageCounts,
-): CardCounterRows {
-  const tile = (stage: CandidateStage): CardCounter => ({
-    key: stage,
-    label: CANDIDATE_STAGE_LABELS[stage],
-    definition: CANDIDATE_STAGE_DEFINITIONS[stage],
-    count: counts[stage],
-    // ⚠️ TOUS vers Candidatures, SANS EXCEPTION : chaque puce existe là, et un
-    // compteur qui changerait d'écran selon l'étape obligerait à deviner où
-    // l'on va. Entretiens se rejoint par « ce qui attend ».
-    href: candidaturesHref({ campaignId, stage }),
-    ...APPARENCE[stage],
-  });
-  return {
-    recues: {
+): CardCounter[] {
+  return [
+    {
       key: 'recues',
       // « Reçues » n'est pas une étape : c'est le total, et il reste
       // cliquable — vers la campagne, tous statuts confondus.
       label: 'Reçues',
-      definition: 'Toutes les candidatures de la campagne.',
+      definition: 'toutes les candidatures de la campagne.',
       count: received,
       href: candidaturesHref({ campaignId }),
       ...APPARENCE.recues,
     },
-    enCours: CARD_ROW_EN_COURS.map(tile),
-    issues: CARD_ROW_ISSUES.map(tile),
-  };
+    ...CARD_STAGES.map((stage) => ({
+      key: stage,
+      label: CANDIDATE_STAGE_LABELS[stage],
+      definition: CANDIDATE_STAGE_DEFINITIONS[stage],
+      count: counts[stage],
+      // ⚠️ TOUS vers Candidatures, SANS EXCEPTION : chaque puce existe là, et
+      // un compteur qui changerait d'écran selon l'étape obligerait à deviner
+      // où l'on va. Entretiens se rejoint par « ce qui attend ».
+      href: candidaturesHref({ campaignId, stage }),
+      ...APPARENCE[stage],
+    })),
+  ];
 }
 
 // ── ② Ce qui attend ─────────────────────────────────────────────────────────

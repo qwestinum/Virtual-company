@@ -19,6 +19,7 @@ import { mapWithConcurrency } from '@/lib/async/concurrency';
 import {
   createDismissalSharedContext,
   dismissCandidature,
+  groupDismissalMessage,
 } from '@/lib/candidatures/dismissal';
 import {
   claimOutreach,
@@ -56,34 +57,64 @@ export type OpenCandidaturesRecap = {
   total: number;
   /** ≥1 candidat au stage `retenu` (GO posé) → motif « poste pourvu » proposé. */
   hasRetenu: boolean;
+  /**
+   * Les RETENUS de la campagne — ceux parmi lesquels le recruteur peut
+   * désigner le recruté à la clôture (feat/feedback-candidat, lot 4). Un
+   * `recrute` déjà désigné n'y figure pas : on ne désigne pas deux fois.
+   */
+  retenus: ClosureRetenu[];
+};
+
+/** Un retenu proposé à la désignation — identifiants et nom d'affichage. */
+export type ClosureRetenu = {
+  analysisId: string;
+  uid: string;
+  candidateName: string;
+  hasEmail: boolean;
 };
 
 /** Candidatures ouvertes d'une campagne (analyse + étape dérivée). */
 export async function listOpenCandidatures(
   campaignId: string,
-): Promise<{ open: OpenCandidature[]; hasRetenu: boolean }> {
+): Promise<{
+  open: OpenCandidature[];
+  hasRetenu: boolean;
+  retenus: ClosureRetenu[];
+  /** Les analyses des retenus, pour la clôture (désignation, message). */
+  retenuAnalyses: CandidateAnalysisSummary[];
+}> {
   const [analyses, signals] = await Promise.all([
     listAllCandidateAnalyses({ campaignId, dismissed: false }),
     loadStageSignals({ campaignId }),
   ]);
   const open: OpenCandidature[] = [];
-  let hasRetenu = false;
+  const retenus: ClosureRetenu[] = [];
+  const retenuAnalyses: CandidateAnalysisSummary[] = [];
   for (const analysis of analyses) {
     const stage = stageFor(analysis, signals);
-    if (stage === 'retenu') hasRetenu = true;
+    if (stage === 'retenu') {
+      retenuAnalyses.push(analysis);
+      retenus.push({
+        analysisId: analysis.id,
+        uid: analysis.uid,
+        candidateName: analysis.candidateName,
+        hasEmail: Boolean(analysis.candidateEmail),
+      });
+    }
     if (OPEN_STAGES.includes(stage)) open.push({ analysis, stage });
   }
-  return { open, hasRetenu };
+  retenus.sort((a, b) => a.candidateName.localeCompare(b.candidateName, 'fr'));
+  return { open, hasRetenu: retenus.length > 0, retenus, retenuAnalyses };
 }
 
 /** Récapitulatif pour le dialog de clôture (« X candidatures en cours : … »). */
 export async function recapOpenCandidatures(
   campaignId: string,
 ): Promise<OpenCandidaturesRecap> {
-  const { open, hasRetenu } = await listOpenCandidatures(campaignId);
+  const { open, hasRetenu, retenus } = await listOpenCandidatures(campaignId);
   const counts = emptyStageCounts();
   for (const { stage } of open) counts[stage] += 1;
-  return { counts, total: open.length, hasRetenu };
+  return { counts, total: open.length, hasRetenu, retenus };
 }
 
 /** Dossiers traités en même temps (mails compris). */
@@ -126,14 +157,17 @@ export async function dismissOpenCandidatures(
     mailsSent: 0,
     mailsFailed: 0,
   };
-  // Campagne, cible et faits du mail : lus une fois pour tout le lot.
-  const shared = createDismissalSharedContext(campaignId);
+  // Campagne, cible et base des messages : lues une fois pour tout le lot.
+  // Le message part sur le gabarit « Sans suite » des Réglages, [motif]
+  // rempli selon la raison — le MÊME texte que le classement individuel.
+  const shared = createDismissalSharedContext(campaignId, opts.dismissedByUser);
+  const base = opts.sendMail && shared.feedbackBase ? await shared.feedbackBase() : null;
   const results = await mapWithConcurrency(open, DISMISSAL_CONCURRENCY, ({ analysis }) =>
     dismissCandidature(
       analysis,
       {
         reason: opts.reason,
-        sendMail: opts.sendMail,
+        message: base ? groupDismissalMessage(base, analysis, opts.reason) : null,
         // Confirmation humaine du flux (récap + bouton) → 'user' + identité.
         dismissedBy: 'user',
         dismissedByUser: opts.dismissedByUser,
@@ -151,6 +185,7 @@ export async function dismissOpenCandidatures(
         opts.sendMail &&
         result.mailStatus !== 'not_requested' &&
         result.mailStatus !== 'not_applicable' &&
+        result.mailStatus !== 'self_informed' &&
         result.mailStatus !== 'skipped_no_email'
       ) {
         summary.mailsFailed += 1;

@@ -54,7 +54,7 @@ import type {
   FeedbackMailStatus,
 } from '@/types/candidate-feedback';
 import type { HumanDecider } from '@/types/hitl';
-import type { InterviewConfig } from '@/types/interview-settings';
+import { DEFAULT_INTERVIEW_CONFIG, type InterviewConfig } from '@/types/interview-settings';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
 export const FEEDBACK_RECORDED_ACTION = 'candidate_feedback_recorded';
@@ -94,42 +94,67 @@ async function jobTitleOf(campaignId: string | null): Promise<string> {
   return typeof v === 'string' && v.trim() ? v.trim() : 'le poste visé';
 }
 
-export async function loadFeedbackContext(
-  analysis: Pick<CandidateAnalysisSummary, 'campaignId' | 'candidateName' | 'candidateEmail'>,
+/**
+ * Ce qui ne dépend que de la CAMPAGNE et du recruteur — partageable par un
+ * lot (clôture, classement groupé) : une lecture pour tout le lot.
+ */
+export type FeedbackBase = Omit<FeedbackContext, 'candidateEmail' | 'vars'> & {
+  vars: Omit<FeedbackContext['vars'], 'prenom'>;
+};
+
+export async function loadFeedbackBase(
+  campaignId: string | null,
   actor: HumanDecider | null,
-): Promise<FeedbackContext> {
+): Promise<FeedbackBase> {
   const [settings, jobTitle, recruiter, sender] = await Promise.all([
     getAppSettings().catch(() => null),
-    jobTitleOf(analysis.campaignId),
+    jobTitleOf(campaignId),
     actor?.userId ? getRecruiter(actor.userId).catch(() => null) : Promise.resolve(null),
     getSenderEmail().catch(() => null),
   ]);
   const interview = settings?.interviewConfig;
-  const reception = analysis.campaignId
-    ? await resolveCampaignReceptionAddress(analysis.campaignId, settings?.intakeEmail).catch(
-        () => null,
-      )
+  const reception = campaignId
+    ? await resolveCampaignReceptionAddress(campaignId, settings?.intakeEmail).catch(() => null)
     : (settings?.intakeEmail ?? null);
   const recruiterName =
     recruiter?.displayName?.trim() || interview?.recruiterName?.trim() || 'L’équipe recrutement';
   return {
     vars: {
-      prenom: candidateFirstName(analysis.candidateName),
       jobTitle,
       organisation: resolveOrganizationName(settings) ?? 'L’équipe recrutement',
       recruiterFirstName: recruiterFirstName(recruiterName),
       recruiterName,
     },
     templates: {
-      feedbackRetainedTemplate: interview?.feedbackRetainedTemplate ?? '',
-      feedbackNotRetainedTemplate: interview?.feedbackNotRetainedTemplate ?? '',
-      feedbackNoShowTemplate: interview?.feedbackNoShowTemplate ?? '',
-      feedbackDismissedTemplate: interview?.feedbackDismissedTemplate ?? '',
+      feedbackRetainedTemplate: interview?.feedbackRetainedTemplate ?? DEFAULT_INTERVIEW_CONFIG.feedbackRetainedTemplate,
+      feedbackNotRetainedTemplate:
+        interview?.feedbackNotRetainedTemplate ?? DEFAULT_INTERVIEW_CONFIG.feedbackNotRetainedTemplate,
+      feedbackNoShowTemplate: interview?.feedbackNoShowTemplate ?? DEFAULT_INTERVIEW_CONFIG.feedbackNoShowTemplate,
+      feedbackDismissedTemplate:
+        interview?.feedbackDismissedTemplate ?? DEFAULT_INTERVIEW_CONFIG.feedbackDismissedTemplate,
     },
-    candidateEmail: analysis.candidateEmail,
     replyTo: recruiter?.email ?? actor?.email ?? reception ?? null,
     rgpdContact: reception || sender || '',
   };
+}
+
+/** Le contexte d'UNE candidature, à partir de la base partagée. */
+export function feedbackContextFor(
+  base: FeedbackBase,
+  analysis: Pick<CandidateAnalysisSummary, 'candidateName' | 'candidateEmail'>,
+): FeedbackContext {
+  return {
+    ...base,
+    vars: { ...base.vars, prenom: candidateFirstName(analysis.candidateName) },
+    candidateEmail: analysis.candidateEmail,
+  };
+}
+
+export async function loadFeedbackContext(
+  analysis: Pick<CandidateAnalysisSummary, 'campaignId' | 'candidateName' | 'candidateEmail'>,
+  actor: HumanDecider | null,
+): Promise<FeedbackContext> {
+  return feedbackContextFor(await loadFeedbackBase(analysis.campaignId, actor), analysis);
 }
 
 export type RecordFeedbackOutcome = {

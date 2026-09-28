@@ -155,3 +155,21 @@ describe('garde structurelle — le commentaire du recruteur ne peut pas entrer'
     expect(bad).toBeDefined();
   });
 });
+
+describe('« Sans suite » — la matrice par motif, reprise de l’ancien gabarit codé en dur', () => {
+  it('motif présent ⇔ raison qui appelle un message (DISMISSAL_MAIL_POLICY)', async () => {
+    const { dismissalMailAllowed, DISMISSAL_MAIL_POLICY } = await import('@/types/dismissal');
+    for (const reason of DISMISSAL_REASONS) {
+      expect(dismissalMotif(reason) !== null, reason).toBe(dismissalMailAllowed(reason));
+    }
+    expect(DISMISSAL_MAIL_POLICY.doublon).toBe('never');
+    expect(DISMISSAL_MAIL_POLICY.invalide).toBe('never');
+    expect(DISMISSAL_MAIL_POLICY.candidat_retire).toBe('unchecked');
+  });
+
+  it('aucun motif ne formule un refus', () => {
+    for (const reason of DISMISSAL_REASONS) {
+      expect(dismissalMotif(reason) ?? '').not.toMatch(/refus|ne pas poursuivre|pas retenu/i);
+    }
+  });
+});

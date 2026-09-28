@@ -1020,3 +1020,40 @@ campagne » (Campagnes, Aujourd'hui) pointent la même adresse.
 (monté par l'assistant ET par l'édition) dit encore « seuil bas / seuil haut »,
 mots bannis à l'écran. Non touché volontairement : la passe de langue vient
 après, et le composant sert aux deux chemins.
+
+---
+
+## Clôture de campagne en TRANSACTION UNIQUE, mails sur le rail (feat/feedback-candidat, 28/09/2026)
+
+**Contexte.** `POST /api/campaigns/[id]/close` pose aujourd'hui, en écritures
+SUCCESSIVES : la clôture (`status`, `closed_at`), le marqueur du recruté, le
+verdict `rejected` + cause `not_selected_at_closure` de chaque retenu non
+sélectionné, leurs messages (envoyés DANS la requête), le classement sans
+suite groupé, puis `campaign_closed`. Tout est CONTRÔLÉ avant la première
+écriture (`checkClosure`), mais une panne entre deux écritures laisse une
+clôture partielle : campagne clôturée, recruté ou non-sélectionnés sans leur
+marqueur.
+
+**Filet en place.** Le signal `closure_incomplete` (« à vérifier ») détecte
+une campagne dont `campaign_closed` annonce un recruté ou des non-sélectionnés
+sans leurs marqueurs (règle pure `findIncompleteClosures`, S26.6). Il le DIT ;
+il ne répare pas, et aucun écran ne permet aujourd'hui de reposer une
+désignation hors du dialogue de clôture.
+
+**Piste.**
+1. **Transaction unique** : une fonction SQL `close_campaign_with_outcome`
+   (clôture + marqueurs + `campaign_closed` dans un même `begin … commit`).
+   ⚠️ Les marqueurs vivent dans `journal` ; la fonction doit reproduire
+   EXACTEMENT les payloads des writers canoniques (`decision-markers`) — un
+   test doit comparer la sortie SQL au builder TypeScript.
+2. **Messages sur le rail** : la transaction écrit les lignes
+   `candidate_feedback` en `pending` ; l'envoi part sur le rail existant (cron
+   de relève / tick du scheduler) sous les MÊMES verrous deux-phases
+   (`candidate_feedback` / `candidature_dismissal`). La clôture répond sans
+   attendre les envois, comme le lot au-delà de 20 dossiers.
+3. Un geste de réparation dans le signal (reposer ce que `campaign_closed`
+   annonce), une fois la transaction en place.
+
+**Risque tant que ce n'est pas fait.** Faible en volume (quelques retenus par
+clôture), mais une clôture partielle fait dire « Retenu » à l'écran pour un
+candidat que la trace dit non sélectionné — d'où le signal.

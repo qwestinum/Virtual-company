@@ -50,6 +50,14 @@ export const BUSINESS_SIGNAL_SURFACES = {
    * de l'objet des mails.
    */
   campaign_without_candidates: 'verification',
+  /**
+   * Une campagne clôturée dont `campaign_closed` annonce un recruté ou des
+   * retenus non sélectionnés SANS que leurs marqueurs existent : la clôture
+   * s'est interrompue entre deux écritures (feat/feedback-candidat, lot 4 —
+   * tant que la clôture n'est pas une transaction unique). Le produit se
+   * contredit : l'écran dirait « Retenu » à qui la trace dit « écarté ».
+   */
+  closure_incomplete: 'verification',
 } as const satisfies Record<string, 'dossier' | 'verification'>;
 
 /** Clés des signaux. Étendre = ajouter une entrée ci-dessus ET sa définition. */

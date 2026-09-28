@@ -1,6 +1,17 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
+/**
+ * Horodatage du passage — une sortie par passage, jamais écrasée.
+ *
+ * Le 28/09/2026, un passage a rendu 8 échecs qui ne sont jamais revenus
+ * (5 passages consécutifs verts ensuite) — et personne ne pouvait dire
+ * LESQUELS : la sortie n'était que dans le terminal. Désormais chaque passage
+ * laisse `test-results/unit/<horodatage>.json` (rapport vitest complet :
+ * fichiers, tests, erreurs, durées). Dossier ignoré par git.
+ */
+const STAMP = new Date().toISOString().replace(/[:.]/g, '-');
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -26,5 +37,7 @@ export default defineConfig({
      * traverse la base.
      */
     testTimeout: 20_000,
+    reporters: ['default', 'json'],
+    outputFile: { json: `test-results/unit/${STAMP}.json` },
   },
 });
