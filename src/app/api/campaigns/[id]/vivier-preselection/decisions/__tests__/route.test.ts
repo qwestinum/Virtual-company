@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const repo = { markRejected: vi.fn() };
+const repo = { markRejected: vi.fn(), repechageToPreselection: vi.fn() };
 const invitation = { sendVivierInvitation: vi.fn() };
 const journal = { appendJournalEntry: vi.fn() };
 
@@ -20,12 +20,32 @@ const ctx = { params: Promise.resolve({ id: 'CAMP-1' }) };
 
 beforeEach(() => {
   repo.markRejected.mockReset();
+  repo.repechageToPreselection.mockReset();
   invitation.sendVivierInvitation.mockReset();
   journal.appendJournalEntry.mockClear();
 });
 afterEach(() => vi.restoreAllMocks());
 
 describe('POST decisions vivier', () => {
+  it('écarter un résultat de recherche par mot-clé : il entre dans les propositions, puis il est écarté — rien d’envoyé', async () => {
+    repo.repechageToPreselection.mockResolvedValueOnce('identified');
+    repo.markRejected.mockResolvedValueOnce(['k1']);
+    const { POST } = await import('@/app/api/campaigns/[id]/vivier-preselection/decisions/route');
+    const res = await POST(req({ candidateIds: ['k1'], decision: 'reject', matchTerm: 'SAP' }), ctx);
+    expect(await res.json()).toEqual({ updated: ['k1'] });
+    expect(repo.repechageToPreselection).toHaveBeenCalledWith('CAMP-1', 'k1', 'SAP');
+    expect(repo.markRejected).toHaveBeenCalledWith('CAMP-1', ['k1'], 'user');
+    expect(invitation.sendVivierInvitation).not.toHaveBeenCalled();
+    expect(repo.repechageToPreselection.mock.invocationCallOrder[0]).toBeLessThan(repo.markRejected.mock.invocationCallOrder[0]);
+  });
+
+  it('écarter un profil PROPOSÉ ne passe pas par l’ajout', async () => {
+    repo.markRejected.mockResolvedValueOnce(['c1']);
+    const { POST } = await import('@/app/api/campaigns/[id]/vivier-preselection/decisions/route');
+    await POST(req({ candidateIds: ['c1'], decision: 'reject' }), ctx);
+    expect(repo.repechageToPreselection).not.toHaveBeenCalled();
+  });
+
   it('accepter (unitaire) ⇒ envoi invitation (permission) + journal vivier_contact_accepted', async () => {
     invitation.sendVivierInvitation.mockResolvedValueOnce({
       contacted: true,

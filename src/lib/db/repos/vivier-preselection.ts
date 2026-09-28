@@ -40,13 +40,13 @@ export async function replacePreselection(
 
   const { data: existing, error: readErr } = await supabase
     .from(TABLE)
-    .select('candidate_id, state')
+    .select('candidate_id, state, match_kind')
     .eq('campaign_id', campaignId);
   if (readErr) throw new Error(`replacePreselection(read): ${readErr.message}`);
 
   const existingRows: ExistingPreselectionRow[] = (
-    (existing ?? []) as { candidate_id: string; state: ExistingPreselectionRow['state'] }[]
-  ).map((r) => ({ candidateId: r.candidate_id, state: r.state }));
+    (existing ?? []) as { candidate_id: string; state: ExistingPreselectionRow['state']; match_kind: string | null }[]
+  ).map((r) => ({ candidateId: r.candidate_id, state: r.state, matchKind: r.match_kind }));
 
   const { toUpsert, toDeleteCandidateIds } = reconcilePreselection(
     existingRows,
@@ -623,4 +623,77 @@ export async function listRejectedEmailsForCampaign(
     },
   });
   return emailsOf(rows);
+}
+
+/** Une proposition, lue pour l'invitation depuis la campagne (point 1). */
+export type PreselectionEntryState = {
+  state: VivierPreselectionState;
+  generatedAt: string | null;
+  contactedAt: string | null;
+};
+
+export async function getPreselectionEntry(
+  campaignId: string,
+  candidateId: string,
+): Promise<PreselectionEntryState | null> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('state, generated_at, contacted_at')
+    .eq('campaign_id', campaignId)
+    .eq('candidate_id', candidateId)
+    .maybeSingle();
+  if (error) throw new Error(`getPreselectionEntry: ${error.message}`);
+  if (!data) return null;
+  const row = data as { state: VivierPreselectionState; generated_at: string | null; contacted_at: string | null };
+  return { state: row.state, generatedAt: row.generated_at, contactedAt: row.contacted_at };
+}
+
+/**
+ * Reprise d'une invitation interrompue : une proposition `contacted` dont
+ * aucune candidature n'est née, réservée depuis plus longtemps que `staleBefore`
+ * (un crash, une panne d'analyse jamais relâchée), est RÉ-RÉSERVÉE — condition
+ * sur la date lue, un seul gagnant. Renvoie true si ce passage a la main.
+ */
+export async function retakeStaleInvitation(
+  campaignId: string,
+  candidateId: string,
+  readContactedAt: string,
+  staleBefore: string,
+  actor: string,
+): Promise<boolean> {
+  if (Date.parse(readContactedAt) >= Date.parse(staleBefore)) return false;
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({ contacted_at: new Date().toISOString(), decided_by: actor })
+    .eq('campaign_id', campaignId)
+    .eq('candidate_id', candidateId)
+    .eq('state', 'contacted')
+    .eq('contacted_at', readContactedAt)
+    .select('candidate_id');
+  if (error) throw new Error(`retakeStaleInvitation: ${error.message}`);
+  return ((data ?? []) as unknown[]).length > 0;
+}
+
+/**
+ * Relâche une réservation d'invitation qui n'a pas abouti (analyse
+ * indisponible, CV illisible) : `contacted` → `identified`, conditionné à la
+ * réservation qu'on a posée — le profil redevient décidable, rien n'a été
+ * envoyé. Jamais sur une proposition contactée par un autre chemin.
+ */
+export async function releaseInvitation(
+  campaignId: string,
+  candidateId: string,
+  contactedAt: string,
+): Promise<void> {
+  const supabase = requireServerSupabase();
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ state: 'identified', contacted_at: null, decided_by: null })
+    .eq('campaign_id', campaignId)
+    .eq('candidate_id', candidateId)
+    .eq('state', 'contacted')
+    .eq('contacted_at', contactedAt);
+  if (error) throw new Error(`releaseInvitation: ${error.message}`);
 }

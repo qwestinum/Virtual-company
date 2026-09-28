@@ -160,6 +160,11 @@ function CampaignReportDocument({
             label="Sans suite"
           />
         </View>
+        {data.vivierOrigin ? (
+          <Text style={[pdfBaseStyles.paragraph, { marginTop: 2 }]}>
+            {vivierReceivedLine(data.vivierOrigin.received)}
+          </Text>
+        ) : null}
         <View style={[s.kpiRow, { marginTop: 6 }]}>
           <Kpi
             value={String(summary.volumes.decidedBySystem)}
@@ -241,6 +246,19 @@ function CampaignReportDocument({
         ) : null}
 
         {/* 4bis. Performance du vivier (métrique de conversion §8) */}
+        {data.vivierOrigin && data.vivierOrigin.invited > 0 ? (
+          <>
+            <Text style={pdfBaseStyles.sectionTitle}>Invitations depuis le vivier</Text>
+            <View style={s.kpiRow}>
+              <Kpi value={`${data.vivierOrigin.invited}`} label="Invités depuis le vivier" />
+              <Kpi value={`${data.vivierOrigin.booked}`} label="Ont réservé un entretien" />
+              <Kpi
+                value={`${Math.round((data.vivierOrigin.booked / data.vivierOrigin.invited) * 100)}%`}
+                label="Taux de conversion"
+              />
+            </View>
+          </>
+        ) : null}
         {data.vivier ? (
           <>
             <Text style={pdfBaseStyles.sectionTitle}>Performance du vivier</Text>
@@ -328,4 +346,9 @@ export async function renderCampaignReportPdf(props: {
   generatedAtIso: string;
 }): Promise<Buffer> {
   return renderToBuffer(<CampaignReportDocument {...props} />);
+}
+
+/** « dont 3 issues du vivier » — sous le compteur des reçues. */
+function vivierReceivedLine(n: number): string {
+  return `dont ${n} issue${n > 1 ? 's' : ''} du vivier`;
 }

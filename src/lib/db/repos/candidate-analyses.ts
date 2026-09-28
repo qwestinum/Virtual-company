@@ -125,8 +125,14 @@ export type CandidateAnalysisInsert = {
    * propagera vers `candidate_analyses`.
    */
   decidedBy?: DecidedBy;
-  /** Auteur d'une décision humaine posée dès l'insertion (sourcing). */
+  /** Auteur d'une décision humaine posée dès l'insertion (sourcing, vivier). */
   decidedByUser?: { id: string; email: string | null };
+  /**
+   * Candidature CRÉÉE depuis le vivier (invitation depuis la campagne) :
+   * l'origine est connue dès l'insertion — pas besoin d'attendre le
+   * rapprochement par email, qui ne la pose qu'après coup.
+   */
+  fromVivier?: { vivierCandidateId: string };
 };
 
 /**
@@ -176,6 +182,26 @@ export async function getLatestApplicationsByEmails(
     }
   }
   return out;
+}
+
+/**
+ * Toutes les candidatures d'une adresse (projection de liste), les plus
+ * récentes d'abord — l'historique d'un profil du vivier (28/09/2026).
+ * Correspondance insensible à la casse, jamais approchée. Bornée à 50 : un
+ * historique, pas un export.
+ */
+export async function listAnalysesByEmail(email: string): Promise<CandidateAnalysisSummary[]> {
+  const clean = email.trim();
+  if (!clean) return [];
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select(SUMMARY_COLUMNS)
+    .ilike('candidate_email', escapeLike(clean))
+    .order('received_at', { ascending: false })
+    .limit(50);
+  if (error) throw new Error(`listAnalysesByEmail: ${error.message}`);
+  return ((data ?? []) as unknown as SummaryRow[]).map(rowToSummary);
 }
 
 /**
@@ -232,6 +258,9 @@ export async function insertCandidateAnalysis(
     // elle arrive par `updateCandidateAnalysisDecision`.
     decided_by_user_id: input.decidedByUser?.id ?? null,
     decided_by_user_email: input.decidedByUser?.email ?? null,
+    ...(input.fromVivier
+      ? { from_vivier: true, vivier_candidate_id: input.fromVivier.vivierCandidateId }
+      : {}),
   });
   if (error) throw new Error(`insertCandidateAnalysis: ${error.message}`);
 }

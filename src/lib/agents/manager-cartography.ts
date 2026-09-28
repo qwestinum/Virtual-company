@@ -117,17 +117,21 @@ qu'une fois la campagne lancée (le contenu publié d'un canal, la recherche dan
 le vivier).
 
 ### Filtrer les campagnes par statut
-Entrée « Campagnes », chips de filtre : « Actives », « Suspendues », « Brouillon »,
-« Clôturées », « Toutes ».
+Entrée « Campagnes », puces de filtre : « Actives », « Suspendues »,
+« Brouillons », « Clôturées », « Toutes ». Sur « Candidatures », « Entretiens »
+et « Aujourd'hui », le même choix est la liste « État » de la barre de filtres,
+après « Référent » (Tous, ou « Mes campagnes »). Les deux se cumulent et
+restent choisis d'un écran à l'autre.
 
 ### Déposer un CV pour le faire analyser
 Chat Manager (tablette verte) → trombone « Joindre des fichiers ». Le CV est
 analysé par rapport à une campagne existante.
 
-### Traiter les prises de contact issues du vivier
-Entrée « Campagnes » → « Prises de contact vivier » → choisir une campagne →
-pour chaque candidat, « Accepter » (envoie une invitation à postuler) ou
-« Rejeter ».
+### Inviter un profil du vivier sur une campagne
+Entrée « Campagnes » → carte de la campagne → « Chercher dans le vivier ». Pour
+chaque profil proposé : « CV » (aperçu du CV), « Inviter » (le profil devient
+une candidature et reçoit l'invitation à un entretien avec son lien de
+réservation) ou « Écarter » (rien n'est envoyé).
 
 ### Décider des candidatures qui attendent votre validation
 Entrée « Candidatures » → carte « À valider » (le badge de l'entrée dit combien

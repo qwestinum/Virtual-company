@@ -116,6 +116,41 @@ describe('buildInterviewMail — acceptation', () => {
   });
 });
 
+describe('buildInterviewMail — profil invité depuis le VIVIER', () => {
+  const VIVIER: MailCandidate = {
+    ...CANDIDATE,
+    vivierOrigin: {
+      vivierCandidateId: 'v1',
+      cvDate: '2026-03-12T09:00:00Z',
+      cvDateKind: 'application',
+      previousJobTitle: 'Contrôleur de gestion',
+      proposedAt: null,
+      scoredAt: '2026-09-28T10:00:00Z',
+      invitedAt: '2026-09-28T10:00:00Z',
+      invitedBy: { id: 'u1', name: 'Jane R.' },
+    },
+  };
+
+  it('parle d’une OPPORTUNITÉ, jamais d’une candidature retenue, et dit d’où vient la sollicitation', async () => {
+    getAppSettingsMock.mockResolvedValue(settingsWith('https://cal.com/qw/entretien'));
+    const out = await buildInterviewMail({ mode: 'invite', campaignId: 'CAMP-2026-001', jobTitle: 'Comptable', candidate: VIVIER });
+    expect(out.blocked).toBe(false);
+    expect(out.mail.subject).toBe('Une opportunité : Comptable');
+    expect(out.mail.subject).not.toMatch(/retenu/i);
+    expect(out.mail.html).not.toMatch(/retenu/i);
+    expect(out.mail.html).toContain('Vous nous aviez adressé votre candidature le 12 mars 2026 pour le poste de Contrôleur de gestion');
+    expect(out.mail.html).toContain('opportunité');
+    expect(out.mail.html).toContain('<a href="https://cal.com/qw/entretien">');
+  });
+
+  it('une candidature ordinaire garde le message d’acceptation', async () => {
+    getAppSettingsMock.mockResolvedValue(settingsWith('https://cal.com/qw/entretien'));
+    const out = await buildInterviewMail({ mode: 'invite', campaignId: 'CAMP-2026-001', jobTitle: 'Comptable', candidate: CANDIDATE });
+    expect(out.mail.subject).toBe('Votre candidature retenue — Comptable');
+    expect(out.mail.html).not.toContain('Vous nous aviez adressé');
+  });
+});
+
 describe('buildInterviewMail — refus', () => {
   it('n’est jamais bloqué et ne contient pas de lien d’agenda', async () => {
     getAppSettingsMock.mockResolvedValue(settingsWith(''));

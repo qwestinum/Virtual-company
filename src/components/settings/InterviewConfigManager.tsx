@@ -119,6 +119,26 @@ export function InterviewConfigManager({
         </span>
       </label>
 
+      <label className="flex flex-col gap-1">
+        <span className="font-semibold text-stone-700">
+          Template de l&apos;invitation d&apos;un profil du vivier
+        </span>
+        <textarea
+          value={draft.vivierInvitationTemplate ?? DEFAULT_INTERVIEW_CONFIG.vivierInvitationTemplate}
+          onChange={(e) => set('vivierInvitationTemplate', e.currentTarget.value)}
+          rows={9}
+          className="w-full rounded-md border border-stone-200 px-3 py-2 font-mono text-[12px] text-stone-700 outline-none focus:border-emerald-400"
+        />
+        <span className="text-[11px] text-stone-400">
+          Envoyé quand vous invitez un profil depuis « Chercher dans le vivier ».
+          La personne n&apos;a pas postulé à ce poste : le message parle d&apos;une
+          opportunité (objet « Une opportunité : [intitulé du poste] »). Variables :
+          les mêmes, plus <code>[origine]</code> (sa candidature d&apos;origine ou
+          son entrée au vivier, rédigée automatiquement) et{' '}
+          <code>[lien d&apos;agenda]</code>.
+        </span>
+      </label>
+
       <FeedbackTemplatesFields draft={draft} onChange={(key, value) => set(key, value)} />
 
       <button

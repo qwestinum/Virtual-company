@@ -9,6 +9,8 @@
  * (date null) est simplement omis : pas d'événement inventé.
  */
 
+import { vivierScoreLabel, vivierTimelineDetail } from '@/lib/vivier/origin';
+import type { VivierOrigin } from '@/types/vivier-origin';
 import type { CandidateStatus } from '@/types/scoring';
 
 import { FEEDBACK_CHANNEL_LABELS, FEEDBACK_KIND_LABELS } from '@/types/candidate-feedback';
@@ -41,6 +43,12 @@ export type CandidateTimelineFacts = {
   vivierContactedAt: string | null;
   /** vivier_preselections.applied_at (rapprochement). */
   vivierAppliedAt: string | null;
+  /**
+   * Candidature CRÉÉE depuis le vivier (invitée depuis la campagne) : son
+   * origine complète. Remplace alors « Invité depuis le vivier », qui décrit
+   * l'invitation à candidater, un autre geste.
+   */
+  vivierOrigin?: VivierOrigin | null;
   /** Journal hitl_validation_sent (decision accept) — candidat validé (gris accepté). */
   validatedAt: string | null;
   /** Journal imap_outreach_mail (mode invite, sent) OU hitl accept mail parti. */
@@ -223,18 +231,24 @@ export function buildCandidateTimeline(
     `Canal : ${facts.source} · ${facts.fileName}`,
     'neutral',
   );
-  push(
-    'vivier_contacted',
-    facts.vivierContactedAt,
-    'Invité depuis le vivier',
-    facts.fromVivier ? 'Repêché du vivier pour cette campagne' : null,
-    'neutral',
-  );
+  if (facts.vivierOrigin) {
+    push('vivier_contacted', facts.vivierOrigin.invitedAt, 'Issu du vivier', vivierTimelineDetail(facts.vivierOrigin), 'neutral');
+  } else {
+    push(
+      'vivier_contacted',
+      facts.vivierContactedAt,
+      'Invité depuis le vivier',
+      facts.fromVivier ? 'Repêché du vivier pour cette campagne' : null,
+      'neutral',
+    );
+  }
   push(
     'analyzed',
     facts.analyzedAt,
     'Analyse et scoring',
-    `Score ${facts.totalScore}/100 · grille ${facts.criteriaVersion}`,
+    facts.vivierOrigin
+      ? `Score ${facts.totalScore}/100 · ${vivierScoreLabel(facts.vivierOrigin)}`
+      : `Score ${facts.totalScore}/100 · grille ${facts.criteriaVersion}`,
     'neutral',
   );
   push(

@@ -46,6 +46,17 @@ describe('reconcilePreselection — idempotence + préservation des décisions',
     expect(r.toDeleteCandidateIds).toEqual(['stale']);
   });
 
+  it('un profil ajouté À LA MAIN (mot-clé) n’est jamais purgé par un calcul', () => {
+    // La recherche se relance à chaque ouverture de l'écran : sans cette garde,
+    // ouvrir l'écran effacerait le choix du recruteur.
+    const existing: ExistingPreselectionRow[] = [
+      { candidateId: 'repeche', state: 'identified', matchKind: 'keyword' },
+      { candidateId: 'stale', state: 'identified', matchKind: 'title_semantic' },
+    ];
+    const r = reconcilePreselection(existing, [entry('new')]);
+    expect(r.toDeleteCandidateIds).toEqual(['stale']);
+  });
+
   it('un candidat DÉCIDÉ (contacted/rejected) n’est jamais ressuscité ni supprimé', () => {
     const existing: ExistingPreselectionRow[] = [
       { candidateId: 'contacted', state: 'contacted' },

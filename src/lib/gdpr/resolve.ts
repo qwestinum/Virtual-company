@@ -31,6 +31,7 @@
  * vouloir dire « rien », jamais « tout ».
  */
 
+import { isVivierAnalysisId, vivierCvArtifactId } from '@/lib/vivier/origin';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { analysisIdForValidation } from '@/lib/hitl/analysis-key';
@@ -332,6 +333,8 @@ export async function resolveIdentity(
     push(acc.artifactIds, `art_imap_cvabandon_${ref.mailboxId}_${ref.uid}`);
   }
   for (const uid of acc.uids) push(acc.artifactIds, `art_cv_${uid}`);
+  // Candidature créée depuis le vivier : le CV COPIÉ sous la campagne.
+  for (const uid of acc.uids) if (isVivierAnalysisId(uid)) push(acc.artifactIds, vivierCvArtifactId(uid));
   // Sourcing : CV joint sur la page d'atterrissage, ou CV structuré de ce que
   // la personne a confirmé (docs/specs/sourcing.md §10).
   for (const approachId of acc.sourcingApproachIds) {

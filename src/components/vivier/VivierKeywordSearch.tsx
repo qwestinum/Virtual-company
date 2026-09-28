@@ -11,48 +11,39 @@
 
 import { useState } from 'react';
 
-import type {
-  VivierKeywordMembership,
-  VivierKeywordResult,
-} from '@/types/vivier-keyword-search';
+import type { VivierKeywordResult } from '@/types/vivier-keyword-search';
 
-/** Découpe l'extrait sur les sentinelles [[HL]]…[[/HL]] : indices impairs = surlignés. */
-const HL_SPLIT = /\[\[HL\]\]([\s\S]*?)\[\[\/HL\]\]/;
+import type { VivierTarget } from './useVivierInvite';
+import { VivierKeywordResultRow } from './VivierKeywordResultRow';
+import { targetFromKeyword } from './vivier-targets';
 
-function Snippet({ text }: { text: string }) {
-  const parts = text.split(HL_SPLIT);
-  return (
-    <p className="font-body text-[12px] leading-relaxed text-stone-600">
-      {parts.map((p, i) =>
-        i % 2 === 1 ? (
-          <mark key={i} className="rounded-sm bg-amber-200 px-0.5 text-stone-900">
-            {p}
-          </mark>
-        ) : (
-          <span key={i}>{p}</span>
-        ),
-      )}
-    </p>
-  );
-}
-
-function MembershipBadge({ membership }: { membership: VivierKeywordMembership }) {
-  const label = membership === 'contacted' ? 'Déjà contacté' : 'Déjà dans la liste';
-  return (
-    <span className="shrink-0 rounded-full bg-stone-100 px-2.5 py-1 font-body text-[11px] font-semibold text-stone-500">
-      {label}
-    </span>
-  );
-}
-
-export function VivierKeywordSearch({ campaignId }: { campaignId: string }) {
+/**
+ * Les résultats portent les MÊMES gestes que les profils proposés : « CV » et
+ * « Inviter », sur place. Plus de détour par « ajouter à la liste », qui
+ * obligeait à fermer puis rouvrir l'écran pour retrouver le profil.
+ */
+export function VivierKeywordSearch({
+  campaignId,
+  invitingId,
+  decided,
+  onPreview,
+  onReject,
+  onInvite,
+}: {
+  campaignId: string;
+  invitingId: string | null;
+  /** Décidés depuis l'écran (aperçu compris) : l'état affiché les suit. */
+  decided: ReadonlyMap<string, 'contacted' | 'rejected'>;
+  onPreview: (target: VivierTarget) => void;
+  onReject: (target: VivierTarget) => void;
+  onInvite: (target: VivierTarget) => void;
+}) {
   const [query, setQuery] = useState('');
   const [lastQuery, setLastQuery] = useState('');
   const [results, setResults] = useState<VivierKeywordResult[] | null>(null);
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [addingId, setAddingId] = useState<string | null>(null);
 
   async function search() {
     const q = query.trim();
@@ -82,33 +73,6 @@ export function VivierKeywordSearch({ campaignId }: { campaignId: string }) {
       setError('La recherche a échoué (réseau).');
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function repecher(candidateId: string) {
-    setAddingId(candidateId);
-    try {
-      const res = await fetch(
-        `/api/campaigns/${campaignId}/vivier-preselection/repechage`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ candidateId, matchTerm: lastQuery }),
-        },
-      );
-      const data = (await res.json()) as { membership?: VivierKeywordMembership };
-      if (res.ok && data.membership) {
-        const next = data.membership;
-        setResults((prev) =>
-          prev?.map((r) =>
-            r.candidateId === candidateId ? { ...r, membership: next } : r,
-          ) ?? null,
-        );
-      }
-    } catch {
-      /* réessayable : l'état du bouton n'a pas bougé */
-    } finally {
-      setAddingId(null);
     }
   }
 
@@ -165,43 +129,24 @@ export function VivierKeywordSearch({ campaignId }: { campaignId: string }) {
             </p>
           ) : null}
         <ul className="flex flex-col gap-2">
-          {results.map((r) => (
-            <li
-              key={r.candidateId}
-              className="flex flex-col gap-1.5 rounded-md border border-stone-200 bg-white p-2.5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-body text-[13px] font-semibold text-stone-800">
-                    {[r.prenom, r.nom].filter(Boolean).join(' ') || r.nom}
-                  </p>
-                  <p className="truncate font-body text-[11px] text-stone-500">
-                    {r.title ?? 'Poste non précisé'}
-                  </p>
-                </div>
-                {r.membership === 'none' || r.membership === 'rejected' ? (
-                  <button
-                    type="button"
-                    onClick={() => repecher(r.candidateId)}
-                    disabled={addingId === r.candidateId}
-                    className="shrink-0 rounded-md bg-emerald-600 px-3 py-1.5 font-body text-[12px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                    title={
-                      r.membership === 'rejected'
-                        ? 'Réactive ce candidat précédemment rejeté'
-                        : undefined
-                    }
-                  >
-                    {r.membership === 'rejected'
-                      ? 'Repêcher'
-                      : 'Ajouter à la liste de validation'}
-                  </button>
-                ) : (
-                  <MembershipBadge membership={r.membership} />
-                )}
-              </div>
-              <Snippet text={r.snippet} />
-            </li>
-          ))}
+          {results.map((found) => {
+            const now = decided.get(found.candidateId);
+            const r = now ? { ...found, membership: now } : found;
+            const target = targetFromKeyword(r, lastQuery);
+            return (
+              <VivierKeywordResultRow
+                key={r.candidateId}
+                result={r}
+                campaignId={campaignId}
+                why={target.lines}
+                busy={invitingId === r.candidateId}
+                locked={invitingId !== null}
+                onPreview={() => onPreview(target)}
+                onReject={() => onReject(target)}
+                onInvite={() => onInvite(target)}
+              />
+            );
+          })}
         </ul>
         </>
       )}

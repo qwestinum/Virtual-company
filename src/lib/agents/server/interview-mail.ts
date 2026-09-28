@@ -27,6 +27,7 @@ import { getRecruiter } from '@/lib/db/repos/recruiters';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import {
   acceptanceSubject,
+  vivierOpportunitySubject,
   interviewMailTextToHtml,
   rejectionSubject,
   rescheduleSubject,
@@ -35,6 +36,7 @@ import {
 } from '@/lib/interview/mail-templates';
 import type { CampaignAgendaState } from '@/lib/interview/agenda-status';
 import type { MailCandidate } from '@/types/mail-candidate';
+import { vivierOriginSentence } from '@/lib/vivier/origin';
 import {
   DEFAULT_INTERVIEW_CONFIG,
   type InterviewConfig,
@@ -337,12 +339,17 @@ export async function buildInterviewMail(
   const { prenom, nom } = splitCandidateName(args.candidate.candidateName);
   const organisation = config.organisationName.trim() || ORG_FALLBACK;
 
+  // Un profil du vivier invité depuis la campagne n'a PAS postulé à ce poste :
+  // son invitation est une opportunité, jamais une « candidature retenue ».
+  const fromVivier = args.mode === 'invite' && Boolean(args.candidate.vivierOrigin);
   const template =
     args.mode === 'reject'
       ? config.rejectionTemplate
       : args.mode === 'reschedule'
         ? (config.rescheduleTemplate ?? DEFAULT_INTERVIEW_CONFIG.rescheduleTemplate)
-        : config.acceptanceTemplate;
+        : fromVivier
+          ? (config.vivierInvitationTemplate ?? DEFAULT_INTERVIEW_CONFIG.vivierInvitationTemplate)
+          : config.acceptanceTemplate;
 
   const text = renderInterviewMail(template, {
       prenom,
@@ -353,6 +360,9 @@ export async function buildInterviewMail(
       recruiterName: config.recruiterName.trim() || organisation,
       agendaLink: agendaLink || AGENDA_PLACEHOLDER,
       intro: args.intro ?? '',
+      // Seule l'INVITATION rappelle l'origine vivier : un refus ou un
+      // nouveau créneau n'ont pas à re-raconter d'où vient la candidature.
+      origine: fromVivier && args.candidate.vivierOrigin ? vivierOriginSentence(args.candidate.vivierOrigin) : '',
   });
 
   const subject =
@@ -360,7 +370,9 @@ export async function buildInterviewMail(
       ? rejectionSubject(displayJobTitle)
       : args.mode === 'reschedule'
         ? rescheduleSubject(displayJobTitle)
-        : acceptanceSubject(displayJobTitle);
+        : fromVivier
+          ? vivierOpportunitySubject(displayJobTitle)
+          : acceptanceSubject(displayJobTitle);
 
   return { blocked: false, mail: { subject, html: interviewMailTextToHtml(text) } };
 }

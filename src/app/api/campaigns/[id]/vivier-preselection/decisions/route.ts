@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { appendJournalEntry } from '@/lib/db/repos/journal';
-import { markRejected } from '@/lib/db/repos/vivier-preselection';
+import { markRejected, repechageToPreselection } from '@/lib/db/repos/vivier-preselection';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendVivierInvitation } from '@/lib/vivier/invitation-send';
 
@@ -22,6 +22,12 @@ type RouteContext = { params: Promise<{ id: string }> };
 const BodySchema = z.object({
   candidateIds: z.array(z.string().min(1)).min(1).max(200),
   decision: z.enum(['accept', 'reject']),
+  /**
+   * Profils trouvés par la recherche PAR MOT-CLÉ (28/09/2026) : ils ne sont
+   * pas encore dans les propositions de la campagne. Ils y entrent pour être
+   * écartés — l'exclusion ne vaut que pour CETTE campagne, rien n'est envoyé.
+   */
+  matchTerm: z.string().trim().min(1).max(120).optional(),
 });
 
 export async function POST(
@@ -47,6 +53,11 @@ export async function POST(
   try {
     let updated: string[];
     if (body.decision === 'reject') {
+      if (body.matchTerm) {
+        for (const id of body.candidateIds) {
+          await repechageToPreselection(campaignId, id, body.matchTerm);
+        }
+      }
       updated = await markRejected(campaignId, body.candidateIds, actor);
     } else {
       // Accepter ⇒ envoi de l'invitation (qui marque `contacted`). On ne retient

@@ -191,6 +191,7 @@ export async function extractCandidateTimelineFacts(
     fromVivier: detail.fromVivier,
     vivierContactedAt: origin?.contactedAt ?? null,
     vivierAppliedAt: origin?.appliedAt ?? null,
+    vivierOrigin: detail.application.vivierOrigin ?? null,
     validatedAt,
     invitationSentAt,
     rejectionSentAt,

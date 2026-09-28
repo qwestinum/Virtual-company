@@ -29,6 +29,7 @@ import {
   SectionLabel,
   TimelineList,
 } from './CandidatureDetailBlocks';
+import { VivierOriginNote } from './VivierOriginNote';
 import { ScoreRing } from './ScoreRing';
 import { StagePill } from './StagePill';
 import { initials } from './stage-ui';
@@ -238,6 +239,8 @@ function Body({
         </div>
       </div>
 
+      {application.vivierOrigin ? <VivierOriginNote origin={application.vivierOrigin} /> : null}
+
       <Section label="Pièces">
         <DetailPieces analysisId={candidate.id} cvArtifactId={cvArtifactId} />
       </Section>
@@ -257,9 +260,11 @@ function Body({
             <Field
               label="Origine"
               value={
-                vivierOrigin?.contactedAt
-                  ? `Vivier · contacté le ${formatFrDate(vivierOrigin.contactedAt)}`
-                  : 'Vivier'
+                application.vivierOrigin
+                  ? `Vivier · invité le ${formatFrDate(application.vivierOrigin.invitedAt)}`
+                  : vivierOrigin?.contactedAt
+                    ? `Vivier · contacté le ${formatFrDate(vivierOrigin.contactedAt)}`
+                    : 'Vivier'
               }
             />
           ) : null}

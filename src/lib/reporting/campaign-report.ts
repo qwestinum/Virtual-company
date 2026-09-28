@@ -169,6 +169,7 @@ export function buildCampaignReportData(
     vivier?: CampaignReportData['vivier'];
     motivatedDecisions?: CampaignReportData['motivatedDecisions'];
     funnel?: CampaignReportData['funnel'];
+    vivierOrigin?: CampaignReportData['vivierOrigin'];
   },
 ): CampaignReportData {
   const { volumes } = summary;
@@ -217,6 +218,7 @@ export function buildCampaignReportData(
     vivier: opts?.vivier ?? null,
     motivatedDecisions: opts?.motivatedDecisions ?? null,
     funnel: opts?.funnel ?? null,
+    vivierOrigin: opts?.vivierOrigin ?? null,
   };
 
   return { ...partial, recommendations: buildRecommendations(partial) };

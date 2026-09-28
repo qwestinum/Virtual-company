@@ -20,6 +20,7 @@ import { CandidatureActions } from './CandidatureActions';
 import { DetailPieces, SectionLabel } from './CandidatureDetailBlocks';
 import { JobTitleChip } from './JobTitleChip';
 import { ScoreRing } from './ScoreRing';
+import { VivierOriginNote } from './VivierOriginNote';
 import { StagePill } from './StagePill';
 import { initials } from './stage-ui';
 import { ZonePill } from './ZonePill';
@@ -163,6 +164,9 @@ export function CandidaturePanel({
           <ZonePill zone={item.decisionZone} status={item.status} />
           <StagePill stage={liveItem.stage} />
         </div>
+        {detail?.candidate.application.vivierOrigin ? (
+          <VivierOriginNote origin={detail.candidate.application.vivierOrigin} />
+        ) : null}
 
         <div>
           <SectionLabel>Pièces</SectionLabel>

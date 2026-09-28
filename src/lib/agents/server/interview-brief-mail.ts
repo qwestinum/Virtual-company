@@ -10,6 +10,8 @@
  * affiche donc le créneau réservé plutôt qu'un lien à réserver.
  */
 
+import { vivierScoreLabel, vivierTimelineLabel } from '@/lib/vivier/origin';
+import type { VivierOrigin } from '@/types/vivier-origin';
 import { LLM_DECISION_LABELS } from '@/lib/reporting/audit-display';
 import type { InterviewQuestion } from '@/types/interview-brief';
 import type { MailCandidate } from '@/types/mail-candidate';
@@ -102,6 +104,8 @@ export function buildInterviewBriefMail(input: InterviewBriefMailInput): {
     c.criteria && c.criteria.length > 0 ? criteriaTableHtml(c.criteria) : '',
     c.sourcingApproach
       ? `<h3>Décision</h3><p>${escapeHtml(sourcingApproachSentence(c.sourcingApproach))}</p><h3>Verdict CV Analyzer</h3><p>${escapeHtml(c.justification)}</p>`
+      : c.vivierOrigin
+      ? `<h3>Décision</h3><p>${escapeHtml(vivierDecisionSentence(c.vivierOrigin))}</p><h3>Verdict CV Analyzer</h3><p>${escapeHtml(c.justification)}</p>`
       : repechage
       ? '<h3>Décision</h3><p>Candidat <strong>repêché par le recruteur</strong> : reçu en entretien bien que le pré-tri automatique l’ait placé sous le seuil. Le verdict d’écartage du pré-tri ne s’applique plus.</p>'
       : `<h3>Verdict CV Analyzer</h3><p>${escapeHtml(c.justification)}</p>`,
@@ -164,6 +168,8 @@ export function buildInterviewBriefText(input: InterviewBriefMailInput): string 
 
   if (c.sourcingApproach) {
     lines.push('DÉCISION', sourcingApproachSentence(c.sourcingApproach), '', 'VERDICT CV ANALYZER', c.justification);
+  } else if (c.vivierOrigin) {
+    lines.push('DÉCISION', vivierDecisionSentence(c.vivierOrigin), '', 'VERDICT CV ANALYZER', c.justification);
   } else if (repechage) {
     lines.push(
       'DÉCISION',
@@ -214,6 +220,14 @@ function sourcingApproachSentence(a: { recruiterName: string; approachedAt: stri
     // date brute
   }
   return `Profil approché par ${a.recruiterName} le ${date} : la personne a répondu et confirmé son parcours. L’invitation découle de cette approche, pas du pré-tri automatique — le score est un éclairage.`;
+}
+
+/**
+ * Candidature créée depuis le vivier : l'invitation est la décision du
+ * recruteur, et le score juge un CV qui peut dater — le briefing le dit.
+ */
+function vivierDecisionSentence(origin: VivierOrigin): string {
+  return `${vivierTimelineLabel(origin)}. L’invitation découle de cette décision, pas du pré-tri automatique. ${vivierScoreLabel(origin)} — un éclairage, à confronter au parcours actuel du candidat.`;
 }
 
 function criteriaTableHtml(criteria: NonNullable<MailCandidate['criteria']>): string {

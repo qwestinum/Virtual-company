@@ -28,7 +28,8 @@ import { foldDecisionsByUid } from '@/lib/candidatures/verdict';
 import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import { listFeedbackByAnalyses } from '@/lib/db/repos/candidate-feedback';
 import { computeInterviewFunnel } from '@/lib/reporting/interview-funnel';
-import { loadStageSignals } from '@/lib/reporting/stage-signals';
+import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
+import { countVivierOrigin } from '@/lib/reporting/vivier-origin-counts';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type {
   CampaignAnalysisDatum,
@@ -121,6 +122,16 @@ export async function assembleCampaignReport(
   // Candidats informés : best-effort, un échec retire la ligne du rapport.
   const feedbackRows = await listFeedbackByAnalyses(analyses.map((a) => a.id)).catch(() => null);
   const funnel = stageSignals ? computeInterviewFunnel(analyses, stageSignals, feedbackRows) : null;
+  // Origine vivier : le compte ne dépend que des candidatures ; la conversion
+  // (a réservé) de l'étape — sans elle, « 0 réservé » serait un mensonge, et
+  // on ne l'écrit pas.
+  const byId = new Map(analyses.map((a) => [a.id, a]));
+  const vivierOrigin = stageSignals
+    ? countVivierOrigin(analyses, (id) => {
+        const a = byId.get(id);
+        return a ? stageFor(a, stageSignals) : null;
+      })
+    : null;
 
   const data: CampaignAnalysisDatum[] = analyses.map((a) =>
     analysisToDatum(a, signals),
@@ -188,7 +199,7 @@ export async function assembleCampaignReport(
     : null;
   const motivatedDecisions = motivated && motivated.motivated > 0 ? motivated : null;
   return {
-    data: buildCampaignReportData(summary, data, { vivier, motivatedDecisions, funnel }),
+    data: buildCampaignReportData(summary, data, { vivier, motivatedDecisions, funnel, vivierOrigin }),
     fileName: campaignReportFileName(jobTitle, closedAt),
     jobTitle,
     closedAt,

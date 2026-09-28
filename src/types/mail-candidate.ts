@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { DecisionZoneSchema } from './hitl';
 import { LlmDecisionSchema } from './scoring';
 import type { CVApplication } from './cv-analysis';
+import { VivierOriginSchema } from './vivier-origin';
 
 export const MailCandidateSchema = z.object({
   candidateName: z.string().min(1),
@@ -45,6 +46,8 @@ export const MailCandidateSchema = z.object({
   criteria: z
     .array(z.object({ label: z.string().min(1), decision: LlmDecisionSchema, quote: z.string() }))
     .optional(),
+  /** Candidature créée depuis le vivier : le mail dit d'où vient la sollicitation. */
+  vivierOrigin: VivierOriginSchema.optional(),
 });
 export type MailCandidate = z.infer<typeof MailCandidateSchema>;
 
@@ -69,5 +72,6 @@ export function cvApplicationToMailCandidate(
       decision: b.llmDecision,
       quote: b.llmCVQuote,
     })),
+    ...(application.vivierOrigin ? { vivierOrigin: application.vivierOrigin } : {}),
   };
 }

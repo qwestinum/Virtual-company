@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { CVSourceSchema } from './cv-source';
+import { VivierOriginSchema } from './vivier-origin';
 import { ScoreResultSchema } from './scoring';
 
 /**
@@ -121,6 +122,8 @@ export const CVApplicationSchema = z.object({
   candidate: JobApplicationDataSchema,
   scoringResult: ScoreResultSchema,
   narration: CVNarrationSchema,
+  /** Candidature créée depuis le vivier d'une campagne (absente sinon). */
+  vivierOrigin: VivierOriginSchema.optional(),
 });
 export type CVApplication = z.infer<typeof CVApplicationSchema>;
 

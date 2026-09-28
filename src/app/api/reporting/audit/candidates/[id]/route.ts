@@ -33,6 +33,8 @@ import {
   sourcingStructuredCvArtifactId,
 } from '@/lib/sourcing/admission';
 
+import { isVivierAnalysisId, vivierCvArtifactId } from '@/lib/vivier/origin';
+
 export const runtime = 'nodejs';
 
 /**
@@ -44,6 +46,8 @@ export const runtime = 'nodejs';
  */
 function cvArtifactIdsFor(analysisId: string): string[] {
   if (analysisId.startsWith('can_imap_')) return [analysisId.replace('can_imap_', 'art_imap_cvfile_')];
+  // Vivier : le CV COPIÉ sous la campagne à l'invitation.
+  if (isVivierAnalysisId(analysisId)) return [vivierCvArtifactId(analysisId)];
   // Sourcing : le CV joint par la personne d'abord, sinon le CV structuré
   // fabriqué à partir de ce qu'elle a confirmé.
   const approachId = approachIdOfAnalysis(analysisId);

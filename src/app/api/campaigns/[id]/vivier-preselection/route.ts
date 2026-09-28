@@ -31,6 +31,12 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 const PostSchema = z.object({
   freeText: z.string().trim().min(1).optional(),
+  /**
+   * Recherche lancée par l'OUVERTURE de l'écran : elle ne déclenche jamais le
+   * contact automatique — regarder le vivier n'envoie rien. La relance
+   * explicite (bouton) garde le comportement réglé.
+   */
+  onOpen: z.boolean().optional(),
 });
 
 function mapError(err: unknown): NextResponse {
@@ -58,10 +64,13 @@ export async function POST(
 
   // Corps optionnel : un POST sans corps (activation/relance) reste valide.
   let freeText: string | undefined;
+  let onOpen = false;
   try {
     const raw = await request.text();
     if (raw.trim().length > 0) {
-      freeText = PostSchema.parse(JSON.parse(raw)).freeText;
+      const parsed = PostSchema.parse(JSON.parse(raw));
+      freeText = parsed.freeText;
+      onOpen = parsed.onOpen === true;
     }
   } catch (err) {
     return NextResponse.json(
@@ -83,7 +92,7 @@ export async function POST(
     // Mode contact automatique : envoi des invitations APRÈS la réponse (non
     // bloquant). No-op en mode manuel. Best-effort (ne casse pas la réponse).
     try {
-      after(() => autoContactIfEnabled(id, entries));
+      if (!onOpen) after(() => autoContactIfEnabled(id, entries));
     } catch (autoErr) {
       console.error('[vivier] planification contact auto échouée', autoErr);
     }

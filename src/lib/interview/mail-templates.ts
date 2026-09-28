@@ -8,6 +8,8 @@
  * Variable spécifique acceptation : [lien d'agenda] (le candidat y choisit son
  * créneau — il n'y a AUCUNE info de RDV pré-définie dans le message).
  * Variable spécifique nouveau créneau : [intro] (le fait : qui a décalé, quand).
+ * Variable spécifique vivier : [origine] (d'où vient la sollicitation — vide
+ * pour une candidature ordinaire ; placée par le code si le modèle l'omet).
  */
 
 export type InterviewMailVars = {
@@ -25,6 +27,11 @@ export type InterviewMailVars = {
    * le DRH le rédige, si c'est le cabinet ou le candidat qui annulera.
    */
   intro?: string;
+  /**
+   * Phrase d'origine d'une candidature créée depuis le vivier (« vous nous
+   * aviez adressé votre candidature le … »). Vide pour toutes les autres.
+   */
+  origine?: string;
 };
 
 /** Sépare un nom complet en prénom (1er token) + nom (reste). */
@@ -47,7 +54,7 @@ export function renderInterviewMail(
   template: string,
   vars: InterviewMailVars,
 ): string {
-  return template
+  return placeOrigin(template, vars.origine ?? '')
     .replaceAll('[prénom]', vars.prenom)
     .replaceAll('[nom]', vars.nom)
     .replaceAll('[intitulé du poste]', vars.jobTitle)
@@ -58,6 +65,24 @@ export function renderInterviewMail(
     .replaceAll("[lien d'agenda]", vars.agendaLink)
     .replaceAll('[lien d’agenda]', vars.agendaLink)
     .replaceAll('[intro]', vars.intro ?? '');
+}
+
+const ORIGIN_MARK = '[origine]';
+
+/**
+ * Pose la phrase d'origine. Le modèle la place avec `[origine]` ; s'il ne la
+ * place pas, elle va après la formule d'appel (premier paragraphe) — une
+ * sollicitation qui ne dit pas d'où elle vient se lit comme un démarchage.
+ * Vide ⇒ la variable disparaît sans laisser de paragraphe blanc.
+ */
+export function placeOrigin(template: string, origine: string): string {
+  if (template.includes(ORIGIN_MARK)) {
+    const replaced = template.replaceAll(ORIGIN_MARK, origine);
+    return origine ? replaced : replaced.replace(/\n{3,}/g, '\n\n').replace(/^\s+/, '');
+  }
+  if (!origine) return template;
+  const cut = template.indexOf('\n\n');
+  return cut < 0 ? `${origine}\n\n${template}` : `${template.slice(0, cut)}\n\n${origine}${template.slice(cut)}`;
 }
 
 function escapeHtml(s: string): string {
@@ -114,6 +139,15 @@ export function acceptanceSubject(jobTitle: string | null): string {
 }
 
 /** Objet déterministe du message de refus. */
+/**
+ * Objet de l'invitation d'un profil du VIVIER : une opportunité, jamais une
+ * « candidature retenue » — la personne n'a pas postulé à ce poste.
+ */
+export function vivierOpportunitySubject(jobTitle: string | null): string {
+  const t = jobTitle?.trim();
+  return clampSubject(t ? `Une opportunité : ${t}` : 'Une opportunité qui pourrait vous intéresser');
+}
+
 export function rejectionSubject(jobTitle: string | null): string {
   const t = jobTitle?.trim();
   return clampSubject(t ? `Votre candidature au poste de ${t}` : 'Votre candidature');

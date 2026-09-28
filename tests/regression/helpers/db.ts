@@ -141,6 +141,8 @@ export async function cleanAll(): Promise<void> {
   // nettoyage, un run suivant verrait « duplicate » et n'enverrait plus.
   await del('imap_outreach_claims', { col: 'uid', like: 'treg_%' });
   await del('imap_outreach_claims', { col: 'uid', like: 'val_treg_%' });
+  // Invitations depuis le vivier : la clé est l'analyse `can_viv_<campagne>_…`.
+  await del('imap_outreach_claims', { col: 'uid', like: `can_viv_${TEST_CAMPAIGN_PREFIX}%` });
 
   // Les campagnes en dernier (cibles des FK).
   if (campIds.length > 0) {

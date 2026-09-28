@@ -368,3 +368,73 @@ espace non comparable, et la présélection refuserait de chercher
 (`embedding_model_mismatch`).
 
 Exécuté le 23/09/2026 sur la production : **124 dossiers, 124 indexés, 0 échec**.
+
+## 16. « Inviter » depuis la campagne — le profil devient une candidature (28/09/2026)
+
+Branche `fix/vivier-replanif-filtres`, point 1 et 1 bis. Sur chaque profil
+proposé (`identified`) de l'écran « Chercher dans le vivier » :
+
+- **« CV »** ouvre l'aperçu en panneau latéral (`VivierCvPreviewDrawer`) : le
+  fichier servi par `/api/vivier/[id]/cv` sous la session (jamais une URL
+  publique), le texte extrait pour un fichier que le navigateur n'affiche pas, et
+  la proximité de présélection (titre, compétences). La présélection ne porte
+  **aucune analyse sur la grille** : l'écran dit que le score sera calculé à
+  l'invitation.
+- **« Inviter »** (`POST …/vivier-preselection/invite`, cœur
+  `src/lib/vivier/invite-candidate.ts`) — arbitrage DO **option A** : UNE analyse
+  sur la grille de la campagne, au clic, qui devient l'analyse de la candidature
+  (pas de second scoring : une reprise relit la ligne persistée). Ordre :
+  contrôles relus (campagne active, grille validée, lien de réservation émissible,
+  profil ni écarté ni contacté) → **réservation** `identified → contacted` (un seul
+  gagnant ; relâchée si l'analyse est indisponible ou le CV illisible ; reprise
+  d'une réservation morte après le TTL des verrous) → CV **copié** sous la
+  campagne (`art_viv_cv_*`, le vivier garde le sien) → candidature par
+  `persistCandidateAnalysisStrict` : id `can_viv_<campagne>_<profil>`,
+  `source='vivier'`, `decided_by='user'` + recruteur, zone **acceptée**,
+  `from_vivier` posé à l'insertion, `application.vivierOrigin` (dates, proposé le,
+  invité par) → journal `imap_cv_received` + `imap_cv_analyzed` (sinon elle
+  compterait pour zéro) + `candidate_created_from_vivier` → invitation par
+  `dispatchCandidateOutreach` (mêmes verrous que la relève, clé
+  `('vivier', analysisId)`) : **aucune fiche de validation**, un mail au plus,
+  briefing en file.
+- **« Écarter »** : exclusion pour CETTE campagne seulement, rien d'envoyé, à
+  l'unité ou en masse. L'invitation, elle, se fait un profil à la fois.
+
+**Retours du donneur d'ordre (28/09/2026), tenus :**
+
+- **Ouvrir l'écran LANCE la recherche** (`POST … { onOpen: true }`) : la liste
+  enregistrée s'affiche aussitôt, la présélection la rafraîchit. `onOpen` ne
+  déclenche JAMAIS le contact automatique — regarder le vivier n'envoie rien.
+- **Les résultats de la recherche par mot-clé portent les MÊMES gestes** que
+  les profils proposés (`VivierActions` partagé : « CV », « Écarter »,
+  « Inviter ») — fini le détour « ajouter à la liste », fermer, rouvrir.
+  « Inviter » ou « Écarter » un résultat l'ajoute d'abord aux propositions
+  (`matchTerm`), dans la même requête.
+- **Chaque ligne se DÉPLIE** (`VivierProfileDetail`, `GET /api/vivier/[id]/profile`) :
+  pourquoi ce profil, synthèse (titre, postes récents, expérience,
+  localisation, compétences, formation, langues), historique (candidatures
+  reçues avec leur étape courante, sollicitations depuis le vivier sur les
+  autres campagnes), « Voir le CV ».
+- **Un profil ajouté à la main n'est jamais purgé** par une recherche
+  (`match_kind='keyword'` gardé par `reconcilePreselection`) — sinon ouvrir
+  l'écran l'effacerait.
+- **L'invitation parle d'une OPPORTUNITÉ** : gabarit dédié
+  `interview_config.vivierInvitationTemplate` (Réglages, défaut Zod, aucune
+  migration), objet « Une opportunité : [poste] » — jamais « votre candidature
+  est retenue » à quelqu'un qui n'a pas postulé à ce poste.
+
+**Le message** dit d'où vient la sollicitation : variable `[origine]` du gabarit
+d'invitation vivier, placée après la formule d'appel si le gabarit l'omet
+(`placeOrigin`). Une candidature d'origine connue est rappelée (« vous nous
+aviez adressé votre candidature le … ») ; sinon seulement l'entrée au vivier —
+jamais une candidature inventée.
+
+**Où l'origine se lit** : fiche (bloc « Origine » + « Score de présélection
+vivier — calculé le … sur le CV du … »), frise (« Issu du vivier — proposé le …,
+invité par … le … »), briefing du recruteur, rapport de campagne (« dont N issues
+du vivier », conversion « ont réservé / invités depuis le vivier »), filtre
+« Issues du vivier » (lit `from_vivier`). Purge RGPD : `vivierOrigin` EFFACÉ du
+squelette, le CV copié retrouvé par son id déterministe et son `uid`.
+
+Tests : unitaires (`invite-candidate`, `origin`), régression **S27**, clic
+**S49** (captures `docs/ux/captures/vivier-inviter/`).

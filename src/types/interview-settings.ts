@@ -42,6 +42,18 @@ export const InterviewConfigSchema = z.object({
    * non configuré dans les paramètres »). Chaîne libre (URL validée à l'envoi)
    * pour tolérer une sauvegarde des autres réglages avant d'avoir le lien.
    */
+  /**
+   * Template de l'invitation envoyée à un profil du VIVIER invité depuis une
+   * campagne (28/09/2026). Ce n'est pas une acceptation : la personne n'a pas
+   * postulé à ce poste. Le message parle d'une OPPORTUNITÉ, et `[origine]`
+   * (écrit par le code) dit d'où vient la sollicitation.
+   * `.default` : une configuration enregistrée avant ce champ reste valide.
+   */
+  vivierInvitationTemplate: z
+    .string()
+    .min(1)
+    .max(5000)
+    .default(() => DEFAULT_VIVIER_INVITATION_TEMPLATE),
   agendaLink: z.string().max(2048),
   /** Nom de l'organisation, injecté dans [organisation]. Vide ⇒ repli. */
   organisationName: z.string().max(200),
@@ -121,6 +133,26 @@ export const DEFAULT_INTERVIEW_ACCEPTANCE_TEMPLATE = [
   'Pour convenir d’un créneau, je vous invite à choisir directement le moment qui vous convient le mieux via notre agenda en ligne : [lien d’agenda]',
   '',
   'Au plaisir d’échanger avec vous très prochainement.',
+  '',
+  'Bien cordialement,',
+  '[nom du recruteur]',
+  '[organisation]',
+].join('\n');
+
+/**
+ * Template par défaut de l'invitation d'un profil du VIVIER. Jamais « votre
+ * candidature est retenue » : la personne n'a pas postulé à ce poste.
+ */
+export const DEFAULT_VIVIER_INVITATION_TEMPLATE = [
+  'Bonjour [prénom],',
+  '',
+  '[origine]',
+  '',
+  'Nous recrutons aujourd’hui pour le poste de [intitulé du poste], et votre parcours correspond à ce que nous recherchons. Nous serions ravis d’échanger avec vous au sujet de cette opportunité.',
+  '',
+  'Si elle vous intéresse, vous pouvez choisir directement le créneau qui vous convient via notre agenda en ligne : [lien d’agenda]',
+  '',
+  'Au plaisir d’échanger avec vous.',
   '',
   'Bien cordialement,',
   '[nom du recruteur]',
@@ -234,6 +266,7 @@ export const DEFAULT_INTERVIEW_CONFIG: InterviewConfig = {
   acceptanceTemplate: DEFAULT_INTERVIEW_ACCEPTANCE_TEMPLATE,
   rejectionTemplate: DEFAULT_INTERVIEW_REJECTION_TEMPLATE,
   rescheduleTemplate: DEFAULT_INTERVIEW_RESCHEDULE_TEMPLATE,
+  vivierInvitationTemplate: DEFAULT_VIVIER_INVITATION_TEMPLATE,
   agendaLink: '',
   organisationName: '',
   recruiterName: '',

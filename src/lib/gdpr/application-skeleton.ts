@@ -44,6 +44,9 @@ export const DISPOSITION_APPLICATION: Record<keyof CVApplication, Disposition> =
   candidate: 'keep', // conteneur : détaillé ci-dessous
   scoringResult: 'keep',
   narration: 'erase', // rédigée SUR la personne, de bout en bout
+  // Origine vivier : relie au dossier vivier et nomme le poste d'une
+  // candidature antérieure — un fragment de parcours. Elle part entière.
+  vivierOrigin: 'erase',
 };
 
 export const DISPOSITION_CANDIDATE: Record<keyof JobApplicationData, Disposition> = {

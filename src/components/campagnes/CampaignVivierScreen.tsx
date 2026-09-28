@@ -2,8 +2,8 @@
 
 /**
  * « Chercher dans le vivier » — la présélection de la campagne, seule à
- * l'écran. La décision se prend ICI (refonte lot 4) ; accepter envoie une
- * invitation à candidater.
+ * l'écran. La décision se prend ICI (refonte lot 4) ; « Inviter » crée la
+ * candidature et envoie l'invitation à un entretien (point 1, 28/09/2026).
  */
 
 import { VivierPreselectionPanel } from '@/components/vivier/VivierPreselectionPanel';
@@ -19,7 +19,7 @@ export function CampaignVivierScreen({ campaignId }: { campaignId: string }) {
     <CampaignFocusScreen
       campaignId={campaignId}
       titre="Chercher dans le vivier"
-      sousTitre="Les profils de votre stock interne qui correspondent à ce poste. Accepter envoie une invitation à candidater."
+      sousTitre="Les profils de votre stock interne qui correspondent à ce poste. « Inviter » en fait une candidature et envoie l’invitation à un entretien."
     >
       {(campaign) =>
         campaign.status !== 'active' ? (
@@ -35,7 +35,7 @@ export function CampaignVivierScreen({ campaignId }: { campaignId: string }) {
           // dans le vivier EST le moment où l'on décide de s'en servir.
           <SurfaceOptIn
             titre="Chercher dans le vivier ?"
-            explication="Le vivier n’est pas encore une source de cette campagne. En l’activant, ORQA propose les profils de votre stock interne qui correspondent au poste ; vous décidez ensuite qui inviter à candidater."
+            explication="Le vivier n’est pas encore une source de cette campagne. En l’activant, ORQA propose les profils de votre stock interne qui correspondent au poste ; vous décidez ensuite qui inviter."
             choix={[
               {
                 key: 'vivier',

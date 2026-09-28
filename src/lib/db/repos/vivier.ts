@@ -989,3 +989,24 @@ export async function listVivierCandidateIds(filters?: {
   });
   return rows.map((r) => r.id);
 }
+
+/**
+ * Ce que la synthèse d'un profil ajoute au dossier : ses compétences et ses
+ * derniers postes (ancres de titre). Lecture seule, 28/09/2026.
+ */
+export async function getVivierProfileExtras(
+  id: string,
+): Promise<{ skills: string[]; titleAnchors: TitleAnchor[] }> {
+  const supabase = requireServerSupabase();
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('skills, title_anchors')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`getVivierProfileExtras: ${error.message}`);
+  const row = (data ?? {}) as { skills?: string[] | null; title_anchors?: unknown };
+  return {
+    skills: row.skills ?? [],
+    titleAnchors: Array.isArray(row.title_anchors) ? (row.title_anchors as TitleAnchor[]) : [],
+  };
+}

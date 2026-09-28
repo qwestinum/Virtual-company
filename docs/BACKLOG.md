@@ -1077,3 +1077,23 @@ Spec : `docs/specs/feedback-candidat.md` §9.
 - **Cartographie du Manager** (`manager-cartography.ts`) : citer « Propositions
   de refus », « Recruté », « Informer le candidat » et le dialogue de clôture
   (libellés EXACTS de l'UI — le test de la cartographie le vérifie).
+
+---
+
+## Suites de `fix/vivier-replanif-filtres` (28/09/2026)
+
+- **CV à jour reçu en réponse à une invitation vivier** : le brief voulait qu'un
+  recruteur puisse le RATTACHER à la fiche (artefact supplémentaire), sans
+  nouvelle analyse et sans doublon de candidature. Aucun geste « joindre un
+  fichier à une candidature » n'existe aujourd'hui ; et un CV renvoyé à la boîte
+  de réception avec la référence `CAMP-…` crée une SECONDE candidature (identité
+  par analyse, jamais de fusion par adresse). À cadrer : geste de rattachement
+  + éventuelle règle de la relève pour une adresse déjà invitée depuis le vivier.
+- **Replanification après absence — chaîne `rescheduled_from`** : le nouveau
+  rendez-vous est une réservation neuve (lien réémis), pas un déplacement de
+  l'ancien ; l'UID d'agenda n'est donc pas celui du rendez-vous manqué (qui a
+  reçu son annulation). Relier les deux si l'on veut que l'agenda du candidat
+  « déplace » au lieu d'« annuler + créer ».
+- **Invitation vivier en masse** : volontairement absente (il faut voir le CV,
+  et chaque invitation lance une analyse). À rouvrir si le besoin est exprimé,
+  sur le rail plutôt que dans la requête.

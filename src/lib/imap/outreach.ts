@@ -45,6 +45,7 @@ import { enqueueValidationRow } from '@/lib/hitl/enqueue';
 import { validationIdFor } from '@/lib/hitl/validation-id';
 import {
   gateCandidateOutreach,
+  type GateOutcome,
   type SendResult,
 } from '@/lib/hitl/outreach-gate';
 import type {
@@ -115,13 +116,21 @@ export function imapOutreachKeys(input: Pick<OutreachInput, 'mailboxId' | 'uid'>
 }
 
 export async function dispatchImapCandidateOutreach(input: OutreachInput): Promise<void> {
-  return dispatchCandidateOutreach(input, imapOutreachKeys(input));
+  await dispatchCandidateOutreach(input, imapOutreachKeys(input));
 }
+
+/**
+ * Ce qui s'est passé, pour l'appelant qui doit le DIRE (invitation depuis le
+ * vivier : l'écran annonce un envoi, ou pas). Le poller l'ignore.
+ */
+export type OutreachDispatchResult =
+  | { kind: 'no_link' }
+  | Exclude<GateOutcome, { kind: 'deferred' } | { kind: 'in_flight' }>;
 
 export async function dispatchCandidateOutreach(
   input: OutreachInput,
   keys: OutreachKeys,
-): Promise<void> {
+): Promise<OutreachDispatchResult> {
   const { candidate } = input;
   // La ZONE pilote le gate. Repli sur `aboveThreshold` pour les projections
   // antérieures — côté refus on retombe sur `proposed_reject`, JAMAIS sur
@@ -163,7 +172,7 @@ export async function dispatchCandidateOutreach(
         uid: input.uid,
       },
     });
-    return;
+    return { kind: 'no_link' };
   }
 
   // ─── Décision HITL (règle PARTAGÉE avec le chemin chat) ────────────────
@@ -230,6 +239,7 @@ export async function dispatchCandidateOutreach(
       uid: input.uid,
     });
   }
+  return outcome;
 }
 
 /**

@@ -11,6 +11,7 @@
  */
 
 import type { InterviewFunnel } from '@/lib/reporting/interview-funnel';
+import type { VivierOriginCounts } from '@/lib/reporting/vivier-origin-counts';
 import type { CandidateJourney } from '@/lib/reporting/candidate-journey';
 import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { CVApplication } from '@/types/cv-analysis';
@@ -255,6 +256,12 @@ export type CampaignReportData = {
    * rapprochées par email. null si la campagne n'a pas mobilisé le vivier.
    */
   vivier: VivierConversion | null;
+  /**
+   * Candidatures d'origine vivier (« dont N issues du vivier ») et conversion
+   * des invitations lancées depuis la campagne. Absent : pas de candidature
+   * issue du vivier, ou rapport construit sans l'étape des candidatures.
+   */
+  vivierOrigin?: VivierOriginCounts | null;
   /**
    * Décisions finales accompagnées d'un commentaire du recruteur
    * (docs/specs/compte-rendu-entretien.md §7.2, §16) — un INDICATEUR, jamais le
