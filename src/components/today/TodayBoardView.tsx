@@ -18,6 +18,15 @@
  */
 
 
+import { useCampaignStateFilter } from '@/components/referent/useCampaignStateFilter';
+import {
+  campaignFilterResultLabel,
+  matchesCampaignState,
+} from '@/lib/referent/campaign-state';
+import { referentSelectionKey } from '@/lib/referent/filter';
+import { useMemo } from 'react';
+import { selectActiveCampaigns, useCampaignsStore } from '@/stores/campaigns-store';
+import { useShallow } from 'zustand/react/shallow';
 import { ActionButton } from '@/components/campagnes/ActionButton';
 import { Bell, CalendarCheck, ShieldCheck } from 'lucide-react';
 
@@ -87,12 +96,22 @@ export function TodayBoardView({
   partial,
   onReload,
 }: TodayBoardViewProps) {
-  // Filtre de LECTURE, volontairement NON persisté (ni URL, ni stockage) : un
-  // filtre oublié qui masque des dossiers est pire que pas de filtre.
   // ⚠️ UN SEUL ÉTAT pour tout le produit, mémorisé par recruteur : cocher
   // « Mes campagnes » ici, c'est le retrouver coché sur les autres écrans.
   const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
-  const vue = applyReferentFilter(brut, referentFilter, currentUserId);
+  // L'ÉTAT de campagne, partagé et cumulé au référent (point 3). Une campagne
+  // que le magasin ne connaît pas encore n'est jamais masquée.
+  const [stateFilter, setStateFilter] = useCampaignStateFilter(currentUserId);
+  const campagnes = useCampaignsStore(useShallow(selectActiveCampaigns));
+  const statutDe = useMemo(() => new Map(campagnes.map((c) => [c.id, c.status])), [campagnes]);
+  const vue = applyReferentFilter(
+    brut,
+    referentFilter,
+    currentUserId,
+    stateFilter === 'all'
+      ? undefined
+      : (id) => !statutDe.has(id) || matchesCampaignState(statutDe.get(id), stateFilter),
+  );
   const board = vue.board;
 
   const enRoute = pending.validation || pending.entretiens || pending.verify;
@@ -129,6 +148,17 @@ export function TodayBoardView({
           onChange={setReferentFilter}
           myCount={vue.myCount}
           currentUserId={currentUserId}
+          state={{ value: stateFilter, onChange: setStateFilter }}
+          result={campaignFilterResultLabel({
+            selection: referentFilter,
+            currentUserId,
+            referentLabel: vue.options.find(
+              (o) => referentSelectionKey(o.selection) === referentSelectionKey(referentFilter),
+            )?.label,
+            state: stateFilter,
+            count: board.validation.aLire.total + board.entretiens.total,
+            unit: { one: 'candidature qui attend', many: 'candidatures qui attendent' },
+          })}
         />
 
         {/* De l'air sous la bande (32 px en plus de l'écart commun) : elle

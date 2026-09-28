@@ -20,11 +20,15 @@
  * deux.
  */
 
+import { useCampaignStateFilter } from '@/components/referent/useCampaignStateFilter';
+import { campaignFilterResultLabel, matchesCampaignState } from '@/lib/referent/campaign-state';
+import { selectActiveCampaigns, useCampaignsStore } from '@/stores/campaigns-store';
+import { useShallow } from 'zustand/react/shallow';
 import { PageShell } from '@/components/navigation/PageShell';
 import { DotTabs } from '@/components/ui/DotTabs';
 
 import { Loader2, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { CandidatureDismissDialog } from '@/components/candidatures/CandidatureDismissDialog';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
@@ -34,6 +38,7 @@ import type { RowReferent } from '@/lib/interviews/referent-resolution';
 import {
   buildReferentOptionsBy,
   filterByReferentBy,
+  referentSelectionKey,
   myReferentCountBy,
 } from '@/lib/referent/filter';
 import type { FinalVerdict } from '@/types/verdict-comment';
@@ -91,6 +96,12 @@ export function InterviewsWorkspace({
   // ⚠️ UN SEUL ÉTAT pour tout le produit, mémorisé par recruteur : cocher
   // « Mes campagnes » ici, c'est le retrouver coché sur les autres écrans.
   const [referentFilter, setReferentFilter] = useReferentFilter(currentUserId);
+  // L'ÉTAT de campagne, partagé et cumulé au référent (point 3). Le statut
+  // vient du magasin des campagnes ; une campagne qu'il ne connaît pas encore
+  // n'est jamais masquée (le doute ne cache pas un entretien).
+  const [stateFilter, setStateFilter] = useCampaignStateFilter(currentUserId);
+  const campagnes = useCampaignsStore(useShallow(selectActiveCampaigns));
+  const statutDe = useMemo(() => new Map(campagnes.map((c) => [c.id, c.status])), [campagnes]);
   // Défaut : les entretiens. C'est l'agenda de la semaine — ce qu'on vient
   // regarder en ouvrant la page ; les invitations en attente sont une file
   // qu'on traite, pas ce qu'on consulte en premier.
@@ -242,7 +253,12 @@ export function InterviewsWorkspace({
     rows: T[],
   ) =>
     filterByReferentBy(rows, referentOfRow, referentFilter).filter(
-      (row) => !campaignId || row.campaignId === campaignId,
+      (row) =>
+        (!campaignId || row.campaignId === campaignId) &&
+        (stateFilter === 'all' ||
+          !row.campaignId ||
+          !statutDe.has(row.campaignId) ||
+          matchesCampaignState(statutDe.get(row.campaignId), stateFilter)),
     );
   const awaiting = filter(pipeline.awaiting);
   const scheduled = filter(pipeline.scheduled);
@@ -276,6 +292,17 @@ export function InterviewsWorkspace({
           onChange={setReferentFilter}
           myCount={myCount}
           currentUserId={currentUserId}
+          state={{ value: stateFilter, onChange: setStateFilter }}
+          result={campaignFilterResultLabel({
+            selection: referentFilter,
+            currentUserId,
+            referentLabel: options.find(
+              (o) => referentSelectionKey(o.selection) === referentSelectionKey(referentFilter),
+            )?.label,
+            state: stateFilter,
+            count: awaiting.length + scheduled.length + verdictRows.length,
+            unit: { one: 'entretien en cours', many: 'entretiens en cours' },
+          })}
         />
       }
       counters={

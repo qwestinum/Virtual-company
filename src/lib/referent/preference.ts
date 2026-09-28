@@ -27,6 +27,11 @@
  * l'absence retombe sur « Tous », qui ne masque rien.
  */
 
+import {
+  DEFAULT_CAMPAIGN_STATE,
+  parseCampaignState,
+  type CampaignStateFilter,
+} from './campaign-state';
 import { ALL_REFERENTS, type ReferentSelection } from './filter';
 
 const PREFIXE = 'orqa.referent-filter.';
@@ -68,5 +73,27 @@ export function ecrirePreference(
   } catch {
     // Stockage refusé : le filtre vit alors le temps de la session. On ne
     // prévient pas — c'est une commodité, pas une donnée.
+  }
+}
+
+// ─── État de campagne (point 3 de fix/vivier-replanif-filtres) ─────────────
+
+const PREFIXE_ETAT = 'orqa.campaign-state-filter.';
+const cleEtat = (userId: string | null) => `${PREFIXE_ETAT}${userId ?? 'anonyme'}`;
+
+/** Même tolérance : illisible ou absent ⇒ « Actives ». */
+export function lireEtatCampagne(userId: string | null): CampaignStateFilter {
+  try {
+    return parseCampaignState(window.localStorage.getItem(cleEtat(userId)));
+  } catch {
+    return DEFAULT_CAMPAIGN_STATE;
+  }
+}
+
+export function ecrireEtatCampagne(userId: string | null, etat: CampaignStateFilter): void {
+  try {
+    window.localStorage.setItem(cleEtat(userId), etat);
+  } catch {
+    // Stockage refusé : l'état vit le temps de la session.
   }
 }

@@ -9,6 +9,13 @@
  * reste découplée et reçoit le libellé en prop).
  */
 
+import { useCampaignStateFilter } from '@/components/referent/useCampaignStateFilter';
+import { AUCUNE_CAMPAGNE } from '@/lib/candidatures/campaign-perimeter';
+import {
+  campaignFilterResultLabel,
+  campaignsMatchingFilters,
+  matchesCampaignState,
+} from '@/lib/referent/campaign-state';
 import { PageShell } from '@/components/navigation/PageShell';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -29,6 +36,7 @@ import {
   buildReferentOptionsBy,
   campaignIdsForSelection,
   myReferentCountBy,
+  referentSelectionKey,
 } from '@/lib/referent/filter';
 
 import { CandidatureFullPage } from './CandidatureFullPage';
@@ -85,7 +93,7 @@ export function CandidaturesWorkspace({
   // appel → sans comparaison superficielle, useSyncExternalStore boucle à
   // l'infini (« Maximum update depth exceeded »). Même pattern que CandidatesCard.
   const campaigns = useCampaignsStore(useShallow(selectActiveCampaigns));
-  const { campaignOptions, labelOf, titleOf, activeIds } = useMemo(() => {
+  const { campaignOptions, labelOf, titleOf } = useMemo(() => {
     const opts = campaigns.map((c) => ({
       id: c.id,
       label: `${c.id} · ${c.fdp.fields.job_title?.value ?? 'Poste non précisé'}`,
@@ -107,7 +115,6 @@ export function CandidaturesWorkspace({
       campaignOptions: opts,
       labelOf: (id: string | null) => (id ? map.get(id) ?? id : null),
       titleOf: (id: string | null) => (id ? titles.get(id) ?? null : null),
-      activeIds: campaigns.filter((c) => c.status === 'active').map((c) => c.id),
     };
   }, [campaigns]);
 
@@ -165,6 +172,29 @@ export function CandidaturesWorkspace({
       activeReferentOf(c.id, tousReferents),
     );
   }, [tousReferents]);
+  // L'ÉTAT de campagne, partagé et cumulé au référent (point 3) : il borne le
+  // périmètre des candidatures comme le référent, par la même intersection.
+  const [stateFilter, setStateFilter] = useCampaignStateFilter(currentUserId);
+  const campagnesFiltrees = useMemo(
+    () => campaignsMatchingFilters(campaigns, tousReferents, referentFilter, stateFilter),
+    [campaigns, tousReferents, referentFilter, stateFilter],
+  );
+  const campagnesDeLEtat = useMemo(
+    () =>
+      stateFilter === 'all'
+        ? null
+        : campaigns.filter((c) => matchesCampaignState(c.status, stateFilter)).map((c) => c.id),
+    [campaigns, stateFilter],
+  );
+  const resultLabel = campaignFilterResultLabel({
+    selection: referentFilter,
+    currentUserId,
+    referentLabel: referentOptions.find(
+      (o) => referentSelectionKey(o.selection) === referentSelectionKey(referentFilter),
+    )?.label,
+    state: stateFilter,
+    count: campagnesFiltrees.length,
+  });
   const myReferentCount = useMemo(
     () =>
       myReferentCountBy(
@@ -200,33 +230,29 @@ export function CandidaturesWorkspace({
   }
   const colonnePanneau = useRef<HTMLDivElement>(null);
   const hauteurPanneau = useVisibleHeight(colonnePanneau, panelItem !== null);
-  // L'utilisateur a touché au sélecteur de campagne : la vue par défaut
-  // (campagnes actives) cesse de s'imposer.
-  // Un pré-filtre de navigation vaut choix : la vue par défaut ne l'écrase pas.
-  const [campaignTouched, setCampaignTouched] = useState(Boolean(initialCampaignId || initialStage));
   const referenceDate = useMemo(() => new Date(), []);
 
 
-  // VUE PAR DÉFAUT : candidatures des campagnes ACTIVES. Appliquée au montage
-  // et maintenue tant que l'utilisateur n'a pas choisi lui-même une campagne
-  // (le store se charge en asynchrone — activeIds arrive après le 1er rendu).
+  // PÉRIMÈTRE D'ÉTAT : tant qu'aucune campagne précise n'est choisie, les
+  // candidatures sont celles des campagnes de l'état filtré (« Actives » par
+  // défaut). Une liste vide n'est JAMAIS « toutes » : sentinelle explicite.
   useEffect(() => {
-    if (campaignTouched || initialStage || initialCampaignId) return;
+    if (filters.campaignId) return;
     setFilters({
-      campaignId: '',
-      campaignIds: activeIds.length > 0 ? activeIds : NO_CAMPAIGN_IDS,
+      campaignIds:
+        campagnesDeLEtat === null
+          ? NO_CAMPAIGN_IDS
+          : campagnesDeLEtat.length > 0
+            ? campagnesDeLEtat
+            : [AUCUNE_CAMPAGNE],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIds, campaignTouched]);
+  }, [campagnesDeLEtat, filters.campaignId]);
 
-  // Sélecteur campagne : 'all' | 'active' (ensemble) | <id> (campagne précise).
-  const campaignValue =
-    filters.campaignIds.length > 0 ? 'active' : filters.campaignId || 'all';
+  // Sélecteur campagne : 'all' (les campagnes des deux filtres) | <id>.
+  const campaignValue = filters.campaignId || 'all';
   const onCampaign = (v: string) => {
-    setCampaignTouched(true);
-    if (v === 'active') setFilters({ campaignId: '', campaignIds: activeIds });
-    else if (v === 'all')
-      setFilters({ campaignId: '', campaignIds: NO_CAMPAIGN_IDS });
+    if (v === 'all') setFilters({ campaignId: '' });
     else setFilters({ campaignId: v, campaignIds: NO_CAMPAIGN_IDS });
   };
   const onPeriod = (v: PeriodKey) => {
@@ -237,11 +263,9 @@ export function CandidaturesWorkspace({
   // « Toutes » : RÉINITIALISATION complète de la vue — étape, recherche,
   // période, origine vivier ET campagne (retour au défaut campagnes actives).
   const onResetView = () => {
-    setCampaignTouched(false);
     setPeriod('all');
     setFilters({
       campaignId: '',
-      campaignIds: activeIds.length > 0 ? activeIds : NO_CAMPAIGN_IDS,
       from: '',
       to: '',
       search: '',
@@ -280,22 +304,23 @@ export function CandidaturesWorkspace({
             onChange={setReferentFilter}
             myCount={myReferentCount}
             currentUserId={currentUserId}
+            state={{ value: stateFilter, onChange: setStateFilter }}
+            result={resultLabel}
           />
           <CandidaturesFilters
-          campaignOptions={campaignOptions}
-          activeCount={activeIds.length}
-          campaignValue={campaignValue}
-          onCampaign={onCampaign}
-          search={filters.search}
-          onSearch={(v) => setFilters({ search: v })}
-          period={period}
-          onPeriod={onPeriod}
-          fromVivier={filters.fromVivier}
-          onVivier={(b) => setFilters({ fromVivier: b })}
-          everInvited={filters.everInvited}
-          onClearEverInvited={() => setFilters({ everInvited: false })}
-          everInterviewed={filters.everInterviewed}
-          onClearEverInterviewed={() => setFilters({ everInterviewed: false })}
+            campaignOptions={campaignOptions.filter((o) => campagnesFiltrees.some((c) => c.id === o.id))}
+            campaignValue={campaignValue}
+            onCampaign={onCampaign}
+            search={filters.search}
+            onSearch={(v) => setFilters({ search: v })}
+            period={period}
+            onPeriod={onPeriod}
+            fromVivier={filters.fromVivier}
+            onVivier={(b) => setFilters({ fromVivier: b })}
+            everInvited={filters.everInvited}
+            onClearEverInvited={() => setFilters({ everInvited: false })}
+            everInterviewed={filters.everInterviewed}
+            onClearEverInterviewed={() => setFilters({ everInterviewed: false })}
             onReset={onResetView}
           />
         </div>

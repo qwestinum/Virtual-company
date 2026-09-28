@@ -31,7 +31,12 @@ import {
 import {
   CampaignCard,
 } from './CampaignCard';
-import { DotTabs } from '@/components/ui/DotTabs';
+import {
+  CAMPAIGN_STATE_LABELS,
+  DEFAULT_CAMPAIGN_STATE,
+  matchesCampaignState,
+  type CampaignStateFilter,
+} from '@/lib/referent/campaign-state';
 import {
   activeReferentOf,
   ALL_REFERENTS,
@@ -56,25 +61,24 @@ export type CampaignsListProps = {
    */
   referentFilter?: ReferentSelection;
   referents?: ReferentByCampaign;
+  /**
+   * État de campagne filtré — posé par la barre de l'écran, PARTAGÉ entre
+   * écrans et mémorisé par recruteur (fix/vivier-replanif-filtres, point 3).
+   * La liste n'a plus ses propres puces : une seule barre, cumulative.
+   */
+  stateFilter?: CampaignStateFilter;
+  onStateChange?: (next: CampaignStateFilter) => void;
 };
 
 const PAGE_SIZE = 5;
-
-type StatusFilter = 'active' | 'paused' | 'draft' | 'closed' | 'all';
-
-const STATUS_FILTERS: { id: StatusFilter; label: string; dot: string }[] = [
-  { id: 'active', label: 'Actives', dot: 'var(--dash-green)' },
-  { id: 'paused', label: 'Suspendues', dot: 'var(--dash-yellow)' },
-  { id: 'draft', label: 'Brouillon', dot: 'var(--dash-text-tertiary)' },
-  { id: 'closed', label: 'Clôturées', dot: 'var(--dash-red)' },
-  { id: 'all', label: 'Toutes', dot: 'var(--dash-blue)' },
-];
 
 export function CampaignsList({
   onEditCampaign,
   focusCampaignId = null,
   referentFilter = ALL_REFERENTS,
   referents = {},
+  stateFilter = DEFAULT_CAMPAIGN_STATE,
+  onStateChange = () => undefined,
 }: CampaignsListProps) {
   const rawCampaignsBrutes = useCampaignsStore(useShallow(selectActiveCampaigns));
   const rawCampaigns = useMemo(
@@ -107,18 +111,15 @@ export function CampaignsList({
     PAGE_SIZE,
   );
   const [touched, setTouched] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
-  const effectiveStatusFilter: StatusFilter =
-    !touched && focus.showAllStatuses ? 'all' : statusFilter;
-  const campaigns = useMemo(() => {
-    if (effectiveStatusFilter === 'all') return allCampaigns;
-    if (effectiveStatusFilter === 'draft') {
-      return allCampaigns.filter(
-        (c) => c.status === 'draft' || c.status === 'in_progress',
-      );
-    }
-    return allCampaigns.filter((c) => c.status === effectiveStatusFilter);
-  }, [allCampaigns, effectiveStatusFilter]);
+  // La campagne désignée par l'URL élargit l'affichage à « Toutes » jusqu'au
+  // premier geste — et l'écran le DIT (`focusOverride`), sinon la barre
+  // afficherait « Actives » au-dessus d'une liste qui ne l'est pas.
+  const focusOverride = !touched && focus.showAllStatuses && stateFilter !== 'all';
+  const effectiveStatusFilter: CampaignStateFilter = focusOverride ? 'all' : stateFilter;
+  const campaigns = useMemo(
+    () => allCampaigns.filter((c) => matchesCampaignState(c.status, effectiveStatusFilter)),
+    [allCampaigns, effectiveStatusFilter],
+  );
 
   // ⚠️ UN SEUL appel pour toutes les cartes de la page : les compteurs
   // arrivent AVEC la liste. Un appel par carte aurait fait quinze lectures
@@ -146,20 +147,7 @@ export function CampaignsList({
     setOpenedId(id);
   };
 
-  // Compteurs basés sur la liste totale (pas filtrée) pour informer
-  // l'utilisateur du volume disponible derrière chaque chip.
-  const statusCounts = useMemo(
-    () => ({
-      active: allCampaigns.filter((c) => c.status === 'active').length,
-      paused: allCampaigns.filter((c) => c.status === 'paused').length,
-      draft: allCampaigns.filter(
-        (c) => c.status === 'draft' || c.status === 'in_progress',
-      ).length,
-      closed: allCampaigns.filter((c) => c.status === 'closed').length,
-      all: allCampaigns.length,
-    }),
-    [allCampaigns],
-  );
+
 
   // Indexe les candidats par campagne pour donner des stats live à
   // chaque CampaignCard sans appel API supplémentaire (la route globale
@@ -184,12 +172,11 @@ export function CampaignsList({
   // ce qui montrait « 6 GO » dans la carte alors que la liste candidats
   // n'en affichait que ceux validés. Maintenant les deux vues s'accordent.
 
-  const selectStatus = (next: StatusFilter) => {
-    if (next === effectiveStatusFilter) return;
+  const selectStatus = (next: CampaignStateFilter) => {
     // Premier geste de l'utilisateur : il reprend la main sur le focus venu
     // de l'URL (sinon le filtre reviendrait à « Toutes » au rendu suivant).
     setTouched(true);
-    setStatusFilter(next);
+    onStateChange(next);
     setPage(0);
     setOpenedId(null);
   };
@@ -220,12 +207,27 @@ export function CampaignsList({
             Campagnes
           </h2>
         </div>
-        <StatusFilterChips
-          current={effectiveStatusFilter}
-          counts={statusCounts}
-          onChange={selectStatus}
-        />
       </div>
+
+      {focusOverride ? (
+        <p
+          data-role="focus-override"
+          className="font-body"
+          style={{ margin: '-6px 0 12px', fontSize: 12.5, color: 'var(--dash-text-secondary)' }}
+        >
+          Toutes les campagnes sont affichées pour montrer celle que vous avez ouverte.{' '}
+          <button
+            type="button"
+            onClick={() => {
+              setTouched(true);
+              setPage(0);
+            }}
+            style={{ textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit' }}
+          >
+            Revenir au filtre « {CAMPAIGN_STATE_LABELS[stateFilter].toLowerCase()} »
+          </button>
+        </p>
+      ) : null}
 
       {campaigns.length === 0 ? (
         <EmptyState
@@ -340,40 +342,12 @@ function PagerBtn({
   );
 }
 
-/**
- * Les puces de statut — le COMPOSANT PARTAGÉ (`DotTabs`), dont cet écran était
- * le modèle. Il n'en garde que la liste et les comptes.
- */
-function StatusFilterChips({
-  current,
-  counts,
-  onChange,
-}: {
-  current: StatusFilter;
-  counts: Record<StatusFilter, number>;
-  onChange: (next: StatusFilter) => void;
-}) {
-  return (
-    <DotTabs
-      ariaLabel="Filtrer les campagnes par statut"
-      current={current}
-      onChange={onChange}
-      tabs={STATUS_FILTERS.map((f) => ({
-        key: f.id,
-        label: f.label,
-        dot: f.dot,
-        count: counts[f.id],
-      }))}
-    />
-  );
-}
-
 function EmptyState({
   filter,
   totalCampaigns,
   onReset,
 }: {
-  filter: StatusFilter;
+  filter: CampaignStateFilter;
   totalCampaigns: number;
   onReset: () => void;
 }) {
@@ -419,7 +393,7 @@ function EmptyState({
     );
   }
   // Cas 2 — il y a des campagnes mais aucune dans ce filtre.
-  const filterLabel = STATUS_FILTERS.find((f) => f.id === filter)?.label ?? '';
+  const filterLabel = CAMPAIGN_STATE_LABELS[filter];
   return (
     <div
       style={{

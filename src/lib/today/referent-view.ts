@@ -32,7 +32,7 @@ import {
 import type { TodayBoard } from '@/lib/today/board';
 
 /** Tout ce qui porte un référent sur cet écran. */
-type Porteur = { referent: ReferentInfo | null };
+type Porteur = { referent: ReferentInfo | null; campaignId?: string | null };
 
 const referentOf = (item: Porteur): ReferentInfo | null => item.referent;
 
@@ -53,6 +53,12 @@ export function applyReferentFilter(
   board: TodayBoard,
   selection: ReferentSelection,
   currentUserId: string | null,
+  /**
+   * Filtre d'ÉTAT de campagne, cumulé au référent (fix/vivier-replanif-
+   * filtres, point 3). Absent : aucun filtre d'état. Un dossier sans campagne
+   * n'est jamais masqué.
+   */
+  keepCampaign?: (campaignId: string) => boolean,
 ): TodayReferentView {
   // Les options se comptent sur les DOSSIERS, pas sur les alertes : un agenda
   // mal réglé n'appartient à personne, et le faire compter pour un recruteur
@@ -69,7 +75,7 @@ export function applyReferentFilter(
       ).length
     : 0;
 
-  if (selection.kind === 'all') {
+  if (selection.kind === 'all' && !keepCampaign) {
     return {
       board,
       masked: { validation: 0, entretiens: 0 },
@@ -79,17 +85,13 @@ export function applyReferentFilter(
     };
   }
 
-  const aLire = filterByReferentBy(board.validation.aLire.items, referentOf, selection);
-  const aConfirmer = filterByReferentBy(
-    board.entretiens.aConfirmer.items,
-    referentOf,
-    selection,
-  );
-  const aDecider = filterByReferentBy(
-    board.entretiens.aDecider.items,
-    referentOf,
-    selection,
-  );
+  const garde = <T extends Porteur>(items: T[]): T[] =>
+    filterByReferentBy(items, referentOf, selection).filter(
+      (i) => !keepCampaign || !i.campaignId || keepCampaign(i.campaignId),
+    );
+  const aLire = garde(board.validation.aLire.items);
+  const aConfirmer = garde(board.entretiens.aConfirmer.items);
+  const aDecider = garde(board.entretiens.aDecider.items);
 
   // ⚠️ « Passer en revue » est une FOURNÉE, pas une liste de lignes : on ne
   // sait pas, depuis l'écran d'accueil, quels dossiers elle contient. La

@@ -16,7 +16,6 @@ const SELECT_CLASS =
 
 export function CandidaturesFilters({
   campaignOptions,
-  activeCount,
   campaignValue,
   onCampaign,
   search,
@@ -32,7 +31,6 @@ export function CandidaturesFilters({
   onReset,
 }: {
   campaignOptions: { id: string; label: string }[];
-  activeCount: number;
   campaignValue: string;
   onCampaign: (value: string) => void;
   search: string;
@@ -68,10 +66,10 @@ export function CandidaturesFilters({
         onChange={(e) => onCampaign(e.currentTarget.value)}
         className={SELECT_CLASS}
       >
-        <option value="all">Toutes les campagnes</option>
-        {activeCount > 0 ? (
-          <option value="active">Campagnes actives ({activeCount})</option>
-        ) : null}
+        {/* « Campagnes actives » a quitté ce sélecteur : l'ÉTAT de campagne
+            vit dans la barre de filtres, cumulé au référent (point 3). Les
+            campagnes proposées ici sont celles de ces deux filtres. */}
+        <option value="all">Toutes ces campagnes</option>
         {campaignOptions.map((c) => (
           <option key={c.id} value={c.id}>
             {c.label}

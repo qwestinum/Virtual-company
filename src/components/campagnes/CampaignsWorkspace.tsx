@@ -37,10 +37,18 @@ import { CampaignEditSheet } from './edit/CampaignEditSheet';
 import { ReferentFilterBar } from '@/components/referent/ReferentFilterBar';
 import { useReferentContext } from '@/components/referent/useReferentContext';
 import { useReferentFilter } from '@/components/referent/useReferentFilter';
+import { useCampaignStateFilter } from '@/components/referent/useCampaignStateFilter';
+import {
+  campaignFilterResultLabel,
+  campaignsMatchingFilters,
+} from '@/lib/referent/campaign-state';
+import { selectActiveCampaigns, useCampaignsStore } from '@/stores/campaigns-store';
+import { useShallow } from 'zustand/react/shallow';
 import {
   activeReferentOf,
   buildReferentOptionsBy,
   myReferentCountBy,
+  referentSelectionKey,
 } from '@/lib/referent/filter';
 
 /** Ce que la feuille d'édition montre : une campagne, et par quoi commencer. */
@@ -138,6 +146,22 @@ export function CampaignsWorkspace({
       myReferentCountBy(entrees, (c) => activeReferentOf(c.id, referents), currentUserId),
     [entrees, referents, currentUserId],
   );
+  // L'état de campagne, PARTAGÉ avec les autres écrans et cumulé au référent.
+  const [stateFilter, setStateFilter] = useCampaignStateFilter(currentUserId);
+  const toutes = useCampaignsStore(useShallow(selectActiveCampaigns));
+  const resultLabel = useMemo(
+    () =>
+      campaignFilterResultLabel({
+        selection: referentFilter,
+        currentUserId,
+        referentLabel: referentOptions.find(
+          (o) => referentSelectionKey(o.selection) === referentSelectionKey(referentFilter),
+        )?.label,
+        state: stateFilter,
+        count: campaignsMatchingFilters(toutes, referents, referentFilter, stateFilter).length,
+      }),
+    [referentFilter, currentUserId, referentOptions, stateFilter, toutes, referents],
+  );
 
   return (
     <PageShell
@@ -153,6 +177,8 @@ export function CampaignsWorkspace({
           onChange={setReferentFilter}
           myCount={myCount}
           currentUserId={currentUserId}
+          state={{ value: stateFilter, onChange: setStateFilter }}
+          result={resultLabel}
         />
       }
     >
@@ -162,6 +188,8 @@ export function CampaignsWorkspace({
           focusCampaignId={focusCampaignId}
           referentFilter={referentFilter}
           referents={referents}
+          stateFilter={stateFilter}
+          onStateChange={setStateFilter}
           onEditCampaign={(campaignId) => setEdition({ campaignId })}
         />
       </>
