@@ -5,16 +5,33 @@
  * individuelles uniquement (candidat_retire / sans_reponse / doublon /
  * invalide) — `campagne_cloturee` et `poste_pourvu` sont réservées aux flux
  * campagne (clôture, GO). Cœur partagé `dismissCandidature` (void HITL,
- * classement conditionnel, briefs, mail sous claim, journal).
+ * classement conditionnel, briefs, journal).
+ *
+ * Message au candidat (feat/feedback-candidat, 28/09/2026) : pour une raison
+ * qui appelle un message (DISMISSAL_MAIL_POLICY ≠ 'never'), le choix est
+ * OBLIGATOIRE — envoyer le gabarit « sans suite » relu à l'écran, ou prévenir
+ * soi-même — et contrôlé AVANT le classement. Doublon / invalide : jamais de
+ * message, aucun choix demandé. Le message part par `feedback.ts`, sous la
+ * MÊME clé de verrou que l'ancien mail d'information : un seul par candidature.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getApiUser } from '@/lib/auth/require-api-user';
 import { dismissCandidature } from '@/lib/candidatures/dismissal';
+import { recordFeedback, type RecordFeedbackOutcome } from '@/lib/candidatures/feedback';
+import {
+  checkFeedbackChoice,
+  FEEDBACK_REFUSAL_MESSAGES,
+  FeedbackChoiceSchema,
+} from '@/lib/candidatures/feedback-choice';
 import { getCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
-import { INDIVIDUAL_DISMISSAL_REASONS, DismissalReasonSchema } from '@/types/dismissal';
+import {
+  dismissalMailAllowed,
+  DismissalReasonSchema,
+  INDIVIDUAL_DISMISSAL_REASONS,
+} from '@/types/dismissal';
 
 export const runtime = 'nodejs';
 
@@ -23,7 +40,7 @@ const RequestSchema = z.object({
     (r) => INDIVIDUAL_DISMISSAL_REASONS.includes(r),
     { message: 'Raison réservée aux flux campagne (clôture / GO).' },
   ),
-  sendMail: z.boolean(),
+  feedback: FeedbackChoiceSchema.optional(),
 });
 
 export async function POST(
@@ -44,19 +61,37 @@ export async function POST(
     );
   }
 
+  const needsMessage = dismissalMailAllowed(parsed.reason);
+  const feedback = needsMessage ? parsed.feedback : undefined;
+  if (needsMessage && !feedback) {
+    return NextResponse.json(
+      { error: 'feedback_required', message: FEEDBACK_REFUSAL_MESSAGES.feedback_required },
+      { status: 400 },
+    );
+  }
+
   try {
     const analysis = await getCandidateAnalysis(id);
     if (!analysis) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
+    if (feedback) {
+      const refusal = checkFeedbackChoice(feedback, { candidateEmail: analysis.candidateEmail });
+      if (refusal) {
+        return NextResponse.json(
+          { error: refusal, message: FEEDBACK_REFUSAL_MESSAGES[refusal] },
+          { status: 400 },
+        );
+      }
+    }
     const user = await getApiUser();
+    const actor = user ? { userId: user.id, email: user.email ?? null } : null;
     const result = await dismissCandidature(analysis, {
       reason: parsed.reason,
-      sendMail: parsed.sendMail,
+      sendMail: false,
+      messageViaFeedback: Boolean(feedback),
       dismissedBy: 'user',
-      dismissedByUser: user
-        ? { userId: user.id, email: user.email ?? null }
-        : null,
+      dismissedByUser: actor,
       actor: 'user',
     });
     if (result.status === 'not_found') {
@@ -67,7 +102,21 @@ export async function POST(
       // sous incertitude ; le client réessaie après résolution.
       return NextResponse.json({ error: 'send_in_flight' }, { status: 409 });
     }
-    return NextResponse.json(result);
+    if (result.status !== 'dismissed' || !feedback) return NextResponse.json(result);
+
+    let recorded: RecordFeedbackOutcome | { error: 'record_failed' };
+    try {
+      recorded = await recordFeedback({
+        analysis,
+        kind: 'sans_suite',
+        choice: feedback,
+        actor,
+        cause: parsed.reason,
+      });
+    } catch {
+      recorded = { error: 'record_failed' };
+    }
+    return NextResponse.json({ ...result, feedback: recorded });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json(

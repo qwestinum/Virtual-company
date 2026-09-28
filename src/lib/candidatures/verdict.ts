@@ -20,8 +20,9 @@
  *      laisse l'historique en paix : la règle porte sur l'ACTE de décider, un
  *      dossier déjà décidé n'est jamais re-bloqué (« Corriger la décision »
  *      garde son propre chemin).
- *   3. **Aucun envoi.** Un verdict final ne notifie personne aujourd'hui ; ce
- *      module n'importe aucun émetteur.
+ *   3. **Aucun envoi ICI.** Ce module n'importe aucun émetteur. Le message
+ *      au candidat (feat/feedback-candidat) est posé par la ROUTE, après le
+ *      verdict, via `feedback.ts` — un seul chemin d'envoi, séparé.
  *   4. **Writer canonique.** Le marqueur est bâti par `decision-markers`, avec
  *      l'IDENTIFIANT du commentaire — jamais son texte, qui ne va pas au
  *      journal (pseudonymisé à la purge, pas supprimé).

@@ -45,4 +45,16 @@ describe('/api/journal — le verdict final n’y passe plus', () => {
     expect(res.status).toBe(204);
     expect(appendJournalEntry).toHaveBeenCalledTimes(1);
   });
+
+  it('l’absence (missed) n’y passe plus : elle a sa route, avec le message au candidat', async () => {
+    const res = await post({
+      action: 'candidate_interview_marked',
+      campaignId: 'CAMP-2026-001',
+      actor: 'user',
+      payload: { uid: 'u1', candidate: 'Témoin', status: 'missed' },
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe('use_no_show_route');
+    expect(appendJournalEntry).not.toHaveBeenCalled();
+  });
 });

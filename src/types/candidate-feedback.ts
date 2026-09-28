@@ -89,3 +89,27 @@ export function feedbackInforms(f: Pick<CandidateFeedback, 'channel' | 'mailStat
   if (f.channel !== 'mail') return true;
   return f.mailStatus === 'sent' || f.mailStatus === 'duplicate';
 }
+
+/** Réponse de `GET /api/candidatures/[id]/feedback-proposal`. */
+export type FeedbackProposal = {
+  kind: FeedbackKind;
+  /** Gabarit des Réglages — rendu CÔTÉ ÉCRAN (la prochaine étape se saisit en direct). */
+  template: string;
+  vars: {
+    prenom: string;
+    jobTitle: string;
+    organisation: string;
+    recruiterFirstName: string;
+    recruiterName: string;
+    /** Phrase [motif] d'un « sans suite » ; absente sinon. */
+    motif?: string;
+  };
+  /** Destinataire ; `null` ⇒ seul « je préviens moi-même » est possible. */
+  candidateEmail: string | null;
+  /** Adresse où arriveront les réponses (Reply-To). */
+  replyTo: string | null;
+  /** Mention d'information apposée en pied, hors gabarit — montrée, non éditable. */
+  rgpdFooter: string;
+  /** Un message du même type a déjà informé le candidat (rien ne repartirait). */
+  alreadyInformed: { channel: FeedbackChannel; at: string } | null;
+};

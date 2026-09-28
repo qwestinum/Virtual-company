@@ -53,7 +53,7 @@ export function VerdictExpansion({
   onStale,
 }: {
   row: ScheduledItem;
-  onDecided: (verdict: FinalVerdict) => void;
+  onDecided: (verdict: FinalVerdict, feedbackNotice: string) => void;
   onStale: () => void;
 }) {
   if (!row.analysisId) return null;

@@ -106,7 +106,14 @@ export function proposeFeedbackMessage(
   config: Pick<InterviewConfig, (typeof FEEDBACK_TEMPLATE_FIELD)[FeedbackKind]>,
   vars: FeedbackTemplateVars,
 ): { subject: string; body: string } {
-  const template = config[FEEDBACK_TEMPLATE_FIELD[kind]];
+  return renderFeedbackProposal(config[FEEDBACK_TEMPLATE_FIELD[kind]], vars);
+}
+
+/** Le message proposé à partir d'un gabarit déjà choisi (écran de décision). */
+export function renderFeedbackProposal(
+  template: string,
+  vars: FeedbackTemplateVars,
+): { subject: string; body: string } {
   return {
     subject: feedbackSubject(vars.jobTitle),
     body: collapseBlankLines(renderFeedbackTemplate(template, vars)),

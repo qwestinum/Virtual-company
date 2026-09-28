@@ -333,10 +333,10 @@ describe('S9 — classement sans suite', () => {
     expect(counts.sans_suite).toBe(1);
   });
 
-  it('classement INDIVIDUEL (sans_reponse, sans mail) : reclassé + journal tracé', async () => {
+  it('classement INDIVIDUEL (sans_reponse, « je préviens moi-même ») : reclassé + journal tracé', async () => {
     const res = await callWithId(dismissOne, grayTaskId, {
       method: 'POST',
-      body: { reason: 'sans_reponse', sendMail: false },
+      body: { reason: 'sans_reponse', feedback: { mode: 'self', channel: 'telephone' } },
     });
     expect(res.status).toBe(200);
     expect((res.json as { status: string }).status).toBe('dismissed');
@@ -359,7 +359,7 @@ describe('S9 — classement sans suite', () => {
   it('raison campagne_cloturee REFUSÉE sur la route individuelle (réservée aux flux campagne)', async () => {
     const res = await callWithId(dismissOne, invitedTaskId, {
       method: 'POST',
-      body: { reason: 'campagne_cloturee', sendMail: false },
+      body: { reason: 'campagne_cloturee' },
     });
     expect(res.status).toBe(400);
   });
@@ -446,7 +446,7 @@ describe('S9 — flux GO (poste pourvu) et gris en cours d’envoi', () => {
     // Le classement individuel REFUSE (409) tant que l'envoi n'est pas résolu.
     const res = await callWithId(dismissOne, grayTask, {
       method: 'POST',
-      body: { reason: 'sans_reponse', sendMail: false },
+      body: { reason: 'sans_reponse', feedback: { mode: 'self', channel: 'telephone' } },
     });
     expect(res.status).toBe(409);
     expect(res.json.error).toBe('send_in_flight');

@@ -104,6 +104,11 @@ describe('aucun envoi, jamais', () => {
       '@/lib/hitl/send-validation',
       'emitCampaignBookingLink',
       'sendEmail',
+      // Message au candidat après décision (feat/feedback-candidat) : une
+      // correction ne le renvoie JAMAIS automatiquement — le recruteur le
+      // repropose lui-même depuis la fiche.
+      '@/lib/candidatures/feedback',
+      'recordFeedback',
     ];
     for (const needle of forbidden) {
       expect(imports.join('\n')).not.toContain(needle);

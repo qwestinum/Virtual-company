@@ -20,13 +20,21 @@ export async function analysisIdOf(uid: string): Promise<string> {
   return rows[0]!.id;
 }
 
+/**
+ * Le choix de message au candidat est OBLIGATOIRE (feat/feedback-candidat).
+ * Par défaut les séries « préviennent elles-mêmes » : aucun mail ne part, et
+ * les comptes de mails des séries existantes restent ce qu'ils étaient.
+ */
+export const REGRESSION_SELF_FEEDBACK = { mode: 'self', channel: 'telephone' } as const;
+
 export async function postVerdict(
   uid: string,
   status: 'validated' | 'rejected',
   comment: string = REGRESSION_VERDICT_COMMENT,
+  feedback: unknown = REGRESSION_SELF_FEEDBACK,
 ): Promise<ApiResult> {
   return callWithId(postVerdictRoute, await analysisIdOf(uid), {
     method: 'POST',
-    body: { status, comment },
+    body: { status, comment, feedback },
   });
 }

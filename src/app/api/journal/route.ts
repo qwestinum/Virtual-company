@@ -9,7 +9,10 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getApiUser } from '@/lib/auth/require-api-user';
-import { VALIDATION_MARKER_ACTION } from '@/lib/candidatures/decision-markers';
+import {
+  INTERVIEW_MARKER_ACTION,
+  VALIDATION_MARKER_ACTION,
+} from '@/lib/candidatures/decision-markers';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 
@@ -68,6 +71,20 @@ export async function POST(request: Request): Promise<NextResponse> {
         error: 'use_verdict_route',
         message:
           'Un verdict final se pose par POST /api/candidatures/[id]/verdict, avec son commentaire.',
+      },
+      { status: 409 },
+    );
+  }
+
+  // Classer un absent NON RETENU est une décision, qui a SON chemin : elle
+  // exige le choix de message au candidat (feat/feedback-candidat). Le
+  // constat « entretien réalisé » reste un marquage ordinaire.
+  if (parsed.action === INTERVIEW_MARKER_ACTION && parsed.payload?.status === 'missed') {
+    return NextResponse.json(
+      {
+        error: 'use_no_show_route',
+        message:
+          'Une absence classée non retenue se pose par POST /api/candidatures/[id]/no-show, avec le message au candidat.',
       },
       { status: 409 },
     );

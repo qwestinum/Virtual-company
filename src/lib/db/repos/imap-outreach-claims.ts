@@ -47,8 +47,12 @@ export type OutreachClaimKey = {
   mailboxId: string;
   uid: string;
   /** `dismiss` = mail d'information « classée sans suite » (pseudo-mailbox
-   * `candidature_dismissal`) — même table, même mécanique, aucun rail parallèle. */
-  mode: 'invite' | 'reject' | 'dismiss';
+   * `candidature_dismissal`) — même table, même mécanique, aucun rail parallèle.
+   * `retenu` / `non_retenu` / `absent` = message au candidat après décision
+   * (pseudo-mailbox `candidate_feedback`, uid = identifiant d'analyse) ; son
+   * « sans suite » réutilise la clé `dismiss` — un seul message sans suite
+   * par candidature, quel que soit le chemin. */
+  mode: 'invite' | 'reject' | 'dismiss' | 'retenu' | 'non_retenu' | 'absent';
 };
 
 export type OutreachClaimVerdict = 'won' | 'in_flight' | 'already_sent';

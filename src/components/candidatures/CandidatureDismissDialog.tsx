@@ -3,16 +3,20 @@
 /**
  * Dialog « Classer sans suite » (action INDIVIDUELLE, panneau/page candidat).
  * Raison typée obligatoire (individuelles uniquement — les raisons campagne
- * passent par les flux clôture/GO) + option mail selon la matrice
- * DISMISSAL_MAIL_POLICY (masquée pour doublon/invalide). Modèle :
- * VivierDeleteDialog.
+ * passent par les flux clôture/GO). Pour une raison qui appelle un message
+ * (DISMISSAL_MAIL_POLICY ≠ 'never'), le choix « Informer le candidat » est
+ * OBLIGATOIRE (feat/feedback-candidat) : gabarit « sans suite » relu, ou
+ * « je préviens moi-même ». Doublon / invalide : aucun message, aucun choix.
  */
 
 import { Loader2, X } from 'lucide-react';
 import { useState } from 'react';
 
+import { FeedbackChoicePanel } from '@/components/feedback/FeedbackChoicePanel';
+import { postDecisionWithFeedback } from '@/lib/dashboard/candidate-actions';
+import type { FeedbackChoice } from '@/types/candidate-feedback';
 import {
-  DISMISSAL_MAIL_POLICY,
+  dismissalMailAllowed,
   DISMISSAL_REASON_LABELS,
   INDIVIDUAL_DISMISSAL_REASONS,
   type DismissalReason,
@@ -37,55 +41,39 @@ export function CandidatureDismissDialog({
 }: {
   item: DismissableCandidature;
   onClose: () => void;
-  onDismissed: () => void;
+  /** `notice` : issue du message au candidat (vide sans message). */
+  onDismissed: (notice: string) => void;
 }) {
   const [reason, setReason] = useState<DismissalReason>('sans_reponse');
-  const [sendMail, setSendMail] = useState(
-    DISMISSAL_MAIL_POLICY.sans_reponse === 'checked',
-  );
+  const [feedback, setFeedback] = useState<FeedbackChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mailPolicy = DISMISSAL_MAIL_POLICY[reason];
-  const mailAllowed = mailPolicy !== 'never' && Boolean(item.candidateEmail);
+  const needsMessage = dismissalMailAllowed(reason);
+  const ready = !needsMessage || feedback !== null;
 
   function pickReason(next: DismissalReason) {
     setReason(next);
-    setSendMail(DISMISSAL_MAIL_POLICY[next] === 'checked');
+    // Une autre raison = un autre [motif] : le choix repart de zéro.
+    setFeedback(null);
   }
 
   async function confirm() {
+    if (!ready || busy) return;
     setBusy(true);
     setError(null);
-    try {
-      const res = await fetch(
-        `/api/candidatures/${encodeURIComponent(item.id)}/dismiss`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason, sendMail: mailAllowed && sendMail }),
-        },
-      );
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(
-          data.error === 'send_in_flight'
-            ? 'Un envoi de validation est en cours pour ce candidat — réessayez dans quelques minutes.'
-            : `Le classement a échoué (HTTP ${res.status}).`,
-        );
-        return;
-      }
-      onDismissed();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur réseau.');
-    } finally {
-      setBusy(false);
-    }
+    const result = await postDecisionWithFeedback(
+      `/api/candidatures/${encodeURIComponent(item.id)}/dismiss`,
+      needsMessage ? { reason, feedback } : { reason },
+    );
+    setBusy(false);
+    if (result.ok) onDismissed(needsMessage ? result.feedbackNotice : '');
+    else setError(result.message);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 px-4">
-      <div className="w-full max-w-md rounded-xl border border-stone-200 bg-white p-5 shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-stone-200 bg-white p-5 shadow-xl">
         <div className="mb-3 flex items-start justify-between">
           <h3 className="font-display text-[16px] font-bold text-stone-900">
             Classer sans suite
@@ -118,20 +106,22 @@ export function CandidatureDismissDialog({
             </option>
           ))}
         </select>
-        {mailAllowed ? (
-          <label className="mb-4 flex items-start gap-2 font-body text-[12.5px] text-stone-700">
-            <input
-              type="checkbox"
-              checked={sendMail}
-              onChange={(e) => setSendMail(e.currentTarget.checked)}
-              className="mt-0.5"
+        {needsMessage ? (
+          <div className="mb-4">
+            <FeedbackChoicePanel
+              key={reason}
+              analysisId={item.id}
+              kind="sans_suite"
+              reason={reason}
+              disabled={busy}
+              onChange={setFeedback}
             />
-            <span>
-              Informer le candidat par email (dossier clôturé, profil conservé
-              dans le vivier).
-            </span>
-          </label>
-        ) : null}
+          </div>
+        ) : (
+          <p className="mb-4 font-body text-[12px] text-stone-500">
+            Aucun message n’est envoyé pour ce motif.
+          </p>
+        )}
         {error ? (
           <p className="mb-3 font-body text-[12px] text-rose-600">{error}</p>
         ) : null}
@@ -145,8 +135,8 @@ export function CandidatureDismissDialog({
           </button>
           <button
             type="button"
-            onClick={confirm}
-            disabled={busy}
+            onClick={() => void confirm()}
+            disabled={busy || !ready}
             className="inline-flex items-center gap-1.5 rounded-lg bg-stone-700 px-3 py-1.5 font-body text-[12px] font-semibold text-white hover:bg-stone-600 disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}

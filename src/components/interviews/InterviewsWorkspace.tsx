@@ -41,7 +41,7 @@ import type { FinalVerdict } from '@/types/verdict-comment';
 import { AwaitingList, type AwaitingItem } from './AwaitingList';
 import { HistoryList } from './HistoryList';
 import { InterviewSignals } from './InterviewSignals';
-import { NoShowDialog, type NoShowChoice } from './NoShowDialog';
+import { NoShowDialog } from './NoShowDialog';
 import { ScheduledList, type ScheduledItem } from './ScheduledList';
 import { useReferentFilter } from '@/components/referent/useReferentFilter';
 
@@ -154,7 +154,8 @@ export function InterviewsWorkspace({
     }
   }
 
-  async function mark(row: ScheduledItem, status: 'realized' | 'missed') {
+  /** Constat « entretien réalisé » — un marquage ordinaire, sans décision. */
+  async function markRealized(row: ScheduledItem) {
     if (!row.uid) return;
     setBusyId(row.briefId);
     try {
@@ -162,37 +163,44 @@ export function InterviewsWorkspace({
         uid: row.uid,
         candidateName: row.candidateName,
         campaignId: row.campaignId,
-        status,
+        status: 'realized',
       });
-      setNotice(
-        status === 'realized'
-          ? 'Entretien pointé — le candidat attend maintenant votre verdict.'
-          : 'Absence enregistrée — candidature classée non retenue.',
-      );
+      setNotice('Entretien pointé — le candidat attend maintenant votre verdict.');
       await load();
     } finally {
       setBusyId(null);
     }
   }
 
-  /** Le fait d'abord, la décision ensuite : rien n'est posé avant ce choix. */
-  async function resolveNoShow(choice: NoShowChoice) {
+  /**
+   * Le fait d'abord, la décision ensuite : rien n'est posé avant ce choix.
+   * « Classer non retenu » est posé PAR le dialog (message au candidat
+   * compris, route dédiée) ; ici on prend acte et on recharge.
+   */
+  function onNoShowRejected(notice: string) {
+    setNoShow(null);
+    setNotice(`Absence enregistrée — candidature classée non retenue. ${notice}`);
+    void load();
+  }
+
+  async function onNoShowReinvite() {
     const row = noShow;
     if (!row) return;
     setNoShow(null);
-    if (choice === 'reject') await mark(row, 'missed');
-    else await reinvite(row, 'reinvite');
+    await reinvite(row, 'reinvite');
   }
 
   /**
-   * Le verdict est posé PAR le bloc de décision (commentaire compris, route
-   * dédiée) : ici on ne fait que prendre acte et recharger.
+   * Le verdict est posé PAR le bloc de décision (commentaire et message au
+   * candidat compris, route dédiée) : ici on ne fait que prendre acte.
    */
-  function onVerdictDecided(row: ScheduledItem, verdict: FinalVerdict) {
+  function onVerdictDecided(row: ScheduledItem, verdict: FinalVerdict, feedbackNotice: string) {
     setNotice(
-      verdict === 'validated'
-        ? `${row.candidateName} est retenu.`
-        : `${row.candidateName} n’est pas retenu.`,
+      `${
+        verdict === 'validated'
+          ? `${row.candidateName} est retenu.`
+          : `${row.candidateName} n’est pas retenu.`
+      } ${feedbackNotice}`,
     );
     void load();
   }
@@ -354,7 +362,7 @@ export function InterviewsWorkspace({
           <ScheduledList
             rows={tab === 'verdict' ? verdictRows : scheduled}
             busyId={busyId}
-            onRealized={(row) => void mark(row, 'realized')}
+            onRealized={(row) => void markRealized(row)}
             onMissed={setNoShow}
             onDecided={onVerdictDecided}
             onStale={() => void load()}
@@ -368,10 +376,12 @@ export function InterviewsWorkspace({
 
       {noShow ? (
         <NoShowDialog
+          analysisId={noShow.analysisId}
           candidateName={noShow.candidateName}
           busy={busyId !== null}
           onCancel={() => setNoShow(null)}
-          onConfirm={(choice) => void resolveNoShow(choice)}
+          onReinvite={() => void onNoShowReinvite()}
+          onRejected={onNoShowRejected}
         />
       ) : null}
 
@@ -383,8 +393,9 @@ export function InterviewsWorkspace({
             candidateEmail: dismissing.candidateEmail,
           }}
           onClose={() => setDismissing(null)}
-          onDismissed={() => {
+          onDismissed={(notice) => {
             setDismissing(null);
+            setNotice(`Candidature classée sans suite.${notice ? ` ${notice}` : ''}`);
             void load();
           }}
         />

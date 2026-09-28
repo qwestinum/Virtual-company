@@ -223,6 +223,12 @@ export type DismissCandidatureOptions = {
   dismissedBy: DecidedBy;
   dismissedByUser: HumanDecider | null;
   actor: string;
+  /**
+   * Le message au candidat est porté À PART, par `feedback.ts` (classement
+   * individuel, feat/feedback-candidat) : `sendMail` vaut alors `false` et le
+   * journal le DIT, pour qu'un lecteur ne conclue pas « aucun message ».
+   */
+  messageViaFeedback?: boolean;
 };
 
 /**
@@ -342,6 +348,7 @@ export async function dismissCandidature(
       bookingCancelled,
       mailStatus,
       mailSent: mailStatus === 'sent' || mailStatus === 'duplicate',
+      ...(opts.messageViaFeedback ? { messageViaFeedback: true } : {}),
     },
   });
   if (opts.sendMail && mailStatus !== 'sent' && mailStatus !== 'duplicate') {

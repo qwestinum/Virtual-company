@@ -75,6 +75,7 @@ import { POST as reissueLink } from '@/app/api/interviews/reissue/route';
 import { loadInterviewPipeline } from '@/lib/interviews/pipeline';
 import { computeBusinessSignals } from '@/lib/notifications/business-signals';
 import { POST as postJournal } from '@/app/api/journal/route';
+import { POST as postNoShow } from '@/app/api/candidatures/[id]/no-show/route';
 import {
   cancelBookingByAttendee,
   confirmBooking,
@@ -1118,7 +1119,14 @@ describe('S10.5 — cycle de vie du rendez-vous natif', () => {
     actAs('admin');
     const dismissed = await callWithId(dismissCandidature, analysisId, {
       method: 'POST',
-      body: { reason: 'candidat_retire', sendMail: true },
+      body: {
+        reason: 'candidat_retire',
+        feedback: {
+          mode: 'send',
+          subject: 'Votre candidature',
+          body: 'Bonjour,\n\nSuite à votre retrait, nous clôturons votre dossier pour ce poste.',
+        },
+      },
     });
     expect(dismissed.status).toBe(200);
 
@@ -1281,16 +1289,13 @@ describe('S10.6 — pilotage du cycle d’entretien', () => {
   });
 
   it('NO-SHOW branche « classer non retenu » → la ligne disparaît du pilotage', async () => {
-    const posted = await call(postJournal, {
+    // L'absence classée non retenue a SA route, message au candidat compris
+    // (feat/feedback-candidat) — `/api/journal` refuse ce marqueur.
+    const posted = await callWithId(postNoShow, analysisLegacy, {
       method: 'POST',
-      body: {
-        action: 'candidate_interview_marked',
-        campaignId: campOwned,
-        actor: 'user',
-        payload: { uid: uidLegacy, candidate: 'Candidat Treg', status: 'missed' },
-      },
+      body: { feedback: { mode: 'self', channel: 'telephone' } },
     });
-    expect(posted.status < 400).toBe(true);
+    expect(posted.status).toBe(200);
 
     // `missed` dérive vers non_retenu : la candidature n'est plus ouverte, donc
     // la page cesse de proposer de la relancer.

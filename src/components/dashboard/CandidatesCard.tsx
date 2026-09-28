@@ -349,10 +349,7 @@ function CandidateLine({
         <ScoreRing score={candidate.score} />
       </div>
       {isShortlisted ? (
-        <ActionPair
-          onConfirm={() => onInterview('realized')}
-          onReject={() => onInterview('missed')}
-        />
+        <ActionPair onConfirm={() => onInterview('realized')} />
       ) : isAwaitingValidation ? (
         // Plus de verdict ici (un seul chemin de décision, D5) : il se pose
         // là où il se lit, avec son commentaire éventuel — l'onglet Entretiens
@@ -369,19 +366,17 @@ function CandidateLine({
   );
 }
 
-/** Pointage d'entretien. Le verdict final n'a plus de bouton ici (D5). */
-function ActionPair({
-  onConfirm,
-  onReject,
-}: {
-  onConfirm: () => void;
-  onReject: () => void;
-}) {
-  const labels = { confirm: 'Entretien réalisé', reject: 'Non réalisé' };
+/**
+ * Pointage d'entretien. Ni verdict final (D5) ni absence ici : classer un
+ * absent non retenu exige le message au candidat (feat/feedback-candidat),
+ * qui se choisit dans l'onglet Entretiens ou la fiche. On DIT où.
+ */
+function ActionPair({ onConfirm }: { onConfirm: () => void }) {
   return (
     <div
       style={{
         display: 'flex',
+        alignItems: 'center',
         gap: 8,
         paddingLeft: 50, // s'aligne sous le nom (après l'avatar)
       }}
@@ -401,25 +396,14 @@ function ActionPair({
           color: 'var(--dash-green)',
         }}
       >
-        ✓ {labels.confirm}
+        ✓ Entretien réalisé
       </button>
-      <button
-        type="button"
-        onClick={onReject}
+      <span
         className="font-body"
-        style={{
-          padding: '6px 12px',
-          borderRadius: 7,
-          border: 'none',
-          cursor: 'pointer',
-          fontSize: 11,
-          fontWeight: 700,
-          background: 'var(--dash-red-light)',
-          color: 'var(--dash-red)',
-        }}
+        style={{ fontSize: 11.5, color: 'var(--dash-text-secondary)' }}
       >
-        ✗ {labels.reject}
-      </button>
+        Absent ? À classer dans l’onglet Entretiens ou la fiche candidature.
+      </span>
     </div>
   );
 }

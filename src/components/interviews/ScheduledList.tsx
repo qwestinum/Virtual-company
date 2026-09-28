@@ -48,7 +48,7 @@ export function ScheduledList({
   onRealized: (row: ScheduledItem) => void;
   onMissed: (row: ScheduledItem) => void;
   /** Verdict posé (commentaire compris) par le bloc de décision. */
-  onDecided: (row: ScheduledItem, verdict: FinalVerdict) => void;
+  onDecided: (row: ScheduledItem, verdict: FinalVerdict, feedbackNotice: string) => void;
   /** Le dossier a bougé ailleurs : la page recharge. */
   onStale: () => void;
   onDismiss: (row: ScheduledItem) => void;
@@ -179,9 +179,9 @@ export function ScheduledList({
                   {section.key === 'verdict_attendu' && openId === row.briefId ? (
                     <VerdictExpansion
                       row={row}
-                      onDecided={(verdict) => {
+                      onDecided={(verdict, feedbackNotice) => {
                         setOpenId(null);
-                        onDecided(row, verdict);
+                        onDecided(row, verdict, feedbackNotice);
                       }}
                       onStale={onStale}
                     />

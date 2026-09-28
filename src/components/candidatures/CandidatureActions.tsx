@@ -5,7 +5,8 @@
  * (panneau) ET au niveau 3 (page). Toutes les actions passent par la MÊME
  * mécanique sous-jacente — aucune divergence :
  *   - zone grise        → `ValidationCard` (→ `decideGrayValidation`)
- *   - invité / RDV pris → `markCandidateInterview`
+ *   - invité / RDV pris → `InterviewMarkAction` (constat « réalisé », ou
+ *     dialog d'absence avec le message au candidat)
  *   - entretien réalisé → `InterviewDecisionBlock` : commentaire FACULTATIF
  *     et verdict, par la route dédiée (+ flux « poste pourvu » après un GO :
  *     proposer de classer les candidatures restantes)
@@ -25,15 +26,15 @@ import { useState } from 'react';
 import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
 import { InterviewReportPanel } from '@/components/interview-report/InterviewReportPanel';
 import { InterviewDecisionBlock } from '@/components/verdict/InterviewDecisionBlock';
-import { markCandidateInterview } from '@/lib/dashboard/candidate-actions';
 import type { CandidateListItem } from '@/types/reporting';
 
-import { ActionButton, CorrectionButton } from './CandidatureActionButtons';
+import { CorrectionButton } from './CandidatureActionButtons';
 import {
   DismissActionButton,
   DismissedBlock,
 } from './CandidatureDismissAction';
 import { GrayValidationAction } from './GrayValidationAction';
+import { InterviewMarkAction } from './InterviewMarkAction';
 import { isTerminalStage } from './stage-ui';
 
 export function CandidatureActions({
@@ -84,43 +85,6 @@ export function CandidatureActions({
     );
   }
   return null;
-}
-
-function InterviewMarkAction({
-  item,
-  onActed,
-}: {
-  item: CandidateListItem;
-  onActed: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const mark = async (status: 'realized' | 'missed') => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await markCandidateInterview({
-        uid: item.uid,
-        candidateName: item.candidateName,
-        campaignId: item.campaignId,
-        status,
-      });
-      onActed();
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="flex flex-wrap gap-2">
-      <ActionButton tone="positive" disabled={busy} onClick={() => mark('realized')}>
-        Entretien réalisé
-      </ActionButton>
-      <ActionButton tone="neutral" disabled={busy} onClick={() => mark('missed')}>
-        Non réalisé
-      </ActionButton>
-      <DismissActionButton item={item} onActed={onActed} />
-      <CorrectionButton item={item} onActed={onActed} />
-    </div>
-  );
 }
 
 function FinalDecisionAction({
