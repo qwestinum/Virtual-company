@@ -96,6 +96,7 @@ const STEPS: Step[] = [
   // supprimée — sans ces étapes, ils lui survivraient.
   { name: 'comptes rendus d’entretien', run: stepInterviewReports },
   { name: 'commentaires de décision', run: stepVerdictComments },
+  { name: 'messages après décision', run: stepCandidateFeedback },
   // Profils AVANT approches : la clé étrangère `profile_id` passe à NULL d'elle-même.
   { name: 'profils sourcés', run: stepSourcingProfiles },
   { name: 'approches de sourcing', run: stepSourcingApproaches },
@@ -187,6 +188,19 @@ async function stepVerdictComments(ctx: Ctx): Promise<void> {
   ctx.counts.verdictComments = await deleteByIds(
     ctx,
     'verdict_comments',
+    'analysis_id',
+    ctx.identity.analysisIds,
+  );
+}
+
+/**
+ * Messages envoyés au candidat après décision : EFFACER par RATTACHEMENT
+ * (`analysis_id`) — le corps peut ne pas porter son nom (« Bonjour Awa » seul).
+ */
+async function stepCandidateFeedback(ctx: Ctx): Promise<void> {
+  ctx.counts.candidateFeedback = await deleteByIds(
+    ctx,
+    'candidate_feedback',
     'analysis_id',
     ctx.identity.analysisIds,
   );

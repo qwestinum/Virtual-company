@@ -56,6 +56,35 @@ export const InterviewConfigSchema = z.object({
    * enregistrée avant ce champ reste valide.
    */
   transcriptImportEnabled: z.boolean().default(true),
+  /**
+   * Messages au candidat APRÈS DÉCISION (feat/feedback-candidat, 28/09/2026).
+   * Proposés au recruteur au moment de la décision, pré-remplis, relus et
+   * retouchables avant envoi. Variables : [prénom], [intitulé du poste],
+   * [organisation], [prénom du recruteur], [nom du recruteur], et selon le
+   * gabarit [prochaine étape] (retenu) ou [motif] (sans suite).
+   * ⚠️ Le commentaire du recruteur n'est PAS une variable, et ne le sera pas.
+   * `.default` : une configuration enregistrée avant ces champs reste valide.
+   */
+  feedbackRetainedTemplate: z
+    .string()
+    .min(1)
+    .max(5000)
+    .default(() => DEFAULT_FEEDBACK_RETAINED_TEMPLATE),
+  feedbackNotRetainedTemplate: z
+    .string()
+    .min(1)
+    .max(5000)
+    .default(() => DEFAULT_FEEDBACK_NOT_RETAINED_TEMPLATE),
+  feedbackNoShowTemplate: z
+    .string()
+    .min(1)
+    .max(5000)
+    .default(() => DEFAULT_FEEDBACK_NO_SHOW_TEMPLATE),
+  feedbackDismissedTemplate: z
+    .string()
+    .min(1)
+    .max(5000)
+    .default(() => DEFAULT_FEEDBACK_DISMISSED_TEMPLATE),
 });
 
 export type InterviewConfig = z.infer<typeof InterviewConfigSchema>;
@@ -117,6 +146,90 @@ export const DEFAULT_INTERVIEW_REJECTION_TEMPLATE = [
   '[organisation]',
 ].join('\n');
 
+// ─── Messages au candidat après décision ─────────────────────────────────
+// Signés du recruteur (Reply-To = son adresse) : pas de bloc « cet outil ne
+// décide pas » — la décision est humaine. La mention d'information RGPD est
+// apposée par le code, HORS gabarit, à l'envoi.
+
+/**
+ * RETENU après entretien. « Retenu » = suite du processus (présenté au
+ * client), JAMAIS une promesse d'embauche. [prochaine étape] vide ⇒ phrase de
+ * repli (`DEFAULT_FEEDBACK_NEXT_STEP`).
+ */
+export const DEFAULT_FEEDBACK_RETAINED_TEMPLATE = [
+  'Bonjour [prénom],',
+  '',
+  'Merci pour notre échange au sujet du poste de [intitulé du poste]. J’ai le plaisir de vous confirmer que votre candidature est retenue pour la suite du processus de recrutement.',
+  '',
+  '[prochaine étape]',
+  '',
+  'Je reste à votre disposition pour toute question : il vous suffit de répondre à ce message.',
+  '',
+  'Bien cordialement,',
+  '[prénom du recruteur]',
+  '[organisation]',
+].join('\n');
+
+/** Repli de [prochaine étape] quand le recruteur ne la précise pas. */
+export const DEFAULT_FEEDBACK_NEXT_STEP =
+  'Je reviens vers vous très prochainement pour vous en préciser les modalités.';
+
+/** NON RETENU après entretien (y compris retenu non sélectionné à la clôture). */
+export const DEFAULT_FEEDBACK_NOT_RETAINED_TEMPLATE = [
+  'Bonjour [prénom],',
+  '',
+  'Merci pour le temps que vous nous avez consacré lors de notre entretien pour le poste de [intitulé du poste].',
+  '',
+  'Après réflexion, nous avons décidé de ne pas poursuivre avec votre candidature pour ce poste. Cette décision tient à l’adéquation recherchée pour ce poste précis ; elle ne remet pas en cause la qualité de votre parcours.',
+  '',
+  'Si vous souhaitez un retour plus détaillé sur notre échange, répondez simplement à ce message.',
+  '',
+  'Je vous souhaite une pleine réussite dans vos projets.',
+  '',
+  'Bien cordialement,',
+  '[prénom du recruteur]',
+  '[organisation]',
+].join('\n');
+
+/**
+ * ABSENT à l'entretien, classé non retenu. Ne remercie pas d'un entretien qui
+ * n'a pas eu lieu, et n'affirme pas qu'on est « sans nouvelles » (le candidat
+ * a pu appeler).
+ */
+export const DEFAULT_FEEDBACK_NO_SHOW_TEMPLATE = [
+  'Bonjour [prénom],',
+  '',
+  'Nous avions convenu d’un entretien pour le poste de [intitulé du poste], auquel vous n’avez pas pu vous présenter.',
+  '',
+  'Nous ne poursuivrons donc pas votre candidature pour ce poste. Si un empêchement indépendant de votre volonté vous a retenu, n’hésitez pas à répondre à ce message.',
+  '',
+  'Je vous souhaite une pleine réussite dans vos projets.',
+  '',
+  'Bien cordialement,',
+  '[prénom du recruteur]',
+  '[organisation]',
+].join('\n');
+
+/**
+ * SANS SUITE — ce n'est PAS un refus : le recrutement s'arrête pour une raison
+ * externe. [motif] porte la phrase propre à la raison, écrite par le code
+ * (`dismissalMotif`). Un seul texte, pour le classement individuel ET l'envoi
+ * groupé de la clôture.
+ */
+export const DEFAULT_FEEDBACK_DISMISSED_TEMPLATE = [
+  'Bonjour [prénom],',
+  '',
+  'Je reviens vers vous au sujet de votre candidature au poste de [intitulé du poste].',
+  '',
+  '[motif]',
+  '',
+  'Merci de l’intérêt que vous avez porté à notre organisation.',
+  '',
+  'Bien cordialement,',
+  '[prénom du recruteur]',
+  '[organisation]',
+].join('\n');
+
 export const DEFAULT_INTERVIEW_CONFIG: InterviewConfig = {
   acceptanceTemplate: DEFAULT_INTERVIEW_ACCEPTANCE_TEMPLATE,
   rejectionTemplate: DEFAULT_INTERVIEW_REJECTION_TEMPLATE,
@@ -125,4 +238,8 @@ export const DEFAULT_INTERVIEW_CONFIG: InterviewConfig = {
   organisationName: '',
   recruiterName: '',
   transcriptImportEnabled: true,
+  feedbackRetainedTemplate: DEFAULT_FEEDBACK_RETAINED_TEMPLATE,
+  feedbackNotRetainedTemplate: DEFAULT_FEEDBACK_NOT_RETAINED_TEMPLATE,
+  feedbackNoShowTemplate: DEFAULT_FEEDBACK_NO_SHOW_TEMPLATE,
+  feedbackDismissedTemplate: DEFAULT_FEEDBACK_DISMISSED_TEMPLATE,
 };

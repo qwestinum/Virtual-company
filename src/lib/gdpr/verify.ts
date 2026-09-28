@@ -152,6 +152,16 @@ const SWEEP: SweepTarget[] = [
     matches: byId('analysis_id', (i) => i.analysisIds),
   },
   {
+    // Message au candidat : son corps porte souvent le prénom seul — la porte
+    // d'entrée est le rattachement, comme pour le commentaire.
+    table: 'candidate_feedback',
+    cursor: 'id',
+    columns: 'id, analysis_id, body',
+    searchable: ['body'],
+    pairs: byAnalysis,
+    matches: byId('analysis_id', (i) => i.analysisIds),
+  },
+  {
     table: 'vivier_candidates',
     cursor: 'id',
     columns:
@@ -530,6 +540,7 @@ export async function probeReidentification(
   for (const [table, path] of [
     ['interview_reports', 'identifiant d’analyse → compte rendu d’entretien'],
     ['verdict_comments', 'identifiant d’analyse → commentaire de décision'],
+    ['candidate_feedback', 'identifiant d’analyse → message après décision'],
   ] as const) {
     for (const row of await byAnalysisIds(db, table, identity.analysisIds)) {
       note(path, `${table}#${str(row.id)}`, `${table}#${str(row.id)} toujours présent`);

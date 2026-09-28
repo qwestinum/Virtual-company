@@ -7,6 +7,11 @@
  * dans chaque repo (`src/lib/db/repos/*.ts`).
  */
 
+import type {
+  FeedbackChannel,
+  FeedbackKind,
+  FeedbackMailStatus,
+} from '@/types/candidate-feedback';
 import type { CampaignLifecycle } from '@/types/campaign-lifecycle';
 import type { CampaignPrefill } from '@/types/campaign-prefill';
 import type { CampaignStatus } from '@/types/campaign-status';
@@ -217,6 +222,29 @@ export type VerdictCommentRow = {
   campaign_id: string | null;
   verdict: 'validated' | 'rejected';
   body: string;
+  author_user_id: string | null;
+  author_email: string | null;
+  created_at: string;
+};
+
+/**
+ * Message au candidat après décision (`candidate_feedback`, 28/09/2026).
+ * AJOUT SEUL, sauf la pose unique du statut d'envoi (déclencheur en base) ;
+ * supprimé par la purge RGPD par rattachement à l'analyse. Le corps n'entre
+ * jamais dans le journal.
+ */
+export type CandidateFeedbackRow = {
+  id: string;
+  analysis_id: string;
+  uid: string;
+  campaign_id: string | null;
+  kind: FeedbackKind;
+  channel: FeedbackChannel;
+  channel_note: string | null;
+  subject: string | null;
+  body: string | null;
+  mail_status: FeedbackMailStatus | null;
+  sent_at: string | null;
   author_user_id: string | null;
   author_email: string | null;
   created_at: string;

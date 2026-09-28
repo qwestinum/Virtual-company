@@ -2550,3 +2550,122 @@ drop trigger if exists verdict_comments_no_update on public.verdict_comments;
 create trigger verdict_comments_no_update
   before update on public.verdict_comments
   for each row execute function public.verdict_comments_append_only();
+
+-- ══════════════════════════════════════════════════════════════════════
+-- MESSAGE AU CANDIDAT APRÈS DÉCISION — lot 1 (28/09/2026)
+-- Branche feat/feedback-candidat. Registre RGPD : `candidate_feedback` EFFACER.
+-- ══════════════════════════════════════════════════════════════════════
+-- Un candidat reçu en entretien est INFORMÉ de l'issue, par l'un de deux
+-- gestes humains, l'un des deux obligatoire au moment de la décision :
+--   - `channel = 'mail'`  : le message (gabarit pré-rempli, relu, éventuellement
+--                           retouché) part par ORQA ; son objet et son corps
+--                           TELS QU'ENVOYÉS sont conservés ici ;
+--   - autre canal         : « je préviens moi-même » (téléphone, messagerie
+--                           personnelle, autre) — aucun envoi, aucune copie :
+--                           objet et corps restent NULL.
+--
+-- Rattachement à la CANDIDATURE (`analysis_id`) : la purge RGPD efface PAR
+-- RATTACHEMENT, sans chercher un nom (le corps peut n'en porter aucun).
+--
+-- ⚠️ Le corps n'entre JAMAIS au journal (seul l'identifiant de cette ligne) :
+-- le journal est pseudonymisé à la purge, pas supprimé.
+-- ⚠️ Le commentaire du recruteur (`verdict_comments`) n'est pas une source du
+-- gabarit : il n'a aucun chemin vers cette table.
+--
+-- `kind` = le gabarit d'origine, donc la situation annoncée :
+--   retenu · non_retenu · absent · sans_suite.
+-- Un retenu non sélectionné à la clôture reçoit `non_retenu` (la cause est au
+-- journal, portée par le marqueur de verdict).
+--
+-- Cycle de `mail_status` : la ligne est écrite AVANT l'envoi (`pending`), puis
+-- son statut est posé UNE fois. Le déclencheur n'autorise que cette transition,
+-- sur cette seule colonne (+ `sent_at`) : le corps conservé est celui qui a été
+-- validé à l'écran, et rien ne peut le réécrire. Une ligne restée `pending`
+-- dit « envoi non confirmé » — jamais « envoyé ».
+--
+-- Après application : recharger le cache PostgREST.
+
+create table if not exists public.candidate_feedback (
+  id              uuid        primary key default gen_random_uuid(),
+  analysis_id     text        not null references public.candidate_analyses(id) on delete cascade,
+  -- Clé des marqueurs de journal (payload.uid).
+  uid             text        not null,
+  campaign_id     text,
+  kind            text        not null,
+  channel         text        not null,
+  -- Précision libre du canal (« autre »). Jamais le contenu d'un échange.
+  channel_note    text,
+  subject         text,
+  body            text,
+  mail_status     text,
+  sent_at         timestamptz,
+  -- Identité de SESSION serveur (le recruteur), jamais un champ du client.
+  author_user_id  uuid,
+  author_email    text,
+  created_at      timestamptz not null default now()
+);
+alter table public.candidate_feedback enable row level security;
+
+alter table public.candidate_feedback drop constraint if exists candidate_feedback_kind_chk;
+alter table public.candidate_feedback add constraint candidate_feedback_kind_chk
+  check (kind in ('retenu', 'non_retenu', 'absent', 'sans_suite'));
+
+alter table public.candidate_feedback drop constraint if exists candidate_feedback_channel_chk;
+alter table public.candidate_feedback add constraint candidate_feedback_channel_chk
+  check (channel in ('mail', 'telephone', 'mail_personnel', 'autre'));
+
+alter table public.candidate_feedback drop constraint if exists candidate_feedback_mail_status_chk;
+alter table public.candidate_feedback add constraint candidate_feedback_mail_status_chk
+  check (
+    mail_status is null
+    or mail_status in ('pending', 'sent', 'duplicate', 'send_failed', 'skipped_no_email', 'skipped_no_config')
+  );
+
+-- Un envoi porte un message ; un « je préviens moi-même » n'en porte AUCUN
+-- (ni objet, ni corps, ni statut d'envoi).
+alter table public.candidate_feedback drop constraint if exists candidate_feedback_shape_chk;
+alter table public.candidate_feedback add constraint candidate_feedback_shape_chk
+  check (
+    (channel = 'mail'
+      and subject is not null and char_length(btrim(subject)) >= 1
+      and body is not null and char_length(btrim(body)) >= 1
+      and mail_status is not null)
+    or
+    (channel <> 'mail' and subject is null and body is null and mail_status is null and sent_at is null)
+  );
+
+create index if not exists candidate_feedback_analysis_idx
+  on public.candidate_feedback (analysis_id, created_at desc);
+create index if not exists candidate_feedback_campaign_idx
+  on public.candidate_feedback (campaign_id);
+
+-- AJOUT SEUL, sauf la pose UNIQUE du statut d'envoi (`pending` → final).
+create or replace function public.candidate_feedback_guard_update() returns trigger
+  language plpgsql as $$
+begin
+  if old.mail_status = 'pending'
+     and new.mail_status is not null and new.mail_status <> 'pending'
+     and new.id = old.id
+     and new.analysis_id = old.analysis_id
+     and new.uid = old.uid
+     and new.campaign_id is not distinct from old.campaign_id
+     and new.kind = old.kind
+     and new.channel = old.channel
+     and new.channel_note is not distinct from old.channel_note
+     and new.subject is not distinct from old.subject
+     and new.body is not distinct from old.body
+     and new.author_user_id is not distinct from old.author_user_id
+     and new.author_email is not distinct from old.author_email
+     and new.created_at = old.created_at
+  then
+    return new;
+  end if;
+  raise exception 'candidate_feedback est en ajout seul : seul le statut d''envoi se pose, une fois'
+    using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists candidate_feedback_no_update on public.candidate_feedback;
+create trigger candidate_feedback_no_update
+  before update on public.candidate_feedback
+  for each row execute function public.candidate_feedback_guard_update();

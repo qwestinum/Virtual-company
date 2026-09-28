@@ -76,6 +76,14 @@ export const TABLE_INVENTORY = {
     treatment: { kind: 'step' },
     holds: 'Commentaire du recruteur qui motive un verdict final.',
   },
+  // Message au candidat après décision (28/09/2026, feat/feedback-candidat) :
+  // objet et corps TELS QU'ENVOYÉS, ou le canal d'un « je préviens moi-même ».
+  // `step` pour la même raison que ci-dessus (parent pseudonymisé, pas supprimé).
+  candidate_feedback: {
+    verdict: 'EFFACER',
+    treatment: { kind: 'step' },
+    holds: 'Message envoyé au candidat après décision (objet, corps) ou canal déclaré par le recruteur.',
+  },
   vivier_candidates: {
     verdict: 'EFFACER',
     treatment: { kind: 'step' },

@@ -10,6 +10,7 @@
 import { useState } from 'react';
 
 import { AgendaLinkField } from '@/components/settings/AgendaLinkField';
+import { FeedbackTemplatesFields } from '@/components/settings/FeedbackTemplatesFields';
 
 import {
   DEFAULT_INTERVIEW_CONFIG,
@@ -117,6 +118,8 @@ export function InterviewConfigManager({
           rédigée automatiquement) et <code>[lien d&apos;agenda]</code>.
         </span>
       </label>
+
+      <FeedbackTemplatesFields draft={draft} onChange={(key, value) => set(key, value)} />
 
       <button
         type="button"
