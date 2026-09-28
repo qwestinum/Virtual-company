@@ -11,6 +11,8 @@
 
 import type { CandidateStatus } from '@/types/scoring';
 
+import { FEEDBACK_CHANNEL_LABELS, FEEDBACK_KIND_LABELS } from '@/types/candidate-feedback';
+
 export type TimelineTone = 'neutral' | 'positive' | 'negative' | 'pending';
 
 export type TimelineEvent = {
@@ -93,6 +95,25 @@ export type CandidateTimelineFacts = {
     by: string | null;
     reason: string | null;
   }[];
+  /**
+   * Désignation du recruté à la clôture (`candidate_hired_marked`, courante —
+   * une désignation annulée apparaît comme une correction, pas ici).
+   * Facultatif : les appelants antérieurs n'en ont pas.
+   */
+  hiredAt?: string | null;
+  /**
+   * Messages au candidat après décision (`candidate_feedback`) : envoyé, ou
+   * prévenu par le recruteur, ou non parti. `null` = lecture indisponible (la
+   * frise n'en dit rien plutôt que d'affirmer « jamais informé »).
+   */
+  feedback?: {
+    at: string;
+    kind: 'retenu' | 'non_retenu' | 'absent' | 'sans_suite';
+    channel: 'mail' | 'telephone' | 'mail_personnel' | 'autre';
+    channelNote: string | null;
+    mailStatus: string | null;
+    by: string | null;
+  }[] | null;
   /** candidate_analyses.dismissed_at — classement sans suite (terminal). */
   dismissedAt: string | null;
   /** Libellé du motif de classement (null si non classée). */
@@ -125,15 +146,34 @@ const STEP_RANK: Record<string, number> = {
   interview_report: 7,
   final_validated: 8,
   final_rejected: 8,
+  hired: 8,
   dismissed: 9,
+  // Le message suit la décision qu'il annonce (même rang que le classement :
+  // la date les ordonne).
+  feedback: 9,
   // Après tout le reste : une correction suit le fait qu'elle corrige, et le
   // marqueur qu'elle pose est horodaté à la même seconde qu'elle.
   correction: 10,
 };
 
+/** Libellé d'un message au candidat — frise ET PDF d'audit (un seul texte). */
+export function feedbackEventLabel(f: {
+  channel: 'mail' | 'telephone' | 'mail_personnel' | 'autre';
+  mailStatus: string | null;
+}): { label: string; tone: TimelineTone } {
+  if (f.channel !== 'mail') {
+    return { label: `Candidat prévenu — ${FEEDBACK_CHANNEL_LABELS[f.channel].toLowerCase()}`, tone: 'neutral' };
+  }
+  if (f.mailStatus === 'sent') return { label: 'Candidat informé — message envoyé', tone: 'neutral' };
+  if (f.mailStatus === 'duplicate') return { label: 'Message déjà envoyé — non renvoyé', tone: 'neutral' };
+  if (f.mailStatus === 'pending') return { label: 'Message au candidat — envoi non confirmé', tone: 'pending' };
+  return { label: 'Message au candidat non parti', tone: 'negative' };
+}
+
 /** Rang d'un événement — les corrections sont numérotées (clé React unique). */
 function rankOf(key: string): number {
   if (key.startsWith('correction_')) return STEP_RANK.correction;
+  if (key.startsWith('feedback_')) return STEP_RANK.feedback;
   return STEP_RANK[key] ?? 99;
 }
 
@@ -275,6 +315,7 @@ export function buildCandidateTimeline(
     verdictCommentDetail(facts.verdictComments, 'rejected'),
     'negative',
   );
+  push('hired', facts.hiredAt ?? null, 'Recruté', 'Désigné à la clôture de la campagne', 'positive');
   // Classement sans suite : terminal NEUTRE (jamais un refus).
   push(
     'dismissed',
@@ -283,6 +324,14 @@ export function buildCandidateTimeline(
     facts.dismissalReasonLabel ? `Motif : ${facts.dismissalReasonLabel}` : null,
     'neutral',
   );
+
+  // Messages au candidat après décision — ce qui lui a été dit, et comment.
+  (facts.feedback ?? []).forEach((f, i) => {
+    const { label, tone } = feedbackEventLabel(f);
+    const quoi = `Message « ${FEEDBACK_KIND_LABELS[f.kind]} »`;
+    const note = f.channelNote ? ` (${f.channelNote})` : '';
+    push(`feedback_${i}`, f.at, label, `${quoi}${note}${f.by ? ` · par ${f.by}` : ''}`, tone);
+  });
 
   // Corrections — le journal est en AJOUT SEUL : le fait corrigé reste dans la
   // frise, la correction se pose APRÈS lui. On ne réécrit jamais l'histoire,

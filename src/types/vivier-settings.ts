@@ -17,6 +17,12 @@ export const VivierConfigSchema = z.object({
   invitationTemplate: z.string().min(1).max(5000),
   /** Durée du cooldown anti-sollicitation, en jours. */
   cooldownDays: z.number().int().min(0).max(3650),
+  /**
+   * Un candidat RECRUTÉ n'est plus proposé par le vivier pendant ces mois
+   * (feat/feedback-candidat, lot 5). 0 = jamais exclu. `.default` : une
+   * configuration enregistrée avant ce champ reste valide.
+   */
+  hiredCooldownMonths: z.number().int().min(0).max(120).default(12),
   /** Plafond de la short-list (remplace la constante V2). */
   shortlistCap: z.number().int().min(1).max(500),
   /**
@@ -76,6 +82,7 @@ export const DEFAULT_VIVIER_CONFIG: VivierConfig = {
   contactMode: 'manual',
   invitationTemplate: DEFAULT_VIVIER_INVITATION_TEMPLATE,
   cooldownDays: 90,
+  hiredCooldownMonths: 12,
   shortlistCap: 50,
   // Seuil de similarité TITRE-À-TITRE (bloc 2). Valeur de DÉPART, à calibrer
   // empiriquement (cf. script vivier:title-distribution) : les similarités

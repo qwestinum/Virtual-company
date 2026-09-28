@@ -13,6 +13,8 @@ import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { sendEmail } from '@/lib/email/client';
 import { auditCandidatFileName } from '@/lib/reporting/audit-display';
+import { loadHiredAt } from '@/lib/candidatures/hired';
+import { listFeedbackByAnalyses } from '@/lib/db/repos/candidate-feedback';
 import { loadFinalDecision } from '@/lib/candidatures/verdict';
 import { getInterviewReport } from '@/lib/db/repos/interview-reports';
 import { renderCandidateAuditPdf } from '@/lib/reporting/candidate-audit-pdf';
@@ -77,18 +79,24 @@ export async function POST(
     // Verdict final et commentaire. Une lecture qui échoue n'empêche pas
     // l'audit, mais le document le DIT (jamais une section silencieusement
     // absente, qui se lirait « aucune décision »).
-    const [finalDecision, interviewReport] = await Promise.all([
+    const [finalDecision, interviewReport, feedback, hiredAt] = await Promise.all([
       loadFinalDecision(detail).catch(() => 'unavailable' as const),
       // Seul un compte rendu VALIDÉ est une pièce du dossier.
       getInterviewReport(detail.id)
         .then((r) => (r && r.status === 'verified' ? r : null))
         .catch(() => 'unavailable' as const),
+      // Messages au candidat après décision (feat/feedback-candidat) : une
+      // lecture en échec se DIT dans le document.
+      listFeedbackByAnalyses([detail.id]).catch(() => 'unavailable' as const),
+      loadHiredAt(detail.uid, detail.campaignId).catch(() => null),
     ]);
     const generatedAtIso = new Date().toISOString();
     const pdf = await renderCandidateAuditPdf({
       detail: { ...detail, journey },
       finalDecision,
       interviewReport,
+      feedback,
+      hiredAt,
       generatedAtIso,
       campaignLabel: detail.campaignId
         ? `Campagne ${detail.campaignId}`

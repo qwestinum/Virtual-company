@@ -35,6 +35,7 @@ import {
   replacePreselection,
 } from '@/lib/db/repos/vivier-preselection';
 import { normalizeEmail } from '@/lib/vivier/candidates';
+import { listHiredEmailsSince } from '@/lib/vivier/hired-exclusion';
 import { atomizeJobSkills } from '@/lib/vivier/job-skills';
 import {
   computeSkillCoverage,
@@ -386,15 +387,20 @@ export async function runVivierPreselection(
 
   // Exclusions (§6/§7) appliquées aux deux blocs.
   const cooldownSince = new Date(now - config.cooldownDays * MS_PER_DAY).toISOString();
-  const [appliedEmails, cooldownEmails, rejectedEmails] = await Promise.all([
+  // Recrutés : exclus pendant `hiredCooldownMonths` (30 jours par mois — une
+  // fenêtre, pas un calendrier). 0 ⇒ aucune exclusion, aucune lecture.
+  const hiredSince = new Date(now - config.hiredCooldownMonths * 30 * MS_PER_DAY).toISOString();
+  const [appliedEmails, cooldownEmails, rejectedEmails, hiredEmails] = await Promise.all([
     loadExcludedEmails(campaignId),
     listContactedEmailsSince(cooldownSince),
     listRejectedEmailsForCampaign(campaignId),
+    config.hiredCooldownMonths > 0 ? listHiredEmailsSince(hiredSince) : Promise.resolve([]),
   ]);
   const excluded = new Set<string>([
     ...appliedEmails,
     ...cooldownEmails,
     ...rejectedEmails,
+    ...hiredEmails.map(normalizeEmail),
   ]);
   const isExcluded = (email: string) => excluded.has(normalizeEmail(email));
   const eligible = candidates.filter((c) => !isExcluded(c.email));

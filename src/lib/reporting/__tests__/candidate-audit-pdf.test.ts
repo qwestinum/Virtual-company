@@ -93,3 +93,38 @@ describe('renderCandidateAuditPdf — méthodes de vérification (Phase 4)', () 
     expect(pdf.length).toBeGreaterThan(1000);
   });
 });
+
+describe('renderCandidateAuditPdf — message au candidat (feat/feedback-candidat, lot 5)', () => {
+  const row = (over: Record<string, unknown>) => ({
+    id: 'fb1',
+    analysisId: 'a',
+    uid: 'u',
+    campaignId: 'CAMP-1',
+    kind: 'non_retenu' as const,
+    channel: 'mail' as const,
+    channelNote: null,
+    subject: 'Votre candidature',
+    body: 'Bonjour,\n\nMerci pour notre échange.',
+    mailStatus: 'sent' as const,
+    sentAt: '2026-06-11T10:00:00.000Z',
+    authorUserId: null,
+    authorEmail: 'sami@cabinet.fr',
+    createdAt: '2026-06-11T10:00:00.000Z',
+    ...over,
+  });
+
+  it.each([
+    ['envoyé + prévenu + recruté', [row({}), row({ id: 'fb2', channel: 'telephone', subject: null, body: null, mailStatus: null })], '2026-06-12T10:00:00.000Z'],
+    ['aucun message', [], null],
+    ['lecture indisponible', 'unavailable' as const, null],
+  ])('se génère : %s', async (_, feedback, hiredAt) => {
+    const pdf = await renderCandidateAuditPdf({
+      detail: DETAIL,
+      generatedAtIso: '2026-06-12T10:00:00.000Z',
+      campaignLabel: 'Campagne CAMP-1',
+      feedback: feedback as never,
+      hiredAt,
+    });
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+});

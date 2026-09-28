@@ -20,10 +20,15 @@ import {
 import { analysisToDatum } from '@/lib/reporting/analysis-datum';
 import { campaignReportFileName } from '@/lib/reporting/campaign-report-display';
 import { loadJourneySignals } from '@/lib/reporting/journey-lookup';
-import { VALIDATION_MARKER_ACTION } from '@/lib/candidatures/decision-markers';
+import { HIRED_MARKER_ACTION, VALIDATION_MARKER_ACTION } from '@/lib/candidatures/decision-markers';
+import { CAMPAIGN_CLOSED_ACTION } from '@/lib/campagnes/closure-constants';
+import { closureOutcomes } from '@/lib/campagnes/closure-outcome';
 import { countMotivatedDecisions } from '@/lib/candidatures/final-decision';
 import { foldDecisionsByUid } from '@/lib/candidatures/verdict';
 import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
+import { listFeedbackByAnalyses } from '@/lib/db/repos/candidate-feedback';
+import { computeInterviewFunnel } from '@/lib/reporting/interview-funnel';
+import { loadStageSignals } from '@/lib/reporting/stage-signals';
 import type { ActiveCampaign } from '@/stores/campaigns-store';
 import type {
   CampaignAnalysisDatum,
@@ -94,7 +99,7 @@ export async function assembleCampaignReport(
   void donneurP.catch(() => undefined);
   void siteP.catch(() => undefined);
 
-  const [analyses, signals, sentJournal, vivierCounts, verdictMarkers] = await Promise.all([
+  const [analyses, signals, sentJournal, vivierCounts, verdictMarkers, stageSignals] = await Promise.all([
     // EXHAUSTIF (audit C8/A10) : un rapport de campagne à > 1000 candidatures
     // était tronqué et présenté comme définitif au client.
     listAllCandidateAnalyses({ campaignId }),
@@ -110,7 +115,12 @@ export async function assembleCampaignReport(
     listJournalEntriesByActions([VALIDATION_MARKER_ACTION], { campaignId }).catch(
       () => null,
     ),
+    // Entonnoir du CV au recrutement : les marqueurs COURANTS (recruté compris).
+    loadStageSignals({ campaignId }).catch(() => null),
   ]);
+  // Candidats informés : best-effort, un échec retire la ligne du rapport.
+  const feedbackRows = await listFeedbackByAnalyses(analyses.map((a) => a.id)).catch(() => null);
+  const funnel = stageSignals ? computeInterviewFunnel(analyses, stageSignals, feedbackRows) : null;
 
   const data: CampaignAnalysisDatum[] = analyses.map((a) =>
     analysisToDatum(a, signals),
@@ -151,7 +161,16 @@ export async function assembleCampaignReport(
     subject: typeof e.payload?.subject === 'string' ? e.payload.subject : '',
   }));
 
-  const summary = buildCampaignReportSummary(meta, data, sends, null);
+  const closureEntries = await listJournalEntriesByActions(
+    [CAMPAIGN_CLOSED_ACTION, HIRED_MARKER_ACTION],
+    { campaignId },
+  ).catch(() => []);
+  const closure =
+    closureOutcomes(
+      closureEntries,
+      new Map(analyses.map((a) => [a.id, { uid: a.uid, candidateName: a.candidateName }])),
+    ).get(campaignId) ?? null;
+  const summary = { ...buildCampaignReportSummary(meta, data, sends, null), closure };
   // Mobilisation vivier : on n'expose la métrique que si au moins un candidat a
   // été contacté (sinon la campagne n'a pas utilisé le vivier).
   const vivier = vivierCounts.contacted > 0 ? vivierCounts : null;
@@ -169,7 +188,7 @@ export async function assembleCampaignReport(
     : null;
   const motivatedDecisions = motivated && motivated.motivated > 0 ? motivated : null;
   return {
-    data: buildCampaignReportData(summary, data, { vivier, motivatedDecisions }),
+    data: buildCampaignReportData(summary, data, { vivier, motivatedDecisions, funnel }),
     fileName: campaignReportFileName(jobTitle, closedAt),
     jobTitle,
     closedAt,

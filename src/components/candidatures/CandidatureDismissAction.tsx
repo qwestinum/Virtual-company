@@ -10,6 +10,7 @@
  * Extrait de CandidatureActions (limite 200 lignes/fichier).
  */
 
+import { InformCandidateBlock } from '@/components/feedback/InformCandidateBlock';
 import { useState } from 'react';
 
 import { DISMISSAL_REASON_LABELS } from '@/types/dismissal';
@@ -68,6 +69,7 @@ export function DismissedBlock({
         . Ce n&apos;est pas un refus : la candidature n&apos;a pas été évaluée
         jusqu&apos;au bout.
       </p>
+      <InformCandidateBlock analysisId={item.id} />
       <div>
         {/* Plus de `window.confirm` : la réouverture passe par le dialog
             partagé, qui AFFICHE d'abord ce qui a déjà été déclenché. */}

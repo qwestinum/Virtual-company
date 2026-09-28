@@ -44,6 +44,8 @@ const BANNIS: { terme: string; remplacé_par: string; sauf?: string[] }[] = [
   { terme: 'Écarté sur CV', remplacé_par: '« Écarté » (le moment est dans le mot)' },
   { terme: 'Non retenu après entretien', remplacé_par: '« Non retenu »' },
   { terme: 'Retenu définitivement', remplacé_par: '« Retenu »' },
+  // Pied d'« Aujourd'hui » (lot 5) : la même famille que « Refusé ».
+  { terme: 'refusées', remplacé_par: '« écartées »' },
   { terme: 'au screening', remplacé_par: '« Écarté » / « À valider »' },
   { terme: 'Taux GO', remplacé_par: '« Taux de retenus »' },
   { terme: 'GO définitif', remplacé_par: '« Retenu »' },

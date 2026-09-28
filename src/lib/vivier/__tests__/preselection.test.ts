@@ -27,6 +27,8 @@ vi.mock('@/lib/db/repos/vivier', () => vivierRepo);
 vi.mock('@/lib/db/repos/candidate-analyses', () => analyses);
 vi.mock('@/lib/db/repos/vivier-preselection', () => presel);
 vi.mock('@/lib/db/repos/app-settings', () => settings);
+const hired = { listHiredEmailsSince: vi.fn(async (_since: string): Promise<string[]> => []) };
+vi.mock('@/lib/vivier/hired-exclusion', () => hired);
 vi.mock('@/lib/ai/embeddings', () => ai);
 vi.mock('@/lib/agents/server/title-variants-execute', () => variants);
 vi.mock('@/lib/vivier/candidates', () => ({
@@ -329,6 +331,18 @@ describe('runVivierPreselection — cascade titre', () => {
     const { runVivierPreselection } = await import('@/lib/vivier/preselection');
     const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
     expect(entries).toEqual([]);
+  });
+
+  it('exclusion : un candidat RECRUTÉ (désignation récente) n’est plus proposé', async () => {
+    vivierRepo.listIndexedVivierTitles.mockResolvedValue([cand('qaLead', { title: 'QA Lead' })]);
+    hired.listHiredEmailsSince.mockResolvedValueOnce(['QALEAD@x.com']);
+
+    const { runVivierPreselection } = await import('@/lib/vivier/preselection');
+    const { entries } = await runVivierPreselection('CAMP-1', { now: NOW });
+    expect(entries).toEqual([]);
+    // La fenêtre par défaut : 12 mois, depuis la date de désignation.
+    const since = hired.listHiredEmailsSince.mock.calls.at(-1)![0];
+    expect(Date.parse(since)).toBe(NOW - 12 * 30 * 86_400_000);
   });
 
   it('recherche libre : bloc 2 sémantique seul (pas de déterministe)', async () => {

@@ -168,6 +168,7 @@ export function buildCampaignReportData(
     retentionMonths?: number;
     vivier?: CampaignReportData['vivier'];
     motivatedDecisions?: CampaignReportData['motivatedDecisions'];
+    funnel?: CampaignReportData['funnel'];
   },
 ): CampaignReportData {
   const { volumes } = summary;
@@ -215,6 +216,7 @@ export function buildCampaignReportData(
     lowVolume: volumes.received < LOW_VOLUME_THRESHOLD,
     vivier: opts?.vivier ?? null,
     motivatedDecisions: opts?.motivatedDecisions ?? null,
+    funnel: opts?.funnel ?? null,
   };
 
   return { ...partial, recommendations: buildRecommendations(partial) };

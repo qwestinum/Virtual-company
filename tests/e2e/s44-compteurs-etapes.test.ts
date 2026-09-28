@@ -94,14 +94,18 @@ describe('S44 — de la carte à la puce', () => {
       await page.waitForSelector(`[data-dot-tab="${statut}"][aria-selected="true"]`, {
         timeout: 60_000,
       });
-      // Les compteurs se chargent après la page : on attend qu'ils portent un chiffre.
+      // Les compteurs arrivent APRÈS la page : la puce affiche d'abord « 0 ».
+      // On attend qu'elle ATTEIGNE la valeur de la carte (délai borné) ; un
+      // écart qui persiste fait rougir.
       await expect
-        .poll(async () => (await page.textContent(`[data-dot-tab="${statut}"]`)) ?? '', {
-          timeout: 30_000,
-        })
-        .toMatch(/\d/);
-      const texte = (await page.textContent(`[data-dot-tab="${statut}"]`)) ?? '';
-      expect(Number(texte.match(/\d+/)?.[0] ?? NaN), `${t.label} (${statut})`).toBe(t.valeur);
+        .poll(
+          async () => {
+            const texte = (await page.textContent(`[data-dot-tab="${statut}"]`)) ?? '';
+            return Number(texte.match(/\d+/)?.[0] ?? NaN);
+          },
+          { timeout: 30_000, message: `${t.label} (${statut})` },
+        )
+        .toBe(t.valeur);
     }
   }, 300_000);
 

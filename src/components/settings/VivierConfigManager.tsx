@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 
-import type { VivierConfig } from '@/types/vivier-settings';
+import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 
 export function VivierConfigManager({
   config,
@@ -50,6 +50,18 @@ export function VivierConfigManager({
             min={0}
             value={draft.cooldownDays}
             onChange={(e) => set('cooldownDays', Number(e.currentTarget.value))}
+            className="w-32 rounded-md border border-stone-200 px-2 py-1.5 text-stone-700 outline-none focus:border-emerald-400"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-semibold text-stone-700">Recrutés : exclus pendant (mois)</span>
+          <input
+            type="number"
+            min={0}
+            max={120}
+            value={draft.hiredCooldownMonths ?? DEFAULT_VIVIER_CONFIG.hiredCooldownMonths}
+            onChange={(e) => set('hiredCooldownMonths', Number(e.currentTarget.value))}
+            title="Un candidat désigné recruté à la clôture n’est plus proposé par le vivier pendant ce nombre de mois. 0 : jamais exclu."
             className="w-32 rounded-md border border-stone-200 px-2 py-1.5 text-stone-700 outline-none focus:border-emerald-400"
           />
         </label>

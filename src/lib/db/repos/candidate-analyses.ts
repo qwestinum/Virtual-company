@@ -590,3 +590,27 @@ export async function getCandidateAnalysis(
   if (error) throw new Error(`getCandidateAnalysis: ${error.message}`);
   return data ? rowToDetail(data as CandidateAnalysisRow) : null;
 }
+
+/**
+ * Adresses des candidatures désignées par leur `uid` (clé des marqueurs de
+ * journal). Lots d'identifiants (URL PostgREST bornée) ; une analyse sans
+ * adresse est ignorée. Sert l'exclusion vivier des recrutés (feat/feedback-
+ * candidat, lot 5).
+ */
+export async function listCandidateEmailsByUids(uids: readonly string[]): Promise<string[]> {
+  const ids = [...new Set(uids)].filter((u) => u.length > 0);
+  if (ids.length === 0) return [];
+  const supabase = requireServerSupabase();
+  const out: string[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('candidate_email')
+      .in('uid', ids.slice(i, i + 200));
+    if (error) throw new Error(`listCandidateEmailsByUids: ${error.message}`);
+    for (const r of (data ?? []) as { candidate_email: string | null }[]) {
+      if (r.candidate_email) out.push(r.candidate_email);
+    }
+  }
+  return out;
+}

@@ -204,3 +204,56 @@ describe('corrections — le journal est en ajout seul, la frise aussi', () => {
     );
   });
 });
+
+describe('frise — recruté et messages au candidat (feat/feedback-candidat, lot 5)', () => {
+  const f = (over: Record<string, unknown>) => ({
+    at: '2026-06-10T10:00:00.000Z',
+    kind: 'non_retenu' as const,
+    channel: 'mail' as const,
+    channelNote: null,
+    mailStatus: 'sent',
+    by: 'sami@cabinet.fr',
+    ...over,
+  });
+
+  it('« Recruté » suit le verdict qui le fonde', () => {
+    const t = buildCandidateTimeline(
+      facts({ finalValidatedAt: '2026-06-08T10:00:00.000Z', hiredAt: '2026-06-09T10:00:00.000Z' }),
+    );
+    expect(t.map((e) => e.key).slice(-2)).toEqual(['final_validated', 'hired']);
+    expect(t.at(-1)).toMatchObject({ label: 'Recruté', tone: 'positive' });
+  });
+
+  it('chaque message dit ce qui a été fait, et par qui', () => {
+    const t = buildCandidateTimeline(
+      facts({
+        finalRejectedAt: '2026-06-09T10:00:00.000Z',
+        feedback: [
+          f({}),
+          f({ at: '2026-06-11T10:00:00.000Z', channel: 'telephone', mailStatus: null }),
+          f({ at: '2026-06-12T10:00:00.000Z', mailStatus: 'send_failed' }),
+        ],
+      }),
+    );
+    const msgs = t.filter((e) => e.key.startsWith('feedback_'));
+    expect(msgs.map((m) => m.label)).toEqual([
+      'Candidat informé — message envoyé',
+      'Candidat prévenu — téléphone',
+      'Message au candidat non parti',
+    ]);
+    expect(msgs[0]!.detail).toBe('Message « Non retenu » · par sami@cabinet.fr');
+    expect(msgs[2]!.tone).toBe('negative');
+    // Le message suit la décision qu'il annonce.
+    expect(t.findIndex((e) => e.key === 'final_rejected')).toBeLessThan(t.findIndex((e) => e.key === 'feedback_0'));
+  });
+
+  it('lecture indisponible ⇒ la frise se tait, elle n’invente pas « jamais informé »', () => {
+    const t = buildCandidateTimeline(facts({ feedback: null }));
+    expect(t.some((e) => e.key.startsWith('feedback_'))).toBe(false);
+  });
+
+  it('le corps du message n’entre jamais dans la frise', () => {
+    const t = buildCandidateTimeline(facts({ feedback: [f({})] }));
+    expect(JSON.stringify(t)).not.toContain('Bonjour');
+  });
+});

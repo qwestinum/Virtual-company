@@ -8,13 +8,16 @@
 
 import {
   DECISION_CORRECTED_ACTION,
+  HIRED_MARKER_ACTION,
   INTERVIEW_MARKER_ACTION,
+  readHiredMark,
   readInterviewMark,
   readValidationMark,
   VALIDATION_MARKER_ACTION,
 } from '@/lib/candidatures/decision-markers';
 import { getScheduledInterviewByUid } from '@/lib/db/repos/interview-briefs';
 import { listVerdictCommentsByAnalyses } from '@/lib/db/repos/verdict-comments';
+import { listFeedbackByAnalyses } from '@/lib/db/repos/candidate-feedback';
 import { getInterviewReport } from '@/lib/db/repos/interview-reports';
 import { interviewReportMention } from '@/lib/candidatures/interview-report-mention';
 import {
@@ -41,6 +44,8 @@ export const TIMELINE_JOURNAL_ACTIONS: readonly string[] = [
   VALIDATION_ACTION,
   HITL_SENT_ACTION,
   CORRECTION_ACTION,
+  // Désignation du recruté à la clôture (feat/feedback-candidat, lot 5).
+  HIRED_MARKER_ACTION,
 ];
 
 type VivierOriginFacts = { contactedAt: string | null; appliedAt: string | null } | null;
@@ -74,7 +79,7 @@ export async function extractCandidateTimelineFacts(
 
   // Faits PAR-UID (cohérent avec le parcours). Le RDV vient d'interview_briefs
   // rattaché PAR UID (fiable, ≠ email) ; le reste, du journal filtré par uid.
-  const [origin, entries, rdv, comments, report] = await Promise.all([
+  const [origin, entries, rdv, comments, report, feedback] = await Promise.all([
     vivierOrigin,
     (preloaded.journal
       ? preloaded.journal.then((all) => pickActions(all, TIMELINE_JOURNAL_ACTIONS))
@@ -88,7 +93,10 @@ export async function extractCandidateTimelineFacts(
     listVerdictCommentsByAnalyses([detail.id]).catch(() => null),
     // Best-effort : un compte rendu illisible retire l'événement, sans plus.
     getInterviewReport(detail.id).catch(() => null),
+    // Messages au candidat — `null` si illisibles (la frise se tait).
+    listFeedbackByAnalyses([detail.id]).catch(() => null),
   ]);
+  let hiredAt: string | null = null;
 
   // Journal trié created_at DESC → la 1ʳᵉ occurrence par fait est la plus
   // récente (on ne réécrit jamais une valeur déjà posée).
@@ -136,6 +144,10 @@ export async function extractCandidateTimelineFacts(
         case null:
           break;
       }
+    } else if (e.action === HIRED_MARKER_ACTION) {
+      // Même règle que les autres marqueurs : une désignation annulée reste
+      // dans la chronologie, suivie de sa correction.
+      if (readHiredMark(e.payload) === 'hired' && !hiredAt) hiredAt = e.createdAt;
     } else if (e.action === CORRECTION_ACTION) {
       corrections.push({
         at: e.createdAt,
@@ -199,6 +211,17 @@ export async function extractCandidateTimelineFacts(
           verdict: c.verdict,
           body: c.body,
           by: c.authorEmail,
+        }))
+      : null,
+    hiredAt,
+    feedback: feedback
+      ? feedback.map((f) => ({
+          at: f.createdAt,
+          kind: f.kind,
+          channel: f.channel,
+          channelNote: f.channelNote,
+          mailStatus: f.mailStatus,
+          by: f.authorEmail,
         }))
       : null,
     // Ordre d'apparition : la plus ANCIENNE d'abord (le journal arrive DESC).

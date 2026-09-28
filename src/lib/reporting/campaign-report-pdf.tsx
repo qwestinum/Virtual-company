@@ -20,6 +20,7 @@ import {
   CAMPAIGN_ISSUE_LABELS,
   donneurOrdreLabel,
 } from '@/lib/reporting/campaign-report-display';
+import { CampaignFunnelPdfSection } from '@/lib/reporting/campaign-report-funnel-pdf';
 import { PDF_COLORS, pdfBaseStyles } from '@/lib/reporting/pdf-theme';
 import type { CampaignReportData } from '@/types/reporting';
 
@@ -181,6 +182,8 @@ function CampaignReportDocument({
             ? `${summary.recruitedCount} recrutement(s) finalisé(s).`
             : 'Campagne clôturée sans recrutement finalisé.'}
         </Text>
+
+        {data.funnel ? <CampaignFunnelPdfSection funnel={data.funnel} /> : null}
 
         {/* 3. Performance globale */}
         <Text style={pdfBaseStyles.sectionTitle}>Performance globale</Text>

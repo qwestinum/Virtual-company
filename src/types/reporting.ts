@@ -10,6 +10,7 @@
  * ce module.
  */
 
+import type { InterviewFunnel } from '@/lib/reporting/interview-funnel';
 import type { CandidateJourney } from '@/lib/reporting/candidate-journey';
 import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { CVApplication } from '@/types/cv-analysis';
@@ -178,6 +179,12 @@ export type CampaignReportSummary = {
   volumes: CampaignVolumes;
   issue: CampaignIssueKind;
   recruitedCount: number;
+  /**
+   * Issue déclarée à la clôture (`campaign_closed`, feat/feedback-candidat) :
+   * « Recrutement conclu » (+ nom du recruté s'il est désigné) ou non.
+   * `null`/absent : clôture antérieure au chantier — libellé historique.
+   */
+  closure?: { outcome: 'conclu' | 'non_conclu'; hiredName: string | null } | null;
   /** PDF en cache déjà généré (date ISO) ou null. */
   generatedAt: string | null;
   sends: CampaignReportSend[];
@@ -257,6 +264,13 @@ export type CampaignReportData = {
    * rien d'utile au client.
    */
   motivatedDecisions: { total: number; motivated: number } | null;
+  /**
+   * Du CV au recrutement (feat/feedback-candidat, lot 5) : entonnoir en
+   * trajectoires, taux de placement quand un recruté est désigné, et
+   * candidats reçus en entretien informés de la décision (N/M). Absent :
+   * rapports construits sans ces lectures.
+   */
+  funnel?: InterviewFunnel | null;
 };
 
 /** Métrique de valeur du vivier : contactés vs candidatures rapprochées. */

@@ -25,6 +25,7 @@ import { useState } from 'react';
 
 import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
 import { InterviewReportPanel } from '@/components/interview-report/InterviewReportPanel';
+import { InformCandidateBlock } from '@/components/feedback/InformCandidateBlock';
 import { InterviewDecisionBlock } from '@/components/verdict/InterviewDecisionBlock';
 import type { CandidateListItem } from '@/types/reporting';
 
@@ -80,6 +81,9 @@ export function CandidatureActions({
         {item.stage === 'retenu' || item.stage === 'recrute' || item.stage === 'non_retenu' ? (
           <InterviewReportPanel analysisId={item.id} readOnly />
         ) : null}
+        {/* Le candidat est-il informé de cette décision ? Rattrapage des
+            verdicts antérieurs au chantier et des messages non partis. */}
+        <InformCandidateBlock analysisId={item.id} />
         <div>
           <CorrectionButton item={item} onActed={onActed} />
         </div>

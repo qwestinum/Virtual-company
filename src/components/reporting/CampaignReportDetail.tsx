@@ -8,6 +8,8 @@
  */
 
 import { ArrowLeft, Download, RefreshCw, Send } from 'lucide-react';
+import { closureOutcomeLabel } from '@/lib/campagnes/closure-outcome';
+import { CampaignFunnelSection } from './CampaignFunnelSection';
 import { useEffect, useState } from 'react';
 
 import { formatFrDate } from '@/lib/reporting/audit-display';
@@ -52,7 +54,8 @@ export function CampaignReportDetail({
     })();
   }, [summary.campaignId]);
 
-  const recruited = summary.issue === 'recruited';
+  // L'issue DÉCLARÉE à la clôture prime ; à défaut (clôture antérieure), l'ancien calcul.
+  const recruited = summary.closure ? summary.closure.outcome === 'conclu' : summary.issue === 'recruited';
 
   return (
     <div className="flex flex-col gap-5">
@@ -110,7 +113,9 @@ export function CampaignReportDetail({
                 : 'bg-stone-100 text-stone-500'
             }`}
           >
-            {recruited
+            {summary.closure
+            ? closureOutcomeLabel(summary.closure)
+            : recruited
               ? `${CAMPAIGN_ISSUE_LABELS.recruited} (${summary.recruitedCount})`
               : CAMPAIGN_ISSUE_LABELS.no_hire}
           </span>
@@ -156,6 +161,8 @@ function CampaignReportBody({ data }: { data: CampaignReportData }) {
           <Kpi n={summary.volumes.decidedByHuman} label="Tranché par un humain" />
         </div>
       </Section>
+
+      {data.funnel ? <CampaignFunnelSection funnel={data.funnel} /> : null}
 
       <Section title="Performance globale">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

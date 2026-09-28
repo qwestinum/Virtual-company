@@ -18,6 +18,8 @@ import {
   View,
   renderToBuffer,
 } from '@react-pdf/renderer';
+import { CandidateFeedbackSection } from '@/lib/reporting/candidate-audit-feedback-pdf';
+import type { CandidateFeedback } from '@/types/candidate-feedback';
 
 import {
   LLM_DECISION_COLORS,
@@ -177,6 +179,14 @@ type AuditPdfProps = {
    * section n'est pas rendue. `'unavailable'` : lecture en échec — dit.
    */
   interviewReport?: InterviewReport | null | 'unavailable';
+  /**
+   * Messages au candidat après décision (feat/feedback-candidat). Absent :
+   * section non rendue (appelants antérieurs). `'unavailable'` : lecture en
+   * échec — dit.
+   */
+  feedback?: readonly CandidateFeedback[] | 'unavailable';
+  /** Désignation courante du recruté (clôture), s'il l'est. */
+  hiredAt?: string | null;
 };
 
 function AuditDocument({
@@ -185,6 +195,8 @@ function AuditDocument({
   campaignLabel,
   finalDecision = null,
   interviewReport = null,
+  feedback,
+  hiredAt = null,
 }: AuditPdfProps) {
   const { application } = detail;
   const { candidate, scoringResult, narration } = application;
@@ -300,6 +312,14 @@ function AuditDocument({
           <FinalDecisionSection
             decision={finalDecision}
             title={<Text style={styles.sectionTitle}>Décision finale</Text>}
+          />
+        ) : null}
+
+        {feedback !== undefined ? (
+          <CandidateFeedbackSection
+            rows={feedback}
+            hiredAt={hiredAt}
+            title={<Text style={styles.sectionTitle}>Message au candidat</Text>}
           />
         ) : null}
 

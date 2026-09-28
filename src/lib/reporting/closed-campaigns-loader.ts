@@ -9,6 +9,10 @@
  * sert pas.
  */
 
+import { CAMPAIGN_CLOSED_ACTION } from '@/lib/campagnes/closure-constants';
+import { closureOutcomes } from '@/lib/campagnes/closure-outcome';
+import { HIRED_MARKER_ACTION } from '@/lib/candidatures/decision-markers';
+import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import { listClosedCampaigns } from '@/lib/db/repos/campaigns';
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import { listDonneursOrdre } from '@/lib/db/repos/donneurs-ordre';
@@ -53,14 +57,21 @@ export async function loadClosedCampaignReports(): Promise<ClosedCampaignReport[
   // donnait des volumes partiels/zéro aux campagnes anciennes dans un PDF client.
   const campaigns = await listClosedCampaigns();
   const closedIds = campaigns.map((c) => c.id);
-  const [analyses, signals, sites, donneurs] = await Promise.all([
+  const [analyses, signals, sites, donneurs, closureEntries] = await Promise.all([
     closedIds.length > 0
       ? listAllCandidateAnalyses({ campaignIds: closedIds })
       : Promise.resolve([]),
     loadJourneySignals(),
     listSites({ includeArchived: true }),
     listDonneursOrdre({ includeArchived: true }),
+    // Issue de clôture (« Recrutement conclu — nom ») : best-effort, une
+    // lecture en échec rend le libellé historique.
+    listJournalEntriesByActions([CAMPAIGN_CLOSED_ACTION, HIRED_MARKER_ACTION]).catch(() => []),
   ]);
+  const outcomes = closureOutcomes(
+    closureEntries,
+    new Map(analyses.map((a) => [a.id, { uid: a.uid, candidateName: a.candidateName }])),
+  );
 
   const siteById = new Map(sites.map((s) => [s.id, s]));
   const donneurById = new Map(donneurs.map((d) => [d.id, d]));
@@ -94,7 +105,7 @@ export async function loadClosedCampaignReports(): Promise<ClosedCampaignReport[
       siteLabel: site?.name ?? null,
     };
     return {
-      summary: buildCampaignReportSummary(meta, own, [], null),
+      summary: { ...buildCampaignReportSummary(meta, own, [], null), closure: outcomes.get(c.id) ?? null },
       analyses: own,
     };
   });

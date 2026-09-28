@@ -23,7 +23,7 @@ const CATEGORIES: { key: keyof ZoneCounts; label: string; color: DashColor }[] =
   { key: 'autoAccept', label: 'acceptées selon vos règles', color: 'green' },
   { key: 'humanValidated', label: 'tranchées par vous', color: 'teal' },
   { key: 'pending', label: 'en attente de vous', color: 'yellow' },
-  { key: 'autoReject', label: 'refusées', color: 'red' },
+  { key: 'autoReject', label: 'écartées', color: 'red' },
   { key: 'sansSuite', label: 'sans suite', color: 'blue' },
 ];
 

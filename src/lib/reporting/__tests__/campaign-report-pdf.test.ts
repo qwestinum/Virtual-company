@@ -70,3 +70,24 @@ describe('campaignSendDefaults (contexte rapport de campagne)', () => {
     );
   });
 });
+
+describe('renderCampaignReportPdf — du CV au recrutement (feat/feedback-candidat, lot 5)', () => {
+  it('se génère avec l’entonnoir, le taux de placement et les candidats informés', async () => {
+    const pdf = await renderCampaignReportPdf({
+      data: {
+        ...fixtureData(),
+        funnel: {
+          received: 12,
+          invited: 6,
+          interviewed: 4,
+          retained: 2,
+          hired: 1,
+          placementRate: 50,
+          informed: { total: 3, informed: 2 },
+        },
+      },
+      generatedAtIso: '2026-06-10T09:00:00.000Z',
+    });
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+});

@@ -12,6 +12,7 @@
  */
 
 import { Download, MoreVertical, RefreshCw, Send } from 'lucide-react';
+import { closureOutcomeLabel } from '@/lib/campagnes/closure-outcome';
 import { useState } from 'react';
 
 import { CampaignIcon } from '@/components/ui/CampaignIcon';
@@ -44,7 +45,8 @@ export function CampaignReportCard({
   const { volumes } = summary;
   const sent = sentMention(summary);
   const generated = generatedMention(summary);
-  const recruited = summary.issue === 'recruited';
+  // L'issue DÉCLARÉE à la clôture prime ; à défaut (clôture antérieure), l'ancien calcul.
+  const recruited = summary.closure ? summary.closure.outcome === 'conclu' : summary.issue === 'recruited';
 
   return (
     // ⚠️ La ligne ouvre le rapport, et elle porte des boutons : c'est donc un
@@ -113,9 +115,11 @@ export function CampaignReportCard({
                   : { background: 'var(--dash-warm)', color: 'var(--dash-text-secondary)' }
               }
             >
-              {recruited
-                ? `${CAMPAIGN_ISSUE_LABELS.recruited} (${summary.recruitedCount})`
-                : CAMPAIGN_ISSUE_LABELS.no_hire}
+              {summary.closure
+                ? closureOutcomeLabel(summary.closure)
+                : recruited
+                  ? `${CAMPAIGN_ISSUE_LABELS.recruited} (${summary.recruitedCount})`
+                  : CAMPAIGN_ISSUE_LABELS.no_hire}
             </span>
 
             <span
