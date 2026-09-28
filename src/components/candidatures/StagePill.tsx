@@ -13,7 +13,7 @@
  * Repère    : `stageStepMarks` — segments remplis jusqu'au rang de l'étape.
  */
 
-import { CANDIDATE_STAGE_LABELS } from '@/lib/reporting/candidate-stage';
+import { CANDIDATE_STAGE_LABELS, stageHint } from '@/lib/reporting/candidate-stage';
 import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 
 import { stagePillStyle, stageStepMarks } from './stage-ui';
@@ -30,6 +30,7 @@ export function StagePill({ stage, compact = false }: StagePillProps) {
 
   return (
     <span
+      title={stageHint(stage)}
       className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-body text-[12px] font-medium"
       style={{
         color,

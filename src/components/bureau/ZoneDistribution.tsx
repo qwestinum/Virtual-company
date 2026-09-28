@@ -25,7 +25,7 @@ type ZoneRow = {
 // ZoneCounts doit être ajoutée ici À LA MAIN, sinon elle compile mais
 // n'apparaît jamais (les % ne somment plus à 100).
 const ZONES: ZoneRow[] = [
-  { key: 'autoReject', label: 'Refusés', dot: 'bg-dash-red', text: 'text-dash-red' },
+  { key: 'autoReject', label: 'Écartés', dot: 'bg-dash-red', text: 'text-dash-red' },
   { key: 'autoAccept', label: 'Retenus automatiquement', dot: 'bg-dash-green', text: 'text-dash-green' },
   { key: 'humanValidated', label: 'Tranchés par un humain', dot: 'bg-dash-blue', text: 'text-dash-blue' },
   { key: 'pending', label: 'À valider', dot: 'bg-dash-orange', text: 'text-dash-orange' },

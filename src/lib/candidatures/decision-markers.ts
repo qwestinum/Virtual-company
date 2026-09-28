@@ -24,12 +24,19 @@
 
 export const INTERVIEW_MARKER_ACTION = 'candidate_interview_marked';
 export const VALIDATION_MARKER_ACTION = 'candidate_validation_marked';
+/**
+ * Désignation du RECRUTÉ à la clôture d'une campagne conclue
+ * (feat/feedback-candidat). Désignation HUMAINE explicite, jamais déduite ;
+ * `cleared` la retire (le dossier redevient « Retenu »).
+ */
+export const HIRED_MARKER_ACTION = 'candidate_hired_marked';
 /** Événement dédié de correction (frise + fil d'activité). */
 export const DECISION_CORRECTED_ACTION = 'decision_corrected';
 
 /** Valeurs ÉCRITES au journal. */
 export type InterviewMarkValue = 'realized' | 'missed' | 'cleared';
 export type ValidationMarkValue = 'validated' | 'rejected' | 'cleared';
+export type HiredMarkValue = 'hired' | 'cleared';
 
 /**
  * EFFET sur la dérivation d'étape. `null` = aucun effet : le marqueur a été
@@ -37,6 +44,7 @@ export type ValidationMarkValue = 'validated' | 'rejected' | 'cleared';
  */
 export type InterviewMarkEffect = 'realized' | 'missed' | null;
 export type ValidationMarkEffect = 'validated' | 'rejected' | null;
+export type HiredMarkEffect = 'hired' | null;
 
 function assertNever(value: never): never {
   throw new Error(`Valeur de marqueur non traitée : ${String(value)}`);
@@ -72,6 +80,17 @@ export function validationMarkEffect(
   }
 }
 
+export function hiredMarkEffect(value: HiredMarkValue): HiredMarkEffect {
+  switch (value) {
+    case 'hired':
+      return 'hired';
+    case 'cleared':
+      return null;
+    default:
+      return assertNever(value);
+  }
+}
+
 // ─── Lecture défensive (le payload vient de la base, pas du code) ──────────
 
 export function readInterviewMark(
@@ -90,6 +109,13 @@ export function readValidationMark(
   return raw === 'validated' || raw === 'rejected' || raw === 'cleared'
     ? raw
     : null;
+}
+
+export function readHiredMark(
+  payload: Record<string, unknown> | null | undefined,
+): HiredMarkValue | null {
+  const raw = payload?.status;
+  return raw === 'hired' || raw === 'cleared' ? raw : null;
 }
 
 // ─── Dernier-gagne (UN seul endroit, tous lecteurs confondus) ──────────────
@@ -138,6 +164,19 @@ export function foldValidationMark(
   at: string,
 ): MarkerState<ValidationMarkEffect> {
   return fold(state, readValidationMark(payload), at, validationMarkEffect);
+}
+
+export function emptyHiredState(): MarkerState<HiredMarkEffect> {
+  return { effect: null, at: null };
+}
+
+/** Intègre une entrée `candidate_hired_marked` (ordre d'itération libre). */
+export function foldHiredMark(
+  state: MarkerState<HiredMarkEffect>,
+  payload: Record<string, unknown> | null | undefined,
+  at: string,
+): MarkerState<HiredMarkEffect> {
+  return fold(state, readHiredMark(payload), at, hiredMarkEffect);
 }
 
 // ─── Commentaire qui motive le verdict ─────────────────────────────────────
@@ -228,6 +267,30 @@ export function buildValidationMarkerEntry(args: {
       status: args.value,
       ...(args.corrected ? { corrected: true } : {}),
       ...(args.commentId ? { commentId: args.commentId } : {}),
+    },
+  };
+}
+
+/**
+ * Désignation du recruté (lot 4, dialog de clôture) — ou sa gomme. Identifiants
+ * seulement : le nom reste dans `candidate`, comme pour les autres marqueurs
+ * (le journal est pseudonymisé à la purge).
+ */
+export function buildHiredMarkerEntry(args: {
+  uid: string;
+  candidateName: string;
+  campaignId: string | null;
+  value: HiredMarkValue;
+  corrected?: boolean;
+}): JournalMarkerEntry {
+  return {
+    action: HIRED_MARKER_ACTION,
+    campaignId: args.campaignId,
+    payload: {
+      uid: args.uid,
+      candidate: args.candidateName,
+      status: args.value,
+      ...(args.corrected ? { corrected: true } : {}),
     },
   };
 }

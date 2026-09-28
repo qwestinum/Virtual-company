@@ -15,6 +15,7 @@
 
 import { DotTabs } from '@/components/ui/DotTabs';
 import {
+  stageHint,
   CANDIDATE_STAGE_LABELS,
   CANDIDATE_STAGE_RIBBON_ORDER,
   type CandidateStage,
@@ -47,6 +48,7 @@ export function CandidaturesRibbon({
         ...CANDIDATE_STAGE_RIBBON_ORDER.map((stage) => ({
           key: stage,
           label: CANDIDATE_STAGE_LABELS[stage],
+          hint: stageHint(stage),
           dotClass: STAGE_DOT_CLASS[stage],
           count: counts[stage],
         })),

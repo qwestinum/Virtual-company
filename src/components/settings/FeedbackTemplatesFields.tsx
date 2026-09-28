@@ -24,7 +24,7 @@ type FeedbackField =
 const FIELDS: { key: FeedbackField; title: string; hint: string }[] = [
   {
     key: 'feedbackRetainedTemplate',
-    title: 'Retenu après entretien',
+    title: 'Retenu',
     hint:
       'Suite du processus, jamais une promesse d’embauche. [prochaine étape] ' +
       'reprend ce que le recruteur précise au moment de la décision ; vide, une ' +
@@ -32,13 +32,13 @@ const FIELDS: { key: FeedbackField; title: string; hint: string }[] = [
   },
   {
     key: 'feedbackNotRetainedTemplate',
-    title: 'Non retenu après entretien',
-    hint: 'Envoyé aussi à un retenu non sélectionné à la clôture de la campagne.',
+    title: 'Non retenu',
+    hint: 'Verdict négatif après l’entretien ; envoyé aussi à un retenu non sélectionné à la clôture de la campagne.',
   },
   {
     key: 'feedbackNoShowTemplate',
-    title: 'Absent à l’entretien',
-    hint: 'Proposé quand un candidat absent est classé non retenu.',
+    title: 'Absent',
+    hint: 'Proposé quand un candidat absent à l’entretien est classé non retenu.',
   },
   {
     key: 'feedbackDismissedTemplate',

@@ -275,8 +275,9 @@ describe('S9 — classement sans suite', () => {
     const { counts, total } = await countersNow();
     expect(total).toBe(3);
     expect(counts.sans_suite).toBe(2);
-    expect(counts.non_retenu).toBe(1);
-    expect(counts.refus_auto).toBe(0);
+    // Refus sur CV tranché par un humain : « Écarté » depuis le 28/09/2026.
+    expect(counts.ecarte).toBe(1);
+    expect(counts.non_retenu).toBe(0);
     expect(counts.a_valider).toBe(0);
     expect(counts.invite).toBe(0);
 

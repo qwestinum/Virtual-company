@@ -11,10 +11,6 @@
  */
 
 import {
-  INTERVIEW_MARKER_ACTION,
-  VALIDATION_MARKER_ACTION,
-} from '@/lib/candidatures/decision-markers';
-import {
   correctionNoticesFor,
   correctionOptionsFor,
   resolveCurrentDecision,
@@ -28,7 +24,11 @@ import {
   type CandidateStage,
 } from '@/lib/reporting/candidate-stage';
 import { pickActions, unionActions } from '@/lib/reporting/journal-preload';
-import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
+import {
+  loadStageSignals,
+  STAGE_MARKER_ACTIONS,
+  stageFor,
+} from '@/lib/reporting/stage-signals';
 import { bookingLinkStateForAnalysis } from '@/lib/scheduling-host/campaign-booking';
 import { loadFinalDecision } from '@/lib/candidatures/verdict';
 import type {
@@ -198,10 +198,9 @@ export async function loadDecisionCorrectionContext(
   const journalP = listJournalEntriesByActions(
     // Les marqueurs d'étape (mêmes actions que `STAGE_MARKER_ACTIONS`) + les
     // faits d'envoi.
-    unionActions(
-      [INTERVIEW_MARKER_ACTION, VALIDATION_MARKER_ACTION],
-      MAIL_FACT_ACTIONS,
-    ),
+    // `STAGE_MARKER_ACTIONS` lui-même, jamais une copie : une copie avait
+    // divergé (le marqueur « recruté » n'y était pas).
+    unionActions([...STAGE_MARKER_ACTIONS], MAIL_FACT_ACTIONS),
     { campaignId: scope },
   );
   void journalP.catch(() => undefined);
@@ -222,6 +221,7 @@ export async function loadDecisionCorrectionContext(
     interviewEffect: signals.interviewMarks.get(analysis.uid) ?? null,
     validationEffect: signals.validationMarks.get(analysis.uid) ?? null,
     dismissalReason: analysis.dismissalReason,
+    decidedBy: analysis.decidedBy,
   });
 
   const base = {

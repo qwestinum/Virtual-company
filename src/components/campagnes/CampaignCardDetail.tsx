@@ -24,7 +24,6 @@ import type { ReactNode } from 'react';
 
 import {
   buildCardAwaiting,
-  buildCardCounters,
   buildCardSources,
 } from '@/lib/campagnes/card-detail';
 import type { CandidateStageCounts } from '@/lib/reporting/candidate-stage';
@@ -33,8 +32,8 @@ import { ActionButton } from './ActionButton';
 import {
   CampaignSourceTile,
   CampaignSourceTileSkeleton,
-  CampaignStatTile,
 } from './CampaignStatTile';
+import { CampaignCardStageCounters } from './CampaignCardStageCounters';
 import { useCampaignCardSources } from './useCampaignCardDetail';
 
 export type CampaignCardCounters = {
@@ -69,25 +68,17 @@ export function CampaignCardDetail({
       {counters ? (
         <>
           <Bloc titre="Candidatures">
-            <div style={GRILLE}>
-              {buildCardCounters(campaignId, counters.received, counters.counts).map(
-                (c) => (
-                  <CampaignStatTile
-                    key={c.key}
-                    icon={c.icon}
-                    color={c.color}
-                    value={c.count}
-                    label={c.label}
-                    href={c.href}
-                  />
-                ),
-              )}
-            </div>
+            <CampaignCardStageCounters
+              campaignId={campaignId}
+              received={counters.received}
+              counts={counters.counts}
+            />
           </Bloc>
           <CeQuiAttend
             items={buildCardAwaiting(campaignId, {
               aValider: counters.counts.a_valider,
               aValiderOldestDays: counters.aValiderOldestDays,
+              propositionsRefus: counters.counts.proposition_refus,
               entretiensAConfirmer: counters.entretiensAConfirmer,
             })}
           />

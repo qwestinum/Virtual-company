@@ -198,7 +198,8 @@ describe('chaque ligne mène à la vue filtrée annoncée', () => {
         ],
       }),
     );
-    expect(board.verify.items[0]?.href).toBe('/candidatures?statut=a_valider');
+    // Les deux files d'attente vivent sur la page de validation (28/09/2026).
+    expect(board.verify.items[0]?.href).toBe('/candidatures/validation');
   });
 });
 

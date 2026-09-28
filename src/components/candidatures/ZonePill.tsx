@@ -32,7 +32,9 @@ function resolve(
         cls: 'text-dash-orange bg-dash-orange-light',
       };
     default:
-      return { label: 'Refusé (historique)', cls: 'text-dash-red bg-dash-red-light' };
+      // Ancien refus automatique (avant le 18/08) : compté « Écarté », comme
+      // l'étape — le mot du lexique, pas une variante (28/09/2026).
+      return { label: 'Écarté', cls: 'text-dash-red bg-dash-red-light' };
   }
 }
 

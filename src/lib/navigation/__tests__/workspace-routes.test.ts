@@ -13,6 +13,7 @@ import {
   WORKSPACE_ENTRIES,
   workspaceEntryForPath,
 } from '@/lib/navigation/workspace-routes';
+import { CANDIDATE_STAGES } from '@/lib/reporting/candidate-stage';
 import {
   LEGACY_ROUTES,
   legacyRedirectFor,
@@ -99,10 +100,22 @@ describe('filtres portés par l’URL', () => {
 });
 
 describe('cible d’un signal métier', () => {
-  it('le signal de file mène là où sa population a déménagé', () => {
-    expect(signalHref({ tab: 'validations' })).toBe(
-      '/candidatures?statut=a_valider',
-    );
+  it('le signal de file mène à la page qui montre LES DEUX files', () => {
+    // Arbitrage du 28/09/2026 : le recruteur voit tout, il ne devine pas —
+    // pas la puce la plus grosse.
+    expect(signalHref({ tab: 'validations' })).toBe('/candidatures/validation');
+  });
+
+  it('toute étape du domaine se relit depuis l’URL (liste officielle, pas une copie)', () => {
+    for (const stage of CANDIDATE_STAGES) {
+      const href = candidaturesHref({ stage });
+      expect(readCandidaturesFilter(new URLSearchParams(href.split('?')[1] ?? '')).stage).toBe(stage);
+    }
+  });
+
+  it('un ancien lien ?statut=refus_auto ouvre « Écarté », jamais l’écran non filtré', () => {
+    expect(readCandidaturesFilter(new URLSearchParams('statut=refus_auto')).stage).toBe('ecarte');
+    expect(readCandidaturesFilter(new URLSearchParams('statut=inconnu')).stage).toBeNull();
   });
 
   it('porte le filtre du signal, jamais la liste complète', () => {

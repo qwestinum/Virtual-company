@@ -307,12 +307,12 @@ export function CandidaturesWorkspace({
             active={filters.stage}
             onSelect={(stage) => setFilters({ stage })}
           />
-          {/* Accès à la revue GROUPÉE, attaché à la puce « À valider » — il
-              n'apparaît que quand cette puce est sélectionnée, d'où qu'on
-              vienne : un clic dans le ruban comme une arrivée par l'adresse
-              `?statut=a_valider`. C'est la seule porte vers le mode groupé
-              depuis que l'onglet dédié a disparu du premier niveau. */}
-          {filters.stage === 'a_valider' ? (
+          {/* Accès à la revue GROUPÉE, attaché aux deux puces d'attente
+              (« À valider », « Propositions de refus ») — il n'apparaît que
+              quand l'une d'elles est sélectionnée, d'où qu'on vienne. La page
+              de revue montre les DEUX files : c'est elle qui porte le refus
+              groupé des propositions. */}
+          {filters.stage === 'a_valider' || filters.stage === 'proposition_refus' ? (
             <div className="mt-2 flex justify-end">
               <Link
                 href="/candidatures/validation"

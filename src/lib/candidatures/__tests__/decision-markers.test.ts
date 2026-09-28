@@ -139,3 +139,26 @@ describe('écriture — un seul payload, action normale ou correction', () => {
     expect(entry.campaignId).toBeNull();
   });
 });
+
+describe('marqueur « recruté » (feat/feedback-candidat)', () => {
+  it('dernier gagne, et la gomme retire la désignation', async () => {
+    const { buildHiredMarkerEntry, emptyHiredState, foldHiredMark } = await import(
+      '@/lib/candidatures/decision-markers'
+    );
+    const hired = buildHiredMarkerEntry({ uid: 'u1', candidateName: 'X', campaignId: 'C', value: 'hired' });
+    const cleared = buildHiredMarkerEntry({ uid: 'u1', candidateName: 'X', campaignId: 'C', value: 'cleared' });
+    let s = foldHiredMark(emptyHiredState(), hired.payload, '2026-09-28T10:00:00.000Z');
+    expect(s.effect).toBe('hired');
+    // Ordre d'itération libre : un marqueur plus ANCIEN ne reprend pas la main.
+    s = foldHiredMark(s, cleared.payload, '2026-09-28T11:00:00.000Z');
+    expect(s.effect).toBeNull();
+    s = foldHiredMark(s, hired.payload, '2026-09-28T09:00:00.000Z');
+    expect(s.effect).toBeNull();
+    expect(hired.action).toBe('candidate_hired_marked');
+  });
+
+  it('un payload illisible n’invente rien', async () => {
+    const { emptyHiredState, foldHiredMark } = await import('@/lib/candidatures/decision-markers');
+    expect(foldHiredMark(emptyHiredState(), { status: 'validated' }, '2026-09-28').effect).toBeNull();
+  });
+});

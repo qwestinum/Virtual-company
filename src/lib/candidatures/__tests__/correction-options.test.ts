@@ -25,6 +25,7 @@ function input(over: Partial<CurrentDecisionInput> = {}): CurrentDecisionInput {
     interviewEffect: 'realized',
     validationEffect: null,
     dismissalReason: null,
+    decidedBy: null,
     ...over,
   };
 }
@@ -50,10 +51,15 @@ describe('resolveCurrentDecision — même priorité que deriveCandidateStage', 
     ).toEqual({ kind: 'final_verdict', value: 'validated' });
   });
 
-  it('un dossier en attente de validation n’a RIEN à corriger', () => {
+  it('un dossier en attente de validation n’a RIEN à corriger (les deux files)', () => {
     expect(
       resolveCurrentDecision(
         input({ stage: 'a_valider', interviewEffect: null }),
+      ),
+    ).toBeNull();
+    expect(
+      resolveCurrentDecision(
+        input({ stage: 'proposition_refus', interviewEffect: null }),
       ),
     ).toBeNull();
   });
@@ -64,21 +70,22 @@ describe('resolveCurrentDecision — même priorité que deriveCandidateStage', 
     ).toEqual({ kind: 'screening_decision', value: 'accepted', auto: false });
     expect(
       resolveCurrentDecision(
-        input({ stage: 'non_retenu', interviewEffect: null }),
+        input({ stage: 'ecarte', interviewEffect: null, decidedBy: 'user' }),
       ),
     ).toEqual({ kind: 'screening_decision', value: 'rejected', auto: false });
   });
 
   it('le refus auto LEGACY est requalifiable et se dit comme tel', () => {
     const current = resolveCurrentDecision(
-      input({ stage: 'refus_auto', interviewEffect: null }),
+      input({ stage: 'ecarte', interviewEffect: null, decidedBy: 'auto' }),
     );
     expect(current).toEqual({
       kind: 'screening_decision',
       value: 'rejected',
       auto: true,
     });
-    expect(currentDecisionLabel(current!)).toContain('historique');
+    expect(currentDecisionLabel(current!)).toContain('antérieur au 18/08');
+    expect(currentDecisionLabel(current!)).not.toMatch(/Refusé/);
   });
 });
 

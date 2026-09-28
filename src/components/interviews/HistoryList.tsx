@@ -35,7 +35,9 @@ const TONE: Record<HistoryVerdict, CandidateStageTone> = {
   a_pointer: 'pending',
   verdict_attendu: 'pending',
   retenu: 'positive',
+  recrute: 'positive',
   non_retenu: 'negative',
+  ecarte: 'negative',
   absent: 'neutral',
   sans_suite: 'neutral',
 };

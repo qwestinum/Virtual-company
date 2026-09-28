@@ -18,12 +18,13 @@ function base(over: Partial<CandidateStageInput> = {}): CandidateStageInput {
     hasScheduledInterview: false,
     interviewMarked: null,
     validationMarked: null,
+    hiredMarked: false,
     isDismissed: false,
     ...over,
   };
 }
 
-describe('deriveCandidateStage — échelle 7 priorités', () => {
+describe('deriveCandidateStage — échelle des 10 étapes', () => {
   const cases: Array<{ name: string; input: CandidateStageInput; expected: CandidateStage }> = [
     {
       name: 'sans suite : domine TOUT état ouvert (gris en attente)',
@@ -50,14 +51,54 @@ describe('deriveCandidateStage — échelle 7 priorités', () => {
       expected: 'sans_suite',
     },
     {
-      name: 'refus auto (system, auto_reject)',
+      name: 'ancien refus automatique (auto_reject) → Écarté',
       input: base({ status: 'rejected', decisionZone: 'auto_reject', decidedBy: 'auto' }),
-      expected: 'refus_auto',
+      expected: 'ecarte',
     },
     {
-      name: 'refus auto (legacy : rejeté, zone null)',
+      name: 'ancien refus (legacy : rejeté, zone null) → Écarté',
       input: base({ status: 'rejected', decisionZone: null, decidedBy: null }),
-      expected: 'refus_auto',
+      expected: 'ecarte',
+    },
+    {
+      name: 'proposition de refus en file → Propositions de refus',
+      input: base({
+        status: 'rejected',
+        decisionZone: 'proposed_reject',
+        decidedBy: null,
+        isPendingValidation: true,
+      }),
+      expected: 'proposition_refus',
+    },
+    {
+      name: 'proposition de refus SANS ligne de file → toujours à traiter, jamais un refus',
+      input: base({ status: 'rejected', decisionZone: 'proposed_reject', decidedBy: null }),
+      expected: 'proposition_refus',
+    },
+    {
+      name: 'gris SANS ligne de file → à valider',
+      input: base({ status: 'rejected', decisionZone: 'gray', decidedBy: null }),
+      expected: 'a_valider',
+    },
+    {
+      name: 'proposition de refus VALIDÉE par un humain → Écarté',
+      input: base({ status: 'rejected', decisionZone: 'proposed_reject', decidedBy: 'user' }),
+      expected: 'ecarte',
+    },
+    {
+      name: 'recruté : désignation sur un retenu',
+      input: base({ interviewMarked: 'realized', validationMarked: 'validated', hiredMarked: true }),
+      expected: 'recrute',
+    },
+    {
+      name: 'désignation sans verdict positif courant → aucune embauche déduite',
+      input: base({ interviewMarked: 'realized', validationMarked: 'rejected', hiredMarked: true }),
+      expected: 'non_retenu',
+    },
+    {
+      name: 'sans suite domine même une désignation',
+      input: base({ validationMarked: 'validated', hiredMarked: true, isDismissed: true }),
+      expected: 'sans_suite',
     },
     {
       name: 'à valider (gris en attente)',
@@ -95,13 +136,13 @@ describe('deriveCandidateStage — échelle 7 priorités', () => {
       expected: 'a_valider',
     },
     {
-      name: 'refusé auto avec email réservé → Refus auto, pas RDV pris',
+      name: 'ancien refus avec email réservé → Écarté, pas RDV pris',
       input: base({
         status: 'rejected',
         decisionZone: 'auto_reject',
         hasScheduledInterview: true,
       }),
-      expected: 'refus_auto',
+      expected: 'ecarte',
     },
     {
       name: 'entretien fait',
@@ -124,14 +165,14 @@ describe('deriveCandidateStage — échelle 7 priorités', () => {
       expected: 'non_retenu',
     },
     {
-      name: 'non retenu (gris REFUSÉ par un humain : zone gray, plus en attente)',
+      name: 'écarté (gris REFUSÉ par un humain sur CV : zone gray, plus en attente)',
       input: base({
         status: 'rejected',
         decisionZone: 'gray',
         decidedBy: 'user',
         isPendingValidation: false,
       }),
-      expected: 'non_retenu',
+      expected: 'ecarte',
     },
   ];
 
@@ -165,16 +206,16 @@ describe('deriveCandidateStage — échelle 7 priorités', () => {
 
 describe('tallyStages', () => {
   it('part de zéro et compte chaque étape', () => {
-    const counts = tallyStages(['invite', 'invite', 'refus_auto', 'retenu']);
+    const counts = tallyStages(['invite', 'invite', 'ecarte', 'retenu']);
     expect(counts.invite).toBe(2);
-    expect(counts.refus_auto).toBe(1);
+    expect(counts.ecarte).toBe(1);
     expect(counts.retenu).toBe(1);
     expect(counts.a_valider).toBe(0);
   });
 
-  it('emptyStageCounts a bien 8 clés à zéro', () => {
+  it('emptyStageCounts a bien 10 clés à zéro', () => {
     const empty = emptyStageCounts();
-    expect(Object.values(empty)).toHaveLength(8);
+    expect(Object.values(empty)).toHaveLength(10);
     expect(Object.values(empty).every((n) => n === 0)).toBe(true);
   });
 });
@@ -185,5 +226,39 @@ describe('CANDIDATE_STAGE_RIBBON_ORDER — garde-fou du piège non compilable', 
       '@/lib/reporting/candidate-stage'
     );
     expect([...CANDIDATE_STAGE_RIBBON_ORDER].sort()).toEqual([...CANDIDATE_STAGES].sort());
+  });
+});
+
+describe('lexique des étapes (28/09/2026)', () => {
+  it('le ruban suit l’ordre du donneur d’ordre', async () => {
+    const { CANDIDATE_STAGE_RIBBON_ORDER, CANDIDATE_STAGE_LABELS } = await import(
+      '@/lib/reporting/candidate-stage'
+    );
+    expect(CANDIDATE_STAGE_RIBBON_ORDER.map((s) => CANDIDATE_STAGE_LABELS[s])).toEqual([
+      'À valider',
+      'Propositions de refus',
+      'Invité',
+      'RDV pris',
+      'Entretien fait',
+      'Retenu',
+      'Recruté',
+      'Écarté',
+      'Non retenu',
+      'Sans suite',
+    ]);
+  });
+
+  it('un libellé = un ou deux mots, jamais un complément ; la définition va au survol', async () => {
+    const { CANDIDATE_STAGES, CANDIDATE_STAGE_LABELS, CANDIDATE_STAGE_DEFINITIONS, stageHint } =
+      await import('@/lib/reporting/candidate-stage');
+    for (const s of CANDIDATE_STAGES) {
+      const label = CANDIDATE_STAGE_LABELS[s];
+      // « Propositions de refus » est le seul libellé à trois mots, et il est
+      // celui du donneur d'ordre (sous-onglet historique de la file).
+      if (s !== 'proposition_refus') expect(label.split(/\s+/).length).toBeLessThanOrEqual(2);
+      expect(CANDIDATE_STAGE_DEFINITIONS[s].length).toBeGreaterThan(5);
+      expect(stageHint(s).startsWith(`${label} — `)).toBe(true);
+    }
+    expect(CANDIDATE_STAGE_DEFINITIONS.ecarte).toContain('antérieurs au 18/08');
   });
 });

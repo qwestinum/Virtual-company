@@ -35,6 +35,8 @@ import {
   TEST_CAMPAIGN_PREFIX,
 } from './helpers/db';
 import { resetSentEmails } from './helpers/mocks';
+import { CANDIDATE_STAGES, type CandidateStageCounts } from '@/lib/reporting/candidate-stage';
+import { computeStageCountsByCampaign } from '@/lib/reporting/stage-signals';
 
 const camp = newTestCampaignId('s6');
 
@@ -45,7 +47,7 @@ type Zones = {
   pending: number;
   total: number;
 };
-type StageCounts = Record<string, number>;
+type StageCounts = CandidateStageCounts;
 
 let zonesBefore: Zones;
 let foreignBefore = 0;
@@ -159,13 +161,15 @@ afterAll(async () => {
 });
 
 describe('S6 — cohérence des indicateurs', () => {
-  it('ruban menu Candidatures (scopé campagne) : total 4, répartition 1/3', async () => {
+  it('ruban menu Candidatures (scopé campagne) : total 4, répartition 1 / 2 / 1', async () => {
     const { counts, total } = await countersNow();
     expect(total).toBe(4);
     expect(counts.invite).toBe(1); // auto-accept = invité
-    // Plus AUCUN refus automatique : le faible attend un humain comme les gris.
-    expect(counts.refus_auto).toBe(0);
-    expect(counts.a_valider).toBe(3);
+    // Plus AUCUN refus automatique : le faible attend un humain comme les gris,
+    // mais dans SA file — « Propositions de refus », pas « À valider ».
+    expect(counts.ecarte).toBe(0);
+    expect(counts.a_valider).toBe(2);
+    expect(counts.proposition_refus).toBe(1);
     expect(counts.retenu).toBe(0);
     expect(counts.non_retenu).toBe(0);
   });
@@ -212,7 +216,8 @@ describe('S6 — cohérence des indicateurs', () => {
 
     const { counts, total } = await countersNow();
     expect(total).toBe(4); // le total ne bouge JAMAIS avec une décision
-    expect(counts.a_valider).toBe(2); // en attente −1
+    expect(counts.a_valider).toBe(1); // à arbitrer −1
+    expect(counts.proposition_refus).toBe(1); // l'autre file ne bouge pas
     expect(counts.invite).toBe(2); // accepté +1
 
     await assertNoForeignDrift();
@@ -267,13 +272,14 @@ describe('S6 — cohérence des indicateurs', () => {
     // BONUS (décision DO) : chiffres AVANT clôture == rapport APRÈS clôture —
     // la clôture ne perd ni ne déforme aucun comptage.
     expect(volumes.received).toBe(before.total);
-    expect(volumes.enAttente).toBe(before.counts.a_valider);
-    expect(volumes.rejected).toBe(before.counts.refus_auto! + before.counts.non_retenu!);
+    expect(volumes.enAttente).toBe(before.counts.a_valider + before.counts.proposition_refus);
+    expect(volumes.rejected).toBe(before.counts.ecarte + before.counts.non_retenu);
     expect(volumes.retained).toBe(
-      before.counts.invite! +
-        before.counts.rdv_pris! +
-        before.counts.entretien_fait! +
-        before.counts.retenu!,
+      before.counts.invite +
+        before.counts.rdv_pris +
+        before.counts.entretien_fait +
+        before.counts.retenu +
+        before.counts.recrute,
     );
     expect(volumes.classeeSansSuite).toBe(before.counts.sans_suite);
 
@@ -282,5 +288,21 @@ describe('S6 — cohérence des indicateurs', () => {
     expect(
       volumes.retained + volumes.rejected + volumes.enAttente + volumes.classeeSansSuite,
     ).toBe(volumes.received);
+  });
+
+  it('PARTITION PAR CAMPAGNE : sur CHAQUE campagne de la base, les 10 étapes font « Reçues »', async () => {
+    // Arbitrage du 28/09/2026 : un tableau dont les chiffres se recoupent est
+    // un tableau qu'on croit — la carte campagne montre les dix, et leur
+    // somme doit être « Reçues », partout, pas seulement sur le scénario.
+    const { data, error } = await db().from('campaigns').select('id');
+    expect(error).toBeNull();
+    const ids = (data ?? []).map((r) => r.id as string);
+    expect(ids.length).toBeGreaterThan(0);
+    const parCampagne = await computeStageCountsByCampaign(ids);
+    for (const [id, entry] of parCampagne) {
+      expect(Object.keys(entry.counts).sort(), id).toEqual([...CANDIDATE_STAGES].sort());
+      const somme = CANDIDATE_STAGES.reduce((n, stage) => n + entry.counts[stage], 0);
+      expect(somme, `${id} : somme des étapes ≠ Reçues`).toBe(entry.total);
+    }
   });
 });

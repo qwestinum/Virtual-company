@@ -263,7 +263,8 @@ export function buildCandidateTimeline(
   push(
     'final_validated',
     facts.finalValidatedAt,
-    'Retenu définitivement',
+    // Lexique : « Retenu » = présenté au client, jamais « définitivement ».
+    'Retenu',
     verdictCommentDetail(facts.verdictComments, 'validated'),
     'positive',
   );

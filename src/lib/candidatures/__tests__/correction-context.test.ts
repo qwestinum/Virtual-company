@@ -38,7 +38,13 @@ vi.mock('@/lib/reporting/stage-signals', () => ({
     interviewMarks,
     interviewMarkedAt: new Map([['uid-malaka', '2026-08-21T14:32:00.000Z']]),
     validationMarks,
+    hiredUids: new Set<string>(),
   })),
+  STAGE_MARKER_ACTIONS: [
+    'candidate_interview_marked',
+    'candidate_validation_marked',
+    'candidate_hired_marked',
+  ],
   stageFor: () => stage(),
 }));
 
@@ -85,7 +91,7 @@ describe('« aucun message parti » vs « un mail est parti »', () => {
   });
 
   it('un refus HITL réellement envoyé est signalé en avertissement', async () => {
-    stage.mockReturnValue('non_retenu');
+    stage.mockReturnValue('ecarte');
     listJournalEntriesByActions.mockResolvedValue([
       {
         id: 1,
@@ -110,7 +116,7 @@ describe('« aucun message parti » vs « un mail est parti »', () => {
   });
 
   it('une décision prise SANS envoi ne se lit pas comme un mail parti', async () => {
-    stage.mockReturnValue('non_retenu');
+    stage.mockReturnValue('ecarte');
     listJournalEntriesByActions.mockResolvedValue([
       {
         id: 2,

@@ -31,7 +31,9 @@ export type HistoryVerdict =
   | 'a_pointer'
   | 'verdict_attendu'
   | 'retenu'
+  | 'recrute'
   | 'non_retenu'
+  | 'ecarte'
   | 'absent'
   | 'sans_suite';
 
@@ -39,7 +41,9 @@ export const HISTORY_VERDICT_LABELS: Record<HistoryVerdict, string> = {
   a_pointer: 'En cours · à confirmer',
   verdict_attendu: 'En cours · verdict attendu',
   retenu: 'Retenu',
+  recrute: 'Recruté',
   non_retenu: 'Non retenu',
+  ecarte: 'Écarté',
   absent: 'Absent',
   sans_suite: 'Classée sans suite',
 };
@@ -64,6 +68,12 @@ export function historyVerdict(
       return 'verdict_attendu';
     case 'retenu':
       return 'retenu';
+    case 'recrute':
+      return 'recrute';
+    // Un invité requalifié « écarté » par correction garde sa ligne : il a été
+    // dans le cycle d'entretien, et le disparaître ferait mentir l'historique.
+    case 'ecarte':
+      return 'ecarte';
     case 'non_retenu':
       return mark === 'missed' ? 'absent' : 'non_retenu';
     case 'sans_suite':

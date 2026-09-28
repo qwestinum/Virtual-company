@@ -65,7 +65,7 @@ export const SCREENING_LABELS: Record<ScreeningState, string> = {
 export const VALIDATION_LABELS: Record<ValidationState, string> = {
   na: '—',
   en_attente: 'En attente de validation',
-  retenu_entretien: 'Retenu pour entretien',
+  retenu_entretien: 'Invité',
   ecarte: 'Écarté',
 };
 export const INTERVIEW_LABELS: Record<InterviewState, string> = {
@@ -77,10 +77,24 @@ export const INTERVIEW_LABELS: Record<InterviewState, string> = {
 export const FINAL_LABELS: Record<FinalState, string> = {
   na: '—',
   en_attente: 'En attente',
-  retenu: 'Retenu définitivement',
-  ecarte: 'Écarté définitivement',
-  sans_suite: 'Classée sans suite',
+  // Lexique (28/09/2026) : « Retenu » = présenté au client, jamais une
+  // promesse d'embauche — plus de « définitivement ». ⚠️ L'état `ecarte` est un
+  // POINT DE CONVERGENCE (refus sur CV ET verdict négatif après entretien) :
+  // le mot dépend du moment — `finalLabel`, jamais cette table seule.
+  retenu: 'Retenu',
+  ecarte: 'Écarté',
+  sans_suite: 'Sans suite',
 };
+
+/**
+ * Le mot de la décision finale : le moment le distingue (lexique). Un
+ * candidat passé par le cycle d'entretien (invité, puis verdict ou absence)
+ * est « Non retenu » ; refusé sur CV, il est « Écarté ».
+ */
+export function finalLabel(j: Pick<CandidateJourney, 'final' | 'interview'>): string {
+  if (j.final === 'ecarte' && j.interview !== 'na') return 'Non retenu';
+  return FINAL_LABELS[j.final];
+}
 
 function toneOf(
   state: ScreeningState | ValidationState | InterviewState | FinalState,
@@ -294,7 +308,7 @@ export function journeyColumns(j: CandidateJourney): JourneyColumn[] {
     {
       key: 'final',
       title: 'Décision finale',
-      label: FINAL_LABELS[j.final],
+      label: finalLabel(j),
       tone: toneOf(j.final),
       reached: j.final !== 'na',
     },
@@ -313,21 +327,24 @@ export function journeyCurrentState(j: CandidateJourney): {
     return { label: FINAL_LABELS.sans_suite, tone: 'neutral' };
   }
   if (j.final === 'retenu' || j.final === 'ecarte') {
-    return { label: FINAL_LABELS[j.final], tone: toneOf(j.final) };
+    return { label: finalLabel(j), tone: toneOf(j.final) };
   }
   if (j.interview === 'realise' || j.interview === 'non_realise') {
-    return { label: `Entretien ${INTERVIEW_LABELS[j.interview].toLowerCase()}`, tone: toneOf(j.interview) };
+    return {
+      label: j.interview === 'realise' ? 'Entretien fait' : 'Entretien non réalisé',
+      tone: toneOf(j.interview),
+    };
   }
   if (j.validation !== 'na') {
     // Retenu par le système, en attente de validation humaine.
     const label =
       j.validation === 'en_attente'
-        ? 'Retenu au screening'
+        ? 'À valider'
         : VALIDATION_LABELS[j.validation];
     return { label, tone: toneOf(j.validation) };
   }
   return {
-    label: j.screening === 'retenu' ? 'Retenu (présélection)' : 'Écarté au screening',
+    label: j.screening === 'retenu' ? 'Invité' : 'Écarté',
     tone: screeningTone(j.screening),
   };
 }
@@ -344,12 +361,13 @@ export const JOURNEY_FILTER_STATES = [
 export type JourneyFilterState = (typeof JOURNEY_FILTER_STATES)[number];
 
 export const JOURNEY_FILTER_LABELS: Record<JourneyFilterState, string> = {
-  en_attente_validation: 'Retenu au screening',
-  retenu_entretien: 'Retenu pour entretien',
-  entretien_realise: 'Entretien réalisé',
-  retenu_definitif: 'Retenu définitivement',
-  ecarte: 'Écarté',
-  sans_suite: 'Classée sans suite',
+  en_attente_validation: 'À valider',
+  retenu_entretien: 'Invité',
+  entretien_realise: 'Entretien fait',
+  retenu_definitif: 'Retenu',
+  // Le filtre regroupe les deux négatifs (sur CV, après entretien).
+  ecarte: 'Écarté ou non retenu',
+  sans_suite: 'Sans suite',
 };
 
 /** Mappe un parcours sur une clé de filtre (état courant simplifié). */

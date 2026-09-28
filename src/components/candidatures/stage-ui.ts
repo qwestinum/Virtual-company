@@ -24,7 +24,7 @@ import {
  * importées. Le test de ce fichier RECALCULE les ratios : une couleur qui
  * repasserait sous 4,5:1 fait rougir la suite.
  *
- * CONTREPARTIE ASSUMÉE : cinq tonalités pour huit étapes, donc « Invité »,
+ * CONTREPARTIE ASSUMÉE : cinq tonalités pour dix étapes, donc « Invité »,
  * « RDV pris » et « Entretien fait » partagent une couleur. C'est pour ça que
  * la pastille porte AUSSI `stageStepMarks` — un repère non chromatique.
  */
@@ -38,27 +38,32 @@ export function stagePillStyle(stage: CandidateStage): {
 
 /** Point/tick de couleur pleine (ruban, légende, barre de carte). */
 export const STAGE_DOT_CLASS: Record<CandidateStage, string> = {
+  recrute: 'bg-dash-green',
   retenu: 'bg-dash-green',
   entretien_fait: 'bg-dash-blue',
   rdv_pris: 'bg-dash-purple',
   invite: 'bg-dash-blue',
   a_valider: 'bg-dash-orange',
+  proposition_refus: 'bg-dash-yellow',
   sans_suite: 'bg-stone-400',
   non_retenu: 'bg-dash-red',
-  refus_auto: 'bg-dash-red',
+  ecarte: 'bg-dash-red',
 };
 
 /**
  * Rang de l'étape dans le mini-pipeline de ligne (1→5). Les terminaux négatifs
- * (refus auto / non retenu) sortent du pipeline → `0` (rendu « écarté »).
+ * (écarté / non retenu) sortent du pipeline → `0`. Un recruté a parcouru tout
+ * le pipeline, comme un retenu.
  */
 export const STAGE_STEP: Record<CandidateStage, number> = {
   a_valider: 1,
+  proposition_refus: 1,
   invite: 2,
   rdv_pris: 3,
   entretien_fait: 4,
   retenu: 5,
-  refus_auto: 0,
+  recrute: 5,
+  ecarte: 0,
   non_retenu: 0,
   sans_suite: 0,
 };
@@ -162,9 +167,10 @@ export function formatSmartDate(iso: string, now: Date = new Date()): string {
  * sans-suite garde une action de réouverture, gérée à part). */
 export function isTerminalStage(stage: CandidateStage): boolean {
   return (
+    stage === 'recrute' ||
     stage === 'retenu' ||
     stage === 'non_retenu' ||
-    stage === 'refus_auto' ||
+    stage === 'ecarte' ||
     stage === 'sans_suite'
   );
 }

@@ -58,7 +58,7 @@ describe('deriveCandidateJourney — 4 phases', () => {
     expect(j.interview).toBe('na');
     // Un refus envoyé après screening clôt le parcours (plus de « en attente »).
     expect(j.final).toBe('ecarte');
-    expect(journeyCurrentState(j).label).toBe('Écarté définitivement');
+    expect(journeyCurrentState(j).label).toBe('Écarté');
   });
 
   it('entretien réalisé sans décision finale → final en attente', () => {
@@ -78,7 +78,7 @@ describe('deriveCandidateJourney — 4 phases', () => {
     expect(j.interview).toBe('non_realise');
     // Un entretien non réalisé clôt le parcours : jamais « en attente ».
     expect(j.final).toBe('ecarte');
-    expect(journeyCurrentState(j).label).toBe('Écarté définitivement');
+    expect(journeyCurrentState(j).label).toBe('Non retenu');
   });
 
   it('validation définitive → final retenu (et NON dès la validation HITL)', () => {
@@ -116,7 +116,7 @@ describe('repêchage humain d’un refus screening (régression)', () => {
       }),
     );
     expect(j.validation).toBe('retenu_entretien');
-    expect(journeyCurrentState(j).label).toBe('Retenu pour entretien');
+    expect(journeyCurrentState(j).label).toBe('Invité');
     expect(j.humanIntervention).toBe(true);
   });
 
@@ -130,7 +130,7 @@ describe('repêchage humain d’un refus screening (régression)', () => {
       }),
     );
     expect(j.interview).toBe('realise');
-    expect(journeyCurrentState(j).label).toBe('Entretien réalisé');
+    expect(journeyCurrentState(j).label).toBe('Entretien fait');
   });
 
   it('rejeté repêché en HITL refus OFF : ne bascule PAS en écarté définitif', () => {
@@ -180,14 +180,14 @@ describe('journeyCurrentState / journeyFilterKey', () => {
     const enAttente = journeyCurrentState(
       deriveCandidateJourney(input({ isPendingValidation: true })),
     );
-    expect(enAttente.label).toBe('Retenu au screening');
+    expect(enAttente.label).toBe('À valider');
 
     const retenuDef = journeyCurrentState(
       deriveCandidateJourney(
         input({ dashboardStatus: 'interview_done', validationMarked: 'validated' }),
       ),
     );
-    expect(retenuDef.label).toBe('Retenu définitivement');
+    expect(retenuDef.label).toBe('Retenu');
   });
 
   it('clé de filtre regroupe les états', () => {
@@ -229,7 +229,7 @@ describe('classement sans suite (journey)', () => {
     expect(j.final).toBe('sans_suite');
     expect(journeyFilterKey(j)).toBe('sans_suite');
     expect(journeyCurrentState(j)).toEqual({
-      label: 'Classée sans suite',
+      label: 'Sans suite',
       tone: 'neutral',
     });
   });
@@ -293,7 +293,7 @@ describe('toggles HITL figés', () => {
     );
     expect(j.screening).toBe('ecarte');
     expect(j.final).toBe('ecarte');
-    expect(journeyCurrentState(j).label).toBe('Écarté définitivement');
+    expect(journeyCurrentState(j).label).toBe('Écarté');
   });
 
   it('rejeté + HITL refus ON, non envoyé → écarté au screening (provisoire)', () => {
@@ -302,7 +302,7 @@ describe('toggles HITL figés', () => {
     );
     expect(j.final).toBe('na');
     const cur = journeyCurrentState(j);
-    expect(cur.label).toBe('Écarté au screening');
+    expect(cur.label).toBe('Écarté');
     expect(cur.tone).toBe('screening_out');
   });
 
@@ -315,18 +315,18 @@ describe('toggles HITL figés', () => {
       }),
     );
     expect(j.final).toBe('ecarte');
-    expect(journeyCurrentState(j).label).toBe('Écarté définitivement');
+    expect(journeyCurrentState(j).label).toBe('Écarté');
   });
 
   it('retenu + HITL acceptation OFF → retenu pour entretien direct (auto)', () => {
     const j = deriveCandidateJourney(input({ acceptanceGated: false }));
     expect(j.validation).toBe('retenu_entretien');
-    expect(journeyCurrentState(j).label).toBe('Retenu pour entretien');
+    expect(journeyCurrentState(j).label).toBe('Invité');
   });
 
   it('retenu + HITL acceptation ON, rien d’acté → retenu au screening', () => {
     const j = deriveCandidateJourney(input({}));
     expect(j.validation).toBe('en_attente');
-    expect(journeyCurrentState(j).label).toBe('Retenu au screening');
+    expect(journeyCurrentState(j).label).toBe('À valider');
   });
 });

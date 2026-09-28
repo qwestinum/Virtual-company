@@ -47,7 +47,9 @@ export function CandidatureActions({
   if (item.stage === 'sans_suite') {
     return <DismissedBlock item={item} onActed={onActed} />;
   }
-  if (item.stage === 'a_valider') {
+  // Les deux files d'attente (arbitrage, proposition de refus) se tranchent
+  // par la MÊME carte : la partition est une affaire de liste, pas de geste.
+  if (item.stage === 'a_valider' || item.stage === 'proposition_refus') {
     return (
       <div className="flex flex-col gap-2">
         <GrayValidationAction item={item} onActed={onActed} />
@@ -75,7 +77,7 @@ export function CandidatureActions({
             reste visible quand quelque chose l'a été, parce que c'est une
             pièce du dossier. Pour en écrire un, le dossier se rouvre par
             « Corriger la décision ». */}
-        {item.stage === 'retenu' || item.stage === 'non_retenu' ? (
+        {item.stage === 'retenu' || item.stage === 'recrute' || item.stage === 'non_retenu' ? (
           <InterviewReportPanel analysisId={item.id} readOnly />
         ) : null}
         <div>

@@ -16,7 +16,7 @@
  * un écran vide ne fait rougir aucun compilateur.
  */
 
-import type { CandidateStage } from '@/lib/reporting/candidate-stage';
+import { CANDIDATE_STAGES, type CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { BusinessSignalTarget } from '@/types/notifications';
 
 // ── Les cinq entrées de premier niveau ──────────────────────────────────────
@@ -146,16 +146,21 @@ export function interviewsHref(filter: InterviewsFilter = {}): string {
 
 // ── Lecture des paramètres (le sens inverse) ────────────────────────────────
 
-const STAGES: readonly CandidateStage[] = [
-  'a_valider',
-  'invite',
-  'rdv_pris',
-  'entretien_fait',
-  'retenu',
-  'non_retenu',
-  'refus_auto',
-  'sans_suite',
-];
+/**
+ * Anciennes valeurs d'étape encore présentes dans des liens gardés. Traduites,
+ * jamais effacées : la réécriture canonique poserait sinon l'écran NON filtré
+ * sans rien dire. `refus_auto` a été fondu dans « Écarté » (28/09/2026).
+ */
+const STAGE_ALIASES: Readonly<Record<string, CandidateStage>> = {
+  refus_auto: 'ecarte',
+};
+
+/** Étape lue dans l'URL : la liste OFFICIELLE (jamais une copie), puis les alias. */
+function parseStage(raw: string | null): CandidateStage | null {
+  if (raw === null) return null;
+  if ((CANDIDATE_STAGES as readonly string[]).includes(raw)) return raw as CandidateStage;
+  return STAGE_ALIASES[raw] ?? null;
+}
 
 /**
  * Lit les filtres depuis l'URL. Une valeur inconnue est IGNORÉE, jamais une
@@ -169,9 +174,7 @@ export function readCandidaturesFilter(
   const rawParcours = params.get(PARAM.parcours);
   return {
     campaignId: params.get(PARAM.campagne) || null,
-    stage: STAGES.includes(rawStage as CandidateStage)
-      ? (rawStage as CandidateStage)
-      : null,
+    stage: parseStage(rawStage),
     parcours:
       rawParcours === 'invitation' || rawParcours === 'entretien'
         ? rawParcours
@@ -207,7 +210,9 @@ export function signalHref(target: BusinessSignalTarget): string {
   if ('route' in target) return target.route;
   switch (target.tab) {
     case 'validations':
-      return candidaturesHref({ stage: 'a_valider' });
+      // La page de validation montre les DEUX files (à arbitrer, propositions
+      // de refus) : le recruteur voit tout, il ne devine pas (28/09/2026).
+      return '/candidatures/validation';
     case 'candidatures':
       return candidaturesHref({ stage: target.stage });
     case 'entretiens':

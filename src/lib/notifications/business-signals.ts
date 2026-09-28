@@ -675,12 +675,10 @@ async function computeQueueMismatches(nowMs: number): Promise<BusinessSignal | n
       awaitingWithoutRow > 0
         ? { kind: 'requeue_orphans' as const, count: awaitingWithoutRow }
         : undefined,
-    target: {
-      route:
-        awaitingWithoutRow > 0
-          ? '/candidatures?statut=a_valider'
-          : '/candidatures/validation',
-    },
+    // Les deux écarts peuvent toucher les deux files (arbitrage, propositions
+    // de refus) : la page de validation les montre ensemble — pas la puce la
+    // plus grosse (arbitrage du 28/09/2026).
+    target: { route: '/candidatures/validation' },
   };
 }
 

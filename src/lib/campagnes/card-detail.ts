@@ -21,6 +21,7 @@
  */
 
 import {
+  CANDIDATE_STAGE_DEFINITIONS,
   CANDIDATE_STAGE_LABELS,
   type CandidateStage,
   type CandidateStageCounts,
@@ -38,62 +39,88 @@ export type CardCounter = {
   label: string;
   count: number;
   href: string;
+  /** Définition au survol (lexique). */
+  definition: string;
   /** Icône et couleur de la tuile — celles de la carte existante. */
   icon: string;
   color: string;
 };
 
 /**
- * Les étapes montrées sur la carte, dans l'ordre du pipeline.
+ * Les étapes de la carte : TOUTES, en deux rangées (arbitrage du 28/09/2026 —
+ * « un tableau dont les chiffres se recoupent est un tableau qu'on croit » :
+ * les dix font « Reçues »). Rangée « en cours », puis rangée « issues ».
  *
- * ⚠️ TABLEAU, pas un Record : une étape ajoutée au domaine n'apparaît pas ici
- * sans qu'on l'y mette, et c'est voulu — la carte est un résumé, pas le ruban.
- * Les terminaux (non retenu, sans suite) et « Entretien fait » restent à un
- * clic, dans Candidatures.
+ * ⚠️ TABLEAUX, pas un Record : un test vérifie que les deux rangées couvrent
+ * exactement `CANDIDATE_STAGES` — une étape ajoutée au domaine sans place ici
+ * ferait mentir la somme.
  */
-const ETAPES_CARTE: CandidateStage[] = [
+export const CARD_ROW_EN_COURS: readonly CandidateStage[] = [
   'a_valider',
+  'proposition_refus',
   'invite',
   'rdv_pris',
+  'entretien_fait',
+];
+export const CARD_ROW_ISSUES: readonly CandidateStage[] = [
   'retenu',
+  'recrute',
+  'ecarte',
+  'non_retenu',
+  'sans_suite',
 ];
 
 /** Icône + couleur par étape — les jetons de la carte existante. */
-const APPARENCE: Record<string, { icon: string; color: string }> = {
+const APPARENCE: Record<'recues' | CandidateStage, { icon: string; color: string }> = {
   recues: { icon: '📄', color: 'var(--dash-blue)' },
   a_valider: { icon: '⏳', color: 'var(--dash-yellow)' },
+  proposition_refus: { icon: '🗂️', color: 'var(--dash-orange)' },
   invite: { icon: '✉️', color: 'var(--dash-purple)' },
   rdv_pris: { icon: '📅', color: 'var(--dash-teal)' },
+  entretien_fait: { icon: '🤝', color: 'var(--dash-blue)' },
   retenu: { icon: '✅', color: 'var(--dash-green)' },
+  recrute: { icon: '🏁', color: 'var(--dash-green)' },
+  ecarte: { icon: '✖️', color: 'var(--dash-red)' },
+  non_retenu: { icon: '⛔', color: 'var(--dash-red)' },
+  sans_suite: { icon: '📁', color: 'var(--dash-text-secondary)' },
+};
+
+export type CardCounterRows = {
+  recues: CardCounter;
+  enCours: CardCounter[];
+  issues: CardCounter[];
 };
 
 export function buildCardCounters(
   campaignId: string,
   received: number,
   counts: CandidateStageCounts,
-): CardCounter[] {
-  return [
-    {
+): CardCounterRows {
+  const tile = (stage: CandidateStage): CardCounter => ({
+    key: stage,
+    label: CANDIDATE_STAGE_LABELS[stage],
+    definition: CANDIDATE_STAGE_DEFINITIONS[stage],
+    count: counts[stage],
+    // ⚠️ TOUS vers Candidatures, SANS EXCEPTION : chaque puce existe là, et un
+    // compteur qui changerait d'écran selon l'étape obligerait à deviner où
+    // l'on va. Entretiens se rejoint par « ce qui attend ».
+    href: candidaturesHref({ campaignId, stage }),
+    ...APPARENCE[stage],
+  });
+  return {
+    recues: {
       key: 'recues',
       // « Reçues » n'est pas une étape : c'est le total, et il reste
       // cliquable — vers la campagne, tous statuts confondus.
       label: 'Reçues',
+      definition: 'Toutes les candidatures de la campagne.',
       count: received,
       href: candidaturesHref({ campaignId }),
-      ...APPARENCE.recues!,
+      ...APPARENCE.recues,
     },
-    ...ETAPES_CARTE.map((stage) => ({
-      key: stage,
-      label: CANDIDATE_STAGE_LABELS[stage],
-      count: counts[stage],
-      // ⚠️ TOUS vers Candidatures, SANS EXCEPTION — « Invité » et « RDV pris »
-      // compris : leurs puces existent là, et un compteur qui changerait
-      // d'écran selon l'étape obligerait à deviner où l'on va. Entretiens se
-      // rejoint par « ce qui attend », jamais par un compteur.
-      href: candidaturesHref({ campaignId, stage }),
-      ...APPARENCE[stage]!,
-    })),
-  ];
+    enCours: CARD_ROW_EN_COURS.map(tile),
+    issues: CARD_ROW_ISSUES.map(tile),
+  };
 }
 
 // ── ② Ce qui attend ─────────────────────────────────────────────────────────
@@ -101,7 +128,8 @@ export function buildCardCounters(
 export type CardAwaiting = { key: string; text: string; href: string };
 
 /**
- * DEUX LIGNES MAXIMUM, et seulement ce qui attend vraiment.
+ * Seulement ce qui attend vraiment — trois lignes au plus : arbitrer, passer
+ * les propositions de refus en revue, confirmer les entretiens passés.
  *
  * Une carte qui énumère tout ce qui pourrait se faire ne dit plus ce qui doit
  * se faire. Une campagne sans rien en attente n'affiche pas ce bloc.
@@ -109,15 +137,20 @@ export type CardAwaiting = { key: string; text: string; href: string };
 export function buildCardAwaiting(
   campaignId: string,
   input: {
+    /** Zone grise en attente d'arbitrage. */
     aValider: number;
-    /** Ancienneté du plus ancien dossier en attente, en jours. */
+    /** Ancienneté du plus ancien dossier à arbitrer, en jours. */
     aValiderOldestDays: number | null;
+    /** Propositions de refus en attente de la revue groupée. */
+    propositionsRefus: number;
     /** Entretiens passés que personne n'a confirmés. */
     entretiensAConfirmer: number;
   },
 ): CardAwaiting[] {
   const lignes: CardAwaiting[] = [];
 
+  // Deux files, deux lignes (arbitrage du 28/09/2026) : l'une attend un
+  // arbitrage, l'autre une revue groupée — même découpage qu'« Aujourd'hui ».
   if (input.aValider > 0) {
     const age =
       input.aValiderOldestDays !== null && input.aValiderOldestDays > 0
@@ -125,8 +158,17 @@ export function buildCardAwaiting(
         : '';
     lignes.push({
       key: 'a_valider',
-      text: `${input.aValider} candidature${input.aValider > 1 ? 's' : ''} à valider${age}`,
+      text: `${input.aValider} à arbitrer${age}`,
       href: candidaturesHref({ campaignId, stage: 'a_valider' }),
+    });
+  }
+
+  if (input.propositionsRefus > 0) {
+    const n = input.propositionsRefus;
+    lignes.push({
+      key: 'proposition_refus',
+      text: `${n} proposition${n > 1 ? 's' : ''} de refus à passer en revue`,
+      href: candidaturesHref({ campaignId, stage: 'proposition_refus' }),
     });
   }
 
@@ -139,7 +181,7 @@ export function buildCardAwaiting(
     });
   }
 
-  return lignes.slice(0, 2);
+  return lignes;
 }
 
 // ── ③ Trouver des candidats ─────────────────────────────────────────────────

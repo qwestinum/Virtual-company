@@ -22,12 +22,29 @@ import { CANDIDATE_STAGE_LABELS } from '@/lib/reporting/candidate-stage';
 
 const ROOT = resolve(process.cwd(), 'src');
 
-/** Termes BANNIS de tout ce qui s'affiche, et ce par quoi on les remplace. */
-const BANNIS: { terme: string; remplacé_par: string }[] = [
+/**
+ * Termes BANNIS de tout ce qui s'affiche, et ce par quoi on les remplace.
+ * `terme` est cherché comme MOT (pas de lettre juste après) : « refus auto »
+ * est banni, « refus automatiques antérieurs au 18/08 » (la définition
+ * d'« Écarté », rédigée par le donneur d'ordre) ne l'est pas.
+ */
+const BANNIS: { terme: string; remplacé_par: string; sauf?: string[] }[] = [
   { terme: 'Validation suspendue', remplacé_par: '« À valider » (Candidatures)' },
   { terme: 'validation suspendue', remplacé_par: '« à valider »' },
-  { terme: 'Refus auto', remplacé_par: '« Refusé (historique) » ou « Proposé au refus »' },
+  { terme: 'Refus auto', remplacé_par: '« Écarté » ou « Proposé au refus »' },
   { terme: 'refus auto', remplacé_par: '« proposé au refus »' },
+  // Lexique du 28/09/2026 : un libellé = un ou deux mots, jamais un
+  // complément ; le moment se dit par le MOT (Écarté / Non retenu).
+  {
+    terme: 'Refusé',
+    remplacé_par: '« Écarté »',
+    // Une ANNONCE refusée par l'Apec : ce n'est pas un statut de candidat.
+    sauf: ['src/lib/jobboards/adep/service.ts'],
+  },
+  { terme: 'Écarté sur CV', remplacé_par: '« Écarté » (le moment est dans le mot)' },
+  { terme: 'Non retenu après entretien', remplacé_par: '« Non retenu »' },
+  { terme: 'Retenu définitivement', remplacé_par: '« Retenu »' },
+  { terme: 'au screening', remplacé_par: '« Écarté » / « À valider »' },
   { terme: 'Taux GO', remplacé_par: '« Taux de retenus »' },
   { terme: 'GO définitif', remplacé_par: '« Retenu »' },
   { terme: 'Shortlistés', remplacé_par: '« Invité » ou « Passés par l’invitation »' },
@@ -62,10 +79,11 @@ describe('lexique unique — aucun résidu à l’écran', () => {
     expect(FICHIERS.length).toBeGreaterThan(300);
   });
 
-  it.each(BANNIS)('« $terme » n’apparaît plus nulle part', ({ terme, remplacé_par }) => {
-    const coupables = FICHIERS.filter((f) => f.code.includes(terme)).map(
-      (f) => f.chemin,
-    );
+  it.each(BANNIS)('« $terme » n’apparaît plus nulle part', ({ terme, remplacé_par, sauf }) => {
+    const mot = new RegExp(`${terme}(?![a-zà-ÿ])`);
+    const coupables = FICHIERS.filter(
+      (f) => mot.test(f.code) && !(sauf ?? []).includes(f.chemin),
+    ).map((f) => f.chemin);
     expect(
       coupables,
       `« ${terme} » est encore affiché. Employer ${remplacé_par}.\n  ${coupables.join('\n  ')}`,
@@ -84,16 +102,24 @@ describe('lexique unique — aucun résidu à l’écran', () => {
 });
 
 describe('les étapes portent les mots du lexique', () => {
-  it('libellés exacts, dans l’ordre du pipeline puis des terminaux', () => {
+  it('libellés exacts — les dix du lexique (28/09/2026)', () => {
     expect(CANDIDATE_STAGE_LABELS).toEqual({
       a_valider: 'À valider',
+      proposition_refus: 'Propositions de refus',
       invite: 'Invité',
       rdv_pris: 'RDV pris',
       entretien_fait: 'Entretien fait',
       retenu: 'Retenu',
+      recrute: 'Recruté',
+      ecarte: 'Écarté',
       non_retenu: 'Non retenu',
       sans_suite: 'Sans suite',
-      refus_auto: 'Refusé (historique)',
     });
+  });
+
+  it('la sonde du mot : « Refusé » est attrapé, « refus automatiques » ne l’est pas', () => {
+    expect(/Refusé(?![a-zà-ÿ])/.test("label: 'Refusé'")).toBe(true);
+    expect(/refus auto(?![a-zà-ÿ])/.test('refus automatiques antérieurs')).toBe(false);
+    expect(/refus auto(?![a-zà-ÿ])/.test("'Refus auto'".toLowerCase())).toBe(true);
   });
 });

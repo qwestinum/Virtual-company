@@ -310,7 +310,7 @@ describe('S16.2 — corriger un refus déjà envoyé', () => {
     const after = await counters();
     // Les deux candidatures sont maintenant « Invité ».
     expect(after.invite).toBe(2);
-    expect(after.non_retenu).toBe(0);
+    expect(after.ecarte).toBe(0);
   });
 });
 
@@ -318,15 +318,15 @@ describe('S16.3 — corriger deux fois, et refuser l’impossible', () => {
   it('dernier-gagne, sans état bâtard', async () => {
     const back = await correct(refusedAnalysisId, 'screening_rejected');
     expect(back.status).toBe(200);
-    expect(back.json.nextStage).toBe('non_retenu');
-    expect((await counters()).non_retenu).toBe(1);
+    expect(back.json.nextStage).toBe('ecarte');
+    expect((await counters()).ecarte).toBe(1);
 
     const again = await correct(refusedAnalysisId, 'screening_accepted');
     expect(again.status).toBe(200);
     expect(again.json.nextStage).toBe('invite');
     const after = await counters();
     expect(after.invite).toBe(2);
-    expect(after.non_retenu).toBe(0);
+    expect(after.ecarte).toBe(0);
 
     // Trois corrections tracées sur ce dossier, aucune n'en écrase une autre.
     expect((await correctionEntries(refusedUid)).length).toBe(3);

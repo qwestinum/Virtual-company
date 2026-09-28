@@ -33,6 +33,7 @@ import {
 import { listAllCandidateAnalyses } from '@/lib/db/repos/candidate-analyses';
 import {
   emptyStageCounts,
+  OPEN_CANDIDATE_STAGES,
   type CandidateStage,
   type CandidateStageCounts,
 } from '@/lib/reporting/candidate-stage';
@@ -41,14 +42,8 @@ import type { DismissalReason } from '@/types/dismissal';
 import type { HumanDecider } from '@/types/hitl';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
-/** Étapes OUVERTES (classables sans suite). `retenu` est terminal (le
- * recruté) ; les terminaux négatifs et `sans_suite` le sont aussi. */
-export const OPEN_STAGES: CandidateStage[] = [
-  'a_valider',
-  'invite',
-  'rdv_pris',
-  'entretien_fait',
-];
+/** Étapes OUVERTES (classables sans suite) — source unique dans le domaine. */
+export const OPEN_STAGES: readonly CandidateStage[] = OPEN_CANDIDATE_STAGES;
 
 export type OpenCandidature = {
   analysis: CandidateAnalysisSummary;

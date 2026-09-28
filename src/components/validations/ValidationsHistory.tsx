@@ -45,7 +45,7 @@ export function ValidationsHistory({
                   : 'bg-rose-100 text-rose-700'
               }`}
             >
-              {v.decision === 'accept' ? 'Acceptée' : 'Refusée'}
+              {v.decision === 'accept' ? 'Acceptée' : 'Écartée'}
             </span>
           </div>
         ))

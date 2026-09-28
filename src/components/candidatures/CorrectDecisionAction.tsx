@@ -25,7 +25,7 @@ import { CorrectDecisionDialog } from './CorrectDecisionDialog';
  * le dialog affiche « aucune décision à corriger »).
  */
 export function hasCorrectableDecision(stage: CandidateStage): boolean {
-  return stage !== 'a_valider';
+  return stage !== 'a_valider' && stage !== 'proposition_refus';
 }
 
 export function CorrectDecisionAction({

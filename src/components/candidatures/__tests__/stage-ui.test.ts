@@ -117,8 +117,8 @@ const contrastRatio = (fg: string, bg: string): number => {
 const ALL_STAGES = Object.keys(CANDIDATE_STAGE_LABELS) as CandidateStage[];
 
 describe('stagePillStyle — contraste AA', () => {
-  it('couvre les 8 étapes (aucune ne tombe dans un trou de la palette)', () => {
-    expect(ALL_STAGES).toHaveLength(8);
+  it('couvre les 10 étapes (aucune ne tombe dans un trou de la palette)', () => {
+    expect(ALL_STAGES).toHaveLength(10);
     for (const stage of ALL_STAGES) {
       const { color, background } = stagePillStyle(stage);
       expect(resoudre(color)).toMatch(/^#[0-9a-f]{6}$/i);
@@ -163,7 +163,7 @@ describe('stageStepMarks — repère non chromatique', () => {
 
   it('les terminaux hors pipeline ne portent aucun repère', () => {
     expect(stageStepMarks('non_retenu')).toEqual([]);
-    expect(stageStepMarks('refus_auto')).toEqual([]);
+    expect(stageStepMarks('ecarte')).toEqual([]);
     expect(stageStepMarks('sans_suite')).toEqual([]);
   });
 });

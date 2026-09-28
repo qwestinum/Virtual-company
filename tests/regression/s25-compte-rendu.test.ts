@@ -339,7 +339,7 @@ describe('S25.7 — le dossier raconte la décision', () => {
     expect(ctx.decidedBy).toBe(SARAH.email);
   });
 
-  it('la frise porte le commentaire sur « Retenu définitivement »', async () => {
+  it('la frise porte le commentaire sur « Retenu »', async () => {
     const res = await callWithId(getAudit, await analysisIdOf(motivatedUid));
     expect(res.status).toBe(200);
     const timeline = res.json.timeline as { key: string; detail: string | null }[];

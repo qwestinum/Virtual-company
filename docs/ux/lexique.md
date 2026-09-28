@@ -71,12 +71,37 @@ fonctionner et mènent d'elles-mêmes au bon écran.
 
 ## 4. Les mots des états d'une candidature
 
-Dans l'ordre du ruban : **À valider · Invité · RDV pris · Entretien fait · Retenu · Non
-retenu · Refusé (historique) · Sans suite**.
+Arrêtés le 28/09/2026 (chantier *feedback-candidat*). **Un libellé à l'écran = un ou deux
+mots, jamais un complément** ; la définition longue va dans l'**infobulle**. Le **mot**
+distingue le moment : *Invité* / *Écarté* sur CV, *Retenu* / *Non retenu* après
+entretien. Dans l'ordre du ruban :
+
+| Libellé (écran) | Définition (infobulle) |
+|---|---|
+| À valider | en zone d'arbitrage, attend une décision humaine |
+| Propositions de refus | sous les critères, en attente de revue groupée |
+| Invité | accepté sur CV (par les règles ou par un humain), invitation envoyée |
+| RDV pris | créneau réservé |
+| Entretien fait | entretien confirmé, verdict attendu |
+| Retenu | retenu par le cabinet après entretien, présenté au client |
+| Recruté | désigné à la clôture d'une campagne conclue |
+| Écarté | refusé sur CV par le recruteur (proposition validée ou arbitrage) ; inclut les refus automatiques antérieurs au 18/08 |
+| Non retenu | verdict négatif du cabinet après entretien, ou retenu non sélectionné à la clôture |
+| Sans suite | aucune décision prise (invitation sans réponse, clôture) |
+
+**« Retenu » a une définition limitée** : retenu par le cabinet à l'issue de l'entretien,
+présenté au client. C'est la fin de ce qu'ORQA orchestre ; la décision du client final est
+hors de l'outil — jamais « retenu définitivement ». **« Recruté »** est une désignation
+HUMAINE explicite à la clôture, jamais déduite.
 
 « Sans suite » est **terminal et orthogonal au refus** : une candidature classée sans
 suite n'a pas été refusée, elle n'a pas été traitée (campagne clôturée, poste pourvu,
 candidat retiré…). Le ton reste neutre partout — jamais « refus ».
+
+**Interdits dans tout rendu** (test négatif `src/__tests__/lexique.test.ts`) :
+« Refusé » (→ Écarté), « Écarté sur CV », « Non retenu après entretien »,
+« Retenu définitivement », « … au screening ». La somme des dix compteurs fait
+« Reçues », sur chaque campagne (régression S6).
 
 ---
 

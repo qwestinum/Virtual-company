@@ -14,6 +14,7 @@
 
 import type { CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { DismissalReason } from '@/types/dismissal';
+import type { DecidedBy } from '@/types/hitl';
 import type {
   CorrectionOption,
   CorrectionTarget,
@@ -31,6 +32,9 @@ export type CurrentDecisionInput = {
   interviewEffect: InterviewMarkEffect;
   validationEffect: ValidationMarkEffect;
   dismissalReason: DismissalReason | null;
+  /** Acteur de la décision de tri (colonne) — sépare l'écarté par un humain
+   * de l'ancien refus automatique, fondus dans la même étape. */
+  decidedBy: DecidedBy | null;
 };
 
 /**
@@ -58,13 +62,18 @@ export function resolveCurrentDecision(
     case 'invite':
     case 'rdv_pris':
       return { kind: 'screening_decision', value: 'accepted', auto: false };
-    case 'non_retenu':
-      return { kind: 'screening_decision', value: 'rejected', auto: false };
-    case 'refus_auto':
-      // Ancien régime : le refus est parti tout seul. Requalifiable comme les
-      // autres — c'est même le cas qui en a le plus besoin.
-      return { kind: 'screening_decision', value: 'rejected', auto: true };
+    case 'ecarte':
+      // Refus sur CV. `decidedBy !== 'user'` : l'ancien régime, où le refus est
+      // parti tout seul — requalifiable comme les autres, c'est même le cas
+      // qui en a le plus besoin.
+      return { kind: 'screening_decision', value: 'rejected', auto: input.decidedBy !== 'user' };
     case 'a_valider':
+    case 'proposition_refus':
+      return null;
+    // `non_retenu` naît d'un marqueur, traité plus haut. `recrute` : sa
+    // correction (retirer la désignation) arrive avec le lot 4.
+    case 'non_retenu':
+    case 'recrute':
       return null;
     // Traités plus haut par leurs marqueurs ; sans marqueur lisible, il n'y a
     // pas de décision à corriger (on ne devine pas). `sans_suite` est déjà
@@ -204,7 +213,7 @@ export const CORRECTION_TARGET_STATE_LABELS: Record<CorrectionTarget, string> = 
   verdict_rejected: 'Non retenu',
   verdict_cleared: 'Verdict final retiré',
   screening_accepted: 'Accepté — invité',
-  screening_rejected: 'Non retenu',
+  screening_rejected: 'Écarté',
   dismissal_reopen: 'Candidature rouverte',
 };
 
@@ -222,8 +231,8 @@ export function currentDecisionLabel(current: CurrentDecision): string {
     case 'screening_decision':
       if (current.value === 'accepted') return 'Candidature acceptée';
       return current.auto
-        ? 'Refusé (historique)'
-        : 'Candidature refusée';
+        ? 'Écarté (refus automatique antérieur au 18/08)'
+        : 'Écarté';
     case 'dismissal':
       return 'Classée sans suite';
     default:

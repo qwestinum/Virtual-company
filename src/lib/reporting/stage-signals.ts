@@ -8,7 +8,7 @@
  *
  *   - gris en attente  → `pending_validations` (status='pending'), table complète
  *   - RDV pris         → `interview_briefs` (status='scheduled'), par email
- *   - entretien/valid.  → journal, MAIS seulement 2 actions BAS VOLUME, paginées
+ *   - entretien/valid./recruté → journal, MAIS seulement 3 actions BAS VOLUME, paginées
  *                          en entier (`listJournalEntriesByActions`, sans cap 500)
  *
  * C'est ce qui garantit que le ruban de compteurs reflète TOUS les candidats du
@@ -16,12 +16,16 @@
  */
 
 import {
+  emptyHiredState,
   emptyInterviewState,
   emptyValidationState,
+  foldHiredMark,
   foldInterviewMark,
   foldValidationMark,
+  HIRED_MARKER_ACTION,
   INTERVIEW_MARKER_ACTION,
   VALIDATION_MARKER_ACTION,
+  type HiredMarkEffect,
   type InterviewMarkEffect,
   type MarkerState,
   type ValidationMarkEffect,
@@ -53,6 +57,7 @@ const VALIDATION_ACTION = VALIDATION_MARKER_ACTION;
 export const STAGE_MARKER_ACTIONS: readonly string[] = [
   INTERVIEW_ACTION,
   VALIDATION_ACTION,
+  HIRED_MARKER_ACTION,
 ];
 
 /**
@@ -83,6 +88,8 @@ export type StageSignals = {
   interviewMarkedAt: Map<string, string>;
   /** uid → dernier marqueur validation finale (journal, dernier-gagne). */
   validationMarks: Map<string, 'validated' | 'rejected'>;
+  /** uids désignés recrutés (journal, dernier-gagne, gomme comprise). */
+  hiredUids: Set<string>;
 };
 
 /** Périmètre du ruban / des compteurs : campagne(s) + période (JAMAIS la recherche). */
@@ -113,7 +120,7 @@ export async function loadStageSignals(
     ),
     (
       preloaded.journal ??
-      listJournalEntriesByActions([INTERVIEW_ACTION, VALIDATION_ACTION], {
+      listJournalEntriesByActions([...STAGE_MARKER_ACTIONS], {
         campaignId: perimeter.campaignId,
       })
     ).catch(() => []),
@@ -132,6 +139,7 @@ export async function loadStageSignals(
   // reprenait la main : la correction n'aurait rien changé à l'écran.
   const interviewStates = new Map<string, MarkerState<InterviewMarkEffect>>();
   const validationStates = new Map<string, MarkerState<ValidationMarkEffect>>();
+  const hiredStates = new Map<string, MarkerState<HiredMarkEffect>>();
   for (const entry of markers) {
     const uid = payloadUid(entry.payload);
     if (!uid) continue;
@@ -153,6 +161,11 @@ export async function loadStageSignals(
           entry.createdAt,
         ),
       );
+    } else if (entry.action === HIRED_MARKER_ACTION) {
+      hiredStates.set(
+        uid,
+        foldHiredMark(hiredStates.get(uid) ?? emptyHiredState(), entry.payload, entry.createdAt),
+      );
     }
   }
 
@@ -171,12 +184,18 @@ export async function loadStageSignals(
     if (state.effect !== null) validationMarks.set(uid, state.effect);
   }
 
+  const hiredUids = new Set<string>();
+  for (const [uid, state] of hiredStates) {
+    if (state.effect === 'hired') hiredUids.add(uid);
+  }
+
   return {
     pendingUids,
     scheduledUids,
     interviewMarks,
     interviewMarkedAt,
     validationMarks,
+    hiredUids,
   };
 }
 
@@ -195,6 +214,7 @@ export function stageFor(
     hasScheduledInterview: signals.scheduledUids.has(c.uid),
     interviewMarked: signals.interviewMarks.get(c.uid) ?? null,
     validationMarked: signals.validationMarks.get(c.uid) ?? null,
+    hiredMarked: signals.hiredUids.has(c.uid),
     // Classement sans suite — colonne dénormalisée, pas un signal chargé :
     // domine tout dans la dérivation (terminal).
     isDismissed: c.dismissedAt !== null,

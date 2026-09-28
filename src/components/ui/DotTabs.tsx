@@ -44,6 +44,11 @@ export type DotTab<K extends string> = {
   alert?: number;
   /** Ce que la précision veut dire. Sans lui, le nombre ne dit rien. */
   alertLabel?: string;
+  /**
+   * Définition au survol. Le libellé reste d'un ou deux mots ; ce qui le
+   * précise va ici, jamais dans le libellé (lexique).
+   */
+  hint?: string;
 };
 
 export function DotTabs<K extends string>({
@@ -82,6 +87,7 @@ export function DotTabs<K extends string>({
             role="tab"
             data-dot-tab={tab.key}
             aria-selected={active}
+            title={tab.hint}
             onClick={() => onChange(tab.key)}
             className="font-body"
             style={{

@@ -60,18 +60,21 @@ export function CampaignStatTile({
   color,
   value,
   label,
+  hint,
   href,
 }: {
   icon: string;
   color: string;
   value: number;
   label: string;
+  /** Définition au survol (lexique) — le libellé reste court. */
+  hint?: string;
   href: string;
 }) {
   return (
     <Link
       href={href}
-      title={`Voir les candidatures — ${label}`}
+      title={hint ? `${label} — ${hint}` : `Voir les candidatures — ${label}`}
       aria-label={`Voir les candidatures de la campagne — ${label}`}
       className="campaign-statbox block"
       style={{ ...BASE, border: '1px solid transparent', textDecoration: 'none' }}

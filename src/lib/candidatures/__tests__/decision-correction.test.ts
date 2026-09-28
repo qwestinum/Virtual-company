@@ -49,6 +49,7 @@ vi.mock('@/lib/reporting/stage-signals', () => ({
     interviewMarks: new Map(),
     interviewMarkedAt: new Map(),
     validationMarks: new Map(),
+    hiredUids: new Set(),
   })),
   stageFor: () => stageFor(),
 }));

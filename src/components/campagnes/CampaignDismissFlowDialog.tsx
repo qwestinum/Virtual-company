@@ -29,7 +29,7 @@ import { useEffect, useState } from 'react';
 
 import {
   CANDIDATE_STAGE_LABELS,
-  CANDIDATE_STAGE_RIBBON_ORDER,
+  OPEN_CANDIDATE_STAGES,
   type CandidateStageCounts,
 } from '@/lib/reporting/candidate-stage';
 import { useApecUnpublish } from '@/lib/jobboards/adep/use-apec-unpublish';
@@ -129,9 +129,9 @@ export function CampaignDismissFlowDialog({
     }
   }
 
-  const openStages = CANDIDATE_STAGE_RIBBON_ORDER.filter(
-    (s) => (recap?.counts[s] ?? 0) > 0 && s !== 'retenu' && s !== 'non_retenu' && s !== 'refus_auto' && s !== 'sans_suite',
-  );
+  // Les étapes OUVERTES, source unique du domaine — jamais une liste
+  // d'exclusions tenue ici (elle aurait compté un recruté comme « ouvert »).
+  const openStages = OPEN_CANDIDATE_STAGES.filter((s) => (recap?.counts[s] ?? 0) > 0);
   const recapText =
     recap && recap.total > 0
       ? openStages
