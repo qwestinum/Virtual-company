@@ -64,7 +64,7 @@ export function ReferentFilterBar({
   const showReferent = options.length > 1;
   // Rien à filtrer (personne n'a de référent, pas d'état) : la barre se
   // retire plutôt que d'occuper la page pour rien.
-  if (!showReferent && !state) return null;
+  if (!showReferent && !state && !result) return null;
 
   const selectedKey = referentSelectionKey(selection);
   const isMine =

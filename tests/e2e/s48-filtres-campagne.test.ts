@@ -2,9 +2,10 @@
  * S48 — FILTRES DE CAMPAGNE : UNE LIGNE, CUMULATIFS, LISIBLES
  * (fix/vivier-replanif-filtres, point 3).
  *
- *   1. Sur Campagnes, Candidatures, Entretiens et Aujourd'hui, le périmètre
- *      (référent) et l'ÉTAT de campagne sont côte à côte, sur UNE rangée, dans
- *      cet ordre, suivis du libellé de ce qui est filtré.
+ *   1. Sur Candidatures, Entretiens et Aujourd'hui, le périmètre (référent) et
+ *      l'ÉTAT de campagne sont côte à côte, sur UNE rangée, dans cet ordre,
+ *      suivis du libellé de ce qui est filtré. Sur Campagnes, l'état garde ses
+ *      PUCES À POINT (retour du donneur d'ordre, 28/09) — même état partagé.
  *   2. Choisis sur un écran, ils sont RETROUVÉS sur les autres (un seul état,
  *      mémorisé par recruteur) — en naviguant, pas en rechargeant.
  *   3. Le libellé dit la combinaison (« … · suspendues (n …) »).
@@ -37,10 +38,21 @@ afterAll(async () => {
   if (recruiter) await deleteTestRecruiter(recruiter);
 });
 
+const PUCES = '[role="tablist"][aria-label="Filtrer les campagnes par statut"]';
+
+/** L'état affiché : la puce active sur Campagnes, le sélecteur ailleurs. */
+async function etatAffiche(chemin: string): Promise<string | null> {
+  if (chemin === '/campagnes') {
+    return page.$eval(`${PUCES} [aria-selected="true"]`, (e) => e.getAttribute('data-dot-tab'));
+  }
+  return page.$eval(ETAT, (e) => (e as HTMLSelectElement).value);
+}
+
 async function ouvrir(chemin: string): Promise<void> {
   await page.goto(`${BASE_URL}${chemin}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector(ETAT, { timeout: 90_000 });
-  await attendreHydratation(page, ETAT);
+  const control = chemin === '/campagnes' ? PUCES : ETAT;
+  await page.waitForSelector(control, { timeout: 90_000 });
+  await attendreHydratation(page, control);
   // Les référents arrivent APRÈS l'état (contexte chargé en différé).
   await page
     .waitForFunction(
@@ -68,27 +80,38 @@ describe('S48 — périmètre et état : une barre, un état partagé', () => {
       .toMatch(/· suspendues \(\d+ /);
   }, 300_000);
 
-  it.each(ECRANS)('S48.2 — %s : les deux filtres retrouvés, sur UNE ligne, référent puis état', async (chemin) => {
+  it.each(ECRANS)('S48.2 — %s : les deux filtres retrouvés', async (chemin) => {
     await ouvrir(chemin);
-    await expect.poll(() => page.$eval(ETAT, (e) => (e as HTMLSelectElement).value), { timeout: 10_000 }).toBe('paused');
+    await expect.poll(() => etatAffiche(chemin), { timeout: 10_000 }).toBe('paused');
     if ((await page.locator(REFERENT).count()) > 0) {
       expect(await page.$eval(REFERENT, (e) => (e as HTMLSelectElement).value)).toBe(referentChoisi);
-      const [r, s] = await Promise.all([
-        page.locator(REFERENT).boundingBox(),
-        page.locator(ETAT).boundingBox(),
-      ]);
-      // Même rangée, et l'état APRÈS le périmètre.
-      expect(Math.abs(r!.y - s!.y), `${chemin} : deux rangées`).toBeLessThan(4);
-      expect(s!.x).toBeGreaterThan(r!.x);
+      if (chemin !== '/campagnes') {
+        const [r, s] = await Promise.all([
+          page.locator(REFERENT).boundingBox(),
+          page.locator(ETAT).boundingBox(),
+        ]);
+        // Même rangée, et l'état APRÈS le périmètre.
+        expect(Math.abs(r!.y - s!.y), `${chemin} : deux rangées`).toBeLessThan(4);
+        expect(s!.x).toBeGreaterThan(r!.x);
+      }
     }
     expect(await page.textContent('[data-role="filter-result"]')).toMatch(/· suspendues \(/);
   }, 300_000);
 
-  it('S48.3 — « Réinitialiser » rend « Tous » et « Actives », partout', async () => {
+  it('S48.2 bis — sur Campagnes, la puce « Actives » repose l’état pour tous les écrans', async () => {
     await ouvrir('/campagnes');
+    await page.click(`${PUCES} [data-dot-tab="active"]`);
+    await ouvrir('/candidatures');
+    expect(await etatAffiche('/candidatures')).toBe('active');
+    await page.selectOption(ETAT, 'paused');
+    await expect.poll(() => page.textContent('[data-role="filter-result"]')).toMatch(/· suspendues \(/);
+  }, 300_000);
+
+  it('S48.3 — « Réinitialiser » rend « Tous » et « Actives », partout', async () => {
+    await ouvrir('/candidatures');
     await page.getByRole('button', { name: 'Réinitialiser' }).first().click();
-    await expect.poll(() => page.$eval(ETAT, (e) => (e as HTMLSelectElement).value)).toBe('active');
-    await ouvrir('/entretiens');
-    expect(await page.$eval(ETAT, (e) => (e as HTMLSelectElement).value)).toBe('active');
+    await expect.poll(() => etatAffiche('/candidatures')).toBe('active');
+    await ouvrir('/campagnes');
+    expect(await etatAffiche('/campagnes')).toBe('active');
   }, 300_000);
 });

@@ -149,6 +149,10 @@ export function CampaignsWorkspace({
   // L'état de campagne, PARTAGÉ avec les autres écrans et cumulé au référent.
   const [stateFilter, setStateFilter] = useCampaignStateFilter(currentUserId);
   const toutes = useCampaignsStore(useShallow(selectActiveCampaigns));
+  // L'état RÉELLEMENT affiché : une campagne ouverte par son lien élargit la
+  // liste à « Toutes » jusqu'au premier geste — le libellé doit dire la même
+  // chose que les puces, pas l'état mémorisé.
+  const [shownState, setShownState] = useState(stateFilter);
   const resultLabel = useMemo(
     () =>
       campaignFilterResultLabel({
@@ -157,10 +161,10 @@ export function CampaignsWorkspace({
         referentLabel: referentOptions.find(
           (o) => referentSelectionKey(o.selection) === referentSelectionKey(referentFilter),
         )?.label,
-        state: stateFilter,
-        count: campaignsMatchingFilters(toutes, referents, referentFilter, stateFilter).length,
+        state: shownState,
+        count: campaignsMatchingFilters(toutes, referents, referentFilter, shownState).length,
       }),
-    [referentFilter, currentUserId, referentOptions, stateFilter, toutes, referents],
+    [referentFilter, currentUserId, referentOptions, shownState, toutes, referents],
   );
 
   return (
@@ -177,7 +181,8 @@ export function CampaignsWorkspace({
           onChange={setReferentFilter}
           myCount={myCount}
           currentUserId={currentUserId}
-          state={{ value: stateFilter, onChange: setStateFilter }}
+          // L'état se choisit ici par les PUCES À POINT de la liste (même
+          // état partagé) — pas de second sélecteur pour le même geste.
           result={resultLabel}
         />
       }
@@ -190,6 +195,7 @@ export function CampaignsWorkspace({
           referents={referents}
           stateFilter={stateFilter}
           onStateChange={setStateFilter}
+          onShownStateChange={setShownState}
           onEditCampaign={(campaignId) => setEdition({ campaignId })}
         />
       </>

@@ -14,7 +14,7 @@
  */
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { AddCampaignButton } from './AddCampaignButton';
 import { nouvelleCampagneHref } from '@/lib/navigation/workspace-routes';
@@ -31,7 +31,9 @@ import {
 import {
   CampaignCard,
 } from './CampaignCard';
+import { DotTabs } from '@/components/ui/DotTabs';
 import {
+  CAMPAIGN_STATE_FILTERS,
   CAMPAIGN_STATE_LABELS,
   DEFAULT_CAMPAIGN_STATE,
   matchesCampaignState,
@@ -64,13 +66,25 @@ export type CampaignsListProps = {
   /**
    * État de campagne filtré — posé par la barre de l'écran, PARTAGÉ entre
    * écrans et mémorisé par recruteur (fix/vivier-replanif-filtres, point 3).
-   * La liste n'a plus ses propres puces : une seule barre, cumulative.
+   * Les PUCES À POINT de cet écran le pilotent : même état que la barre des
+   * autres écrans, cumulé avec le référent.
    */
   stateFilter?: CampaignStateFilter;
   onStateChange?: (next: CampaignStateFilter) => void;
+  /** L'état RÉELLEMENT affiché (élargi à « Toutes » par une campagne ciblée). */
+  onShownStateChange?: (shown: CampaignStateFilter) => void;
 };
 
 const PAGE_SIZE = 5;
+
+/** Le point de chaque puce d'état — un repère, pas une décoration. */
+const STATE_DOTS: Record<CampaignStateFilter, string> = {
+  active: 'var(--dash-green)',
+  paused: 'var(--dash-yellow)',
+  draft: 'var(--dash-text-tertiary)',
+  closed: 'var(--dash-red)',
+  all: 'var(--dash-blue)',
+};
 
 export function CampaignsList({
   onEditCampaign,
@@ -79,6 +93,7 @@ export function CampaignsList({
   referents = {},
   stateFilter = DEFAULT_CAMPAIGN_STATE,
   onStateChange = () => undefined,
+  onShownStateChange,
 }: CampaignsListProps) {
   const rawCampaignsBrutes = useCampaignsStore(useShallow(selectActiveCampaigns));
   const rawCampaigns = useMemo(
@@ -112,10 +127,12 @@ export function CampaignsList({
   );
   const [touched, setTouched] = useState(false);
   // La campagne désignée par l'URL élargit l'affichage à « Toutes » jusqu'au
-  // premier geste — et l'écran le DIT (`focusOverride`), sinon la barre
-  // afficherait « Actives » au-dessus d'une liste qui ne l'est pas.
+  // premier geste — les puces le montrent (« Toutes » est la puce active).
   const focusOverride = !touched && focus.showAllStatuses && stateFilter !== 'all';
   const effectiveStatusFilter: CampaignStateFilter = focusOverride ? 'all' : stateFilter;
+  useEffect(() => {
+    onShownStateChange?.(effectiveStatusFilter);
+  }, [effectiveStatusFilter, onShownStateChange]);
   const campaigns = useMemo(
     () => allCampaigns.filter((c) => matchesCampaignState(c.status, effectiveStatusFilter)),
     [allCampaigns, effectiveStatusFilter],
@@ -147,7 +164,15 @@ export function CampaignsList({
     setOpenedId(id);
   };
 
-
+  // Compteurs sur la liste du périmètre (référent) NON filtrée par état :
+  // chaque puce dit le volume qu'elle ouvre.
+  const statusCounts = useMemo(() => {
+    const counts = {} as Record<CampaignStateFilter, number>;
+    for (const f of CAMPAIGN_STATE_FILTERS) {
+      counts[f] = allCampaigns.filter((c) => matchesCampaignState(c.status, f)).length;
+    }
+    return counts;
+  }, [allCampaigns]);
 
   // Indexe les candidats par campagne pour donner des stats live à
   // chaque CampaignCard sans appel API supplémentaire (la route globale
@@ -207,27 +232,18 @@ export function CampaignsList({
             Campagnes
           </h2>
         </div>
+        <DotTabs
+          ariaLabel="Filtrer les campagnes par statut"
+          current={effectiveStatusFilter}
+          onChange={selectStatus}
+          tabs={CAMPAIGN_STATE_FILTERS.map((f) => ({
+            key: f,
+            label: CAMPAIGN_STATE_LABELS[f],
+            dot: STATE_DOTS[f],
+            count: statusCounts[f],
+          }))}
+        />
       </div>
-
-      {focusOverride ? (
-        <p
-          data-role="focus-override"
-          className="font-body"
-          style={{ margin: '-6px 0 12px', fontSize: 12.5, color: 'var(--dash-text-secondary)' }}
-        >
-          Toutes les campagnes sont affichées pour montrer celle que vous avez ouverte.{' '}
-          <button
-            type="button"
-            onClick={() => {
-              setTouched(true);
-              setPage(0);
-            }}
-            style={{ textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit' }}
-          >
-            Revenir au filtre « {CAMPAIGN_STATE_LABELS[stateFilter].toLowerCase()} »
-          </button>
-        </p>
-      ) : null}
 
       {campaigns.length === 0 ? (
         <EmptyState
