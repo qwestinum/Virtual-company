@@ -1057,3 +1057,23 @@ désignation hors du dialogue de clôture.
 **Risque tant que ce n'est pas fait.** Faible en volume (quelques retenus par
 clôture), mais une clôture partielle fait dire « Retenu » à l'écran pour un
 candidat que la trace dit non sélectionné — d'où le signal.
+
+---
+
+## Suites du chantier « message au candidat / Recruté » (28/09/2026)
+
+Spec : `docs/specs/feedback-candidat.md` §9.
+
+- **« N recrutement(s) finalisé(s) » (rapport de campagne)** compte encore les
+  RETENUS (`analysis-datum.ts` : `recruited = j.final === 'retenu'`), alors que le
+  lexique distingue désormais Retenu (présenté au client) et Recruté (désigné à la
+  clôture). Deux options, à trancher par le donneur d'ordre : basculer sur le
+  marqueur `candidate_hired_marked` (⚠️ les campagnes clôturées avant le chantier
+  passeraient en « sans recrutement », rapports déjà envoyés compris), ou renommer
+  la ligne « N retenu(s) présenté(s) ».
+- **Vivier — retenu non recruté mis en avant** sur une campagne similaire : c'est
+  un profil qualifié ; aujourd'hui il n'est ni exclu ni priorisé. Touche au score
+  de présélection (`preselection.ts`), à cadrer.
+- **Cartographie du Manager** (`manager-cartography.ts`) : citer « Propositions
+  de refus », « Recruté », « Informer le candidat » et le dialogue de clôture
+  (libellés EXACTS de l'UI — le test de la cartographie le vérifie).

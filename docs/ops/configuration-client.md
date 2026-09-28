@@ -112,6 +112,50 @@ le compte rendu reste rédigeable à la main. Aucune migration : le champ vit da
 À l'onboarding : **faire lire ce paragraphe au DPO du client, et désactiver
 l'import s'il le refuse**, avant le premier entretien.
 
+### 2.2 Messages au candidat après décision — quatre gabarits
+
+Section « Messages au candidat après décision » de `/settings`, sous les
+gabarits d'entretien (champs `interview_config.feedbackRetainedTemplate`,
+`feedbackNotRetainedTemplate`, `feedbackNoShowTemplate`,
+`feedbackDismissedTemplate` — **aucune migration** : défauts appliqués aux
+configurations existantes, « Rétablir le texte proposé » par gabarit).
+
+| Gabarit | Proposé quand… |
+|---|---|
+| **Retenu** | un verdict positif est posé après l'entretien. « Retenu » = suite du processus (présenté au client), **jamais une promesse d'embauche**. `[prochaine étape]` : saisie au moment de la décision ; vide, une phrase d'attente la remplace. |
+| **Non retenu** | un verdict négatif est posé après l'entretien, ou un retenu n'est **pas sélectionné** à la clôture d'une campagne conclue. |
+| **Absent** | un candidat absent à l'entretien est classé non retenu (le texte ne le remercie pas d'un entretien qui n'a pas eu lieu). |
+| **Sans suite** | une candidature est classée sans suite — individuellement, à la clôture (envoi groupé) ou après un « poste pourvu ». `[motif]` porte la phrase propre à la raison ; jamais de message pour doublon / invalide. **Un seul texte, partout.** |
+
+Variables communes : `[prénom]`, `[intitulé du poste]`, `[organisation]`,
+`[prénom du recruteur]`, `[nom du recruteur]`. Une variable mal orthographiée
+reste entre crochets : l'écran la signale et **l'envoi est refusé**.
+
+Ce qu'il faut savoir avant de relire les textes avec le client :
+- **Le choix est obligatoire, jamais l'envoi** : à chaque décision, le recruteur
+  choisit « Envoyer ce message » (texte pré-rempli, relu, retouchable) ou « Je
+  préviens moi-même » (téléphone, messagerie personnelle, autre — tracé). Le
+  serveur refuse une décision sans ce choix.
+- **Le message est celui du recruteur** : signé de son prénom, réponses dans sa
+  messagerie (`Reply-To` = son adresse). Pas de mention « cet outil ne décide
+  pas » : la décision est humaine.
+- **Le commentaire interne du recruteur n'est jamais repris** — aucune variable
+  n'y donne accès, et un message qui le recopie est refusé.
+- La **mention d'information RGPD** est ajoutée par le code en pied de chaque
+  message (hors gabarit), comme pour les autres mails aux candidats.
+- **Un seul message par type et par candidature** (verrou d'envoi) : un double
+  clic ou un rejeu ne renvoie rien ; une correction de décision n'envoie rien —
+  la fiche dit alors « candidat non informé » et propose « Informer le
+  candidat ».
+
+### 2.3 Vivier — recrutés exclus de la présélection
+
+Réglages → Vivier, champ « Recrutés : exclus pendant (mois) »
+(`vivier_config.hiredCooldownMonths`, **12 par défaut**, 0 = jamais exclu). Un
+candidat désigné **recruté** à la clôture n'est plus proposé par le vivier
+pendant cette durée, comptée depuis la désignation. Un retenu non recruté reste
+proposable. Aucune migration.
+
 ---
 
 ## 3. Boîtes mail IMAP surveillées — **Paramètres → « Boîtes de réception des CV »** (`/settings/mailboxes`) (table `mailboxes`, **N par client**)
@@ -169,6 +213,9 @@ réception · Le suivi · La réservation · Récapitulatif*) ou plus tard par
 - [ ] `CAL_COM_WEBHOOK_SECRET` posé + webhook enregistré sur CHAQUE compte Cal.com recruteur (même URL, même secret — docs/ops/multi-utilisateur.md §4).
 - [ ] `CRON_SECRET` + `CRON_ENABLED=1` posés sur le projet Vercel, exécutions *Cron Jobs* en 200 (§1.1) — plus de cron-job.org.
 - [ ] Compte du client créé dans Supabase Auth (inscription publique désactivée).
+- [ ] **Paramètres → Messages au candidat après décision** : relire les quatre
+      textes AVEC le client (ton, signature, `[prochaine étape]`) — ce sont ses
+      recruteurs qui les signeront (§2.2).
 - [ ] Smoke test : login → *Campagnes* → assistant → activer → déposer un CV →
       la candidature apparaît dans *Candidatures*, et **aucun refus n'est parti
       tout seul** (depuis le 18/08/2026, un refus n'est jamais automatique : il
