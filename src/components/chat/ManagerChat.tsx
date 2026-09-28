@@ -2561,7 +2561,6 @@ export function ManagerChat() {
               {closingEntry ? (
                 <CampaignDismissFlowDialog
                   campaignId={closingEntry.id}
-                  mode="close"
                   onCancel={() => setClosingEntry(null)}
                   onDone={() => {
                     const entry = closingEntry;

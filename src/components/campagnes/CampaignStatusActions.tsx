@@ -162,7 +162,6 @@ export function CampaignStatusActions({
       {closing ? (
         <CampaignDismissFlowDialog
           campaignId={campaignId}
-          mode="close"
           onCancel={() => setClosing(false)}
           onDone={onClosed}
         />

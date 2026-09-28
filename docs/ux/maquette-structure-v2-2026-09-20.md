@@ -308,6 +308,17 @@ déplié change.
 
 ### B.1 D'abord, trancher la sémantique des compteurs *(cf. §0.5)*
 
+> ⚠️ **RENVERSÉ par le donneur d'ordre le 28/09/2026.** Les compteurs d'une
+> campagne sont un **ENTONNOIR** : chaque candidature PASSÉE par une étape la
+> compte (un recruté a été retenu), soldé par le taux de conversion
+> (recrutés / reçues). L'option A ci-dessous (étapes courantes) affichait
+> « Retenu 0 » sur une campagne clôturée qui avait eu deux retenus. Le piège
+> qui l'avait motivée (cliquer un chiffre, atterrir sur une liste qui ne le
+> montre pas) est tenu autrement : chaque compteur ouvre le filtre de PARCOURS
+> de Candidatures (`?parcours=…`), qui liste exactement ce qu'il compte. Les
+> puces de Candidatures restent l'étape courante. Règle : `passedThrough`
+> (`src/lib/reporting/campaign-trajectory.ts`) ; clic : S44, S50.
+
 | Option | Ce que ça donne | Coût |
 |---|---|---|
 | **A — étape courante** *(recommandée)* | « Invités 0 · En entretien 1 · Retenus 1 » : le mot, le chiffre et la destination coïncident **toujours**. On perd la lecture « combien sont passés par là ». | changer le préset des liens ; la trajectoire déménage en **Pilotage**, où elle est à sa place |

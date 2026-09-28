@@ -1,6 +1,6 @@
 /**
- * Clôture d'une campagne — issue du recrutement, désignation du recruté,
- * retenus non sélectionnés. Cœur SERVEUR (feat/feedback-candidat, lot 4).
+ * Clôture d'une campagne — issue du recrutement, désignation des recrutés
+ * (un OU PLUSIEURS, 28/09/2026), retenus non sélectionnés. Cœur SERVEUR (feat/feedback-candidat, lot 4).
  *
  * Deux temps, et c'est l'ordre qui porte les garanties :
  *   1. `checkClosure` — tout est CONTRÔLÉ avant la moindre écriture, contre
@@ -36,7 +36,8 @@ export type ClosureOutcome = 'conclu' | 'non_conclu';
 
 export type ClosureDecisionInput = {
   outcome: ClosureOutcome;
-  hiredAnalysisId: string | null;
+  /** Les recrutés désignés — vide : aucun désigné (« ne pas préciser »). */
+  hiredAnalysisIds: string[];
   notSelected: { analysisId: string; feedback: FeedbackChoice }[];
 };
 
@@ -57,13 +58,14 @@ export function checkClosure(
   input: ClosureDecisionInput,
   retenus: readonly Pick<CandidateAnalysisSummary, 'id' | 'candidateEmail'>[],
 ): ClosureRefusal | null {
-  if (input.outcome === 'non_conclu' && (input.hiredAnalysisId || input.notSelected.length > 0)) {
+  const hired = new Set(input.hiredAnalysisIds);
+  if (input.outcome === 'non_conclu' && (hired.size > 0 || input.notSelected.length > 0)) {
     return {
       error: 'hire_without_conclusion',
       message: 'Une clôture sans recrutement ne désigne personne.',
     };
   }
-  if (!input.hiredAnalysisId) {
+  if (hired.size === 0) {
     return input.notSelected.length > 0
       ? {
           error: 'not_selected_without_hire',
@@ -72,16 +74,18 @@ export function checkClosure(
       : null;
   }
   const byId = new Map(retenus.map((r) => [r.id, r]));
-  if (!byId.has(input.hiredAnalysisId)) {
-    return {
-      error: 'invalid_hire',
-      message: 'Ce candidat n’est plus retenu sur la campagne : l’écran se met à jour.',
-      analysisId: input.hiredAnalysisId,
-    };
+  for (const id of hired) {
+    if (!byId.has(id)) {
+      return {
+        error: 'invalid_hire',
+        message: 'Ce candidat n’est plus retenu sur la campagne : l’écran se met à jour.',
+        analysisId: id,
+      };
+    }
   }
   const given = new Map(input.notSelected.map((n) => [n.analysisId, n.feedback]));
   for (const id of given.keys()) {
-    if (id === input.hiredAnalysisId || !byId.has(id)) {
+    if (hired.has(id) || !byId.has(id)) {
       return {
         error: 'not_selected_mismatch',
         message: 'La liste des retenus a changé : l’écran se met à jour.',
@@ -90,7 +94,7 @@ export function checkClosure(
     }
   }
   for (const r of retenus) {
-    if (r.id === input.hiredAnalysisId) continue;
+    if (hired.has(r.id)) continue;
     const feedback = given.get(r.id);
     if (!feedback) {
       return {
@@ -117,17 +121,20 @@ export async function applyClosureDecisions(args: {
   actor: HumanDecider | null;
 }): Promise<NotSelectedOutcome[]> {
   const { input, retenus, actor } = args;
-  if (!input.hiredAnalysisId) return [];
+  if (input.hiredAnalysisIds.length === 0) return [];
   const identity = { actorUserId: actor?.userId ?? null, actorEmail: actor?.email ?? null };
-  const hired = retenus.find((r) => r.id === input.hiredAnalysisId)!;
 
-  const hiredEntry = buildHiredMarkerEntry({
-    uid: hired.uid,
-    candidateName: hired.candidateName,
-    campaignId: hired.campaignId,
-    value: 'hired',
-  });
-  await appendJournalEntry({ ...hiredEntry, actor: 'user', payload: { ...hiredEntry.payload, ...identity } });
+  // Un marqueur PAR recruté — la désignation est individuelle.
+  for (const hiredId of new Set(input.hiredAnalysisIds)) {
+    const hired = retenus.find((r) => r.id === hiredId)!;
+    const hiredEntry = buildHiredMarkerEntry({
+      uid: hired.uid,
+      candidateName: hired.candidateName,
+      campaignId: hired.campaignId,
+      value: 'hired',
+    });
+    await appendJournalEntry({ ...hiredEntry, actor: 'user', payload: { ...hiredEntry.payload, ...identity } });
+  }
 
   const outcomes: NotSelectedOutcome[] = [];
   for (const { analysisId, feedback } of input.notSelected) {

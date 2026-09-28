@@ -23,10 +23,18 @@ const SIGNALS = {
     ['u_lea', 'rejected'],
   ] as const),
   hiredUids: new Set(['u_jean']),
+  notSelectedUids: new Set<string>(),
 };
 const ANALYSES = [a('awa'), a('jean'), a('lea'), a('hugo'), a('zoe'), a('max', 'rejected'), a('noe')];
 
 describe('entonnoir du CV au recrutement', () => {
+  it('un retenu NON SÉLECTIONNÉ à la clôture reste compté retenu ; conversion = recrutés / reçues', () => {
+    const f = computeInterviewFunnel(ANALYSES, { ...SIGNALS, notSelectedUids: new Set(['u_lea']) }, []);
+    expect(f.retained).toBe(3);
+    expect(f.hired).toBe(1);
+    expect(f.conversionRate).toBe(14);
+  });
+
   it('des trajectoires : un retenu est aussi un invité et un reçu en entretien', () => {
     const f = computeInterviewFunnel(ANALYSES, SIGNALS, []);
     expect(f).toMatchObject({ received: 7, invited: 6, interviewed: 4, retained: 2, hired: 1 });

@@ -1,5 +1,6 @@
 'use client';
 
+import type { TrajectoryStep } from '@/lib/reporting/campaign-trajectory';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -24,20 +25,12 @@ export type CandidaturesFilters = {
   stage: CandidateStage | null;
   fromVivier: boolean;
   /**
-   * « Passés par l'invitation » : tous ceux qui ont ÉTÉ invités (status
-   * accepted), quel que soit leur stade ACTUEL (RDV pris, entretien, retenu,
-   * non retenu après process…). Posé par le quadrant « Shortlistés / Invités »
-   * d'une carte campagne — l'étape `invite` du ruban, elle, ne montre que le
-   * stade courant.
+   * PARCOURS : les candidatures PASSÉES par une étape, quel que soit leur
+   * stade ACTUEL (un « Recruté » est passé par l'entretien). Posé par un
+   * compteur de carte campagne — l'étape du ruban, elle, reste le stade
+   * courant. `null` : pas de filtre de parcours.
    */
-  everInvited: boolean;
-  /**
-   * « Passés par l'entretien » : entretien marqué RÉALISÉ, quel que soit le
-   * stade actuel (un « Retenu » a bien passé son entretien). Posé par le
-   * quadrant « Entretiens » — l'étape `entretien_fait` du ruban garde sa
-   * sémantique de stade courant.
-   */
-  everInterviewed: boolean;
+  passage: TrajectoryStep | null;
   /**
    * Campagnes du référent sélectionné — `null` quand le filtre est « Tous ».
    * Restreint le PÉRIMÈTRE de la requête, jamais les lignes reçues : la liste
@@ -57,8 +50,7 @@ const EMPTY_FILTERS: CandidaturesFilters = {
   search: '',
   stage: null,
   fromVivier: false,
-  everInvited: false,
-  everInterviewed: false,
+  passage: null,
   referentCampaignIds: null,
 };
 
@@ -170,8 +162,7 @@ export function useCandidatures(initial?: Partial<CandidaturesFilters>) {
             search: debouncedSearch,
             stage: filters.stage ?? undefined,
             fromVivier: filters.fromVivier ? 'true' : undefined,
-            everInvited: filters.everInvited ? 'true' : undefined,
-            everInterviewed: filters.everInterviewed ? 'true' : undefined,
+            passage: filters.passage ?? undefined,
             limit: String(CANDIDATURES_PAGE_SIZE),
             offset: String(page * CANDIDATURES_PAGE_SIZE),
           })}`,
@@ -205,8 +196,7 @@ export function useCandidatures(initial?: Partial<CandidaturesFilters>) {
     debouncedSearch,
     filters.stage,
     filters.fromVivier,
-    filters.everInvited,
-    filters.everInterviewed,
+    filters.passage,
     page,
     refreshToken,
   ]);

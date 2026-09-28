@@ -9,6 +9,8 @@
  * la résolution des valeurs vivent dans le conteneur.
  */
 
+import { PASSAGE_LABELS, type TrajectoryStep } from '@/lib/reporting/campaign-trajectory';
+
 export type PeriodKey = 'all' | '7' | '30';
 
 const SELECT_CLASS =
@@ -24,10 +26,8 @@ export function CandidaturesFilters({
   onPeriod,
   fromVivier,
   onVivier,
-  everInvited,
-  onClearEverInvited,
-  everInterviewed,
-  onClearEverInterviewed,
+  passage,
+  onClearPassage,
   onReset,
 }: {
   campaignOptions: { id: string; label: string }[];
@@ -40,14 +40,11 @@ export function CandidaturesFilters({
   fromVivier: boolean;
   onVivier: (value: boolean) => void;
   /**
-   * Filtres de TRAJECTOIRE actifs (posés par les quadrants d'une carte
-   * campagne). Affichés en chips retirables — jamais posables depuis cette
-   * barre.
+   * Filtre de PARCOURS actif (posé par un compteur de carte campagne).
+   * Affiché en chip retirable — jamais posable depuis cette barre.
    */
-  everInvited?: boolean;
-  onClearEverInvited?: () => void;
-  everInterviewed?: boolean;
-  onClearEverInterviewed?: () => void;
+  passage?: TrajectoryStep | null;
+  onClearPassage?: () => void;
   /** « Toutes » : retour à la vue par défaut (tous filtres réinitialisés). */
   onReset: () => void;
 }) {
@@ -87,20 +84,12 @@ export function CandidaturesFilters({
         <option value="30">30 derniers jours</option>
       </select>
 
-      {everInvited ? (
+      {passage ? (
         <TrajectoryChip
-          onClear={onClearEverInvited}
-          title="Retirer le filtre « Passés par l'invitation »"
+          onClear={onClearPassage}
+          title={`Retirer le filtre « ${PASSAGE_LABELS[passage]} »`}
         >
-          ⭐ Passés par l&apos;invitation
-        </TrajectoryChip>
-      ) : null}
-      {everInterviewed ? (
-        <TrajectoryChip
-          onClear={onClearEverInterviewed}
-          title="Retirer le filtre « Passés par l'entretien »"
-        >
-          🎯 Passés par l&apos;entretien
+          {PASSAGE_LABELS[passage]}
         </TrajectoryChip>
       ) : null}
 

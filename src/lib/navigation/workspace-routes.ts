@@ -16,6 +16,7 @@
  * un écran vide ne fait rougir aucun compilateur.
  */
 
+import { parseParcours, type ParcoursKey } from '@/lib/reporting/campaign-trajectory';
 import { CANDIDATE_STAGES, type CandidateStage } from '@/lib/reporting/candidate-stage';
 import type { BusinessSignalTarget } from '@/types/notifications';
 
@@ -87,13 +88,12 @@ export type CandidaturesFilter = {
   campaignId?: string | null;
   stage?: CandidateStage | null;
   /**
-   * Trajectoire d'un compteur de carte campagne : « tous ceux passés par
-   * l'invitation / par l'entretien », y compris ceux qui ont avancé depuis.
-   * ⚠️ Ce n'est PAS l'étape courante — la maquette v2 §B.1 a tranché de faire
-   * passer les compteurs de carte en étapes courantes (lot 3), après quoi ce
-   * paramètre n'aura plus d'émetteur. Il reste ici tant qu'il en a un.
+   * PARCOURS (« passées par… ») — ce qu'ouvre un compteur de carte campagne :
+   * les candidatures PASSÉES par une étape, y compris celles qui ont avancé
+   * depuis. ⚠️ Ce n'est PAS l'étape courante (`stage`). Règle du donneur
+   * d'ordre (28/09/2026) : les compteurs d'une campagne sont un entonnoir.
    */
-  parcours?: 'invitation' | 'entretien' | null;
+  parcours?: ParcoursKey | null;
 };
 
 export type InterviewsFilter = {
@@ -175,10 +175,7 @@ export function readCandidaturesFilter(
   return {
     campaignId: params.get(PARAM.campagne) || null,
     stage: parseStage(rawStage),
-    parcours:
-      rawParcours === 'invitation' || rawParcours === 'entretien'
-        ? rawParcours
-        : null,
+    parcours: parseParcours(rawParcours),
   };
 }
 

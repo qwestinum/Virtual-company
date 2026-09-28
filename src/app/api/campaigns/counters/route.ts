@@ -11,8 +11,9 @@
  * Même source que le ruban de Candidatures (`computeStageCountsByCampaign`),
  * donc les deux ne peuvent pas diverger — il n'y a qu'un calcul.
  *
- * Deux lectures seulement, quel que soit le nombre de campagnes : les analyses
- * du périmètre, et les briefings programmés. Elles partent ENSEMBLE.
+ * Trois lectures, quel que soit le nombre de campagnes, qui partent
+ * ENSEMBLE : les briefings programmés, les analyses du périmètre, leurs
+ * marqueurs.
  */
 import { NextResponse } from 'next/server';
 
@@ -21,6 +22,7 @@ import { listBriefsByStatus } from '@/lib/db/repos/interview-briefs';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
 import { BUSINESS_NOTIFICATION_THRESHOLDS } from '@/lib/notifications/config';
 import { selectUnpointedBriefs } from '@/lib/notifications/business-signals';
+import type { TrajectoryCounts } from '@/lib/reporting/campaign-trajectory';
 import { computeStageCountsByCampaign } from '@/lib/reporting/stage-signals';
 
 export const runtime = 'nodejs';
@@ -35,20 +37,19 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const now = Date.now();
   try {
-    const [parCampagne, briefs] = await Promise.all([
-      computeStageCountsByCampaign(ids, now),
-      listBriefsByStatus('scheduled').catch(() => []),
-    ]);
-
-    // Entretiens PASSÉS que personne n'a confirmés — même seuil que le signal
-    // métier (24 h), pour que la carte et l'alerte disent la même chose.
+    // Entretiens PASSÉS depuis plus de 24 h — même seuil que l'alerte
+    // d'Aujourd'hui. Seuls ceux dont le dossier est encore « Invité » ou « RDV
+    // pris » attendent un pointage (`awaitsPointing`, règle partagée) : le
+    // briefing reste « programmé » après la décision et ne prouve rien.
     const cutoff =
       now - BUSINESS_NOTIFICATION_THRESHOLDS.interviewPointingAgeHours * 3_600_000;
-    const aConfirmer = new Map<string, number>();
-    for (const brief of selectUnpointedBriefs(briefs, cutoff)) {
-      if (!brief.campaignId) continue;
-      aConfirmer.set(brief.campaignId, (aConfirmer.get(brief.campaignId) ?? 0) + 1);
-    }
+    const parCampagne = await computeStageCountsByCampaign(
+      ids,
+      now,
+      listBriefsByStatus('scheduled')
+        .catch(() => [])
+        .then((briefs) => selectUnpointedBriefs(briefs, cutoff)),
+    );
 
     const byCampaign: Record<
       string,
@@ -57,6 +58,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         received: number;
         aValiderOldestDays: number | null;
         entretiensAConfirmer: number;
+        trajectory: TrajectoryCounts;
       }
     > = {};
     for (const [id, entry] of parCampagne) {
@@ -64,7 +66,8 @@ export async function GET(request: Request): Promise<NextResponse> {
         counts: entry.counts,
         received: entry.total,
         aValiderOldestDays: entry.oldestWaitingDays,
-        entretiensAConfirmer: aConfirmer.get(id) ?? 0,
+        entretiensAConfirmer: entry.unpointed,
+        trajectory: entry.trajectory,
       };
     }
 

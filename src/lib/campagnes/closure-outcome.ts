@@ -15,9 +15,13 @@ import {
   HIRED_MARKER_ACTION,
 } from '@/lib/candidatures/decision-markers';
 
-import { CAMPAIGN_CLOSED_ACTION } from './closure-constants';
+import { CAMPAIGN_CLOSED_ACTION, hiredIdsOfClosure } from './closure-constants';
 
-export type ClosureOutcomeView = { outcome: 'conclu' | 'non_conclu'; hiredName: string | null };
+export type ClosureOutcomeView = {
+  outcome: 'conclu' | 'non_conclu';
+  /** Les recrutés TOUJOURS désignés (une désignation annulée n'en fait plus partie). */
+  hiredNames: string[];
+};
 
 type Entry = { action: string; campaignId: string | null; payload: Record<string, unknown>; createdAt: string };
 
@@ -40,10 +44,11 @@ export function closureOutcomes(
   const out = new Map<string, ClosureOutcomeView>();
   for (const [campaignId, e] of latest) {
     const outcome = e.payload.outcome === 'conclu' ? 'conclu' : 'non_conclu';
-    const id = typeof e.payload.hiredAnalysisId === 'string' ? e.payload.hiredAnalysisId : null;
-    const a = id ? analyses.get(id) : undefined;
-    const current = a ? hired.get(a.uid)?.effect === 'hired' : false;
-    out.set(campaignId, { outcome, hiredName: a && current ? a.candidateName : null });
+    const hiredNames = hiredIdsOfClosure(e.payload).flatMap((id) => {
+      const a = analyses.get(id);
+      return a && hired.get(a.uid)?.effect === 'hired' ? [a.candidateName] : [];
+    });
+    out.set(campaignId, { outcome, hiredNames });
   }
   return out;
 }
@@ -51,5 +56,7 @@ export function closureOutcomes(
 /** Libellé de l'issue — Pilotage (liste et détail). */
 export function closureOutcomeLabel(view: ClosureOutcomeView): string {
   if (view.outcome === 'non_conclu') return 'Clôturée sans recrutement';
-  return view.hiredName ? `Recrutement conclu — ${view.hiredName}` : 'Recrutement conclu';
+  return view.hiredNames.length > 0
+    ? `Recrutement conclu — ${view.hiredNames.join(', ')}`
+    : 'Recrutement conclu';
 }

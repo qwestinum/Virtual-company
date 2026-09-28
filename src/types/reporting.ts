@@ -185,7 +185,7 @@ export type CampaignReportSummary = {
    * « Recrutement conclu » (+ nom du recruté s'il est désigné) ou non.
    * `null`/absent : clôture antérieure au chantier — libellé historique.
    */
-  closure?: { outcome: 'conclu' | 'non_conclu'; hiredName: string | null } | null;
+  closure?: { outcome: 'conclu' | 'non_conclu'; hiredNames: string[] } | null;
   /** PDF en cache déjà généré (date ISO) ou null. */
   generatedAt: string | null;
   sends: CampaignReportSend[];

@@ -8,8 +8,8 @@
  *   - invité / RDV pris → `InterviewMarkAction` (constat « réalisé », ou
  *     dialog d'absence avec le message au candidat)
  *   - entretien réalisé → `InterviewDecisionBlock` : commentaire FACULTATIF
- *     et verdict, par la route dédiée (+ flux « poste pourvu » après un GO :
- *     proposer de classer les candidatures restantes)
+ *     et verdict, par la route dédiée (le classement des candidatures
+ *     restantes appartient à la clôture, jamais au verdict)
  *   - toute étape OUVERTE → « Classer sans suite » (dialog motif)
  *   - sans suite         → mention terminale + « Rouvrir »
  *   - terminal           → compte rendu d'entretien EN LECTURE (s'il existe)
@@ -23,7 +23,6 @@
 
 import { useState } from 'react';
 
-import { CampaignDismissFlowDialog } from '@/components/campagnes/CampaignDismissFlowDialog';
 import { InterviewReportPanel } from '@/components/interview-report/InterviewReportPanel';
 import { InformCandidateBlock } from '@/components/feedback/InformCandidateBlock';
 import { InterviewDecisionBlock } from '@/components/verdict/InterviewDecisionBlock';
@@ -100,44 +99,25 @@ function FinalDecisionAction({
   item: CandidateListItem;
   onActed: () => void;
 }) {
-  // Flux « poste pourvu » (cas B validé) : après un GO, proposer de classer
-  // les candidatures restantes de la campagne — NON bloquant (le GO est déjà
-  // acté si l'utilisateur décline).
-  const [goFollowUp, setGoFollowUp] = useState(false);
-
+  // ⚠️ Un verdict « retenu » ne dit PAS que le poste est pourvu : le dialogue
+  // « Poste pourvu — candidatures restantes » s'ouvrait ici après chaque GO
+  // (bug du 28/09/2026). Classer les candidatures restantes appartient à la
+  // CLÔTURE (dialogue de clôture, section des dossiers ouverts), où l'on
+  // désigne aussi les recrutés.
   // Même bloc que l'onglet Entretiens, même route serveur : le verdict et son
   // commentaire (facultatif) s'écrivent ensemble, quel que soit l'écran.
   return (
-    <>
-      <div className="flex flex-col gap-2">
-        <InterviewDecisionBlock
-          analysisId={item.id}
-          candidateName={item.candidateName}
-          onDecided={(verdict) => {
-            if (verdict === 'validated' && item.campaignId) setGoFollowUp(true);
-            else onActed();
-          }}
-          onStale={onActed}
-        />
-        <div className="flex flex-wrap gap-2">
-          <DismissActionButton item={item} onActed={onActed} />
-          <CorrectionButton item={item} onActed={onActed} />
-        </div>
+    <div className="flex flex-col gap-2">
+      <InterviewDecisionBlock
+        analysisId={item.id}
+        candidateName={item.candidateName}
+        onDecided={() => onActed()}
+        onStale={onActed}
+      />
+      <div className="flex flex-wrap gap-2">
+        <DismissActionButton item={item} onActed={onActed} />
+        <CorrectionButton item={item} onActed={onActed} />
       </div>
-      {goFollowUp && item.campaignId ? (
-        <CampaignDismissFlowDialog
-          campaignId={item.campaignId}
-          mode="go"
-          onCancel={() => {
-            setGoFollowUp(false);
-            onActed();
-          }}
-          onDone={() => {
-            setGoFollowUp(false);
-            onActed();
-          }}
-        />
-      ) : null}
-    </>
+    </div>
   );
 }

@@ -19,7 +19,7 @@ import {
   VALIDATION_MARKER_ACTION,
 } from '@/lib/candidatures/decision-markers';
 
-import { NOT_SELECTED_CAUSE } from './closure-constants';
+import { hiredIdsOfClosure, NOT_SELECTED_CAUSE } from './closure-constants';
 
 export type ClosureEntry = {
   campaignId: string | null;
@@ -65,14 +65,11 @@ export function findIncompleteClosures(
   const out: IncompleteClosure[] = [];
   for (const [campaignId, closure] of latest) {
     const own = markers.filter((m) => m.campaignId === campaignId);
-    const hiredId = typeof closure.payload.hiredAnalysisId === 'string' ? closure.payload.hiredAnalysisId : null;
-
-    let missingHire = false;
-    if (hiredId) {
+    // Chaque recruté annoncé doit porter SON marqueur (plusieurs depuis le 28/09).
+    const missingHire = hiredIdsOfClosure(closure.payload).some((hiredId) => {
       const uid = uidOf(hiredId);
-      missingHire =
-        uid !== null && !own.some((m) => m.action === HIRED_MARKER_ACTION && m.payload.uid === uid);
-    }
+      return uid !== null && !own.some((m) => m.action === HIRED_MARKER_ACTION && m.payload.uid === uid);
+    });
 
     const missingNotSelected = stringArray(closure.payload.notSelectedAnalysisIds).filter((id) => {
       const uid = uidOf(id);

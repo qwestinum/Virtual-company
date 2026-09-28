@@ -83,6 +83,7 @@ describe('renderCampaignReportPdf — du CV au recrutement (feat/feedback-candid
           retained: 2,
           hired: 1,
           placementRate: 50,
+          conversionRate: 8,
           informed: { total: 3, informed: 2 },
         },
       },

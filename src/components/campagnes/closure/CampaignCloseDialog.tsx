@@ -38,7 +38,7 @@ export type ClosureSummary = {
 
 const MISSING_TEXT = {
   outcome: 'Indiquez si le recrutement est conclu.',
-  hired: 'Désignez le recruté, ou choisissez « Ne pas préciser ».',
+  hired: 'Cochez le ou les recrutés, ou « Ne pas préciser ».',
   feedback: 'Choisissez comment chaque retenu non sélectionné est informé.',
 } as const;
 

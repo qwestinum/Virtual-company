@@ -76,18 +76,29 @@ aucune variable restée entre crochets).
   · Retenu · Recruté · Écarté · Non retenu · Sans suite. « Écarté » = refusé sur
   CV (proposition validée ou arbitrage ; inclut les refus automatiques antérieurs
   au 18/08). Somme des dix = Reçues, sur chaque campagne (régression S6).
-- Carte campagne : funnel positif seulement (Reçues · À valider · Invité ·
-  Entretien fait · Retenu · Recruté), chaque compteur égal à sa puce (S44).
+- Carte campagne : ENTONNOIR (Reçues · À valider · Invité · Entretien fait ·
+  Retenu · Recruté) — chaque candidature PASSÉE par une étape la compte (règle
+  du donneur d'ordre, 28/09/2026 : un recruté a été retenu, un retenu non
+  sélectionné à la clôture a été retenu), soldé par le taux de conversion
+  (recrutés / reçues). Chaque compteur ouvre Candidatures sur les candidatures
+  qu'il compte (`?parcours=…`, S44). Les PUCES gardent l'étape courante.
+  Règle unique `passedThrough` (`src/lib/reporting/campaign-trajectory.ts`),
+  partagée avec l'entonnoir du rapport.
 
 ## 6. Clôture
 
-Dialogue : le recrutement est-il conclu ? → qui est recruté (jamais pré-coché,
-« ne pas préciser » possible) → un message par retenu non sélectionné → dossiers
+Dialogue : le recrutement est-il conclu ? → qui est recruté — UN OU PLUSIEURS
+(cases, 28/09/2026 ; jamais pré-cochées, « ne pas préciser » possible) → un message par retenu non sélectionné → dossiers
 ouverts classés sans suite → dépublication Apec. Serveur (`checkClosure` puis
 `applyClosureDecisions`) : tout est contrôlé contre l'état RELU avant la
 première écriture ; non-sélectionnés = verdict canonique `rejected` + cause
 `not_selected_at_closure`. **`campaign_closed` n'a qu'un écrivain** : la route de
-clôture (issue, recruté, non-sélectionnés — identifiants seulement).
+clôture (issue, `hiredAnalysisIds[]`, non-sélectionnés — identifiants
+seulement ; l'ancien `hiredAnalysisId` reste lu, `hiredIdsOfClosure`).
+
+**Un verdict « retenu » n'est pas un poste pourvu** (bug du 28/09/2026) : le
+dialogue « Poste pourvu — candidatures restantes » ne s'ouvre plus après le
+verdict ; le classement des candidatures restantes appartient à la clôture.
 
 Filet : signal **`closure_incomplete`** (« à vérifier ») quand `campaign_closed`
 annonce un recruté ou des non-sélectionnés sans leurs marqueurs. Transaction

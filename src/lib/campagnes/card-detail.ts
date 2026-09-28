@@ -3,29 +3,29 @@
  *
  * ① compteurs-filtres · ② ce qui attend · ③ trouver des candidats · ④ actions
  *
- * ⚠️ OPTION A (maquette v2 §B.1) : les compteurs sont des ÉTAPES COURANTES,
- * plus des trajectoires. Avant, « Shortlistés / Invités » comptait tous ceux
- * PASSÉS par l'invitation : mesuré sur CAMP-2026-221, la carte affichait 2
- * quand la puce « Invité » affichait 0, les deux candidats ayant avancé
- * depuis. Cliquer un chiffre et atterrir sur une liste vide est pire que deux
- * mots différents.
+ * ⚠️ LES COMPTEURS SONT UN ENTONNOIR (règle du donneur d'ordre, 28/09/2026) :
+ * chaque candidature PASSÉE par une étape augmente son compteur — reçues,
+ * passées par la validation, invitées, reçues en entretien, retenues,
+ * recrutées — soldé par le taux de conversion (recrutés / reçues). Un recruté
+ * a été retenu. L'option A de la maquette v2 (§B.1 : compteurs = étapes
+ * COURANTES) est RENVERSÉE : sur une campagne clôturée, elle affichait
+ * « Retenu 0 » quand deux candidats avaient été retenus.
  *
- * Conséquence directe : chaque compteur porte LE MÊME MOT que la puce vers
- * laquelle il mène, et le même nombre — parce qu'il vient de la MÊME source
- * (`computeStageCounts`, celle du ruban). Aucun invariant à maintenir : il n'y
- * a qu'une comptabilité.
- *
- * La trajectoire (« combien sont passés par l'invitation en tout ») n'est pas
- * perdue : c'est une mesure de performance, sa place est le rapport de
- * campagne — pas la carte.
+ * Le piège qui l'avait motivée — cliquer un chiffre et atterrir sur une liste
+ * qui ne le montre pas — est tenu autrement : chaque compteur ouvre le filtre
+ * de PARCOURS de Candidatures (`?parcours=…`, même règle `passedThrough`), qui
+ * liste EXACTEMENT les candidatures comptées. Les puces de Candidatures, elles,
+ * gardent l'étape courante.
  */
 
+import { CANDIDATE_STAGE_LABELS } from '@/lib/reporting/candidate-stage';
 import {
-  CANDIDATE_STAGE_DEFINITIONS,
-  CANDIDATE_STAGE_LABELS,
-  type CandidateStage,
-  type CandidateStageCounts,
-} from '@/lib/reporting/candidate-stage';
+  conversionRate,
+  STEP_PARCOURS,
+  TRAJECTORY_STEPS,
+  type TrajectoryCounts,
+  type TrajectoryStep,
+} from '@/lib/reporting/campaign-trajectory';
 import {
   candidaturesHref,
   interviewsHref,
@@ -47,23 +47,14 @@ export type CardCounter = {
 };
 
 /**
- * Les étapes de la carte : le FUNNEL POSITIF seulement, sur UNE rangée
- * (arbitrage du 28/09/2026, second temps). Sortent de la carte : RDV pris
- * (étape intermédiaire), Propositions de refus (déjà dans « Ce qui attend »),
- * Écarté, Non retenu, Sans suite (issues négatives, lisibles dans Candidatures
- * et Pilotage). La partition « dix étapes = Reçues » reste tenue sur les
- * PUCES (régression S6) ; la carte, elle, n'additionne pas.
+ * Les étapes de la carte : le FUNNEL POSITIF, sur UNE rangée. Les issues
+ * négatives (Écarté, Non retenu, Sans suite) se lisent dans Candidatures et
+ * Pilotage.
  */
-export const CARD_STAGES = [
-  'a_valider',
-  'invite',
-  'entretien_fait',
-  'retenu',
-  'recrute',
-] as const satisfies readonly CandidateStage[];
+export const CARD_STAGES = TRAJECTORY_STEPS;
 
 /** Icône + couleur par étape — les jetons de la carte existante. */
-const APPARENCE: Record<'recues' | (typeof CARD_STAGES)[number], { icon: string; color: string }> = {
+const APPARENCE: Record<'recues' | TrajectoryStep, { icon: string; color: string }> = {
   recues: { icon: '📄', color: 'var(--dash-blue)' },
   a_valider: { icon: '⏳', color: 'var(--dash-yellow)' },
   invite: { icon: '✉️', color: 'var(--dash-purple)' },
@@ -72,34 +63,48 @@ const APPARENCE: Record<'recues' | (typeof CARD_STAGES)[number], { icon: string;
   recrute: { icon: '🏁', color: 'var(--dash-green)' },
 };
 
-export function buildCardCounters(
-  campaignId: string,
-  received: number,
-  counts: CandidateStageCounts,
-): CardCounter[] {
+/** Ce que compte chaque tuile — au survol, en mots d'utilisateur. */
+const DEFINITION: Record<TrajectoryStep, string> = {
+  a_valider: 'candidatures passées par la validation humaine (arbitrage ou proposition de refus).',
+  invite: 'candidatures retenues sur CV et invitées à un entretien.',
+  entretien_fait: 'candidatures dont l’entretien a eu lieu.',
+  retenu: 'candidatures retenues après entretien — y compris les recrutés et les retenus non sélectionnés à la clôture.',
+  recrute: 'candidats désignés recrutés à la clôture.',
+};
+
+export function buildCardCounters(campaignId: string, trajectory: TrajectoryCounts): CardCounter[] {
   return [
     {
       key: 'recues',
-      // « Reçues » n'est pas une étape : c'est le total, et il reste
-      // cliquable — vers la campagne, tous statuts confondus.
+      // « Reçues » : le total, cliquable — vers la campagne, tous statuts.
       label: 'Reçues',
       definition: 'toutes les candidatures de la campagne.',
-      count: received,
+      count: trajectory.recues,
       href: candidaturesHref({ campaignId }),
       ...APPARENCE.recues,
     },
-    ...CARD_STAGES.map((stage) => ({
-      key: stage,
-      label: CANDIDATE_STAGE_LABELS[stage],
-      definition: CANDIDATE_STAGE_DEFINITIONS[stage],
-      count: counts[stage],
-      // ⚠️ TOUS vers Candidatures, SANS EXCEPTION : chaque puce existe là, et
-      // un compteur qui changerait d'écran selon l'étape obligerait à deviner
-      // où l'on va. Entretiens se rejoint par « ce qui attend ».
-      href: candidaturesHref({ campaignId, stage }),
-      ...APPARENCE[stage],
+    ...CARD_STAGES.map((step) => ({
+      key: step,
+      label: CANDIDATE_STAGE_LABELS[step],
+      definition: DEFINITION[step],
+      count: trajectory[step],
+      // Le filtre de PARCOURS : la liste ouverte montre exactement ce nombre.
+      href: candidaturesHref({ campaignId, parcours: STEP_PARCOURS[step] }),
+      ...APPARENCE[step],
     })),
   ];
+}
+
+/**
+ * « Taux de conversion : 50 % — 1 recruté sur 2 candidatures reçues ».
+ * `null` sans candidature (rien à convertir).
+ */
+export function conversionLine(trajectory: TrajectoryCounts): string | null {
+  const rate = conversionRate(trajectory);
+  if (rate === null) return null;
+  const r = trajectory.recrute;
+  const n = trajectory.recues;
+  return `Taux de conversion : ${rate} % — ${r} recruté${r > 1 ? 's' : ''} sur ${n} candidature${n > 1 ? 's' : ''} reçue${n > 1 ? 's' : ''}`;
 }
 
 // ── ② Ce qui attend ─────────────────────────────────────────────────────────

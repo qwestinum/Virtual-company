@@ -4,6 +4,7 @@
  * Trois campagnes JETABLES (jamais une campagne du dev : clôturer est
  * irréversible dans l'écran), deux retenus + un invité chacune :
  *   S45.1 — non conclu : les retenus restent « Retenu », aucun message ;
+ *   S45.4 — plusieurs recrutements : deux cases cochées, deux « Recruté ».
  *   S45.2 — conclu sans préciser : idem, `campaign_closed` dit « conclu » ;
  *   S45.3 — conclu avec désignation : le bouton reste désarmé tant que
  *           l'autre retenu n'a pas son message ; puis un « Recruté », un « Non
@@ -155,7 +156,7 @@ describe('S45 — clôturer au clic', () => {
     await confirmerEtAttendre(s.campaignId);
     expect(await journal(s.campaignId, 'candidate_hired_marked')).toHaveLength(0);
     expect((await feedbackOf(s.campaignId)).filter((f) => f.kind !== 'sans_suite')).toHaveLength(0);
-    expect((await journal(s.campaignId, 'campaign_closed'))[0]).toMatchObject({ outcome: 'non_conclu', hiredAnalysisId: null });
+    expect((await journal(s.campaignId, 'campaign_closed'))[0]).toMatchObject({ outcome: 'non_conclu', hiredAnalysisIds: [] });
   }, 300_000);
 
   it('S45.2 — conclu sans préciser : aucun retenu ne change', async () => {
@@ -165,7 +166,7 @@ describe('S45 — clôturer au clic', () => {
     await page.click('[data-closure-choice="hire-unspecified"]');
     await confirmerEtAttendre(s.campaignId);
     expect(await journal(s.campaignId, 'candidate_hired_marked')).toHaveLength(0);
-    expect((await journal(s.campaignId, 'campaign_closed'))[0]).toMatchObject({ outcome: 'conclu', hiredAnalysisId: null });
+    expect((await journal(s.campaignId, 'campaign_closed'))[0]).toMatchObject({ outcome: 'conclu', hiredAnalysisIds: [] });
   }, 300_000);
 
   it('S45.3 — conclu avec désignation : un Recruté, un Non retenu, UN message', async () => {
@@ -196,8 +197,29 @@ describe('S45 — clôturer au clic', () => {
     expect(feedback.some((f) => f.analysis_id === s.b)).toBe(false);
     expect((await journal(s.campaignId, 'campaign_closed'))[0]).toMatchObject({
       outcome: 'conclu',
-      hiredAnalysisId: s.b,
+      hiredAnalysisIds: [s.b],
       notSelectedAnalysisIds: [s.a],
+    });
+  }, 300_000);
+
+  it('S45.4 — plusieurs recrutements : les DEUX retenus cochés, aucun non-sélectionné, aucun message', async () => {
+    const s = await seedCampaign('mx');
+    await ouvrirLaCloture(s.campaignId);
+    // Des CASES, pas des boutons radio : cocher le second garde le premier.
+    await page.click(`[data-closure-choice="hire-${s.a}"]`);
+    await page.click(`[data-closure-choice="hire-${s.b}"]`);
+    expect(await page.locator(`[data-closure-choice="hire-${s.a}"]`).isChecked()).toBe(true);
+    expect(await page.locator(`[data-closure-choice="hire-${s.b}"]`).isChecked()).toBe(true);
+    expect(await page.locator('[data-role="closure-not-selected"]').count()).toBe(0);
+    await confirmerEtAttendre(s.campaignId);
+
+    const hired = await journal(s.campaignId, 'candidate_hired_marked');
+    expect(hired.map((h) => h.uid).sort()).toEqual([`u_${s.a}`, `u_${s.b}`].sort());
+    expect((await feedbackOf(s.campaignId)).filter((f) => f.kind === 'non_retenu')).toHaveLength(0);
+    expect((await journal(s.campaignId, 'campaign_closed'))[0]).toMatchObject({
+      outcome: 'conclu',
+      hiredAnalysisIds: [s.a, s.b],
+      notSelectedAnalysisIds: [],
     });
   }, 300_000);
 });

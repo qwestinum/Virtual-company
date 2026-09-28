@@ -40,13 +40,15 @@ import {
   checkValidationCoherence,
   queueMismatch,
 } from '@/lib/hitl/queue-coherence';
-import { loadStageSignals, stageFor, type StageSignals } from '@/lib/reporting/stage-signals';
+import { loadStageSignals, stageFor, type StageSignals,
+  awaitsPointing,
+} from '@/lib/reporting/stage-signals';
 import { getResource, isMeetingLocationComplete, listExceptions, listWeeklyRules } from '@/lib/scheduling';
 import { ensureSchedulingConfigured } from '@/lib/scheduling-host/configure';
 import { listAwaitingWithoutRow } from '@/lib/hitl/orphan-scan';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
-import { CAMPAIGN_CLOSED_ACTION } from '@/lib/campagnes/closure-constants';
+import { CAMPAIGN_CLOSED_ACTION, hiredIdsOfClosure } from '@/lib/campagnes/closure-constants';
 import { REISSUE_ACTION } from '@/lib/interviews/reissue-constants';
 import { findIncompleteClosures } from '@/lib/campagnes/closure-coherence';
 import {
@@ -326,8 +328,9 @@ async function computeInterviewsAwaitingPointing(
       if (!analysis) continue;
       const stage = stageFor(analysis, signals);
       // `entretien_fait` relève du signal 2 (décision attendue) : on ne
-      // réclame pas deux fois la même chose pour un seul dossier.
-      if (stage !== 'invite' && stage !== 'rdv_pris') continue;
+      // réclame pas deux fois la même chose pour un seul dossier. Même règle
+      // que la carte de campagne (`awaitsPointing`).
+      if (!awaitsPointing(stage)) continue;
       open.push({ uid: analysis.uid, endAt: brief.interviewEndAt as string });
     }
   }
@@ -828,7 +831,7 @@ async function computeIncompleteClosures(nowMs: number): Promise<BusinessSignal 
   const withDesignation = closures.filter(
     (c) =>
       c.campaignId !== null &&
-      (typeof c.payload.hiredAnalysisId === 'string' ||
+      (hiredIdsOfClosure(c.payload).length > 0 ||
         (Array.isArray(c.payload.notSelectedAnalysisIds) &&
           c.payload.notSelectedAnalysisIds.length > 0)),
   );

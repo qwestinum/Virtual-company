@@ -113,7 +113,6 @@ export function LifecycleEditBlock({
       {closing ? (
         <CampaignDismissFlowDialog
           campaignId={campaign.id}
-          mode="close"
           onCancel={() => setClosing(false)}
           onDone={onClosed}
         />

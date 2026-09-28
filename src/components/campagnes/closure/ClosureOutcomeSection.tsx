@@ -1,19 +1,22 @@
 'use client';
 
 /**
- * Clôture — issue du recrutement et désignation du recruté
- * (feat/feedback-candidat, lot 4).
+ * Clôture — issue du recrutement et désignation des recrutés
+ * (feat/feedback-candidat, lot 4 ; plusieurs recrutés, 28/09/2026).
  *
  * « Recruté » est une désignation HUMAINE explicite : aucun retenu n'est
- * pré-coché, et « ne pas préciser » reste un choix — on ne bloque jamais une
- * clôture. Désigner un recruté fait passer les AUTRES retenus en « Non
- * retenu » : l'écran le dit avant, pas après.
+ * pré-coché — des CASES, parce qu'une campagne peut aboutir à plusieurs
+ * recrutements. « Ne pas préciser » reste un choix, exclusif — on ne bloque
+ * jamais une clôture. Désigner des recrutés fait passer les AUTRES retenus en
+ * « Non retenu » : l'écran le dit avant, pas après.
  */
 
 import { useId } from 'react';
 
 import {
   asksForHire,
+  hiredIds,
+  toggleHired,
   type ClosureDraft,
   type ClosureOutcome,
   type HiredChoice,
@@ -31,11 +34,10 @@ export function ClosureOutcomeSection({
   retenus: readonly ClosureRetenu[];
   disabled: boolean;
   onOutcome: (outcome: ClosureOutcome) => void;
-  onHired: (hired: HiredChoice) => void;
+  onHired: (hired: HiredChoice | null) => void;
 }) {
   const outcomeName = useId();
-  const hiredName = useId();
-  const hiredId = draft.hired?.kind === 'designated' ? draft.hired.analysisId : null;
+  const checked = new Set(hiredIds(draft));
 
   return (
     <section className="mb-4 flex flex-col gap-3" data-role="closure-outcome">
@@ -43,7 +45,8 @@ export function ClosureOutcomeSection({
         <legend className="mb-1 font-display text-[13px] font-bold text-stone-800">
           Le recrutement est-il conclu ?
         </legend>
-        <Radio
+        <Choice
+          type="radio"
           name={outcomeName}
           checked={draft.outcome === 'conclu'}
           disabled={disabled}
@@ -51,7 +54,8 @@ export function ClosureOutcomeSection({
           label="Oui, recrutement conclu"
           data="conclu"
         />
-        <Radio
+        <Choice
+          type="radio"
           name={outcomeName}
           checked={draft.outcome === 'non_conclu'}
           disabled={disabled}
@@ -67,25 +71,26 @@ export function ClosureOutcomeSection({
             Qui est recruté ?
           </legend>
           <p className="font-body text-[12px] text-stone-600">
-            Parmi les candidats retenus. Les autres retenus passeront en « Non retenu », et
-            vous choisirez comment les prévenir.
+            Parmi les candidats retenus — cochez-en autant que de recrutements. Les
+            autres retenus passeront en « Non retenu », et vous choisirez comment les
+            prévenir.
           </p>
           {retenus.map((r) => (
-            <Radio
+            <Choice
               key={r.analysisId}
-              name={hiredName}
-              checked={hiredId === r.analysisId}
+              type="checkbox"
+              checked={checked.has(r.analysisId)}
               disabled={disabled}
-              onChange={() => onHired({ kind: 'designated', analysisId: r.analysisId })}
+              onChange={() => onHired(toggleHired(draft.hired, r.analysisId))}
               label={r.candidateName}
               data={`hire-${r.analysisId}`}
             />
           ))}
-          <Radio
-            name={hiredName}
+          <Choice
+            type="checkbox"
             checked={draft.hired?.kind === 'unspecified'}
             disabled={disabled}
-            onChange={() => onHired({ kind: 'unspecified' })}
+            onChange={() => onHired(draft.hired?.kind === 'unspecified' ? null : { kind: 'unspecified' })}
             label="Ne pas préciser"
             detail="Les retenus restent « Retenu » ; aucun message n’est envoyé."
             data="hire-unspecified"
@@ -96,7 +101,8 @@ export function ClosureOutcomeSection({
   );
 }
 
-function Radio({
+function Choice({
+  type,
   name,
   checked,
   disabled,
@@ -105,7 +111,8 @@ function Radio({
   detail,
   data,
 }: {
-  name: string;
+  type: 'radio' | 'checkbox';
+  name?: string;
   checked: boolean;
   disabled: boolean;
   onChange: () => void;
@@ -116,7 +123,7 @@ function Radio({
   return (
     <label className="flex items-start gap-2 font-body text-[12.5px] text-stone-800">
       <input
-        type="radio"
+        type={type}
         name={name}
         checked={checked}
         disabled={disabled}

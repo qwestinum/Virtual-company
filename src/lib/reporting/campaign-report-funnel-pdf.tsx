@@ -46,8 +46,13 @@ export function CampaignFunnelPdfSection({ funnel }: { funnel: InterviewFunnel }
           </View>
         ))}
       </View>
-      {funnel.placementRate !== null ? (
+      {funnel.conversionRate !== null ? (
         <Text style={[pdfBaseStyles.paragraph, { marginTop: 8 }]}>
+          Taux de conversion : {funnel.conversionRate} % (recrutés / candidatures reçues).
+        </Text>
+      ) : null}
+      {funnel.placementRate !== null ? (
+        <Text style={[pdfBaseStyles.paragraph, { marginTop: 4 }]}>
           Taux de placement : {funnel.placementRate} % (recrutés / retenus présentés).
         </Text>
       ) : null}

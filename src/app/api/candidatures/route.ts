@@ -12,6 +12,7 @@
  *     pagine en mémoire (volume borné par le périmètre). Sans filtre `stage`, on
  *     reste sur la pagination SQL (cas courant, le moins coûteux).
  */
+import { passedThrough, TRAJECTORY_STEPS, type TrajectoryStep } from '@/lib/reporting/campaign-trajectory';
 import { NextResponse } from 'next/server';
 
 import {
@@ -67,23 +68,26 @@ export async function GET(request: Request): Promise<NextResponse> {
   const to = params.get('to');
   if (to) baseFilters.to = to;
   if (params.get('fromVivier') === 'true') baseFilters.fromVivier = true;
-  // « Passés par l'invitation » (quadrant Shortlistés/Invités) : tous ceux
-  // qui ont ÉTÉ invités — l'invitation découle de status='accepted' (colonne,
-  // cf. deriveCandidateStage), et les stades AVAL (RDV, entretien, retenu,
-  // non retenu après process) la conservent. Filtre SQL, pagination exacte.
-  if (params.get('everInvited') === 'true') baseFilters.status = 'accepted';
-
   const stageRaw = params.get('stage');
   const stageFilter = (CANDIDATE_STAGES as readonly string[]).includes(
     stageRaw ?? '',
   )
     ? (stageRaw as CandidateStage)
     : null;
-  // « Passés par l'entretien » (quadrant Entretiens) : tous ceux dont
-  // l'entretien a été marqué RÉALISÉ, quel que soit leur stade ACTUEL (un
-  // « Retenu » a bien passé son entretien). Signal = marqueur journal
-  // dernier-gagne (signals.interviewMarks) → filtre DÉRIVÉ, en mémoire.
-  const everInterviewed = params.get('everInterviewed') === 'true';
+  // PARCOURS (compteur de carte campagne) : les candidatures PASSÉES par une
+  // étape, quel que soit leur stade actuel — EXACTEMENT ce que compte la carte
+  // (`passedThrough`, même règle). Filtre DÉRIVÉ, en mémoire. Les anciens
+  // paramètres (`everInvited`, `everInterviewed`) restent compris.
+  const passageRaw =
+    params.get('passage') ??
+    (params.get('everInvited') === 'true'
+      ? 'invite'
+      : params.get('everInterviewed') === 'true'
+        ? 'entretien_fait'
+        : null);
+  const passage = (TRAJECTORY_STEPS as readonly string[]).includes(passageRaw ?? '')
+    ? (passageRaw as TrajectoryStep)
+    : null;
 
   try {
     // Signaux scopés à la campagne (les loaders journal/entretien filtrent par
@@ -94,7 +98,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     // qui ne dépendent pas de la page partent ENSEMBLE ; ils sont consommés
     // dans l'ordre d'origine (une erreur des signaux reste celle remontée).
     const referentContextFor = prepareReferentContext();
-    const derived = Boolean(stageFilter || everInterviewed);
+    const derived = Boolean(stageFilter || passage);
     const signalsPromise = loadStageSignals({ campaignId: campaignId ?? undefined });
     const allPromise = derived ? listAllCandidateAnalyses(baseFilters) : null;
     const pagePromise = derived
@@ -118,7 +122,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       const filtered = enriched.filter(
         (c) =>
           (!stageFilter || c.stage === stageFilter) &&
-          (!everInterviewed || signals.interviewMarks.get(c.uid) === 'realized'),
+          (!passage || passedThrough(passage, c, signals)),
       );
       const rows = filtered.slice(offset, offset + limit);
       // Référent des campagnes de la PAGE — la fiche candidature ne doit pas

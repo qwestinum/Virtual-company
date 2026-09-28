@@ -61,3 +61,21 @@ describe('issue de clôture affichée par Pilotage', () => {
     expect(m.get('C1')!.outcome).toBe('non_conclu');
   });
 });
+
+describe('plusieurs recrutés (28/09/2026)', () => {
+  it('Pilotage nomme chaque recruté encore désigné', () => {
+    const analyses = new Map([
+      ['can_jean', { uid: 'u_jean', candidateName: 'Jean Martin' }],
+      ['can_awa', { uid: 'u_awa', candidateName: 'Awa Diallo' }],
+    ]);
+    const v = closureOutcomes(
+      [
+        closed('C1', { outcome: 'conclu', hiredAnalysisIds: ['can_jean', 'can_awa'] }),
+        hired('hired', '2026-09-28T10:00:01Z'),
+        { action: 'candidate_hired_marked', campaignId: 'C1', payload: { uid: 'u_awa', status: 'hired' }, createdAt: '2026-09-28T10:00:02Z' },
+      ],
+      analyses,
+    ).get('C1')!;
+    expect(closureOutcomeLabel(v)).toBe('Recrutement conclu — Jean Martin, Awa Diallo');
+  });
+});

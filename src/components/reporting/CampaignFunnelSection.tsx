@@ -30,6 +30,9 @@ export function CampaignFunnelSection({ funnel }: { funnel: InterviewFunnel }) {
         ))}
       </div>
       <div className="mt-3 flex flex-col gap-1 font-body text-[13px] text-stone-700">
+        {funnel.conversionRate !== null ? (
+          <p data-role="conversion-rate">Taux de conversion : {funnel.conversionRate} % (recrutés / candidatures reçues).</p>
+        ) : null}
         {funnel.placementRate !== null ? (
           <p>Taux de placement : {funnel.placementRate} % (recrutés / retenus présentés).</p>
         ) : null}

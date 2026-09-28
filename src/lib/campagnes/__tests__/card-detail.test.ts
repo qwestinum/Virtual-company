@@ -7,26 +7,17 @@ import {
   buildCardAwaiting,
   buildCardCounters,
   buildCardSources,
+  conversionLine,
 } from '@/lib/campagnes/card-detail';
-import {
-  CANDIDATE_STAGE_DEFINITIONS,
-  CANDIDATE_STAGE_LABELS,
-  emptyStageCounts,
-} from '@/lib/reporting/candidate-stage';
+import { CANDIDATE_STAGE_LABELS } from '@/lib/reporting/candidate-stage';
 
 const CAMP = 'CAMP-2026-221';
 
-describe('① compteurs — le funnel positif, sur une rangée', () => {
-  const counts = {
-    ...emptyStageCounts(),
-    a_valider: 2,
-    proposition_refus: 3,
-    rdv_pris: 1,
-    retenu: 1,
-    ecarte: 4,
-    sans_suite: 1,
-  };
-  const tiles = () => buildCardCounters(CAMP, 12, counts);
+describe('① compteurs — l’ENTONNOIR : chaque candidature passée par une étape la compte', () => {
+  // CAMP-2026-221 après clôture : deux retenus, l'un recruté, l'autre non
+  // sélectionné — la carte affichait « Retenu 0 » (bug du 28/09/2026).
+  const trajectory = { recues: 2, a_valider: 1, invite: 2, entretien_fait: 2, retenu: 2, recrute: 1 };
+  const tiles = () => buildCardCounters(CAMP, trajectory);
 
   it('Reçues · À valider · Invité · Entretien fait · Retenu · Recruté — et rien d’autre', () => {
     expect(tiles().map((t) => t.label)).toEqual([
@@ -37,29 +28,30 @@ describe('① compteurs — le funnel positif, sur une rangée', () => {
       'Retenu',
       'Recruté',
     ]);
-    // Sortis de la carte (arbitrage du 28/09/2026) : lisibles ailleurs.
     for (const absent of ['rdv_pris', 'proposition_refus', 'ecarte', 'non_retenu', 'sans_suite']) {
       expect(tiles().some((t) => t.key === absent), absent).toBe(false);
     }
   });
 
-  it('chaque compteur porte LE MÊME MOT et LE MÊME CHIFFRE que la puce vers laquelle il mène', () => {
-    // « Invités 2 » menant à une liste « Invité » VIDE est pire que deux mots
-    // différents : mesuré sur CAMP-2026-221, la carte affichait 2 quand la
-    // puce affichait 0.
+  it('un recruté a été retenu : « Retenu 2 », « Recruté 1 »', () => {
+    expect(tiles().find((t) => t.key === 'retenu')!.count).toBe(2);
+    expect(tiles().find((t) => t.key === 'recrute')!.count).toBe(1);
+  });
+
+  it('chaque compteur ouvre les candidatures qu’il compte (filtre de parcours), avec le mot de l’étape', () => {
+    const parcours = { a_valider: 'validation', invite: 'invitation', entretien_fait: 'entretien', retenu: 'retenu', recrute: 'recrute' } as const;
     for (const item of tiles().slice(1)) {
-      const stage = item.key as keyof typeof CANDIDATE_STAGE_LABELS;
-      expect(item.label).toBe(CANDIDATE_STAGE_LABELS[stage]);
-      expect(item.count).toBe(counts[stage]);
-      expect(item.definition).toBe(CANDIDATE_STAGE_DEFINITIONS[stage]);
-      expect(item.href).toBe(`/candidatures?campagne=CAMP-2026-221&statut=${stage}`);
+      const step = item.key as keyof typeof parcours;
+      expect(item.label).toBe(CANDIDATE_STAGE_LABELS[step]);
+      expect(item.count).toBe(trajectory[step]);
+      expect(item.href).toBe(`/candidatures?campagne=CAMP-2026-221&parcours=${parcours[step]}`);
+      expect(item.definition.length, step).toBeGreaterThan(10);
     }
   });
 
   it('« Reçues » reste un TOTAL cliquable, tous statuts confondus', () => {
     const recues = tiles()[0]!;
-    expect(recues.label).toBe('Reçues');
-    expect(recues.count).toBe(12);
+    expect(recues.count).toBe(2);
     expect(recues.href).toBe('/candidatures?campagne=CAMP-2026-221');
   });
 
@@ -74,8 +66,9 @@ describe('① compteurs — le funnel positif, sur une rangée', () => {
     }
   });
 
-  it('une puce à zéro reste affichée : c’est un état normal', () => {
-    expect(tiles().find((i) => i.key === 'recrute')!.count).toBe(0);
+  it('le taux de conversion solde l’entonnoir : recrutés / reçues', () => {
+    expect(conversionLine(trajectory)).toBe('Taux de conversion : 50 % — 1 recruté sur 2 candidatures reçues');
+    expect(conversionLine({ ...trajectory, recues: 0, recrute: 0 })).toBeNull();
   });
 });
 

@@ -75,3 +75,13 @@ describe('clôture incomplète', () => {
     expect(findIncompleteClosures([CLOSURE], uidOf, markers)[0]).toMatchObject({ missingHire: true });
   });
 });
+
+describe('plusieurs recrutés (28/09/2026)', () => {
+  it('un des recrutés annoncés sans son marqueur ⇒ signalé', () => {
+    const c = closed('C1', { outcome: 'conclu', hiredAnalysisIds: ['jean', 'awa'], notSelectedAnalysisIds: [] });
+    expect(findIncompleteClosures([c], uidOf, [hired('C1', 'jean')])).toEqual([
+      { campaignId: 'C1', missingHire: true, missingNotSelected: [] },
+    ]);
+    expect(findIncompleteClosures([c], uidOf, [hired('C1', 'jean'), hired('C1', 'awa')])).toEqual([]);
+  });
+});

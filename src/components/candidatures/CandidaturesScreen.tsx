@@ -15,6 +15,7 @@
  * autre.
  */
 
+import { PARCOURS_STEP, PASSAGE_LABELS } from '@/lib/reporting/campaign-trajectory';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -30,10 +31,6 @@ import { selectActiveCampaigns, useCampaignsStore } from '@/stores/campaigns-sto
 
 import { CandidaturesWorkspace } from './CandidaturesWorkspace';
 
-const PARCOURS_LABEL = {
-  invitation: 'Passés par l’invitation',
-  entretien: 'Passés par l’entretien',
-} as const;
 
 export function CandidaturesScreen() {
   const params = useSearchParams();
@@ -80,7 +77,7 @@ export function CandidaturesScreen() {
   if (filter.parcours) {
     filters.push({
       key: PARAM.parcours,
-      label: PARCOURS_LABEL[filter.parcours],
+      label: PASSAGE_LABELS[PARCOURS_STEP[filter.parcours]],
       withoutHref: candidaturesHref({ ...filter, parcours: null }),
     });
   }
@@ -106,8 +103,7 @@ export function CandidaturesScreen() {
           key={canonical}
           initialStage={filter.stage ?? null}
           initialCampaignId={filter.campaignId ?? null}
-          initialEverInvited={filter.parcours === 'invitation'}
-          initialEverInterviewed={filter.parcours === 'entretien'}
+          initialPassage={filter.parcours ? PARCOURS_STEP[filter.parcours] : null}
         />
       </div>
     </div>

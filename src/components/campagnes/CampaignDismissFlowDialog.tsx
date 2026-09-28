@@ -1,14 +1,15 @@
 'use client';
 
 /**
- * Point d'entrée PARTAGÉ des deux flux de classement sans suite EN MASSE —
- * les trois écrans qui clôturent et la fiche qui retient passent par ici :
- *   - mode `close` : clôture de campagne → `CampaignCloseDialog` (issue,
- *     désignation du recruté, retenus non sélectionnés, dossiers ouverts,
- *     dépublication Apec) ; POST /api/campaigns/[id]/close ;
- *   - mode `go`    : après un verdict positif (poste pourvu) → `GoDismissDialog`
- *     — classer les candidatures restantes SANS clôturer, « Plus tard » possible.
+ * Point d'entrée PARTAGÉ de la clôture — les trois écrans qui clôturent
+ * passent par ici : `CampaignCloseDialog` (issue, désignation des recrutés,
+ * retenus non sélectionnés, dossiers ouverts classés sans suite,
+ * dépublication Apec) ; POST /api/campaigns/[id]/close.
  * Jamais silencieux : le récapitulatif est affiché AVANT toute action.
+ *
+ * ⚠️ Le mode « go » (classer les candidatures restantes après un verdict
+ * positif) est RETIRÉ le 28/09/2026 : un retenu n'est pas un poste pourvu.
+ * Le classement des restantes appartient à la clôture.
  *
  * ── LA DÉPUBLICATION APEC EST PROPOSÉE, JAMAIS AUTOMATIQUE ──────────────────
  *
@@ -26,18 +27,12 @@
  */
 
 import { CampaignCloseDialog, type ClosureSummary } from './closure/CampaignCloseDialog';
-import { GoDismissDialog } from './closure/GoDismissDialog';
 
 export function CampaignDismissFlowDialog(props: {
   campaignId: string;
-  mode: 'close' | 'go';
   onCancel: () => void;
-  /** Appelé après succès (clôture posée / classement fait). */
+  /** Appelé après succès (clôture posée). */
   onDone: (summary: ClosureSummary | null) => void;
 }) {
-  return props.mode === 'close' ? (
-    <CampaignCloseDialog campaignId={props.campaignId} onCancel={props.onCancel} onDone={props.onDone} />
-  ) : (
-    <GoDismissDialog campaignId={props.campaignId} onCancel={props.onCancel} onDone={props.onDone} />
-  );
+  return <CampaignCloseDialog campaignId={props.campaignId} onCancel={props.onCancel} onDone={props.onDone} />;
 }

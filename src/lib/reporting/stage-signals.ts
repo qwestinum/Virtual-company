@@ -24,12 +24,14 @@ import {
   foldValidationMark,
   HIRED_MARKER_ACTION,
   INTERVIEW_MARKER_ACTION,
+  readValidationCause,
   VALIDATION_MARKER_ACTION,
   type HiredMarkEffect,
   type InterviewMarkEffect,
   type MarkerState,
   type ValidationMarkEffect,
 } from '@/lib/candidatures/decision-markers';
+import { NOT_SELECTED_CAUSE } from '@/lib/campagnes/closure-constants';
 import { listScheduledInterviewUids } from '@/lib/db/repos/interview-briefs';
 import {
   listJournalEntriesByActions,
@@ -47,6 +49,11 @@ import {
   countCandidateAnalyses,
   listAllCandidateAnalyses,
 } from '@/lib/db/repos/candidate-analyses';
+import {
+  addToTrajectory,
+  emptyTrajectoryCounts,
+  type TrajectoryCounts,
+} from '@/lib/reporting/campaign-trajectory';
 import type { PendingValidation } from '@/types/hitl';
 import type { CandidateAnalysisSummary } from '@/types/reporting';
 
@@ -90,6 +97,12 @@ export type StageSignals = {
   validationMarks: Map<string, 'validated' | 'rejected'>;
   /** uids désignés recrutés (journal, dernier-gagne, gomme comprise). */
   hiredUids: Set<string>;
+  /**
+   * uids dont le verdict COURANT est « non retenu » POSÉ À LA CLÔTURE (retenu
+   * non sélectionné) : même étape que tout « Non retenu », mais le parcours,
+   * lui, est passé par « Retenu » (compteurs de campagne, 28/09/2026).
+   */
+  notSelectedUids: Set<string>;
 };
 
 /** Périmètre du ruban / des compteurs : campagne(s) + période (JAMAIS la recherche). */
@@ -140,6 +153,8 @@ export async function loadStageSignals(
   const interviewStates = new Map<string, MarkerState<InterviewMarkEffect>>();
   const validationStates = new Map<string, MarkerState<ValidationMarkEffect>>();
   const hiredStates = new Map<string, MarkerState<HiredMarkEffect>>();
+  // Cause portée par le marqueur de verdict GAGNANT (même dernier-gagne).
+  const validationCause = new Map<string, string | null>();
   for (const entry of markers) {
     const uid = payloadUid(entry.payload);
     if (!uid) continue;
@@ -153,14 +168,15 @@ export async function loadStageSignals(
         ),
       );
     } else if (entry.action === VALIDATION_ACTION) {
-      validationStates.set(
-        uid,
-        foldValidationMark(
-          validationStates.get(uid) ?? emptyValidationState(),
-          entry.payload,
-          entry.createdAt,
-        ),
+      const next = foldValidationMark(
+        validationStates.get(uid) ?? emptyValidationState(),
+        entry.payload,
+        entry.createdAt,
       );
+      if (next !== validationStates.get(uid) && next.at === entry.createdAt) {
+        validationCause.set(uid, readValidationCause(entry.payload));
+      }
+      validationStates.set(uid, next);
     } else if (entry.action === HIRED_MARKER_ACTION) {
       hiredStates.set(
         uid,
@@ -188,6 +204,10 @@ export async function loadStageSignals(
   for (const [uid, state] of hiredStates) {
     if (state.effect === 'hired') hiredUids.add(uid);
   }
+  const notSelectedUids = new Set<string>();
+  for (const [uid, mark] of validationMarks) {
+    if (mark === 'rejected' && validationCause.get(uid) === NOT_SELECTED_CAUSE) notSelectedUids.add(uid);
+  }
 
   return {
     pendingUids,
@@ -196,6 +216,7 @@ export async function loadStageSignals(
     interviewMarkedAt,
     validationMarks,
     hiredUids,
+    notSelectedUids,
   };
 }
 
@@ -260,36 +281,72 @@ export async function computeStageCounts(
  * « ce qui attend » devrait être rechargé au dépliage, ce qui ferait sauter la
  * mise en page.
  */
+/**
+ * Étape où un entretien PASSÉ attend encore d'être pointé : le dossier est
+ * toujours « Invité » ou « RDV pris ». Pointé (réalisé, absent), tranché ou
+ * classé, il en sort — le briefing, lui, reste « programmé » à vie, ce qui
+ * n'est donc jamais une preuve. Règle PARTAGÉE par l'alerte d'Aujourd'hui et
+ * la carte de campagne (bug du 28/09/2026 : la carte comptait les briefings).
+ */
+export function awaitsPointing(stage: CandidateStage): boolean {
+  return stage === 'invite' || stage === 'rdv_pris';
+}
+
+type PastBrief = { uid: string | null; campaignId: string | null };
+
+export type CampaignCounts = {
+  /** Étapes COURANTES (partition, puces de Candidatures). */
+  counts: CandidateStageCounts;
+  total: number;
+  oldestWaitingDays: number | null;
+  /** PARCOURS : combien sont passées par chaque étape (carte de campagne). */
+  trajectory: TrajectoryCounts;
+  /** Entretiens passés encore à pointer (briefings fournis par l'appelant). */
+  unpointed: number;
+};
+
 export async function computeStageCountsByCampaign(
   campaignIds: readonly string[],
   nowMs: number = Date.now(),
-): Promise<
-  Map<string, { counts: CandidateStageCounts; total: number; oldestWaitingDays: number | null }>
-> {
-  const out = new Map<
-    string,
-    { counts: CandidateStageCounts; total: number; oldestWaitingDays: number | null }
-  >();
+  /**
+   * Briefings dont l'entretien est passé (déjà filtrés par l'appelant). Une
+   * promesse est acceptée : leur lecture part EN MÊME TEMPS que les analyses.
+   */
+  pastBriefs:
+    | readonly PastBrief[]
+    | Promise<readonly PastBrief[]> = [],
+): Promise<Map<string, CampaignCounts>> {
+  const out = new Map<string, CampaignCounts>();
   const ids = [...new Set(campaignIds)];
   if (ids.length === 0) return out;
 
-  const [all, signals] = await Promise.all([
+  const [all, signals, briefs] = await Promise.all([
     listAllCandidateAnalyses({ campaignIds: ids }),
     loadStageSignals({ campaignIds: ids }),
+    Promise.resolve(pastBriefs),
   ]);
 
   // Une campagne sans aucune candidature doit rendre des ZÉROS, pas une
   // absence : la carte affiche « 0 Reçues », elle ne masque pas son bloc.
   for (const id of ids) {
-    out.set(id, { counts: emptyStageCounts(), total: 0, oldestWaitingDays: null });
+    out.set(id, {
+      counts: emptyStageCounts(),
+      total: 0,
+      oldestWaitingDays: null,
+      trajectory: emptyTrajectoryCounts(),
+      unpointed: 0,
+    });
   }
 
+  const stageByKey = new Map<string, CandidateStage>();
   for (const analysis of all) {
     const entry = analysis.campaignId ? out.get(analysis.campaignId) : undefined;
     if (!entry) continue;
     const stage = stageFor(analysis, signals);
+    stageByKey.set(`${analysis.campaignId}|${analysis.uid}`, stage);
     entry.counts[stage] += 1;
     entry.total += 1;
+    addToTrajectory(entry.trajectory, analysis, signals);
     if (stage === 'a_valider') {
       const jours = Math.max(
         0,
@@ -300,6 +357,18 @@ export async function computeStageCountsByCampaign(
           ? jours
           : Math.max(entry.oldestWaitingDays, jours);
     }
+  }
+
+  // Un dossier compte UNE fois, même s'il porte plusieurs briefings passés.
+  const seen = new Set<string>();
+  for (const brief of briefs) {
+    if (!brief.uid || !brief.campaignId) continue;
+    const key = `${brief.campaignId}|${brief.uid}`;
+    const stage = stageByKey.get(key);
+    const entry = out.get(brief.campaignId);
+    if (!entry || !stage || seen.has(key) || !awaitsPointing(stage)) continue;
+    seen.add(key);
+    entry.unpointed += 1;
   }
   return out;
 }

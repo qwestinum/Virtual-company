@@ -24,14 +24,14 @@ describe('dialogue de clôture — brouillon', () => {
     const d: ClosureDraft = { ...initialClosureDraft(true), outcome: 'non_conclu' };
     expect(closureMissing(d, RETENUS)).toEqual([]);
     const req = closureRequest(d, RETENUS, 2)!;
-    expect(req).toMatchObject({ hiredAnalysisId: null, notSelected: [], reason: 'campagne_cloturee' });
+    expect(req).toMatchObject({ hiredAnalysisIds: [], notSelected: [], reason: 'campagne_cloturee' });
   });
 
   it('conclu sans préciser qui : possible, aucun retenu ne change, aucun message forcé', () => {
     const d: ClosureDraft = { ...initialClosureDraft(true), hired: { kind: 'unspecified' } };
     expect(closureMissing(d, RETENUS)).toEqual([]);
     expect(closureRequest(d, RETENUS, 0)).toMatchObject({
-      hiredAnalysisId: null,
+      hiredAnalysisIds: [],
       notSelected: [],
       reason: 'poste_pourvu',
       dismissOpen: false,
@@ -41,7 +41,7 @@ describe('dialogue de clôture — brouillon', () => {
   it('désignation : les AUTRES retenus sont non sélectionnés, chacun exige son message', () => {
     let d: ClosureDraft = {
       ...initialClosureDraft(true),
-      hired: { kind: 'designated', analysisId: 'jean' },
+      hired: { kind: 'designated', analysisIds: ['jean'] },
     };
     expect(notSelected(d, RETENUS).map((r) => r.analysisId)).toEqual(['awa', 'lea']);
     expect(closureMissing(d, RETENUS)).toEqual(['feedback']);
@@ -49,7 +49,7 @@ describe('dialogue de clôture — brouillon', () => {
     expect(closureRequest(d, RETENUS, 0)).toBeNull();
     d = { ...d, feedbacks: { awa: SELF, lea: SELF } };
     const req = closureRequest(d, RETENUS, 0)!;
-    expect(req.hiredAnalysisId).toBe('jean');
+    expect(req.hiredAnalysisIds).toEqual(['jean']);
     expect(req.notSelected).toEqual([
       { analysisId: 'awa', feedback: SELF },
       { analysisId: 'lea', feedback: SELF },
@@ -59,7 +59,7 @@ describe('dialogue de clôture — brouillon', () => {
   it('un message saisi pour un retenu devenu le recruté ne part pas', () => {
     const d: ClosureDraft = {
       ...initialClosureDraft(true),
-      hired: { kind: 'designated', analysisId: 'awa' },
+      hired: { kind: 'designated', analysisIds: ['awa'] },
       feedbacks: { awa: SELF, jean: SELF, lea: SELF },
     };
     expect(closureRequest(d, RETENUS, 0)!.notSelected.map((n) => n.analysisId)).toEqual([
@@ -72,5 +72,28 @@ describe('dialogue de clôture — brouillon', () => {
     const d = initialClosureDraft(false);
     expect(closureMissing(d, [])).toEqual(['outcome']);
     expect(closureMissing({ ...d, outcome: 'conclu' }, [])).toEqual([]);
+  });
+});
+
+describe('plusieurs recrutements (28/09/2026)', () => {
+  it('cocher plusieurs retenus : les autres seulement passent « non retenu »', async () => {
+    const { toggleHired } = await import('@/lib/campagnes/closure-draft');
+    let hired = toggleHired(null, 'jean');
+    hired = toggleHired(hired, 'awa');
+    const d: ClosureDraft = { ...initialClosureDraft(true), hired, feedbacks: { lea: SELF } };
+    expect(notSelected(d, RETENUS).map((r) => r.analysisId)).toEqual(['lea']);
+    expect(closureRequest(d, RETENUS, 0)).toMatchObject({ hiredAnalysisIds: ['jean', 'awa'], notSelected: [{ analysisId: 'lea' }] });
+  });
+
+  it('décocher le dernier revient à « rien de choisi » — la clôture attend un choix', async () => {
+    const { toggleHired } = await import('@/lib/campagnes/closure-draft');
+    const hired = toggleHired(toggleHired(null, 'jean'), 'jean');
+    expect(hired).toBeNull();
+    expect(closureMissing({ ...initialClosureDraft(true), hired }, RETENUS)).toEqual(['hired']);
+  });
+
+  it('cocher un retenu après « ne pas préciser » quitte « ne pas préciser »', async () => {
+    const { toggleHired } = await import('@/lib/campagnes/closure-draft');
+    expect(toggleHired({ kind: 'unspecified' }, 'jean')).toEqual({ kind: 'designated', analysisIds: ['jean'] });
   });
 });

@@ -179,6 +179,14 @@ export function foldHiredMark(
   return fold(state, readHiredMark(payload), at, hiredMarkEffect);
 }
 
+/** Cause d'un verdict (`not_selected_at_closure`…) : un contexte, jamais une étape. */
+export function readValidationCause(
+  payload: Record<string, unknown> | null | undefined,
+): string | null {
+  const raw = payload?.cause;
+  return typeof raw === 'string' && raw.trim() !== '' ? raw : null;
+}
+
 // ─── Commentaire qui motive le verdict ─────────────────────────────────────
 
 export function readValidationCommentId(
@@ -260,7 +268,9 @@ export function buildValidationMarkerEntry(args: {
   /**
    * Contexte du verdict, jamais un nom : `not_selected_at_closure` pour un
    * retenu non sélectionné à la clôture (feat/feedback-candidat, lot 4).
-   * N'agit sur AUCUNE dérivation — c'est le même « Non retenu ».
+   * N'agit sur aucune ÉTAPE — c'est le même « Non retenu » — mais sur le
+   * PARCOURS : ce candidat est passé par « Retenu » (compteurs de campagne,
+   * `campaign-trajectory.ts`).
    */
   cause?: string;
 }): JournalMarkerEntry {

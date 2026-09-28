@@ -47,25 +47,25 @@ beforeEach(() => {
 
 describe('checkClosure — tout est contrôlé AVANT écriture', () => {
   it('non conclu, conclu sans préciser : recevables sans rien d’autre', () => {
-    expect(checkClosure({ outcome: 'non_conclu', hiredAnalysisId: null, notSelected: [] }, RETENUS)).toBeNull();
-    expect(checkClosure({ outcome: 'conclu', hiredAnalysisId: null, notSelected: [] }, RETENUS)).toBeNull();
+    expect(checkClosure({ outcome: 'non_conclu', hiredAnalysisIds: [], notSelected: [] }, RETENUS)).toBeNull();
+    expect(checkClosure({ outcome: 'conclu', hiredAnalysisIds: [], notSelected: [] }, RETENUS)).toBeNull();
   });
 
   it('une désignation sur une clôture non conclue est refusée', () => {
     expect(
-      checkClosure({ outcome: 'non_conclu', hiredAnalysisId: 'jean', notSelected: [] }, RETENUS)?.error,
+      checkClosure({ outcome: 'non_conclu', hiredAnalysisIds: ['jean'], notSelected: [] }, RETENUS)?.error,
     ).toBe('hire_without_conclusion');
   });
 
   it('le recruté doit être un retenu COURANT', () => {
     expect(
-      checkClosure({ outcome: 'conclu', hiredAnalysisId: 'inconnu', notSelected: [] }, RETENUS)?.error,
+      checkClosure({ outcome: 'conclu', hiredAnalysisIds: ['inconnu'], notSelected: [] }, RETENUS)?.error,
     ).toBe('invalid_hire');
   });
 
   it('chaque autre retenu exige SON message — règle serveur', () => {
     const r = checkClosure(
-      { outcome: 'conclu', hiredAnalysisId: 'jean', notSelected: [{ analysisId: 'awa', feedback: SELF }] },
+      { outcome: 'conclu', hiredAnalysisIds: ['jean'], notSelected: [{ analysisId: 'awa', feedback: SELF }] },
       RETENUS,
     );
     expect(r).toMatchObject({ error: 'feedback_required', analysisId: 'lea' });
@@ -76,7 +76,7 @@ describe('checkClosure — tout est contrôlé AVANT écriture', () => {
       checkClosure(
         {
           outcome: 'conclu',
-          hiredAnalysisId: 'jean',
+          hiredAnalysisIds: ['jean'],
           notSelected: [
             { analysisId: 'awa', feedback: SELF },
             { analysisId: 'lea', feedback: SELF },
@@ -92,7 +92,7 @@ describe('checkClosure — tout est contrôlé AVANT écriture', () => {
     const retenus = [retenu('awa', null), retenu('jean')];
     expect(
       checkClosure(
-        { outcome: 'conclu', hiredAnalysisId: 'jean', notSelected: [{ analysisId: 'awa', feedback: SEND }] },
+        { outcome: 'conclu', hiredAnalysisIds: ['jean'], notSelected: [{ analysisId: 'awa', feedback: SEND }] },
         retenus,
       ),
     ).toMatchObject({ error: 'no_candidate_email', analysisId: 'awa' });
@@ -104,7 +104,7 @@ describe('applyClosureDecisions — les écritures', () => {
     const out = await applyClosureDecisions({
       input: {
         outcome: 'conclu',
-        hiredAnalysisId: 'jean',
+        hiredAnalysisIds: ['jean'],
         notSelected: [
           { analysisId: 'awa', feedback: SEND },
           { analysisId: 'lea', feedback: SELF },
@@ -133,7 +133,7 @@ describe('applyClosureDecisions — les écritures', () => {
 
   it('sans désignation : aucune écriture, aucun message', async () => {
     const out = await applyClosureDecisions({
-      input: { outcome: 'conclu', hiredAnalysisId: null, notSelected: [] },
+      input: { outcome: 'conclu', hiredAnalysisIds: [], notSelected: [] },
       retenus: RETENUS,
       actor: null,
     });
@@ -147,7 +147,7 @@ describe('applyClosureDecisions — les écritures', () => {
     const out = await applyClosureDecisions({
       input: {
         outcome: 'conclu',
-        hiredAnalysisId: 'jean',
+        hiredAnalysisIds: ['jean'],
         notSelected: [
           { analysisId: 'awa', feedback: SEND },
           { analysisId: 'lea', feedback: SELF },
@@ -164,7 +164,7 @@ describe('applyClosureDecisions — les écritures', () => {
     await applyClosureDecisions({
       input: {
         outcome: 'conclu',
-        hiredAnalysisId: 'jean',
+        hiredAnalysisIds: ['jean'],
         notSelected: [
           { analysisId: 'awa', feedback: SEND },
           { analysisId: 'lea', feedback: SELF },
@@ -174,5 +174,46 @@ describe('applyClosureDecisions — les écritures', () => {
       actor: null,
     });
     expect(JSON.stringify(journal)).not.toContain('Bonjour, merci.');
+  });
+});
+
+describe('plusieurs recrutements (28/09/2026)', () => {
+  it('deux recrutés : un marqueur chacun, le troisième retenu passe « non retenu » avec son message', async () => {
+    expect(
+      checkClosure(
+        { outcome: 'conclu', hiredAnalysisIds: ['jean', 'awa'], notSelected: [{ analysisId: 'lea', feedback: SELF }] },
+        RETENUS,
+      ),
+    ).toBeNull();
+    const out = await applyClosureDecisions({
+      input: { outcome: 'conclu', hiredAnalysisIds: ['jean', 'awa'], notSelected: [{ analysisId: 'lea', feedback: SELF }] },
+      retenus: RETENUS,
+      actor: null,
+    });
+    const hires = journal.filter((e) => e.action === 'candidate_hired_marked');
+    expect(hires.map((h) => h.payload.uid)).toEqual(['u_jean', 'u_awa']);
+    expect(out.map((o) => o.analysisId)).toEqual(['lea']);
+  });
+
+  it('un recruté ne peut pas être aussi « non sélectionné », et chaque autre retenu attend son message', () => {
+    expect(
+      checkClosure(
+        { outcome: 'conclu', hiredAnalysisIds: ['jean', 'awa'], notSelected: [{ analysisId: 'awa', feedback: SELF }] },
+        RETENUS,
+      )?.error,
+    ).toBe('not_selected_mismatch');
+    expect(
+      checkClosure({ outcome: 'conclu', hiredAnalysisIds: ['jean', 'awa'], notSelected: [] }, RETENUS)?.error,
+    ).toBe('feedback_required');
+  });
+
+  it('tous les retenus recrutés : aucun message à envoyer', () => {
+    expect(checkClosure({ outcome: 'conclu', hiredAnalysisIds: ['jean', 'awa', 'lea'], notSelected: [] }, RETENUS)).toBeNull();
+  });
+
+  it('un recruté qui n’est plus retenu est refusé, même parmi d’autres valides', () => {
+    expect(
+      checkClosure({ outcome: 'conclu', hiredAnalysisIds: ['jean', 'inconnu'], notSelected: [] }, RETENUS)?.error,
+    ).toBe('invalid_hire');
   });
 });

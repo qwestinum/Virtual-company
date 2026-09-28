@@ -20,6 +20,7 @@
  * un écran qui se réorganise sous le curseur fait rater le clic déjà visé.
  */
 
+import type { TrajectoryCounts } from '@/lib/reporting/campaign-trajectory';
 import type { ReactNode } from 'react';
 
 import {
@@ -37,8 +38,11 @@ import { CampaignCardStageCounters } from './CampaignCardStageCounters';
 import { useCampaignCardSources } from './useCampaignCardDetail';
 
 export type CampaignCardCounters = {
+  /** Étapes COURANTES — « Ce qui attend » en a besoin. */
   counts: CandidateStageCounts;
   received: number;
+  /** PARCOURS — les compteurs de la carte (entonnoir). */
+  trajectory: TrajectoryCounts;
   aValiderOldestDays: number | null;
   entretiensAConfirmer: number;
 };
@@ -70,8 +74,7 @@ export function CampaignCardDetail({
           <Bloc titre="Candidatures">
             <CampaignCardStageCounters
               campaignId={campaignId}
-              received={counters.received}
-              counts={counters.counts}
+              trajectory={counters.trajectory}
             />
           </Bloc>
           <CeQuiAttend

@@ -125,7 +125,7 @@ afterAll(async () => {
 function closeBody(over: Record<string, unknown>) {
   return {
     outcome: 'conclu',
-    hiredAnalysisId: jean,
+    hiredAnalysisIds: [jean],
     notSelected: [
       { analysisId: awa, feedback: SEND },
       { analysisId: lea, feedback: SELF },
@@ -189,7 +189,7 @@ describe('S26 — clôture avec désignation', () => {
     expect(closed).toHaveLength(1);
     expect(closed[0]!.payload).toMatchObject({
       outcome: 'conclu',
-      hiredAnalysisId: jean,
+      hiredAnalysisIds: [jean],
       notSelectedAnalysisIds: [awa, lea],
     });
     expect(JSON.stringify(closed[0]!.payload)).not.toContain('Candidat Treg');
@@ -257,7 +257,7 @@ describe('S26.5 — conclu sans préciser, non conclu', () => {
     resetSentEmails();
     const res = await callWithId(closeCampaign, c2, {
       method: 'POST',
-      body: { outcome: 'conclu', hiredAnalysisId: null, notSelected: [], dismissOpen: true, reason: 'poste_pourvu', sendMail: true },
+      body: { outcome: 'conclu', hiredAnalysisIds: [], notSelected: [], dismissOpen: true, reason: 'poste_pourvu', sendMail: true },
     });
     expect(res.status).toBe(200);
     expect((await counters(c2)).retenu).toBe(2);
@@ -267,7 +267,7 @@ describe('S26.5 — conclu sans préciser, non conclu', () => {
       campaign_id: c2,
       action: 'campaign_closed',
     });
-    expect(closed[0]!.payload).toMatchObject({ outcome: 'conclu', hiredAnalysisId: null });
+    expect(closed[0]!.payload).toMatchObject({ outcome: 'conclu', hiredAnalysisIds: [] });
   });
 
   it('non conclu : une désignation est refusée, sans elle la clôture passe', async () => {
@@ -276,6 +276,7 @@ describe('S26.5 — conclu sans préciser, non conclu', () => {
     resetSentEmails();
     const refused = await callWithId(closeCampaign, c3, {
       method: 'POST',
+      // L'ancien format (un seul recruté) reste compris — et refusé ici.
       body: { outcome: 'non_conclu', hiredAnalysisId: a, notSelected: [], dismissOpen: false },
     });
     expect(refused.status).toBe(400);
@@ -283,10 +284,55 @@ describe('S26.5 — conclu sans préciser, non conclu', () => {
 
     const res = await callWithId(closeCampaign, c3, {
       method: 'POST',
-      body: { outcome: 'non_conclu', hiredAnalysisId: null, notSelected: [], dismissOpen: true, reason: 'campagne_cloturee', sendMail: true },
+      body: { outcome: 'non_conclu', hiredAnalysisIds: [], notSelected: [], dismissOpen: true, reason: 'campagne_cloturee', sendMail: true },
     });
     expect(res.status).toBe(200);
     expect((await counters(c3)).retenu).toBe(1);
     expect(sentEmails).toHaveLength(0);
+  });
+});
+
+describe('S26.7 — plusieurs recrutements (28/09/2026)', () => {
+  it('deux recrutés : deux marqueurs, le troisième retenu Non retenu, Pilotage les nomme', async () => {
+    const c4 = await campaign('s26d');
+    const a = await retenu(c4, `treg_s26d_a_${tag}`);
+    const b = await retenu(c4, `treg_s26d_b_${tag}`);
+    const c = await retenu(c4, `treg_s26d_c_${tag}`);
+    resetSentEmails();
+    const res = await callWithId(closeCampaign, c4, {
+      method: 'POST',
+      body: {
+        outcome: 'conclu',
+        hiredAnalysisIds: [a, b],
+        notSelected: [{ analysisId: c, feedback: SELF }],
+        dismissOpen: false,
+      },
+    });
+    expect(res.status).toBe(200);
+    const current = await counters(c4);
+    expect(current.recrute).toBe(2);
+    expect(current.non_retenu).toBe(1);
+    const hires = await readRows<{ payload: Record<string, unknown> }>('journal', {
+      campaign_id: c4,
+      action: 'candidate_hired_marked',
+    });
+    expect(hires).toHaveLength(2);
+    const closed = await readRows<{ payload: Record<string, unknown> }>('journal', {
+      campaign_id: c4,
+      action: 'campaign_closed',
+    });
+    expect(closed[0]!.payload).toMatchObject({ outcome: 'conclu', hiredAnalysisIds: [a, b], notSelectedAnalysisIds: [c] });
+    expect(sentEmails).toHaveLength(0);
+  });
+
+  it('ancien format (un seul recruté) : toujours compris', async () => {
+    const c5 = await campaign('s26e');
+    const a = await retenu(c5, `treg_s26e_a_${tag}`);
+    const res = await callWithId(closeCampaign, c5, {
+      method: 'POST',
+      body: { outcome: 'conclu', hiredAnalysisId: a, notSelected: [], dismissOpen: false },
+    });
+    expect(res.status).toBe(200);
+    expect((await counters(c5)).recrute).toBe(1);
   });
 });

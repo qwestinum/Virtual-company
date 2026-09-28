@@ -4,9 +4,10 @@
  *
  * Trois décisions, dans l'ordre où l'écran les pose :
  *   1. le recrutement est-il CONCLU ? (sinon : clôture sans recrutement) ;
- *   2. s'il l'est et qu'il y a des retenus : QUI est recruté — désignation
- *      HUMAINE explicite, jamais pré-cochée ; « ne pas préciser » reste un
- *      choix (on ne bloque jamais une clôture) ;
+ *   2. s'il l'est et qu'il y a des retenus : QUI est recruté — un OU PLUSIEURS
+ *      (une campagne peut aboutir à plusieurs recrutements, 28/09/2026),
+ *      désignation HUMAINE explicite, jamais pré-cochée ; « ne pas préciser »
+ *      reste un choix (on ne bloque jamais une clôture) ;
  *   3. pour chaque retenu NON sélectionné : le message au candidat, l'un des
  *      deux gestes OBLIGATOIRE (envoyer / je préviens moi-même) — ces dossiers
  *      passent en « Non retenu », c'est une décision qui les concerne.
@@ -19,7 +20,23 @@ import type { FeedbackChoice } from '@/types/candidate-feedback';
 export type ClosureOutcome = 'conclu' | 'non_conclu';
 
 /** `unspecified` : conclu, sans désigner qui (choix explicite). */
-export type HiredChoice = { kind: 'designated'; analysisId: string } | { kind: 'unspecified' };
+export type HiredChoice = { kind: 'designated'; analysisIds: string[] } | { kind: 'unspecified' };
+
+/**
+ * Coche / décoche un retenu. « Ne pas préciser » est EXCLUSIF : cocher un
+ * retenu le quitte ; tout décocher revient à « rien de choisi » (le bouton de
+ * clôture attend alors un choix).
+ */
+export function toggleHired(current: HiredChoice | null, analysisId: string): HiredChoice | null {
+  const ids = current?.kind === 'designated' ? current.analysisIds : [];
+  const next = ids.includes(analysisId) ? ids.filter((x) => x !== analysisId) : [...ids, analysisId];
+  return next.length > 0 ? { kind: 'designated', analysisIds: next } : null;
+}
+
+/** Les recrutés cochés (vide si « ne pas préciser » ou rien de choisi). */
+export function hiredIds(draft: ClosureDraft): string[] {
+  return draft.hired?.kind === 'designated' ? draft.hired.analysisIds : [];
+}
 
 export type ClosureDraft = {
   outcome: ClosureOutcome | null;
@@ -53,8 +70,8 @@ export function notSelected(
   retenus: readonly ClosureRetenu[],
 ): ClosureRetenu[] {
   if (!asksForHire(draft, retenus) || draft.hired?.kind !== 'designated') return [];
-  const hiredId = draft.hired.analysisId;
-  return retenus.filter((r) => r.analysisId !== hiredId);
+  const hired = new Set(draft.hired.analysisIds);
+  return retenus.filter((r) => !hired.has(r.analysisId));
 }
 
 /** Motif du classement sans suite des candidatures ouvertes. */
@@ -81,7 +98,7 @@ export function closureMissing(
 /** Corps de `POST /api/campaigns/[id]/close`. */
 export type ClosureRequest = {
   outcome: ClosureOutcome;
-  hiredAnalysisId: string | null;
+  hiredAnalysisIds: string[];
   notSelected: { analysisId: string; feedback: FeedbackChoice }[];
   dismissOpen: boolean;
   reason: 'poste_pourvu' | 'campagne_cloturee';
@@ -94,13 +111,10 @@ export function closureRequest(
   openTotal: number,
 ): ClosureRequest | null {
   if (closureMissing(draft, retenus).length > 0 || draft.outcome === null) return null;
-  const hiredAnalysisId =
-    asksForHire(draft, retenus) && draft.hired?.kind === 'designated'
-      ? draft.hired.analysisId
-      : null;
+  const hiredAnalysisIds = asksForHire(draft, retenus) ? hiredIds(draft) : [];
   return {
     outcome: draft.outcome,
-    hiredAnalysisId,
+    hiredAnalysisIds,
     notSelected: notSelected(draft, retenus).map((r) => ({
       analysisId: r.analysisId,
       feedback: draft.feedbacks[r.analysisId]!,

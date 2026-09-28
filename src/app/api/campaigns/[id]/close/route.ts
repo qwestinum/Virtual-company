@@ -4,7 +4,7 @@
  * Seul chemin qui pose `closed_at` (le PUT snapshot ne le fait pas).
  *
  * Corps (feat/feedback-candidat, lot 4) :
- *   { outcome: 'conclu'|'non_conclu', hiredAnalysisId, notSelected[{analysisId, feedback}],
+ *   { outcome: 'conclu'|'non_conclu', hiredAnalysisIds[], notSelected[{analysisId, feedback}],
  *     dismissOpen, reason, sendMail }
  *   - conclu + recruté désigné : marqueur `candidate_hired_marked` ; chaque AUTRE
  *     retenu passe « Non retenu » (cause `not_selected_at_closure`) avec SON
@@ -12,7 +12,7 @@
  *   - conclu sans préciser / non conclu : aucun retenu ne change ;
  *   - candidatures OUVERTES : classement sans suite groupé (gabarit « Sans
  *     suite », motif selon l'issue) — inchangé, rail au-delà de 20 dossiers.
- * Journal : `campaign_closed` { outcome, hiredAnalysisId, notSelectedAnalysisIds }
+ * Journal : `campaign_closed` { outcome, hiredAnalysisIds, notSelectedAnalysisIds }
  * — identifiants seulement, jamais un nom.
  *
  *   200 { campaign, summary, dismissalQueued, closure }
@@ -49,6 +49,9 @@ const RequestSchema = z.object({
   sendMail: z.boolean().optional(),
   // Absent (anciens appelants) ⇒ déduit du motif, sans désignation.
   outcome: z.enum(['conclu', 'non_conclu']).optional(),
+  // Plusieurs recrutés possibles (28/09/2026). `hiredAnalysisId` (un seul)
+  // reste accepté pour un écran resté ouvert sur l'ancienne version.
+  hiredAnalysisIds: z.array(z.string().min(1)).optional(),
   hiredAnalysisId: z.string().min(1).nullable().optional(),
   notSelected: z
     .array(z.object({ analysisId: z.string().min(1), feedback: FeedbackChoiceSchema }))
@@ -75,7 +78,9 @@ export async function POST(
 
   const decisions = {
     outcome: parsed.outcome ?? (parsed.reason === 'poste_pourvu' ? 'conclu' : 'non_conclu'),
-    hiredAnalysisId: parsed.hiredAnalysisId ?? null,
+    hiredAnalysisIds: [
+      ...new Set(parsed.hiredAnalysisIds ?? (parsed.hiredAnalysisId ? [parsed.hiredAnalysisId] : [])),
+    ],
     notSelected: parsed.notSelected ?? [],
   } as const;
 
@@ -90,7 +95,7 @@ export async function POST(
     // 1. Tout est contrôlé AVANT la moindre écriture, contre l'état RELU.
     const { retenuAnalyses } = await listOpenCandidatures(id);
     const refusal = checkClosure(
-      { ...decisions, notSelected: [...decisions.notSelected] },
+      { ...decisions, hiredAnalysisIds: [...decisions.hiredAnalysisIds], notSelected: [...decisions.notSelected] },
       retenuAnalyses,
     );
     if (refusal) return NextResponse.json(refusal, { status: 400 });
@@ -104,7 +109,7 @@ export async function POST(
     // 3. Désignation du recruté et retenus non sélectionnés (un mail au plus
     //    chacun, par le chemin des messages après décision).
     const notSelected: NotSelectedOutcome[] = await applyClosureDecisions({
-      input: { ...decisions, notSelected: [...decisions.notSelected] },
+      input: { ...decisions, hiredAnalysisIds: [...decisions.hiredAnalysisIds], notSelected: [...decisions.notSelected] },
       retenus: retenuAnalyses,
       actor,
     });
@@ -135,7 +140,7 @@ export async function POST(
         // historiques de cette action l'attendent.
         campaignName: existing.name,
         outcome: decisions.outcome,
-        hiredAnalysisId: decisions.hiredAnalysisId,
+        hiredAnalysisIds: decisions.hiredAnalysisIds,
         notSelectedAnalysisIds: decisions.notSelected.map((n) => n.analysisId),
         dismissOpen: parsed.dismissOpen,
         actorUserId: actor?.userId ?? null,
@@ -154,7 +159,7 @@ export async function POST(
       dismissalQueued,
       closure: {
         outcome: decisions.outcome,
-        hiredAnalysisId: decisions.hiredAnalysisId,
+        hiredAnalysisIds: decisions.hiredAnalysisIds,
         notSelected,
       },
     });
