@@ -72,6 +72,8 @@ import { GET as campaignScheduling } from '@/app/api/campaigns/[id]/scheduling/r
 import { POST as dismissCandidature } from '@/app/api/candidatures/[id]/dismiss/route';
 import { POST as reopenCandidature } from '@/app/api/candidatures/[id]/reopen/route';
 import { POST as reissueLink } from '@/app/api/interviews/reissue/route';
+import { getCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
+import { loadStageSignals, stageFor } from '@/lib/reporting/stage-signals';
 import { loadInterviewPipeline } from '@/lib/interviews/pipeline';
 import { computeBusinessSignals } from '@/lib/notifications/business-signals';
 import { POST as postJournal } from '@/app/api/journal/route';
@@ -1075,6 +1077,103 @@ describe('S10.5 — cycle de vie du rendez-vous natif', () => {
       pipeline2.awaiting.filter((r) => r.analysisId === analysisId),
     ).toHaveLength(1);
     expect(pipeline2.scheduled.some((r) => r.analysisId === analysisId)).toBe(false);
+  });
+
+  it('ABSENCE → reproposer un créneau : « RDV pris » redescend en « Invité », puis remonte à la réservation', async () => {
+    // fix/vivier-replanif-filtres, point 2 : un absent à qui l'on repropose un
+    // créneau restait compté « RDV pris » — le rendez-vous manqué n'était pas
+    // décommandé et le briefing restait « programmé ».
+    const uid = `${NATIVE_UID}-noshow`;
+    const analysisId = `can_treg_noshow_${Date.now().toString(36)}`;
+    const email = 'noshow.s10n@test.local';
+    const ins = await db().from('candidate_analyses').insert({
+      id: analysisId,
+      uid,
+      campaign_id: campNative,
+      candidate_name: 'Candidat Treg',
+      candidate_email: email,
+      file_name: 'cv.pdf',
+      source: 'email',
+      received_at: new Date().toISOString(),
+      total_score: 90,
+      status: 'accepted',
+      criteria_version: 'treg-s10n',
+      computed_at: new Date().toISOString(),
+      decision_zone: 'auto_accept',
+      decided_by: 'auto',
+      application: testApplication(email, 90),
+    });
+    expect(ins.error).toBeNull();
+
+    const stageNow = async () => {
+      const analysis = await getCandidateAnalysis(analysisId);
+      return stageFor(analysis!, await loadStageSignals({ campaignId: campNative }));
+    };
+
+    const { token: firstToken, booking } = await bookFor(analysisId, uid, email);
+    await drainSchedulingEvents();
+    expect(await stageNow()).toBe('rdv_pris');
+
+    resetSentEmails();
+    actAs('admin');
+    const res = await call(reissueLink, { method: 'POST', body: { analysisId, kind: 'no_show' } });
+    expect(res.status).toBe(200);
+    expect(res.json.status).toBe('sent');
+
+    // L'étape redescend IMMÉDIATEMENT (sans attendre le rail) : « Invité ».
+    expect(await stageNow()).toBe('invite');
+    const [brief] = await readRows<{ status: string }>('interview_briefs', { uid });
+    expect(brief?.status).toBe('awaiting_booking');
+
+    // Le rendez-vous manqué est décommandé par l'organisation, sans avis au candidat.
+    const [previous] = await readRows<{ status: string; cancelled_by: string | null }>('sched_bookings', {
+      id: booking.id,
+    });
+    expect(previous).toMatchObject({ status: 'cancelled', cancelled_by: 'organizer' });
+
+    // UN message : le fait, sans reproche, et un lien NEUF et ouvert.
+    const toCandidate = sentEmails.filter((m) => m.to === email || (Array.isArray(m.to) && m.to.includes(email)));
+    expect(toCandidate).toHaveLength(1);
+    expect(String(toCandidate[0]!.html)).toMatch(/pas pu nous rencontrer/);
+    expect(String(toCandidate[0]!.html)).not.toMatch(/Vous avez annulé/);
+    const newToken = /\/r\/([A-Za-z0-9_-]{20,})/.exec(String(toCandidate[0]!.html))?.[1];
+    expect(newToken).toBeTruthy();
+    expect(newToken).not.toBe(firstToken);
+    await ensureSchedulingConfigured();
+    expect((await resolveBookingPage(newToken!)).status).toBe('open');
+    // L'ancien lien ne rouvre rien.
+    expect((await resolveBookingPage(firstToken)).status).not.toBe('open');
+
+    // La cause est au journal.
+    const reissued = await readRows<{ payload: Record<string, unknown> }>('journal', {
+      action: 'interview_link_reissued',
+    });
+    expect(reissued.find((r) => r.payload.analysisId === analysisId)?.payload).toMatchObject({
+      kind: 'no_show',
+      cause: 'no_show_rescheduled',
+    });
+
+    // Le candidat réserve de nouveau ⇒ « RDV pris ».
+    const slots = await listSlotsForLink(newToken!, {
+      from: new Date(Date.now() + 60_000).toISOString(),
+      to: new Date(Date.now() + 10 * 86_400_000).toISOString(),
+    });
+    const rebooked = await confirmBooking({
+      token: newToken!,
+      startAt: slots[Math.min(7, slots.length - 1)]!.startAt,
+      attendee: { name: 'Candidat Treg', email, timezone: 'Europe/Paris' },
+    });
+    expect(rebooked.ok).toBe(true);
+    await drainSchedulingEvents();
+    expect(await stageNow()).toBe('rdv_pris');
+
+    // DEUXIÈME absence : pas de troisième relance, et rien ne part.
+    const before = sentEmails.length;
+    const again = await call(reissueLink, { method: 'POST', body: { analysisId, kind: 'no_show' } });
+    expect(again.status).toBe(409);
+    expect(again.json.error).toBe('repeated_no_show');
+    expect(sentEmails.length).toBe(before);
+    expect(await stageNow()).toBe('rdv_pris');
   });
 
   it('SANS SUITE : lien révoqué, rendez-vous décommandé SANS second message au candidat', async () => {

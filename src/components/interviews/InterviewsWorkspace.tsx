@@ -183,11 +183,10 @@ export function InterviewsWorkspace({
     void load();
   }
 
-  async function onNoShowReinvite() {
-    const row = noShow;
-    if (!row) return;
+  function onNoShowReinvited(notice: string) {
     setNoShow(null);
-    await reinvite(row, 'reinvite');
+    setNotice(notice);
+    void load();
   }
 
   /**
@@ -380,7 +379,7 @@ export function InterviewsWorkspace({
           candidateName={noShow.candidateName}
           busy={busyId !== null}
           onCancel={() => setNoShow(null)}
-          onReinvite={() => void onNoShowReinvite()}
+          onReinvited={onNoShowReinvited}
           onRejected={onNoShowRejected}
         />
       ) : null}

@@ -24,6 +24,7 @@ const {
   getBookingMock,
   seriesMock,
   audienceMock,
+  latestBriefMock,
 } = vi.hoisted(() => ({
   claimMock: vi.fn(),
   confirmMock: vi.fn(),
@@ -37,6 +38,7 @@ const {
   getBookingMock: vi.fn(),
   seriesMock: vi.fn(),
   audienceMock: vi.fn(),
+  latestBriefMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/repos/booking-events', () => ({
@@ -46,6 +48,7 @@ vi.mock('@/lib/db/repos/booking-events', () => ({
 }));
 vi.mock('@/lib/db/repos/interview-briefs', () => ({
   getBriefByBookingUid: briefMock,
+  getLatestBriefByUid: latestBriefMock,
   markBriefAwaitingBooking: awaitingMock,
   updateBriefBookingFacts: factsMock,
 }));
@@ -103,6 +106,7 @@ beforeEach(() => {
   awaitingMock.mockResolvedValue(1);
   factsMock.mockResolvedValue(1);
   briefMock.mockResolvedValue(null);
+  latestBriefMock.mockResolvedValue(null);
   journalMock.mockResolvedValue(undefined);
   audienceMock.mockResolvedValue({ to: [], cc: [], rejected: [] });
 });
@@ -220,6 +224,31 @@ describe('booking.cancelled', () => {
     expect(entry.action).toBe('interview_booking_cancelled');
     expect(entry.payload.needsAction).toBe(true);
     expect(confirmMock).toHaveBeenCalledWith('evt-1');
+  });
+
+  it('briefing déjà remis en attente (replanification après absence) : retrouvé par la candidature', async () => {
+    // L'identifiant du rendez-vous est déjà effacé du briefing : sans repli,
+    // l'avis partirait sans nom ni campagne, à la liste globale.
+    audienceMock.mockResolvedValue({ to: ['jane@cabinet.fr'], cc: [], rejected: [] });
+    briefMock.mockResolvedValue(null);
+    latestBriefMock.mockResolvedValue({
+      campaignId: 'CAMP-0001',
+      candidateName: 'Alice Martin',
+      jobTitle: 'Comptable',
+      deliveredMessageId: null,
+    });
+    getBookingMock.mockResolvedValue({ id: 'bk-1', rescheduledFrom: null });
+    seriesMock.mockResolvedValue({ rootId: 'bk-1', sequence: 0 });
+    sendEmailMock.mockResolvedValue({ ok: true, messageId: 'm-1' });
+
+    await handleSchedulingEvent(
+      event({ type: 'booking.cancelled', booking: { ...event().booking, cancelledBy: 'organizer' } }),
+    );
+
+    expect(latestBriefMock).toHaveBeenCalledWith('102');
+    expect(audienceMock).toHaveBeenCalledWith('CAMP-0001');
+    const sent = sendEmailMock.mock.calls[0]![0] as { subject: string };
+    expect(sent.subject).toContain('Alice Martin');
   });
 
   it('prévient l’équipe avec un .ics d’ANNULATION (le créneau doit quitter l’agenda)', async () => {

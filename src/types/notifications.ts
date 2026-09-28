@@ -24,6 +24,13 @@ export const BUSINESS_SIGNAL_SURFACES = {
   pending_validations_overdue: 'dossier',
   interviews_awaiting_decision: 'dossier',
   interviews_awaiting_pointing: 'dossier',
+  /**
+   * Un candidat à qui un créneau a été REPROPOSÉ après une absence a laissé
+   * passer le nouveau rendez-vous sans qu'il soit pointé : probablement une
+   * deuxième absence. Pas de troisième relance (le serveur la refuse) — un
+   * humain tranche.
+   */
+  repeated_no_show: 'dossier',
   availability_holidays_unblocked: 'verification',
   availability_meeting_location_missing: 'verification',
   /** Une offre APEC suspendue dont la fenêtre de republication se referme. */

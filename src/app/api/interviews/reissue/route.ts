@@ -28,7 +28,8 @@ export const maxDuration = 60;
 const BodySchema = z.object({
   analysisId: z.string().min(1),
   /** `reschedule` décommande d'abord ; `reinvite` suppose le créneau déjà tombé. */
-  kind: z.enum(['reschedule', 'reinvite']).default('reinvite'),
+  /** `no_show` : absent, un nouveau créneau lui est proposé (dialog d'absence). */
+  kind: z.enum(['reschedule', 'reinvite', 'no_show']).default('reinvite'),
 });
 
 const MESSAGES: Record<string, { status: number; message: string }> = {
@@ -43,6 +44,11 @@ const MESSAGES: Record<string, { status: number; message: string }> = {
       'Cette campagne n’est pas en réservation native : le lien d’agenda est celui des paramètres.',
   },
   no_candidate_email: { status: 422, message: 'Pas d’adresse candidat connue.' },
+  repeated_no_show: {
+    status: 409,
+    message:
+      'Ce candidat ne s’est pas présenté une deuxième fois : aucune nouvelle relance n’est proposée. Classez le dossier, ou contactez-le directement.',
+  },
   link_unavailable: {
     status: 503,
     message:
@@ -99,7 +105,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // L'annulation a produit un événement : on pousse le drain pour que
     // l'écran se remette à jour tout de suite plutôt qu'au prochain cron.
-    if (parsed.kind === 'reschedule') after(() => drainSchedulingEvents());
+    if (parsed.kind !== 'reinvite') after(() => drainSchedulingEvents());
 
     return NextResponse.json({
       status: outcome.status,

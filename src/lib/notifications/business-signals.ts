@@ -47,6 +47,7 @@ import { listAwaitingWithoutRow } from '@/lib/hitl/orphan-scan';
 import { listPendingValidations } from '@/lib/db/repos/pending-validations';
 import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import { CAMPAIGN_CLOSED_ACTION } from '@/lib/campagnes/closure-constants';
+import { REISSUE_ACTION } from '@/lib/interviews/reissue-constants';
 import { findIncompleteClosures } from '@/lib/campagnes/closure-coherence';
 import {
   HIRED_MARKER_ACTION,
@@ -343,6 +344,55 @@ async function computeInterviewsAwaitingPointing(
   };
 }
 
+/**
+ * Deuxième absence probable — le rendez-vous REPROPOSÉ après une première
+ * absence (réémission `no_show`) est passé sans être pointé, et le dossier est
+ * toujours ouvert. Pas de troisième relance : `POST /api/interviews/reissue`
+ * la refuse. Le signal dit qu'il reste à trancher.
+ */
+async function computeRepeatedNoShows(
+  nowMs: number,
+  shared: SharedLoads = createSharedLoads(),
+): Promise<BusinessSignal | null> {
+  const signalsPromise = shared.stageSignals();
+  signalsPromise.catch(() => undefined);
+  const [briefs, reissues] = await Promise.all([
+    listBriefsByStatus('scheduled').catch(() => []),
+    listJournalEntriesByActions([REISSUE_ACTION]).catch(() => []),
+  ]);
+  const rescheduledAfterNoShow = new Set(
+    reissues
+      .filter((e) => e.payload.kind === 'no_show' && typeof e.payload.uid === 'string')
+      .map((e) => e.payload.uid as string),
+  );
+  const past = selectUnpointedBriefs(briefs, nowMs).filter((b) =>
+    rescheduledAfterNoShow.has(b.uid as string),
+  );
+  if (past.length === 0) return null;
+
+  const signals = await signalsPromise;
+  const analyses = await listAllCandidateAnalyses({ uidIn: past.map((b) => b.uid as string) });
+  const open = analyses.filter((a) => {
+    const stage = stageFor(a, signals);
+    return stage === 'invite' || stage === 'rdv_pris';
+  });
+  if (open.length === 0) return null;
+  const openUids = new Set(open.map((a) => a.uid));
+  const oldestMs = Math.min(
+    ...past.filter((b) => openUids.has(b.uid as string)).map((b) => Date.parse(b.interviewEndAt as string)),
+  );
+  return {
+    key: 'repeated_no_show',
+    count: open.length,
+    oldestDays: daysSinceIso(new Date(oldestMs).toISOString(), nowMs),
+    message:
+      open.length === 1
+        ? 'Un candidat ne s’est pas présenté au créneau reproposé après une première absence. Aucune nouvelle relance n’est proposée : à vous de trancher.'
+        : `${open.length} candidats ne se sont pas présentés au créneau reproposé après une première absence. Aucune nouvelle relance n’est proposée : à vous de trancher.`,
+    ctaLabel: 'Voir les entretiens à pointer',
+    target: { tab: 'entretiens', section: 'a_pointer' },
+  };
+}
 
 /**
  * Signal 4 — des jours fériés restent PROPOSABLES.
@@ -848,6 +898,10 @@ export const BUSINESS_SIGNALS: BusinessSignalDefinition[] = [
   {
     key: 'interviews_awaiting_pointing',
     compute: (nowMs, _ctx, shared) => computeInterviewsAwaitingPointing(nowMs, shared),
+  },
+  {
+    key: 'repeated_no_show',
+    compute: (nowMs, _ctx, shared) => computeRepeatedNoShows(nowMs, shared),
   },
   {
     key: 'availability_holidays_unblocked',

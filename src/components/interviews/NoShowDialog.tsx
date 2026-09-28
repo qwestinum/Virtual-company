@@ -26,22 +26,26 @@ export type NoShowChoice = 'reject' | 'reinvite';
  * « Classer non retenu » exige le choix de message au candidat (gabarit
  * « absent », feat/feedback-candidat) et passe par SA route
  * (`/api/candidatures/[id]/no-show`) — `/api/journal` refuse ce marqueur.
- * « Re-proposer un créneau » reste à l'hôte : il ne décide rien.
+ * « Re-proposer un créneau » est fait ICI aussi (`POST /api/interviews/reissue`,
+ * `kind: 'no_show'`) : le rendez-vous manqué est décommandé, un nouveau lien
+ * part, et le dossier redescend en « Invité ». Une deuxième absence est
+ * refusée par le serveur (pas de troisième relance) — le refus s'affiche ici.
  */
 export function NoShowDialog({
   analysisId,
   candidateName,
   busy: hostBusy,
   onCancel,
-  onReinvite,
+  onReinvited,
   onRejected,
 }: {
-  /** `null` (dossier sans analyse rattachée) : seule la re-proposition est offerte. */
+  /** `null` (dossier sans analyse rattachée) : rien n'est proposable ici. */
   analysisId: string | null;
   candidateName: string;
   busy: boolean;
   onCancel: () => void;
-  onReinvite: () => void;
+  /** Nouveau créneau proposé ; `notice` = ce qu'il s'est passé, à afficher. */
+  onReinvited: (notice: string) => void;
   /** Absence classée non retenue ; `notice` = issue du message au candidat. */
   onRejected: (notice: string) => void;
 }) {
@@ -51,8 +55,28 @@ export function NoShowDialog({
   const [error, setError] = useState<string | null>(null);
   const locked = busy || hostBusy;
 
+  async function reinvite() {
+    if (!analysisId || locked) return;
+    setBusy(true);
+    setError(null);
+    const res = await fetch('/api/interviews/reissue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ analysisId, kind: 'no_show' }),
+    }).catch(() => null);
+    const data = (await res?.json().catch(() => ({}))) as { status?: string; message?: string } | undefined;
+    setBusy(false);
+    if (res?.ok && data?.status === 'sent') {
+      onReinvited('Nouveau créneau proposé : le rendez-vous manqué est annulé, le dossier repasse en « Invité ».');
+    } else if (res?.ok) {
+      onReinvited('Le rendez-vous manqué est annulé, mais le message n’est pas parti — renvoyez une invitation.');
+    } else {
+      setError(data?.message ?? 'La replanification a échoué. Réessayez.');
+    }
+  }
+
   async function confirm() {
-    if (choice === 'reinvite') return onReinvite();
+    if (choice === 'reinvite') return reinvite();
     if (choice !== 'reject' || !feedback || locked || !analysisId) return;
     setBusy(true);
     setError(null);
@@ -100,12 +124,14 @@ export function NoShowDialog({
               onChange={setFeedback}
             />
           ) : null}
-          <Choice
-            checked={choice === 'reinvite'}
-            onSelect={() => setChoice('reinvite')}
-            title="Re-proposer un créneau"
-            detail="Un nouveau lien part au candidat. Aucune décision n’est prise."
-          />
+          {analysisId ? (
+            <Choice
+              checked={choice === 'reinvite'}
+              onSelect={() => setChoice('reinvite')}
+              title="Re-proposer un créneau"
+              detail="Le rendez-vous manqué est annulé, un nouveau lien part au candidat et le dossier repasse en « Invité ». Aucune décision n’est prise."
+            />
+          ) : null}
         </div>
 
         {error ? (

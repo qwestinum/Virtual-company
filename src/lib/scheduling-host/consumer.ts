@@ -27,6 +27,7 @@ import {
 } from '@/lib/db/repos/booking-events';
 import {
   getBriefByBookingUid,
+  getLatestBriefByUid,
   markBriefAwaitingBooking,
   updateBriefBookingFacts,
 } from '@/lib/db/repos/interview-briefs';
@@ -152,7 +153,13 @@ async function onBookingCancelled(event: SchedEvent): Promise<void> {
   // est justement la clé de recherche. Le lire après rendrait `null`, et le
   // message partirait sans le nom du candidat ni sa campagne — donc à la
   // liste globale au lieu des destinataires de CETTE campagne.
-  const brief = await getBriefByBookingUid(booking.id).catch(() => null);
+  // Repli par la CANDIDATURE : une replanification après absence remet le
+  // briefing en attente AVANT ce passage (l'identifiant du rendez-vous y est
+  // déjà effacé) — sans ce repli, l'avis partirait sans nom ni campagne, à la
+  // liste globale.
+  const brief =
+    (await getBriefByBookingUid(booking.id).catch(() => null)) ??
+    (context?.uid ? await getLatestBriefByUid(context.uid).catch(() => null) : null);
   const restored = await markBriefAwaitingBooking(booking.id);
   const mailStatus = await notifySynthesis('cancelled', booking, brief);
 

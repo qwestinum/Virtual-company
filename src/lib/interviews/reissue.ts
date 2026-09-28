@@ -6,6 +6,14 @@
  *     rendez-vous est décommandé SANS prévenir le candidat, parce que le
  *     message qui suit le lui dit — avec des excuses et un nouveau lien.
  *   - `reinvite`   : le candidat a annulé lui-même. On lui rouvre la porte.
+ *   - `no_show`    : le candidat ne s'est pas présenté et le recruteur lui
+ *     repropose un créneau (dialog d'absence). Le rendez-vous MANQUÉ est
+ *     décommandé sans le notifier, les liens encore actifs sont révoqués, le
+ *     briefing redevient « en attente de réservation » TOUT DE SUITE — le
+ *     dossier redescend en « Invité » (étape dérivée du briefing, aucun état
+ *     parallèle) et repasse « RDV pris » à la prochaine réservation. Une
+ *     DEUXIÈME absence ne rouvre pas une troisième fois : `repeated_no_show`,
+ *     et le signal métier le dit (feat/feedback-candidat → fix/vivier-replanif).
  *
  * Ce qu'on ne fait PLUS : enchaîner une annulation « votre rendez-vous est
  * annulé » puis une invitation « votre candidature est retenue ». Deux mails,
@@ -14,12 +22,14 @@
  * non plus dans l'écran : un échec réseau entre les deux laissait le candidat
  * décommandé et jamais réinvité.
  */
+import { NO_SHOW_RESCHEDULED_CAUSE, REISSUE_ACTION } from './reissue-constants';
 import { buildInterviewMail } from '@/lib/agents/server/interview-mail';
 import { getSynthesisReplyToForCampaign } from '@/lib/campaign/synthesis-recipients';
 import { getCandidateAnalysis } from '@/lib/db/repos/candidate-analyses';
 import { appendJournalEntry } from '@/lib/db/repos/journal';
 import { sendEmail } from '@/lib/email/client';
-import { getLatestBriefByUid } from '@/lib/db/repos/interview-briefs';
+import { getLatestBriefByUid, markBriefAwaitingBooking } from '@/lib/db/repos/interview-briefs';
+import { listJournalEntriesByActions } from '@/lib/db/repos/journal';
 import { queueInterviewBrief } from '@/lib/interview/queue-brief';
 import { formatDateTime } from '@/lib/scheduling';
 import {
@@ -27,10 +37,13 @@ import {
   createCampaignBookingContext,
   isNativeSchedulingCampaign,
   nextReissueKey,
+  revokeCampaignBookingLink,
 } from '@/lib/scheduling-host/campaign-booking';
 import { cvApplicationToMailCandidate } from '@/types/mail-candidate';
 
-export type ReissueKind = 'reschedule' | 'reinvite';
+export type ReissueKind = 'reschedule' | 'reinvite' | 'no_show';
+
+export { NO_SHOW_RESCHEDULED_CAUSE, REISSUE_ACTION } from './reissue-constants';
 
 export type ReissueOutcome =
   | { status: 'sent' | 'send_failed'; error?: string | null }
@@ -38,7 +51,9 @@ export type ReissueOutcome =
   | { status: 'dismissed' }
   | { status: 'not_native' }
   | { status: 'no_candidate_email' }
-  | { status: 'link_unavailable'; error: string };
+  | { status: 'link_unavailable'; error: string }
+  /** Deuxième absence : pas de troisième relance. */
+  | { status: 'repeated_no_show' };
 
 /**
  * Phrase factuelle en tête du message. Écrite ICI et pas dans le modèle
@@ -49,9 +64,15 @@ function introFor(kind: ReissueKind, previousStartAt: string | null): string {
   const when = previousStartAt
     ? ` prévu le ${formatDateTime(previousStartAt, 'Europe/Paris')}`
     : '';
-  return kind === 'reschedule'
-    ? `Nous sommes désolés : nous devons décaler l’entretien${when} que vous aviez réservé.`
-    : `Vous avez annulé l’entretien${when} que vous aviez réservé — nous restons bien sûr intéressés par votre candidature.`;
+  switch (kind) {
+    case 'reschedule':
+      return `Nous sommes désolés : nous devons décaler l’entretien${when} que vous aviez réservé.`;
+    case 'no_show':
+      // Un fait, sans reproche : le candidat a pu avoir un empêchement.
+      return `Nous n’avons pas pu nous rencontrer lors de l’entretien${when}. Si vous le souhaitez, vous pouvez choisir un nouveau créneau.`;
+    case 'reinvite':
+      return `Vous avez annulé l’entretien${when} que vous aviez réservé — nous restons bien sûr intéressés par votre candidature.`;
+  }
 }
 
 export async function reissueBookingLink(params: {
@@ -88,13 +109,21 @@ export async function reissueBookingLink(params: {
   replyToPromise.catch(() => undefined);
   const native = await isNativeSchedulingCampaign(campaignId, bookingContext);
 
+  // 0. Absence : une deuxième ne rouvre pas une troisième fois.
+  if (params.kind === 'no_show' && (await previousNoShows(campaignId, analysis.uid)) >= 1) {
+    return { status: 'repeated_no_show' };
+  }
+
   // 1. Décommander, SANS notifier : le message qui suit porte la nouvelle.
   let previousStartAt: string | null = null;
-  if (params.kind === 'reschedule' && native) {
+  if ((params.kind === 'reschedule' || params.kind === 'no_show') && native) {
     const cancelled = await cancelBookingForAnalysis({
       campaignId,
       analysisId: analysis.id,
-      reason: 'replanification par le cabinet',
+      reason:
+        params.kind === 'no_show'
+          ? 'candidat absent — nouveau créneau proposé'
+          : 'replanification par le cabinet',
       notifyAttendee: false,
       onBooking: (booking) => {
         previousStartAt = booking.startAt;
@@ -105,6 +134,28 @@ export async function reissueBookingLink(params: {
       // Rien à décommander : on continue quand même — l'objectif est que le
       // candidat reçoive un lien valide, pas que l'annulation ait eu lieu.
       console.warn('[reissue] aucun rendez-vous confirmé à décommander');
+    }
+  }
+
+  // 1 bis. Absence : le dossier redescend en « Invité » SANS attendre le rail.
+  // Les liens encore actifs meurent (le nouveau part juste après), et le
+  // briefing repasse « en attente de réservation » — en natif, le
+  // consommateur de l'annulation le ferait dans la minute ; en Cal.com, rien
+  // ne le ferait. L'étape se DÉRIVE de ce briefing : aucun état parallèle.
+  if (params.kind === 'no_show') {
+    if (native) {
+      await revokeCampaignBookingLink(
+        campaignId,
+        analysis.id,
+        'candidat absent — lien remplacé',
+        bookingContext,
+      ).catch((err) => console.error('[reissue] révocation KO', err));
+    }
+    const brief = await briefPromise;
+    if (brief?.status === 'scheduled' && brief.bookingUid) {
+      await markBriefAwaitingBooking(brief.bookingUid).catch((err) =>
+        console.error('[reissue] remise en attente du briefing KO', err),
+      );
     }
   }
 
@@ -161,6 +212,8 @@ export async function reissueBookingLink(params: {
     }).catch((err) => console.error('[reissue] mise en file KO', err)),
   ]);
 
+  // Littéral, pas la constante : la garde du Mail Composer lit dans le SOURCE
+  // les actions qui portent un statut d'envoi (REISSUE_ACTION === ceci).
   await appendJournalEntry({
     action: 'interview_link_reissued',
     actor: 'user',
@@ -169,6 +222,7 @@ export async function reissueBookingLink(params: {
       uid: analysis.uid,
       analysisId: analysis.id,
       kind: params.kind,
+      ...(params.kind === 'no_show' ? { cause: NO_SHOW_RESCHEDULED_CAUSE } : {}),
       regime: native ? 'native' : 'calcom',
       linkKey,
       previousStartAt,
@@ -183,4 +237,10 @@ export async function reissueBookingLink(params: {
   return sent.ok
     ? { status: 'sent' }
     : { status: 'send_failed', error: sent.error ?? null };
+}
+
+/** Nombre de replanifications après absence déjà faites pour ce dossier. */
+async function previousNoShows(campaignId: string, uid: string): Promise<number> {
+  const entries = await listJournalEntriesByActions([REISSUE_ACTION], { campaignId });
+  return entries.filter((e) => e.payload.uid === uid && e.payload.kind === 'no_show').length;
 }

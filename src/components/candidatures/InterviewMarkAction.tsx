@@ -43,20 +43,6 @@ export function InterviewMarkAction({
       setBusy(false);
     }
   };
-  const reinvite = async () => {
-    setBusy(true);
-    try {
-      await fetch('/api/interviews/reissue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ analysisId: item.id, kind: 'reinvite' }),
-      });
-    } finally {
-      setBusy(false);
-      setNoShow(false);
-      onActed();
-    }
-  };
   return (
     <div className="flex flex-wrap gap-2">
       <ActionButton tone="positive" disabled={busy} onClick={() => void markRealized()}>
@@ -73,7 +59,10 @@ export function InterviewMarkAction({
           candidateName={item.candidateName}
           busy={busy}
           onCancel={() => setNoShow(false)}
-          onReinvite={() => void reinvite()}
+          onReinvited={() => {
+            setNoShow(false);
+            onActed();
+          }}
           onRejected={() => {
             setNoShow(false);
             onActed();
