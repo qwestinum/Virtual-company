@@ -741,14 +741,52 @@ create table if not exists public.vivier_candidates (
   cv_file_name     text,                                   -- nom de fichier d'origine (contexte d'extraction d'entités)
   cv_text          text,                                   -- texte extrait
   tags             text[] not null default '{}',
-  source           text not null
-                     check (source in ('manual_upload','campaign_application')),
+  source           text not null,                          -- CHECK canonique ci-dessous
   indexing_status  text not null default 'pending'
                      check (indexing_status in ('pending','indexed','failed')),
   indexing_error   text,                                   -- motif du dernier échec
   entered_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
+
+-- Origine d'entrée d'un dossier — bloc CANONIQUE unique (drop + add).
+-- `import` = import initial d'un fonds de CV (`npm run vivier:import`, 29/09/2026).
+-- Le nom est celui que Postgres donnait au CHECK autrefois posé en ligne dans le
+-- `create table` : le `drop` retire donc aussi l'ancienne version.
+alter table public.vivier_candidates
+  drop constraint if exists vivier_candidates_source_check;
+alter table public.vivier_candidates
+  add constraint vivier_candidates_source_check
+  check (source in ('manual_upload','campaign_application','import'));
+
+-- Import initial d'un fonds de CV (`npm run vivier:import`, 29/09/2026) :
+--   · cv_fingerprint — SHA-256 du texte du CV NORMALISÉ (contrat :
+--     src/lib/vivier/import/fingerprint.ts). Second critère de dédoublonnage
+--     après l'email, et clé de REPRISE : un fichier déjà importé est sauté.
+--     Nullable : les dossiers antérieurs n'en ont pas (l'import la recalcule en
+--     mémoire depuis cv_text, sans écrire).
+--   · provenance — texte lisible (« import initial du …, fonds du cabinet »).
+--   · retention_reference_at / _kind — date de référence de rétention : date de
+--     candidature fournie par le client (`application_date`) ou, à défaut, date
+--     d'import (`import_date`), marquée comme telle. ⚠️ Aucun traitement ne la
+--     lit encore : il n'existe pas de purge du vivier par ancienneté.
+-- Vides pour les dossiers qui n'entrent pas par l'import (sens : entered_at).
+alter table public.vivier_candidates
+  add column if not exists cv_fingerprint text,
+  add column if not exists provenance text,
+  add column if not exists retention_reference_at timestamptz,
+  add column if not exists retention_reference_kind text;
+alter table public.vivier_candidates
+  drop constraint if exists vivier_candidates_retention_kind_chk;
+alter table public.vivier_candidates
+  add constraint vivier_candidates_retention_kind_chk
+  check (
+    (retention_reference_at is null and retention_reference_kind is null)
+    or (retention_reference_at is not null
+        and retention_reference_kind in ('application_date','import_date'))
+  );
+create index if not exists vivier_candidates_cv_fingerprint_idx
+  on public.vivier_candidates (cv_fingerprint) where cv_fingerprint is not null;
 
 create index if not exists vivier_candidates_status_idx
   on public.vivier_candidates (indexing_status);

@@ -13,10 +13,18 @@
 export type VivierIndexingStatus = 'pending' | 'indexed' | 'failed';
 
 /**
- * Origine d'entrée d'un dossier. `campaign_application` est préparé pour la
- * V2 (alimentation automatique depuis les flux) — non émis en V1.
+ * Origine d'entrée d'un dossier. `campaign_application` = alimentation depuis
+ * les candidatures ; `import` = import initial d'un fonds de CV
+ * (`npm run vivier:import`).
  */
-export type VivierSource = 'manual_upload' | 'campaign_application';
+export type VivierSource = 'manual_upload' | 'campaign_application' | 'import';
+
+/**
+ * Nature de la date de référence de rétention d'un dossier importé : la date
+ * de candidature fournie par le client, ou — à défaut — la date d'import,
+ * marquée comme telle (ce n'est pas la même promesse).
+ */
+export type VivierRetentionReferenceKind = 'application_date' | 'import_date';
 
 /** Entités structurées extraites du CV (enrichissement régénérable). */
 export type VivierEntities = {

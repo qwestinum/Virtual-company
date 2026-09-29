@@ -24,7 +24,11 @@ import type { IsolatedCriteriaInProgress } from '@/types/isolated-criteria';
 import type { MailCandidate } from '@/types/mail-candidate';
 import type { PublicationChannel } from '@/types/publication-channel';
 import type { CandidateStatus, ScoringSheet } from '@/types/scoring';
-import type { VivierIndexingStatus, VivierSource } from '@/types/vivier';
+import type {
+  VivierIndexingStatus,
+  VivierRetentionReferenceKind,
+  VivierSource,
+} from '@/types/vivier';
 
 export type CampaignRow = {
   id: string;
@@ -361,6 +365,11 @@ export type VivierCandidateRow = {
   indexing_error: string | null;
   entered_at: string;
   updated_at: string;
+  /** Import initial (`vivier:import`) — absents des sélections partielles. */
+  cv_fingerprint?: string | null;
+  provenance?: string | null;
+  retention_reference_at?: string | null;
+  retention_reference_kind?: VivierRetentionReferenceKind | null;
 };
 
 /**

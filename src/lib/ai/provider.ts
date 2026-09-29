@@ -15,6 +15,7 @@ import type { z } from 'zod';
 import { AIProviderError, AIValidationError } from './errors';
 import { resolveOpenAiEndpoint } from './openai-endpoint';
 import { estimateCost } from './pricing';
+import { emitAIUsage } from './usage-observer';
 import { zodToAnthropicToolSchema } from './zod-to-anthropic-schema';
 
 if (typeof window !== 'undefined') {
@@ -223,12 +224,14 @@ export async function chatComplete(
   const promptTokens = response.usage?.prompt_tokens ?? 0;
   const completionTokens = response.usage?.completion_tokens ?? 0;
   const totalTokens = response.usage?.total_tokens ?? promptTokens + completionTokens;
+  const costEstimate = estimateCost(response.model, promptTokens, completionTokens);
+  emitAIUsage({ kind: 'chat', model: response.model, promptTokens, completionTokens, costEstimate });
 
   return {
     content,
     model: response.model,
     usage: { promptTokens, completionTokens, totalTokens },
-    costEstimate: estimateCost(response.model, promptTokens, completionTokens),
+    costEstimate,
     durationMs: Date.now() - startedAt,
   };
 }
@@ -442,6 +445,8 @@ async function anthropicCompleteJson<T>(
     const completionTokens = response.usage.output_tokens;
     const totalTokens = promptTokens + completionTokens;
     const toolBlock = response.content.find((b) => b.type === 'tool_use');
+    const costEstimate = estimateCost(response.model, promptTokens, completionTokens);
+    emitAIUsage({ kind: 'chat', model: response.model, promptTokens, completionTokens, costEstimate });
     const raw: ChatCompleteResult = {
       content:
         toolBlock && toolBlock.type === 'tool_use'
@@ -449,7 +454,7 @@ async function anthropicCompleteJson<T>(
           : '',
       model: response.model,
       usage: { promptTokens, completionTokens, totalTokens },
-      costEstimate: estimateCost(response.model, promptTokens, completionTokens),
+      costEstimate,
       durationMs,
     };
 

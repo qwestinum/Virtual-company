@@ -26,6 +26,7 @@ import {
   type VivierCandidate,
   type VivierEntities,
   type VivierIndexingStatus,
+  type VivierRetentionReferenceKind,
   type VivierSource,
 } from '@/types/vivier';
 
@@ -236,6 +237,18 @@ export type InsertVivierCandidateInput = {
   cvText: string | null;
   source: VivierSource;
   tags?: string[];
+  /**
+   * Import initial uniquement. Colonnes écrites SEULEMENT quand ce champ est
+   * fourni : les autres portes n'envoient rien de plus qu'avant.
+   */
+  importMeta?: VivierImportMeta;
+};
+
+export type VivierImportMeta = {
+  cvFingerprint: string;
+  provenance: string;
+  retentionReferenceAt: string;
+  retentionReferenceKind: VivierRetentionReferenceKind;
 };
 
 /**
@@ -262,6 +275,14 @@ export async function insertVivierCandidate(
       tags: input.tags ?? [],
       indexing_status: 'pending',
       indexing_error: null,
+      ...(input.importMeta
+        ? {
+            cv_fingerprint: input.importMeta.cvFingerprint,
+            provenance: input.importMeta.provenance,
+            retention_reference_at: input.importMeta.retentionReferenceAt,
+            retention_reference_kind: input.importMeta.retentionReferenceKind,
+          }
+        : {}),
     })
     .select('*')
     .single();
@@ -1009,4 +1030,63 @@ export async function getVivierProfileExtras(
     skills: row.skills ?? [],
     titleAnchors: Array.isArray(row.title_anchors) ? (row.title_anchors as TitleAnchor[]) : [],
   };
+}
+
+/** Ligne de l'index de dédoublonnage de l'import initial (cf. `vivier:import`). */
+export type VivierDedupRow = {
+  id: string;
+  email: string;
+  indexingStatus: VivierIndexingStatus;
+  /** Empreinte stockée, ou null pour un dossier antérieur à l'import. */
+  cvFingerprint: string | null;
+  /** Texte du CV — rapatrié SEULEMENT quand l'empreinte manque (recalcul en mémoire). */
+  cvText: string | null;
+};
+
+/**
+ * Tout le vivier, projeté pour le dédoublonnage de l'import : adresse et
+ * empreinte. LECTURE SEULE — l'empreinte d'un dossier antérieur est recalculée
+ * par l'appelant depuis `cv_text`, jamais écrite ici. Keyset exhaustif (un
+ * plafond silencieux ferait réinsérer des doublons) ; le texte n'est rapatrié
+ * que pour les dossiers sans empreinte.
+ */
+export async function listVivierDedupIndex(): Promise<VivierDedupRow[]> {
+  const supabase = requireServerSupabase();
+  type Row = {
+    id: string;
+    email: string;
+    indexing_status: VivierIndexingStatus;
+    cv_fingerprint: string | null;
+    cv_text?: string | null;
+  };
+  const page = (withFingerprint: boolean) =>
+    fetchAllKeyset<Row>({
+      cursorOf: (r) => r.id,
+      fetchPage: async (afterId, limit) => {
+        let q = supabase
+          .from(TABLE)
+          .select(
+            withFingerprint
+              ? 'id, email, indexing_status, cv_fingerprint'
+              : 'id, email, indexing_status, cv_fingerprint, cv_text',
+          )
+          .order('id', { ascending: true })
+          .limit(limit);
+        q = withFingerprint
+          ? q.not('cv_fingerprint', 'is', null)
+          : q.is('cv_fingerprint', null);
+        if (afterId !== null) q = q.gt('id', afterId);
+        const { data, error } = await q;
+        if (error) throw new Error(`listVivierDedupIndex: ${error.message}`);
+        return (data ?? []) as unknown as Row[];
+      },
+    });
+  const [stamped, legacy] = await Promise.all([page(true), page(false)]);
+  return [...stamped, ...legacy].map((r) => ({
+    id: r.id,
+    email: r.email,
+    indexingStatus: r.indexing_status,
+    cvFingerprint: r.cv_fingerprint,
+    cvText: r.cv_text ?? null,
+  }));
 }

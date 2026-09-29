@@ -25,6 +25,7 @@ import OpenAI, {
 
 import { AIProviderError } from './errors';
 import { estimateCost } from './pricing';
+import { emitAIUsage } from './usage-observer';
 
 if (typeof window !== 'undefined') {
   throw new AIProviderError(
@@ -167,11 +168,20 @@ export async function embedText(text: string): Promise<EmbedResult> {
   }
 
   const promptTokens = response.usage?.prompt_tokens ?? 0;
+  const billedModel = response.model || model;
+  const costEstimate = estimateCost(billedModel, promptTokens, 0);
+  emitAIUsage({
+    kind: 'embedding',
+    model: billedModel,
+    promptTokens,
+    completionTokens: 0,
+    costEstimate,
+  });
   return {
     vector,
     provider: 'openai',
-    model: response.model || model,
-    costEstimate: estimateCost(response.model || model, promptTokens, 0),
+    model: billedModel,
+    costEstimate,
     durationMs: Date.now() - startedAt,
   };
 }

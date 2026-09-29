@@ -202,6 +202,100 @@ réception · Le suivi · La réservation · Récapitulatif*) ou plus tard par
 
 ---
 
+## 5. Import initial du vivier — `npm run vivier:import` (une fois, à l'installation)
+
+Verser le **fonds de CV du cabinet** dans le vivier, pour que les campagnes
+puissent y chercher dès le premier jour. Script lancé **depuis le poste de
+l'opérateur** (hors application, hors Vercel), sur un dossier et/ou des
+archives `.zip`. Source : `scripts/vivier-import.ts`. Il remplace l'ancien
+`npm run import:vivier` (29/09/2026).
+
+### 5.1 Prérequis — à acter AVANT de lancer
+
+- [ ] **L'information des candidats est actée par le client.** Ces personnes
+      n'ont pas écrit à ORQA : leurs CV entrent dans un traitement nouveau
+      (information au titre de l'article 14 du RGPD). C'est au client,
+      responsable de traitement, de décider comment il les informe ; ORQA ne
+      contacte personne à l'import.
+- [ ] **Les dates de référence sont décidées.** Chaque dossier porte une date
+      de référence de rétention : la **date de candidature** si le client la
+      fournit (fichier `--dates`), sinon la **date d'import**, marquée comme
+      telle — ce n'est pas la même promesse, et la base garde laquelle des deux
+      a servi. ⚠️ **Rien ne purge encore le vivier selon cette date** : elle est
+      enregistrée pour que la règle de rétention, quand elle sera fixée,
+      s'applique sur la bonne date.
+- [ ] **La migration du 29/09/2026 est appliquée** (`scripts/migrate.sql` rejoué en
+      entier, deux fois en dev) : colonnes `cv_fingerprint`, `provenance`,
+      `retention_reference_at`, `retention_reference_kind`, et `source`
+      étendu à `import`. Recharger le cache PostgREST ensuite.
+- [ ] Le fichier d'environnement du client (`--env`) porte l'URL Supabase, la
+      clé service, la clé OpenAI, et le **même modèle d'embedding** que le
+      vivier existant (sinon le script refuse de démarrer).
+
+### 5.2 Déroulé
+
+```bash
+# 1. CONSTAT — ni écriture, ni appel au modèle, donc gratuit
+npm run vivier:import -- --env=.env.client.local --dir="/chemin/fonds-cv" --dates=dates.csv
+npm run vivier:import -- --env=.env.client.local --zip=lot1.zip --zip=lot2.zip
+
+# 2. EXÉCUTION — la référence du projet visé se retape
+npm run vivier:import -- --env=.env.client.local --dir="/chemin/fonds-cv" --dates=dates.csv \
+  --execute --confirm-project=<ref>
+```
+
+Le **constat** lit tout, extrait le texte, calcule les empreintes, repère les
+adresses et **estime le coût** (fourchette, d'après la longueur réelle des CV).
+Il dit ce qui serait importé, les doublons, les fichiers illisibles, ceux sans
+adresse, les fichiers ignorés et pourquoi. Deux choses ne se savent qu'à
+l'exécution : un document qui n'est pas un CV, et l'adresse retenue quand un
+CV en porte plusieurs — le rapport le dit.
+
+L'**exécution** refait ce constat, affiche le coût estimé, puis écrit par lots
+de 50 (3 en parallèle, `--concurrency` pour changer) et mesure le **coût
+réel**. Ctrl-C arrête proprement à la fin du lot en cours. **Relancer reprend** :
+un fichier déjà importé a la même empreinte, il est sauté sans rien coûter.
+
+**Sources.** `--dir` est lu récursivement ; une archive trouvée dans le
+dossier est traitée comme un `--zip`. Seuls **PDF et DOCX** entrent ; le reste
+est listé avec sa raison (`.doc` à réenregistrer, images, archive dans une
+archive…). Une archive **protégée par mot de passe ou corrompue** est listée et
+sautée, sans arrêter les autres. Les CV d'une archive sont lus un par un **en
+mémoire** : aucun CV décompressé n'est écrit sur le disque.
+
+**Fichier `--dates`** : deux colonnes `fichier;date` (ou `,`), en-tête
+facultatif, date `AAAA-MM-JJ` ou `JJ/MM/AAAA`, correspondance sur le **nom du
+fichier seul**, sans tenir compte des majuscules. **Une ligne illisible arrête
+tout avant la moindre écriture** : on ne laisse pas un dossier partir en
+silence avec la date d'import.
+
+### 5.3 Ce que l'import fait — et ne fait pas
+
+- **Il alimente le vivier, rien d'autre.** Aucun mail, aucune analyse de
+  campagne, aucune présélection (garde structurelle
+  `src/lib/vivier/import/__tests__/no-side-effects.test.ts`).
+- **Doublons listés, jamais réinsérés** : même CV (empreinte du texte
+  normalisé), puis même adresse, contre le vivier existant et entre tous les
+  fichiers et archives du même run. Un dossier existant n'est **jamais** mis à
+  jour.
+- Chaque dossier porte `source = import` et la provenance « import initial du
+  JJ/MM/AAAA, fonds du cabinet ».
+- **Journal** : une entrée `vivier_import_batch` par lot (le dossier, ou une
+  archive), avec des nombres (`count`, `duplicates`, `skipped`, `failed`) et un
+  identifiant **opaque** (`vimp-…-N`) — jamais un nom de candidat, jamais le nom
+  de l'archive (« CV Jean Dupont.zip » existe).
+- **Rapports** dans `tmp/vivier-import/<exécution>/` (ignoré par git) :
+  `rapport.md` ne contient **que des nombres** (transmissible au client) ;
+  `detail.md` liste chaque fichier et sa raison — **noms de personnes, ne
+  jamais le commiter**, à effacer une fois l'import soldé.
+- **Dossier importé mais non indexé** (panne passagère du modèle) : il existe,
+  mais la présélection ne le voit pas encore → `npm run reindex:vivier --
+  --env=<fichier> --only-failed`.
+- **Purge RGPD** : un candidat importé se purge comme les autres
+  (`npm run purge:candidate`, par l'adresse) — régression S28.
+
+---
+
 ## Checklist d'onboarding d'un nouveau client
 
 - [ ] `.env.local` complété (couche 1), `MAILBOX_ENCRYPTION_KEY` générée une fois.
@@ -216,6 +310,8 @@ réception · Le suivi · La réservation · Récapitulatif*) ou plus tard par
 - [ ] **Paramètres → Messages au candidat après décision** : relire les quatre
       textes AVEC le client (ton, signature, `[prochaine étape]`) — ce sont ses
       recruteurs qui les signeront (§2.2).
+- [ ] **Import initial du vivier** (§5) : information des candidats actée par le
+      client, dates de référence décidées, constat relu AVEC lui avant `--execute`.
 - [ ] Smoke test : login → *Campagnes* → assistant → activer → déposer un CV →
       la candidature apparaît dans *Candidatures*, et **aucun refus n'est parti
       tout seul** (depuis le 18/08/2026, un refus n'est jamais automatique : il

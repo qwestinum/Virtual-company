@@ -649,7 +649,7 @@ orientation) après chaque coupure.
 ## [App] `indexing.ts` marque `indexed` même sans embedding titre (faux « indexé » couche 2)
 
 **Statut** : identifié pendant la conception du script d'import en masse du vivier
-(`scripts/import-vivier.ts`). NON corrigé dans le lot import (volontairement) —
+(`scripts/import-vivier.ts`, remplacé le 29/09/2026 par `scripts/vivier-import.ts`). NON corrigé dans le lot import (volontairement) —
 à traiter à part côté app.
 
 **Contexte.** Dans `src/lib/vivier/indexing.ts`, les étapes embeddings / ancres /
@@ -678,10 +678,11 @@ présélection — sous-couverture invisible du vivier.
   manquant) : honnête, rattrapable, et distinct d'un échec dur. Demande une
   migration d'enum + prise en compte dans les filtres de présélection et l'UI.
 
-**Note** : le **script d'import** (`import-vivier.ts`) n'est PAS trompé par ce
-bug — il re-lit `getVivierEmbeddingMeta` après indexation et compte le dossier
-`failed (embedding_absent)` si l'embedding titre manque, indépendamment du flag
-`indexed`. En revanche il ne **répare pas** les dossiers creux préexistants
+**Note** : le **script d'import** (`vivier-import.ts`, ex-`import-vivier.ts`) n'est PAS
+trompé par ce bug — il re-lit `getVivierEmbeddingMeta` après indexation et, si
+l'embedding titre manque, compte le dossier « importé, indexation à reprendre »
+ET repose `failed` sur ce dossier qu'il vient de créer (rattrapable par
+`--only-failed`). En revanche il ne **répare pas** les dossiers creux préexistants
 (créés par le glisser-déposer) : il les voit comme doublons et les ignore. C'est
 précisément ce correctif app qui les couvrira.
 

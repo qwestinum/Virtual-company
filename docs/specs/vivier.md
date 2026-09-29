@@ -438,3 +438,24 @@ squelette, le CV copié retrouvé par son id déterministe et son `uid`.
 
 Tests : unitaires (`invite-candidate`, `origin`), régression **S27**, clic
 **S49** (captures `docs/ux/captures/vivier-inviter/`).
+
+## 17. Import initial d'un fonds de CV (29/09/2026)
+
+Troisième porte d'entrée du vivier, à côté du dépôt manuel et des
+candidatures : le **fonds du cabinet**, versé une fois à l'installation par
+`npm run vivier:import` (procédure : `docs/ops/configuration-client.md` §5).
+
+- **Il alimente, rien d'autre** : ni mail, ni analyse de campagne, ni
+  présélection. Les dossiers importés deviennent recherchables comme les
+  autres, une fois indexés.
+- **Insertion seule** : un doublon — même texte de CV (empreinte `v1:` du texte
+  normalisé, `vivier_candidates.cv_fingerprint`) ou même adresse — est listé,
+  jamais réinséré ni mis à jour. L'empreinte est aussi la clé de reprise.
+- **Origine lisible en base** : `source = 'import'`, `provenance` (« import
+  initial du JJ/MM/AAAA, fonds du cabinet »), et une **date de référence de
+  rétention** (`retention_reference_at`) dont la nature est enregistrée
+  (`application_date` fournie par le client, sinon `import_date`). Aucun
+  traitement ne lit encore cette date : la règle de rétention du vivier reste
+  à fixer, la date est posée pour qu'elle s'applique sur la bonne.
+- Colonnes vides pour les dossiers des autres portes (leur référence reste
+  `entered_at`).

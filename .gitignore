@@ -64,9 +64,14 @@ bench/*
 /*-smoke.ts
 /*-smoke.mjs
 
-# journal d'import vivier (script npm run import:vivier) — contient des EMAILS de
-# candidats (donnée personnelle) : JAMAIS committé. Couvre aussi le .dryrun.json.
+# journal de l'ANCIEN import vivier (`import:vivier`, remplacé le 29/09/2026 par
+# `vivier:import`) — des journaux peuvent encore traîner dans des dossiers de CV.
+# Ils contiennent des EMAILS de candidats : JAMAIS committés.
 .import-vivier-journal*.json
+
+# détail de l'import initial du vivier (`npm run vivier:import`) — noms de
+# fichiers, souvent des noms de personnes : JAMAIS committé.
+/tmp/vivier-import/
 
 # scripts de diagnostic JETABLES (`scripts/*-tmp.ts`) : écrits pour un incident
 # précis, ils lisent des creds d'environnement (`.env.localX`) et portent des

@@ -88,7 +88,7 @@ Deux exceptions de forme, toutes deux justifiées au §6.3 :
 | `interview_reports` | Compte rendu d'entretien : rubriques (sujets abordés, réponses aux critères, réserves…), **citations courtes** de l'entretien, auteur et date de la vérification par le recruteur. **Aucune transcription** : ORQA n'en conserve jamais, même en cas d'échec de génération. | **EFFACER** — par rattachement à la candidature, jamais par recherche du nom |
 | `verdict_comments` | Commentaire du recruteur qui motive un verdict final (retenu / non retenu). Peut ne PAS contenir le nom du candidat — c'est pourquoi il est effacé par rattachement. | **EFFACER** — par rattachement à la candidature |
 | `candidate_feedback` | Message envoyé au candidat après une décision (retenu, non retenu, absent, sans suite) : **objet et corps tels qu'envoyés**, statut d'envoi, auteur ; ou, quand le recruteur a prévenu lui-même, le seul canal déclaré (téléphone, messagerie personnelle, autre) — sans aucune copie de l'échange. | **EFFACER** — par rattachement à la candidature |
-| `vivier_candidates` | Le dossier de vivier : nom, prénom, téléphone, adresse, **texte intégral du CV**, titre, compétences, intitulés de postes. | **EFFACER** |
+| `vivier_candidates` | Le dossier de vivier : nom, prénom, téléphone, adresse, **texte intégral du CV**, titre, compétences, intitulés de postes ; pour un dossier versé par l'import initial (`source = import`), l'empreinte du texte du CV, la provenance et la date de référence de rétention. | **EFFACER** |
 | `vivier_embeddings`, `vivier_entities`, `vivier_skill_embeddings`, `vivier_anchor_embeddings`, `vivier_preselections` | Vecteurs et entités **dérivés du texte du CV**. | **EFFACER** (cascade) — un vecteur dérivé d'un CV se supprime, il ne se « nettoie » pas |
 | `imap_unmatched_cvs` | Expéditeur, objet du message, nom du fichier joint, chemin du CV stocké. | **PSEUDONYMISER**, ligne conservée (§6.3) |
 | `artifacts_meta` | Noms de fichiers nominatifs (`invitation-<nom>.md`, `refus-<nom>.md`), et dans les métadonnées : nom, adresse, expéditeur, objet du message. | **EFFACER** |
@@ -536,7 +536,7 @@ rapport de confirmation, avec l'indication de qui doit agir.
 | **L'outil de visio du client** (Teams, Meet, Zoom…) | L'enregistrement et la transcription d'origine de l'entretien | Le responsable de traitement |
 | **L'hébergeur applicatif** | Journaux d'exécution | Rotation de la plateforme |
 | **Les sauvegardes de la base** | Copies antérieures à l'effacement | **Rotation — durée à vérifier sur le contrat de l'environnement concerné avant d'annoncer un délai au candidat** |
-| **Le poste de l'opérateur** | Journal d'import de vivier (adresses, chemins de fichiers) et **dossier des CV source** | L'opérateur, manuellement |
+| **Le poste de l'opérateur** | Détail de l'import initial du vivier (`tmp/vivier-import/<exécution>/detail.md` : noms de fichiers, souvent nominatifs), anciens journaux d'import (`.import-vivier-journal*.json` : adresses) et **dossier ou archives des CV source** | L'opérateur, manuellement |
 
 > La dernière ligne mérite d'être dite : un dossier d'import de CV et son
 > journal local sont, aujourd'hui, la copie la moins gouvernée de toutes. Elle
