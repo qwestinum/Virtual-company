@@ -81,9 +81,21 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
 ### 2.1 Avant de pousser / déployer
 
 1. **Migration** : appliquer `scripts/migrate.sql` **deux fois de suite** en dev,
-   puis sur la prod client (table `candidate_feedback`, déclencheur de pose unique).
-2. **Recette du donneur d'ordre** sur dev.
-3. **Variables d'environnement, par instance** (`docs/ops/env-reference.md`) :
+   puis sur la prod client (table `candidate_feedback`, déclencheur de pose unique ;
+   **et** colonnes de l'import vivier : `cv_fingerprint`, `provenance`,
+   `retention_reference_*`, CHECK `source` étendu à `import` — déjà appliquées sur
+   `hjylrfeffwsexpgqzqba`).
+2. **⚠️ Base de dev HORS SERVICE (constaté le 29/09/2026)** : aucune régression ne
+   peut tourner tant qu'elle n'est pas rétablie. Dès qu'elle l'est : migration
+   (deux fois), puis `npm run test:regression`, application fermée — dont
+   **S28 (`tests/regression/s28-vivier-import.test.ts`), écrite mais JAMAIS
+   exécutée** : dossier importé (source, provenance, rétention, empreinte),
+   dédoublonnage lu en base, et surtout **purge RGPD d'un dossier importé par son
+   adresse** (S28.3) — le seul point de l'import qu'aucune exécution n'a vérifié.
+   Ne PAS la lancer sur une base client à la place (garde de la suite, et la
+   suite crée/efface des données).
+3. **Recette du donneur d'ordre** sur dev.
+4. **Variables d'environnement, par instance** (`docs/ops/env-reference.md`) :
    - `CRON_SECRET` — toutes les instances (facultatif en dev) ;
    - `CRON_ENABLED=1` — client et démo, **la prod en dernier** ; **jamais en dev**. Le
      cron Vercel remplace cron-job.org : désactiver le job cron-job.org de l'instance
@@ -93,7 +105,7 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
    - `SOURCING_*` — là où le sourcing sert ; `DEMO_JOBBOARD_ENABLED` — démo seulement ;
      `ADEP_ENABLED` — si APEC ; `NEXT_PUBLIC_APP_URL` — toutes ;
    - `E2E_FEEDBACK_INBOX` — dev seulement (tests qui vérifient l'envoi réel).
-4. Après déploiement : 2ᵉ segment de `x-vercel-id` = **`cdg1`**.
+5. Après déploiement : 2ᵉ segment de `x-vercel-id` = **`cdg1`**.
 
 ### 2.2 Ouvert, non bloquant
 
@@ -104,6 +116,14 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
 - **`PERF_TRACE=1`** : comptage des requêtes Supabase par écran non relevé.
 - **Base de la démo** : l'audit « décision envoyée ≠ décision humaine » n'y a pas été
   rejoué (prod seulement).
+- **Import initial du vivier** (`npm run vivier:import`, commit `87bcbe7`,
+  `docs/ops/configuration-client.md` §5) : passé sur `hjylrfeffwsexpgqzqba` le
+  29/09 — 98 dossiers, tous indexés, ≈ 3,20 $ (gpt-4o). Restent chez le client :
+  **30 CV sans adresse** (originaux à récupérer) et **5 `.doc`** (à réenregistrer),
+  puis relancer la même commande. `tmp/vivier-import/*/detail.md` (nominatif) à
+  supprimer une fois soldé. Écart NON expliqué : la réindexation a trouvé 47
+  dossiers `failed` là où le rapport en annonçait 46 (piste : rail d'indexation
+  si les crons tournent sur cette instance) — sans effet sur le résultat.
 - `scripts/_diag-transcript*.ts` : fichiers non suivis, à trancher (commiter ou
   supprimer).
 
