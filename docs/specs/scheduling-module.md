@@ -463,6 +463,33 @@ l'exécution sur la ligne réellement envoyée. Seul le PATCH ciblé écrit le f
 | Proxy | `src/proxy.ts` — **une seule** exemption (`/api/sched`) ; les pages n'en ont pas besoin (régime « pages » = liste blanche) ; court-circuit d'auth + en-têtes `noindex`/`no-store`/`no-referrer` sur `/r/ /b/ /api/sched/` |
 | Tests | `__tests__/ics.test.ts`, `__tests__/mail-templates.test.ts` (purs) ; `tests/regression/s14-scheduling-surfaces.test.ts` (routes réelles) |
 
+## 12 ter. Absence → reproposer un créneau (28/09/2026)
+
+Un candidat absent à qui l'on repropose un créneau restait compté « RDV pris ».
+Désormais « Re-proposer un créneau » (dialogue d'absence, onglet Entretiens,
+fiche candidature) passe par `reissueBookingLink({ kind: 'no_show' })`
+(`src/lib/interviews/reissue.ts`), côté hôte :
+
+1. le rendez-vous MANQUÉ est décommandé **sans notifier** le candidat (le
+   message qui suit porte la nouvelle) ;
+2. les liens encore actifs sont révoqués ;
+3. le briefing repasse **« en attente de réservation » tout de suite** (sans
+   attendre le rail) — l'étape se DÉRIVE du briefing : le dossier redescend en
+   « Invité », puis « RDV pris » à la prochaine réservation ; aucun état
+   parallèle ;
+4. UN message : « Nous n'avons pas pu nous rencontrer lors de l'entretien… »
+   + un lien neuf (nouvelle génération de clé) ;
+5. journal `interview_link_reissued` `{ kind: 'no_show', cause:
+   'no_show_rescheduled' }`.
+
+**Une deuxième absence ne rouvre pas une troisième fois** : 409
+`repeated_no_show`, et le signal métier `repeated_no_show` (Aujourd'hui) dit
+qu'il reste à trancher. Le consommateur de l'annulation retrouve le briefing
+par `getLatestBriefByUid` quand aucun n'est plus en attente. Hors périmètre
+assumé (backlog) : chaîner le nouveau rendez-vous sur l'ancien
+(`rescheduled_from`) pour que l'agenda du candidat « déplace » au lieu
+d'« annuler + créer ». Régression S10, clic S47.
+
 ## 13. Hors périmètre V1 (rappel)
 
 Synchronisation Google Calendar / Outlook (OAuth), génération de liens visio uniques par RDV,

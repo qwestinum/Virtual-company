@@ -1,54 +1,55 @@
-# Brief — prochaine session (réécrit le 27/09/2026)
+# Brief — prochaine session (réécrit le 29/09/2026)
 
-La **REFONTE DES INTERFACES** est **mergée sur `main`**, et **`main` = `demo`** (même
-commit, rien de propre à l'une ou l'autre). Rien n'est poussé : **le donneur d'ordre
-pousse** après sa recette sur dev (`! git push origin main` puis `! git push origin
-demo` — le push est gaté pour l'assistant).
+**`main` a reçu en fast-forward** `feat/feedback-candidat` puis
+`fix/vivier-replanif-filtres` (`15681f4..ac18632`, 12 commits). **Rien n'est
+poussé** (le donneur d'ordre pousse : `! git push origin main`). **`demo` est en
+retard sur `main`** — à aligner si la démo doit montrer ces chantiers.
 
-Source de vérité de la refonte : **`docs/ux/maquette-structure-v2-2026-09-20.md`**
-(la v1 est supersédée ; l'audit de l'existant est dans `docs/ux/audit-ux-2026-09-20.md`).
-Le lexique est publié en référence : **`docs/ux/lexique.md`**.
+Compte rendu détaillé : **`docs/sessions/SESSION_2026-09-28_FEEDBACK_VIVIER_CLOTURE.md`**.
+La refonte des interfaces (session du 20-27/09) reste décrite ci-dessous (§1, §5).
 
 ---
 
-## 0. ÉTAT AU 27/09/2026
-
-Ce qui est entré dans `main`, dans l'ordre : `fix/validations-orphelines` →
-`fix/ux-mensonges` → `feat/ux-refonte` → la garde `CRON_ENABLED` de la maintenance du
-vivier → `demo` (egress, Vercel Cron, sourcing, S34) → **deux correctifs trouvés PAR
-la vérification du merge** :
-
-- **`fix/hitl-decision-preservee`** — une remise en file ne décide jamais. Elle
-  réécrivait la décision d'une fiche encore `pending` : un « accepter » posé juste avant
-  la réservation repassait « refuser », l'invitation partait pendant que la
-  finalisation enregistrait un refus et révoquait le lien. Mise à jour partielle dans la
-  requête, réservation conditionnée à la décision affichée, seconde ceinture à l'envoi,
-  garde structurelle. **Audit prod (lecture seule) : 155 envois, aucun écart.**
-  Cf. `docs/specs/hitl-3-zones.md` §6bis.8.
-- **`fix/sched-repair-grace`** — la réparation du drain de réservation ne touche plus
-  une confirmation en cours (délai de grâce de 2 min). Cf.
-  `docs/specs/scheduling-module.md`, étape 5.
+## 0. ÉTAT AU 29/09/2026
 
 | Indicateur | Valeur |
 |---|---|
 | Typecheck | propre (`npm run typecheck`) |
-| Lint | **0 erreur**, 18 avertissements |
-| Tests unitaires | **3 089 verts**, 1 ignoré |
-| Régression | **234/234** (25 fichiers), application fermée |
-| Tests de clic (E2E) | **66/66** (15 fichiers), application ouverte |
-| Conflits au merge | **aucun** |
-| Migration base | **aucune** |
+| Tests unitaires | **3 278 verts**, 1 ignoré |
+| Régression | **250/250** (28 fichiers), application fermée |
+| Tests de clic (E2E) | S43-S50 verts ; chaque correctif sondé |
+| Migration base | **OUI : `candidate_feedback`** (table + déclencheur, chantier message au candidat) |
+
+Ce qui est entré :
+- **Message au candidat après décision** (`docs/specs/feedback-candidat.md`) :
+  l'un de deux gestes obligatoire, « Recruté » désigné à la clôture, dix étapes.
+- **Absence → reproposer un créneau** : le dossier redescend « Invité »
+  (`docs/specs/scheduling-module.md` §12 ter).
+- **Filtres de campagne** cumulés et partagés ; puces d'état de Campagnes rétablies.
+- **Vivier dans la campagne** : voir le CV, inviter (candidature à part entière,
+  gabarit « Une opportunité »), écarter, lignes dépliables (`docs/specs/vivier.md` §16).
+- **Rapport de bugs 221** : compteurs de campagne en ENTONNOIR + taux de
+  conversion (règle du donneur d'ordre), entretiens à pointer lus sur l'étape,
+  plusieurs recrutés à la clôture, plus de « poste pourvu » au verdict.
 
 > ⚠️ **Les deux suites ne se lancent jamais ensemble.** `npm run test:regression` exige
-> l'application **fermée** ; `npm run test:e2e` exige `npm run dev` **ouvert**.
+> l'application **fermée** ; `npm run test:e2e` exige `npm run dev` **ouvert**. Pour
+> arrêter le serveur : `pkill -f "[n]ext dev"` (sans crochets, la commande se tue
+> elle-même et le serveur reste ouvert).
 >
-> ⚠️ **Un test rouge une fois sur trois est un défaut, pas un test fragile** — les deux
-> derniers intermittents (S4, S13.3) étaient deux vraies courses. On nomme le test et on
-> cherche la cause avant de relancer.
+> ⚠️ **Un test rouge une fois sur trois est un défaut, pas un test fragile.** S22
+> (sourcing, clôture) a été vu intermittent le 28/09, y compris sans les changements
+> de la session — non investigué.
+
+### Questions ouvertes au donneur d'ordre
+- Libellé « À valider » sur une campagne clôturée (compte un passage).
+- « Activez la campagne d'abord : un brouillon ne reçoit rien » sur une campagne
+  clôturée (message faux).
+- « N recrutement(s) finalisé(s) » du rapport : basculer sur les recrutés ?
 
 ---
 
-## 1. Ce qui est fait
+## 1. Rappel — la refonte des interfaces (20-27/09)
 
 **Cinq entrées adressables** — *Aujourd'hui* (défaut) · *Campagnes* · *Candidatures* ·
 *Entretiens* · *Pilotage*. Chacune a son URL : favori, partage, bouton Précédent. Les
@@ -77,11 +78,12 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
 
 ## 2. Ce qui attend
 
-### 2.1 Avant de pousser
+### 2.1 Avant de pousser / déployer
 
-1. **Recette du donneur d'ordre** sur dev (commencée le 22-23/09, retours traités —
-   § « Recette du donneur d'ordre » de la maquette v2).
-2. **Variables d'environnement, par instance** (`docs/ops/env-reference.md`) :
+1. **Migration** : appliquer `scripts/migrate.sql` **deux fois de suite** en dev,
+   puis sur la prod client (table `candidate_feedback`, déclencheur de pose unique).
+2. **Recette du donneur d'ordre** sur dev.
+3. **Variables d'environnement, par instance** (`docs/ops/env-reference.md`) :
    - `CRON_SECRET` — toutes les instances (facultatif en dev) ;
    - `CRON_ENABLED=1` — client et démo, **la prod en dernier** ; **jamais en dev**. Le
      cron Vercel remplace cron-job.org : désactiver le job cron-job.org de l'instance
@@ -89,8 +91,9 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
    - `CV_ANALYZER_LEDGER_MODEL` — posé en dev, sur les clients après recette ;
    - `OPENAI_CHAT_MODEL=gpt-4o` — toutes ;
    - `SOURCING_*` — là où le sourcing sert ; `DEMO_JOBBOARD_ENABLED` — démo seulement ;
-     `ADEP_ENABLED` — si APEC ; `NEXT_PUBLIC_APP_URL` — toutes.
-3. Après déploiement : 2ᵉ segment de `x-vercel-id` = **`cdg1`**.
+     `ADEP_ENABLED` — si APEC ; `NEXT_PUBLIC_APP_URL` — toutes ;
+   - `E2E_FEEDBACK_INBOX` — dev seulement (tests qui vérifient l'envoi réel).
+4. Après déploiement : 2ᵉ segment de `x-vercel-id` = **`cdg1`**.
 
 ### 2.2 Ouvert, non bloquant
 
@@ -108,10 +111,10 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
 
 ## 3. Ordre de mise en production
 
-1. Recette du donneur d'ordre sur dev.
-2. `! git push origin main` et `! git push origin demo` (le donneur d'ordre).
-3. Variables par instance (§2.1), cron-job.org coupé au moment où `CRON_ENABLED` est posé.
-4. **Aucune migration à appliquer.**
+1. Migration `candidate_feedback` (double application dev, puis prod).
+2. Recette du donneur d'ordre sur dev.
+3. `! git push origin main` ; aligner `demo` si la démo doit suivre.
+4. Variables par instance (§2.1), cron-job.org coupé au moment où `CRON_ENABLED` est posé.
 5. Vérifier `cdg1` sur chaque instance.
 
 ---
@@ -127,7 +130,11 @@ branchées qui ne l'étaient pas — d'où `npm run test:e2e`.
 | Fiche technique (DSI / DPO) | `docs/ops/fiche-technique.md` |
 | Configuration d'un client | `docs/ops/configuration-client.md` |
 | Captures du kit commercial | `docs/captures/` |
-| Compte rendu de la session précédente | `docs/sessions/SESSION_2026-09-20_UX_COHERENCE.md` |
+| Compte rendu de la dernière session | `docs/sessions/SESSION_2026-09-28_FEEDBACK_VIVIER_CLOTURE.md` |
+| Compte rendu de la refonte | `docs/sessions/SESSION_2026-09-20_UX_COHERENCE.md` |
+| Message au candidat, Recruté, dix étapes | `docs/specs/feedback-candidat.md` |
+| Vivier dans la campagne | `docs/specs/vivier.md` §16 |
+| Compteurs de campagne (entonnoir) | `src/lib/reporting/campaign-trajectory.ts` ; maquette v2 §B.1 (renversée) |
 
 ---
 

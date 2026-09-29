@@ -125,6 +125,13 @@ incomplète) et S6/S9/S10/S16/S25 réalignées ; suites qui cliquent **S43**
 
 ## 9. Ouvert
 
+- Carte d'une campagne CLÔTURÉE : « À valider 1 » compte les candidatures
+  PASSÉES par la validation (entonnoir) mais se lit « il en reste une à
+  valider » — libellé à trancher par le donneur d'ordre.
+- « Trouver des candidats » sur une campagne clôturée affiche « Activez la
+  campagne d'abord : un brouillon ne reçoit rien » — message faux (ce n'est
+  pas un brouillon), non corrigé.
+
 - « N recrutement(s) finalisé(s) » du rapport de campagne compte encore les
   **retenus** (calcul historique) : à basculer sur les recrutés ou à renommer —
   arbitrage du donneur d'ordre (basculer changerait les rapports déjà envoyés).
