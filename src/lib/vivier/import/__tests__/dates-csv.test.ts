@@ -19,6 +19,8 @@ describe('fichier de dates de candidature', () => {
   it('correspond sur le NOM de fichier seul, sans casse', () => {
     expect(datesKey('fonds/2024/CV Martin.PDF')).toBe('cv martin.pdf');
     expect(datesKey('archive.zip:dossier\\CV.pdf')).toBe('cv.pdf');
+    // Nom macOS (accents décomposés) ⇔ ligne de CSV tapée sous Windows.
+    expect(datesKey('CV-détaillé.docx'.normalize('NFD'))).toBe(datesKey('CV-détaillé.docx'.normalize('NFC')));
   });
 
   it('une ligne illisible est une ERREUR, jamais ignorée', () => {

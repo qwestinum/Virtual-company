@@ -94,4 +94,29 @@ describe('lecteur d’archives de l’import', () => {
     await archive.close();
     expect(dosDateTime(0, 0)).toBeNull();
   });
+
+  /** Archive dont le nom brut est `raw`, SANS drapeau UTF-8 (placeholder ASCII remplacé). */
+  function rawNamed(raw: Buffer): Uint8Array {
+    const placeholder = 'N'.repeat(raw.length);
+    const b = Buffer.from(zipSync({ [placeholder]: [strToU8('x'), { level: 0 }] }));
+    for (let i = b.indexOf(placeholder); i !== -1; i = b.indexOf(placeholder, i + 1)) raw.copy(b, i);
+    return b;
+  }
+
+  it('nom UTF-8 NON signalé (archiveur macOS, accents décomposés) : lu en UTF-8, recomposé', async () => {
+    const mac = Buffer.from('CV-de\u0301taille\u0301.docx'.normalize('NFD'), 'utf8');
+    const archive = await openZipArchive(await write('mac.zip', rawNamed(mac)));
+    if (typeof archive === 'string') throw new Error(archive);
+    expect(archive.entries[0]!.name).toBe('CV-détaillé.docx'.normalize('NFC'));
+    expect(archive.entries[0]!.name).not.toContain('╠');
+    await archive.close();
+  });
+
+  it('un vrai nom Windows (page 437) n’est pas pris pour de l’UTF-8', async () => {
+    const windows = Buffer.from([0x43, 0x56, 0x5f, 0x82, 0x2e, 0x70, 0x64, 0x66]); // CV_é.pdf en 437
+    const archive = await openZipArchive(await write('win.zip', rawNamed(windows)));
+    if (typeof archive === 'string') throw new Error(archive);
+    expect(archive.entries[0]!.name).toBe('CV_é.pdf');
+    await archive.close();
+  });
 });

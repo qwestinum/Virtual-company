@@ -23,7 +23,8 @@ const HEADER = /^(fichier|file|nom|filename|name)\b/iu;
 
 export function datesKey(fileName: string): string {
   const base = fileName.split(/[\\/]/u).pop() ?? fileName;
-  return base.trim().toLowerCase();
+  // NFC : un nom de fichier macOS décompose ses accents, un CSV tapé ailleurs non.
+  return base.normalize('NFC').trim().toLowerCase();
 }
 
 export function parseDateCell(raw: string, today: Date): string | null {

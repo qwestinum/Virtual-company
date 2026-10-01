@@ -85,7 +85,24 @@ export function findEocd(tail: Buffer): EocdInfo | ZipArchiveError {
   return 'not_a_zip';
 }
 
+const STRICT_UTF8 = new TextDecoder('utf-8', { fatal: true });
+
+/**
+ * Nom d'une entrée, en forme Unicode NFC. Ordre : drapeau UTF-8, champ Unicode
+ * Path, puis — sans l'un ni l'autre — UTF-8 s'il est VALIDE, sinon page 437.
+ * Le troisième cas est celui de l'archiveur de macOS, qui écrit de l'UTF-8
+ * sans le signaler : décodé en 437, « détaillé » devenait « de╠ütaille╠ü »
+ * (import du 29/09/2026). Un vrai nom 437 accentué n'est presque jamais de
+ * l'UTF-8 valide (un octet ≥ 0x80 isolé ne l'est pas) ; le risque inverse est
+ * accepté. NFC : macOS décompose les accents (e + ◌́), un fichier de dates
+ * tapé sous Windows les compose — sans normalisation, ils ne se reconnaîtraient
+ * pas.
+ */
 function entryName(flags: number, raw: Buffer, extra: Buffer): string {
+  return decodeEntryName(flags, raw, extra).normalize('NFC');
+}
+
+function decodeEntryName(flags: number, raw: Buffer, extra: Buffer): string {
   if (flags & 0x0800) return raw.toString('utf8');
   // Champ « Info-ZIP Unicode Path » (0x7075) : le nom UTF-8 à côté du nom 437.
   for (let p = 0; p + 4 <= extra.length; ) {
@@ -95,6 +112,13 @@ function entryName(flags: number, raw: Buffer, extra: Buffer): string {
       return extra.subarray(p + 9, p + 4 + size).toString('utf8');
     }
     p += 4 + size;
+  }
+  if (raw.some((b) => b >= 0x80)) {
+    try {
+      return STRICT_UTF8.decode(raw);
+    } catch {
+      // Pas de l'UTF-8 : un nom écrit par l'explorateur Windows.
+    }
   }
   return decodeCp437(raw);
 }
