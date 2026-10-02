@@ -778,11 +778,16 @@ alter table public.vivier_candidates
   add column if not exists retention_reference_kind text;
 alter table public.vivier_candidates
   drop constraint if exists vivier_candidates_retention_kind_chk;
+-- ⚠️ `retention_reference_kind is not null` est INDISPENSABLE (02/10/2026) :
+-- sans lui, une date sans nature passait. `kind in (…)` vaut NULL quand `kind`
+-- est NULL, la branche entière vaut NULL, et un CHECK qui s'évalue à NULL est
+-- SATISFAIT. Attrapé par S28.1 (« la base refuse une date sans sa nature »).
 alter table public.vivier_candidates
   add constraint vivier_candidates_retention_kind_chk
   check (
     (retention_reference_at is null and retention_reference_kind is null)
     or (retention_reference_at is not null
+        and retention_reference_kind is not null
         and retention_reference_kind in ('application_date','import_date'))
   );
 create index if not exists vivier_candidates_cv_fingerprint_idx
