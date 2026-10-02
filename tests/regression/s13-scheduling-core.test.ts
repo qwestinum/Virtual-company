@@ -383,7 +383,14 @@ describe('S13.4 — événements', () => {
 
     // ANCIENNE, c'est un crash : le filet la rattrape.
     const aged = new Date(Date.now() - REPAIR_GRACE_MS - 60_000).toISOString();
-    await db().from('sched_bookings').update({ created_at: aged }).eq('id', result.booking.id);
+    const agedUpdate = await db()
+      .from('sched_bookings')
+      .update({ created_at: aged })
+      .eq('id', result.booking.id)
+      .select('id');
+    // Un vieillissement qui échoue en silence rendrait « 0 réparé » illisible.
+    expect(agedUpdate.error).toBeNull();
+    expect(agedUpdate.data).toHaveLength(1);
 
     const drain = await drainPendingEvents();
     expect(drain.repaired).toBeGreaterThanOrEqual(1);

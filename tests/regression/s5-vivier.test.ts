@@ -167,11 +167,18 @@ describe('S5 — vivier', () => {
     expect(analysis.vivier_candidate_id).toBe(vivierCandidateId);
 
     // La candidature sort le candidat du cycle « contacté » (applied_at posé).
-    const rows = await db()
-      .from('vivier_preselections')
-      .select('applied_at')
-      .eq('campaign_id', camp)
-      .eq('candidate_id', vivierCandidateId);
-    expect(rows.data?.[0]?.applied_at).toBeTruthy();
+    // ⚠️ ATTENDU, pas lu dans la foulée : le rapprochement pose `from_vivier`
+    // PUIS `applied_at`, par deux requêtes successives. Lire le second dès que
+    // le premier apparaît est une course — perdue dès qu'une requête dépasse
+    // ~100 ms (constaté le 02/10/2026 sur la base de dev).
+    const appliedAt = await until(async () => {
+      const rows = await db()
+        .from('vivier_preselections')
+        .select('applied_at')
+        .eq('campaign_id', camp)
+        .eq('candidate_id', vivierCandidateId);
+      return (rows.data?.[0]?.applied_at as string | null | undefined) ?? null;
+    }, 'proposition marquée candidatée (applied_at)');
+    expect(appliedAt).toBeTruthy();
   });
 });
