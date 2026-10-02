@@ -32,6 +32,9 @@ import type { ImportFile } from '@/lib/vivier/import/sources';
 import { createImportedCandidate } from '@/lib/vivier/import/write';
 
 import { cleanAll, db, readRows } from './helpers/db';
+import { allowPurgeDurations } from './helpers/purge-timeouts';
+
+allowPurgeDurations();
 
 const suffix = Math.random().toString(36).slice(2, 8);
 const EMAIL = `s28-import-${suffix}@test.local`;

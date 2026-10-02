@@ -30,6 +30,9 @@ import { normalizeProfileUrl, profileFingerprint } from '@/lib/sourcing/fingerpr
 import type { ErasureIdentity } from '@/types/gdpr';
 
 import { cleanAll, db, newTestCampaignId } from './helpers/db';
+import { allowPurgeDurations } from './helpers/purge-timeouts';
+
+allowPurgeDurations();
 
 const PEPPER = 'treg-s20-sel';
 const MARKER = erasureMarker('S20 — instruction de test');

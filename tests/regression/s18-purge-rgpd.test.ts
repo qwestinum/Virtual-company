@@ -61,6 +61,9 @@ import { validationIdFor } from '@/lib/hitl/validation-id';
 
 import { call, cvAnalyzerForm, testCampaignPayload, testScoringSheet, until } from './helpers/api';
 import { cleanAll, db, newTestCampaignId, readRows } from './helpers/db';
+import { allowPurgeDurations } from './helpers/purge-timeouts';
+
+allowPurgeDurations();
 
 const camp = newTestCampaignId('s18');
 const REQUEST_REF = 'S18 — instruction de test';
