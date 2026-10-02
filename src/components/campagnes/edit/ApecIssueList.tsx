@@ -31,10 +31,18 @@ export function focusApecField(field: string) {
 export function ApecIssueList({
   issues,
   verified,
+  blocked,
   onSelect,
 }: {
   issues: AdepIssue[] | null;
   verified: boolean;
+  /**
+   * Un préalable empêche l'envoi (serveur, réglages, référent). L'offre peut
+   * être conforme et ne pas pouvoir partir : dire « prête à partir » à côté
+   * d'un bouton désarmé, c'est ce qui a fait croire le 02/10/2026 que tout
+   * était en ordre.
+   */
+  blocked: boolean;
   /** Mène au champ d'une erreur (ouvre sa section, puis le focus). */
   onSelect: (field: string) => void;
 }) {
@@ -77,9 +85,15 @@ export function ApecIssueList({
           ))}
         </ul>
       ) : null}
-      {verified && errors.length === 0 ? (
+      {verified && errors.length === 0 && !blocked ? (
         <div style={{ marginTop: 10, fontSize: 13, color: 'var(--dash-green)' }}>
           Aucune erreur — l’offre est prête à partir.
+        </div>
+      ) : null}
+      {verified && errors.length === 0 && blocked ? (
+        <div style={{ marginTop: 10, fontSize: 13, color: 'var(--dash-orange)' }}>
+          L’offre est conforme, mais elle ne peut pas partir tant que les points
+          signalés en haut du panneau ne sont pas réglés.
         </div>
       ) : null}
     </>

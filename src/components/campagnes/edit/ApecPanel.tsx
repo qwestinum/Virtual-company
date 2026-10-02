@@ -185,7 +185,12 @@ export function ApecPanel({ campaignId }: { campaignId: string }) {
             </div>
           </ApecFieldProvider>
 
-          <ApecIssueList issues={panel.issues} verified={panel.verified} onSelect={goToField} />
+          <ApecIssueList
+            issues={panel.issues}
+            verified={panel.verified}
+            blocked={state.blockers.length > 0}
+            onSelect={goToField}
+          />
 
           {open !== null ? (
             <>

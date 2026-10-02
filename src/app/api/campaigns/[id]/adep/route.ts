@@ -25,6 +25,7 @@ import { prefillFromJobPost, prefillIssues } from '@/lib/jobboards/adep/prefill'
 import { buildClientReference, isClientReferenceValid, nextAttempt } from '@/lib/jobboards/adep/reference';
 import { isAdepEnabled } from '@/lib/jobboards/adep/service';
 import { DEFAULT_ADEP_CONFIG, missingAdepSettings } from '@/types/adep-settings';
+import { adepServerBlockers } from '@/lib/jobboards/adep/key-readiness';
 
 export const runtime = 'nodejs';
 
@@ -108,7 +109,8 @@ export async function GET(
     });
 
     // Préalables que le formulaire ne peut pas régler — dits AVANT le bouton.
-    const blockers = [...draft.blockers];
+    // Le serveur d'abord : sans clé d'authentification, rien d'autre ne compte.
+    const blockers = [...adepServerBlockers(), ...draft.blockers];
     for (const missing of missingAdepSettings(
       config,
       settings?.interviewConfig.organisationName ?? '',

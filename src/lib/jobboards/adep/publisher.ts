@@ -28,6 +28,8 @@
  * pas une reprise.
  */
 
+import { AdepArgon2Error } from './argon2';
+import { describeAdepKeyError } from './key-readiness';
 import {
   buildGetPositionStatusEnvelope,
   buildOpenPositionEnvelope,
@@ -379,6 +381,9 @@ export class AdepSepPublisher
 
 /** Message d'incident, sans jamais laisser filtrer un secret. */
 function describeTransportFailure(err: unknown): string {
+  // Une clé d'authentification introuvable n'est pas un incident de
+  // communication : elle se règle sur le serveur, et rien n'est parti.
+  if (err instanceof AdepArgon2Error) return describeAdepKeyError(err);
   if (err instanceof AdepTransportError) return err.message;
   if (err instanceof Error) return err.message;
   return 'Incident de communication avec l’Apec.';

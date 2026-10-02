@@ -203,3 +203,42 @@ export async function resolveAtsPasswordFromEnv(
   }
   return computeAtsPassword(password, { salt, iterations, parallelism });
 }
+
+/** Le module de calcul est-il chargeable ICI ? (devDependency : absent en production.) */
+export function isArgon2ModuleAvailable(): boolean {
+  try {
+    const specifier = ['@node-rs', 'argon2'].join('/');
+    createRequire(import.meta.url).resolve(specifier);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type AdepKeyProblem =
+  | { kind: 'missing' }
+  | { kind: 'module_unavailable' }
+  | { kind: 'bad_length'; length: number };
+
+/**
+ * Ce serveur saura-t-il produire la clé d'authentification ? PUR.
+ *
+ * Posé AVANT le clic (02/10/2026) : sur une instance de production sans
+ * `ADEP_ATS_PASSWORD_HASH`, la vérification de l'offre répondait « prête à
+ * partir » et la publication levait au clic — le calcul au vol exige un module
+ * qui n'est pas installé en production. Mêmes règles que
+ * `resolveAtsPasswordFromEnv`, sans rien calculer.
+ */
+export function adepKeyProblem(
+  env: Partial<Record<string, string>>,
+  moduleAvailable: boolean,
+): AdepKeyProblem | null {
+  const precomputed = env.ADEP_ATS_PASSWORD_HASH?.trim();
+  if (precomputed) {
+    return precomputed.length === ARGON2_EXPECTED_KEY_LENGTH
+      ? null
+      : { kind: 'bad_length', length: precomputed.length };
+  }
+  if (!env.ADEP_ATS_PASSWORD || !env.ADEP_ARGON2_SALT) return { kind: 'missing' };
+  return moduleAvailable ? null : { kind: 'module_unavailable' };
+}

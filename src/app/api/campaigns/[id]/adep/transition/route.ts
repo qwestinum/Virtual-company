@@ -132,6 +132,14 @@ export async function POST(
       return NextResponse.json({ error: 'supabase_not_configured' }, { status: 503 });
     }
     console.error('[api/campaigns/adep/transition] failed', err);
-    return NextResponse.json({ error: 'transition_failed' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'transition_failed',
+        message:
+          'L’opération a échoué sur une erreur inattendue du serveur. Rechargez l’écran ' +
+          'pour voir l’état de l’annonce avant de réessayer.',
+      },
+      { status: 500 },
+    );
   }
 }

@@ -27,6 +27,8 @@ import {
   publishToAdep,
 } from '@/lib/jobboards/adep/service';
 import { validateAdepOffer } from '@/lib/jobboards/adep/validate';
+import { AdepArgon2Error } from '@/lib/jobboards/adep/argon2';
+import { describeAdepKeyError } from '@/lib/jobboards/adep/key-readiness';
 import { AdepOfferSchema } from '@/types/adep';
 
 export const runtime = 'nodejs';
@@ -134,6 +136,26 @@ export async function POST(
     if (err instanceof SupabaseNotConfiguredError) {
       return NextResponse.json({ error: 'supabase_not_configured' }, { status: 503 });
     }
+    if (err instanceof AdepArgon2Error) {
+      // Clé d'authentification introuvable : un réglage du SERVEUR, levé à la
+      // première résolution d'identité — avant la réservation et tout envoi.
+      // Tracé comme le reste (incident s2i-talents, 02/10/2026 : c'est le
+      // journal qui a donné la cause).
+      await appendJournalEntry({
+        action: 'apec_offer_publish_failed',
+        actor: user.email ?? 'utilisateur',
+        campaignId: id,
+        payload: {
+          outcome: 'key_unavailable',
+          apecEnvironment: adepEnvironmentLabel(),
+          reason: `${err.name}: ${err.message}`,
+        },
+      }).catch(() => {});
+      return NextResponse.json(
+        { error: 'adep_key_unavailable', message: describeAdepKeyError(err) },
+        { status: 409 },
+      );
+    }
     // ⚠️ TRACER, pas seulement `console.error`.
     //
     // Le 10/09/2026, une publication a rendu 500 en ne laissant STRICTEMENT
@@ -156,6 +178,17 @@ export async function POST(
         reason: err instanceof Error ? `${err.name}: ${err.message}` : 'Erreur inconnue.',
       },
     }).catch(() => {});
-    return NextResponse.json({ error: 'publish_failed' }, { status: 500 });
+    // Une phrase, jamais le code brut. On ne prétend PAS que rien n'est parti :
+    // une exception peut survenir après l'envoi, d'où le rechargement d'abord.
+    return NextResponse.json(
+      {
+        error: 'publish_failed',
+        message:
+          'La publication a échoué sur une erreur inattendue du serveur ; la cause est ' +
+          'enregistrée au journal. Rechargez l’écran avant de réessayer : il dira si une ' +
+          'tentative est partie.',
+      },
+      { status: 500 },
+    );
   }
 }
