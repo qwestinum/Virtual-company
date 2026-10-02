@@ -7,6 +7,7 @@
  * console Supabase suffit pour debug).
  */
 
+import { fetchAllKeyset } from '@/lib/db/paginate';
 import { requireServerSupabase } from '@/lib/db/supabase-server';
 
 export type JournalEntryInput = {
@@ -172,4 +173,50 @@ export async function listJournalEntriesByActions(
     if (rows.length < PAGE) break;
   }
   return out;
+}
+
+/**
+ * Toutes les entrées des `actions` données depuis `sinceIso` — exhaustif
+ * (keyset sur l'id, jamais tronqué par le plafond PostgREST). Sert les
+ * compteurs de la fiche d'une boîte de réception : une fenêtre BORNÉE dans le
+ * temps, posée sur les actions VOULUES (cf. incident du fil d'activité, 21/08).
+ */
+export async function listJournalEntriesByActionsSince(
+  actions: string[],
+  sinceIso: string,
+): Promise<JournalEntry[]> {
+  if (actions.length === 0) return [];
+  const supabase = requireServerSupabase();
+  type Row = {
+    id: number;
+    campaign_id: string | null;
+    actor: string;
+    action: string;
+    payload: Record<string, unknown> | null;
+    created_at: string;
+  };
+  const rows = await fetchAllKeyset<Row>({
+    cursorOf: (r) => String(r.id),
+    fetchPage: async (afterId, limit) => {
+      let q = supabase
+        .from('journal')
+        .select('id, campaign_id, actor, action, payload, created_at')
+        .in('action', actions)
+        .gte('created_at', sinceIso)
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (afterId !== null) q = q.gt('id', Number(afterId));
+      const { data, error } = await q;
+      if (error) throw new Error(`listJournalEntriesByActionsSince: ${error.message}`);
+      return (data ?? []) as Row[];
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    campaignId: r.campaign_id,
+    actor: r.actor,
+    action: r.action,
+    payload: r.payload ?? {},
+    createdAt: r.created_at,
+  }));
 }

@@ -47,6 +47,13 @@ import {
   renderCVBatchMarkdown,
 } from '@/lib/agents/cv-report-render';
 import { decryptCredential } from '@/lib/crypto/mailbox-credentials';
+import {
+  countBelowBaseline,
+  foreignCampaignRefs,
+  ignoredMailEntry,
+  unmatchedReason,
+  type IgnoredMailReason,
+} from '@/lib/imap/mail-ignored';
 import { imapAnalysisId } from '@/lib/imap/analysis-id';
 import { dispatchImapCandidateOutreach } from '@/lib/imap/outreach';
 import { isMailboxDue, nextReadAt } from '@/lib/imap/poll-due';
@@ -265,11 +272,15 @@ async function closeConnection(client: ImapFlow): Promise<void> {
 async function resolveInitialCursor(
   client: ImapFlow,
   mailbox: MailboxRow,
-): Promise<number | null> {
+): Promise<{ cursor: number | null; countBelow: number | null }> {
   const status = client.mailbox;
   const uidNext =
     typeof status === 'object' && status && typeof status.uidNext === 'number'
       ? status.uidNext
+      : null;
+  const exists =
+    typeof status === 'object' && status && typeof status.exists === 'number'
+      ? status.exists
       : null;
 
   let uidsSinceConnection: number[] = [];
@@ -288,7 +299,14 @@ async function resolveInitialCursor(
     }
   }
 
-  return initialCursorFor({ uidNext, uidsSinceConnection });
+  const cursor = initialCursorFor({ uidNext, uidsSinceConnection });
+  // Ce que la ligne de départ laisse derrière elle — compté, jamais lu. Aucune
+  // requête de plus : le nombre de messages vient de l'ouverture du dossier.
+  return {
+    cursor,
+    countBelow:
+      cursor === null ? null : countBelowBaseline({ exists, baseline: cursor, uidsSinceConnection }),
+  };
 }
 
 /**
@@ -449,6 +467,7 @@ async function pollMailboxImpl(
   let maxUidSeen = previousLastUid;
   /** Curseur initial à PERSISTER (boîte neuve) — écrit hors connexion IMAP. */
   let pendingBaseline: number | null = null;
+  let pendingBelowBaseline: number | null = null;
   // Plus petit UID dont l'ÉTAT FINAL n'a pas pu être écrit (ex. journal
   // `imap_no_campaign_match` KO — panne DB) : avancer le consommerait
   // sans trace. C'est le frein « DB down », PLUS JAMAIS le frein « CV en
@@ -500,7 +519,9 @@ async function pollMailboxImpl(
       // sur une messagerie personnelle déjà pleine ne remonte jamais jusqu'au
       // courrier du jour (cf. `initialCursorFor`, incident 20/08/2026).
       if (!hasCursor) {
-        const baseline = await resolveInitialCursor(client, mailbox);
+        const initial = await resolveInitialCursor(client, mailbox);
+        const baseline = initial.cursor;
+        pendingBelowBaseline = initial.countBelow;
         if (baseline !== null) {
           previousLastUid = baseline;
           maxUidSeen = baseline;
@@ -565,6 +586,9 @@ async function pollMailboxImpl(
       payload: {
         mailboxId: mailbox.id,
         baselineUid: pendingBaseline,
+        // Combien de mails restent sous la ligne : on sait qu'il y en avait,
+        // sans les lire (null = le serveur n'a pas donné le compte).
+        countBelowBaseline: pendingBelowBaseline,
         reason:
           'boîte branchée sur une messagerie existante — la relève démarre au courrier récent, les messages antérieurs ne sont pas analysés',
       },
@@ -621,8 +645,14 @@ async function pollMailboxImpl(
         if (uid > maxUidSeen) maxUidSeen = uid;
       }
 
+      const traceIgnored = (reason: IgnoredMailReason): Promise<void> =>
+        appendJournalEntry(ignoredMailEntry(mailbox.id, uid, reason)).catch(() => {});
+
       // Parsing du message complet pour extraire subject + PJ.
-      if (!message.source) continue;
+      if (!message.source) {
+        await traceIgnored('unparseable');
+        continue;
+      }
       let parsed;
       try {
         parsed = await simpleParser(message.source);
@@ -637,6 +667,7 @@ async function pollMailboxImpl(
             error: err instanceof Error ? err.message : String(err),
           },
         }).catch(() => {});
+        await traceIgnored('unparseable');
         continue;
       }
 
@@ -671,6 +702,7 @@ async function pollMailboxImpl(
               'plusieurs campagnes citées dans le corps — préciser l\'identifiant CAMP-XXXX dans le sujet',
           },
         }).catch(() => {});
+        await traceIgnored('ambiguous_campaign');
         continue;
       }
 
@@ -692,6 +724,7 @@ async function pollMailboxImpl(
               'campaign_not_active — réactive la campagne ou attends qu\'elle franchisse les jalons',
           },
         }).catch(() => {});
+        await traceIgnored('campaign_inactive');
         continue;
       }
 
@@ -707,8 +740,21 @@ async function pollMailboxImpl(
         const noneUnsupportedAtts = allNoneAtts.filter((a) =>
           isUnsupportedCvAttachment(a.contentType, a.filename),
         );
-        if (noneCvAtts.length === 0 && noneUnsupportedAtts.length === 0) {
-          continue;
+        // Une référence CITÉE mais d'une campagne que cette boîte ne relève
+        // pas n'est pas « aucune référence » (UID 2041, 01/10/2026 : la trace
+        // affirmait l'absence d'identifiant alors qu'il était dans l'objet).
+        const foreignRefs = foreignCampaignRefs([subject, body], associatedIds);
+        if (noneCvAtts.length === 0) {
+          // Plus de skip muet : newsletters, réponses, mails personnels d'une
+          // messagerie branchée — chacun laisse une ligne et une raison.
+          await traceIgnored(
+            foreignRefs.length > 0
+              ? 'campaign_not_associated'
+              : noneUnsupportedAtts.length > 0
+                ? 'unsupported_attachment'
+                : 'no_attachment',
+          );
+          if (noneUnsupportedAtts.length === 0) continue;
         }
         // Stockage best-effort PAR PJ exploitable (les .doc non extractibles
         // sont tracés mais pas stockés : non rejouables par extractCVText).
@@ -771,10 +817,14 @@ async function pollMailboxImpl(
               unsupportedFiles: noneUnsupportedAtts.map(
                 (a) => a.filename ?? null,
               ),
+              foreignCampaignRefs: foreignRefs,
               reason:
-                'CV reçu sans campagne reconnue (aucun identifiant CAMP-XXXX dans le sujet ni le corps) — rejouable via /api/imap/unmatched une fois la campagne choisie',
+                foreignRefs.length > 0
+                  ? `CV reçu pour ${foreignRefs.join(', ')}, campagne non associée à cette boîte — associer la boîte à la campagne, ou rejouer via /api/imap/unmatched`
+                  : 'CV reçu sans campagne reconnue (aucun identifiant CAMP-XXXX dans le sujet ni le corps) — rejouable via /api/imap/unmatched une fois la campagne choisie',
             },
           });
+          if (noneCvAtts.length > 0) await traceIgnored(unmatchedReason(foreignRefs));
         } catch (jErr) {
           console.error(
             '[imap-poller] journal imap_no_campaign_match KO — curseur gelé',
@@ -802,6 +852,7 @@ async function pollMailboxImpl(
           campaignId: matchedCampaignId,
           payload: { mailboxId: mailbox.id, uid, subject },
         }).catch(() => {});
+        await traceIgnored('orphan_campaign');
         continue;
       }
 
@@ -837,6 +888,7 @@ async function pollMailboxImpl(
                 'format Word ancien (.doc) non exploitable — demande au candidat un renvoi en PDF ou .docx',
             },
           }).catch(() => {});
+          await traceIgnored('unsupported_attachment');
           continue;
         }
         await appendJournalEntry({
@@ -858,6 +910,7 @@ async function pollMailboxImpl(
             })),
           },
         }).catch(() => {});
+        await traceIgnored('no_attachment');
         continue;
       }
 

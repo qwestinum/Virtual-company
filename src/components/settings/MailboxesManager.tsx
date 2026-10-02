@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { MailboxActivityLine, useMailboxActivity } from './MailboxActivityLine';
+
 import { cn } from '@/lib/utils';
 
 /**
@@ -59,6 +61,7 @@ const EMPTY_FORM: FormState = {
 
 export function MailboxesManager() {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
+  const activity = useMailboxActivity(mailboxes);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -321,6 +324,11 @@ export function MailboxesManager() {
                         Erreur : {mb.last_error}
                       </div>
                     ) : null}
+                    <MailboxActivityLine
+                      data={activity}
+                      mailboxId={mb.id}
+                      lastPolledAt={mb.last_polled_at}
+                    />
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-1">
