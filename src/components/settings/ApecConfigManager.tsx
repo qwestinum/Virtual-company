@@ -42,9 +42,12 @@ const NAF_SHAPE = /^[0-9]{4}[A-Z]$/;
 
 export function ApecConfigManager({
   config,
+  organisationName,
   onSave,
 }: {
   config: AdepConfig;
+  /** Nom de l'organisation (identité du cabinet) — l'« enseigne » de l'Apec. */
+  organisationName: string;
   onSave: (next: AdepConfig) => void;
 }) {
   const [draft, setDraft] = useState<AdepConfig>(config ?? DEFAULT_ADEP_CONFIG);
@@ -53,7 +56,7 @@ export function ApecConfigManager({
   // Ce qui manque est dit ICI aussi, pas seulement dans le panneau de la
   // campagne : découvrir qu'un code NAF manque au moment de publier, après
   // avoir rempli douze champs, est le parcours qu'on cherche à éviter.
-  const missing = missingAdepSettings(draft);
+  const missing = missingAdepSettings(draft, organisationName);
   const nafShapeKo = draft.nafCode.trim().length > 0 && !NAF_SHAPE.test(draft.nafCode.trim());
   const descLength = draft.organizationDescription.trim().length;
 

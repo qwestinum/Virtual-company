@@ -19,6 +19,8 @@
  * saisie » sur un problème d'habilitation fait chercher pendant une heure.
  */
 
+import { ORGANISATION_NAME_LOCATION } from '@/types/adep-settings';
+
 export type AdepErrorNature = 'field' | 'account' | 'apec';
 
 export type AdepErrorEntry = {
@@ -116,7 +118,11 @@ export const ADEP_ERROR_CATALOGUE: Record<string, AdepErrorEntry> = {
   '332': { nature: 'field', field: 'positionDescription', message: 'Le descriptif du poste est vide.' },
   '337': { nature: 'field', field: 'positionDescription', message: 'Le descriptif du poste doit faire au moins 200 caractères.' },
   '338': { nature: 'field', field: 'positionDescription', message: 'Le texte contient des balises non autorisées.' },
-  '406': { nature: 'field', field: 'organizationName', message: "L'enseigne affichée est obligatoire (255 caractères maximum)." },
+  '406': {
+    nature: 'field',
+    field: 'organizationName',
+    message: `Nom de l’organisation (l’enseigne de l’annonce) vide ou trop long — 255 caractères maximum : à corriger dans ${ORGANISATION_NAME_LOCATION}.`,
+  },
   '407': { nature: 'field', field: 'organizationDescription', message: "La description de l'entreprise doit faire entre 100 et 3 000 caractères." },
   '408': { nature: 'field', field: 'profileDescription', message: 'La description du profil doit faire entre 100 et 3 000 caractères.' },
   '409': { nature: 'field', field: 'presentationDescription', message: 'Les conseils aux candidats dépassent 500 caractères.' },

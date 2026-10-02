@@ -60,6 +60,7 @@ export function ChannelIntegrations({ settings, patchAndSave }: Props) {
         </p>
         <ApecConfigManager
           config={settings.adepConfig ?? DEFAULT_ADEP_CONFIG}
+          organisationName={settings.interviewConfig.organisationName}
           onSave={(next) => patchAndSave({ adepConfig: next }, 'Réglages APEC mis à jour.')}
         />
       </div>

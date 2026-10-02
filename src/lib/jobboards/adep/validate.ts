@@ -24,6 +24,8 @@
  * empêcherait de publier une offre parfaitement valide.
  */
 
+import { ORGANISATION_NAME_LOCATION } from '@/types/adep-settings';
+
 import {
   CIVILITE_CODES,
   FORBIDDEN_INSEE_COMMUNES,
@@ -429,7 +431,11 @@ export function validateAdepOffer(
   );
 
   if (len(offer.organizationName) === 0) {
-    err('organizationName', "L'enseigne affichée est obligatoire.", '406');
+    err(
+      'organizationName',
+      `Nom de l’organisation non renseigné (l’Apec l’affiche comme enseigne de l’annonce) : à remplir dans ${ORGANISATION_NAME_LOCATION}.`,
+      '406',
+    );
   } else if (len(offer.organizationName) > ADEP_LIMITS.organizationNameMax) {
     err(
       'organizationName',

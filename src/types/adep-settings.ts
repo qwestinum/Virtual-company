@@ -62,14 +62,34 @@ export type AdepConfig = z.infer<typeof AdepConfigSchema>;
 export const DEFAULT_ADEP_CONFIG: AdepConfig = AdepConfigSchema.parse({});
 
 /**
+ * Où se renseigne le nom de l'organisation — l'« enseigne » de l'Apec. Une
+ * seule chaîne, citée par chaque message qui le réclame.
+ */
+export const ORGANISATION_NAME_LOCATION = 'Paramètres › Cabinet et DPO › Identité du cabinet';
+
+/** Ce que l'Apec appelle « enseigne », dit dans les mots de l'écran. */
+export const MISSING_ORGANISATION_NAME =
+  `le nom de l’organisation, affiché comme enseigne sur l’annonce (${ORGANISATION_NAME_LOCATION})`;
+
+/**
  * Ce qui manque pour pouvoir publier, en français.
  *
  * Rendu par l'écran AVANT le bouton, jamais au moment de l'envoi : découvrir
  * qu'un code NAF manque après avoir rempli douze champs est le genre de
  * parcours qu'on n'inflige pas.
+ *
+ * ⚠️ `organisationName` est OBLIGATOIRE en argument (02/10/2026) : il ne vit
+ * pas dans les réglages APEC mais dans l'identité du cabinet, et c'est
+ * précisément pour ça qu'il manquait à ce contrôle — l'écran annonçait
+ * « APEC prêt » et la vérification de l'offre répondait « enseigne
+ * obligatoire ». Le rendre facultatif réouvrirait ce trou au premier appelant
+ * pressé.
  */
-export function missingAdepSettings(config: AdepConfig): string[] {
+export function missingAdepSettings(config: AdepConfig, organisationName: string): string[] {
   const missing: string[] = [];
+  if (!organisationName.trim()) {
+    missing.push(MISSING_ORGANISATION_NAME);
+  }
   if (!config.nafCode.trim()) {
     missing.push('le code NAF du cabinet');
   }

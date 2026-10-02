@@ -109,8 +109,11 @@ export async function GET(
 
     // Préalables que le formulaire ne peut pas régler — dits AVANT le bouton.
     const blockers = [...draft.blockers];
-    for (const missing of missingAdepSettings(config)) {
-      blockers.push(`Réglages APEC du cabinet incomplets : ${missing}.`);
+    for (const missing of missingAdepSettings(
+      config,
+      settings?.interviewConfig.organisationName ?? '',
+    )) {
+      blockers.push(`Réglage manquant pour publier sur l’Apec : ${missing}.`);
     }
     const owner = await ownerP;
     if (!owner) {

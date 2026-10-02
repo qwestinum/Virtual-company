@@ -15,7 +15,11 @@
  * l'utilisateur lit avant de décider quoi ouvrir.
  */
 import type { SectionStatus } from '@/components/settings/SettingsSection';
-import { missingAdepSettings, type AdepConfig } from '@/types/adep-settings';
+import {
+  MISSING_ORGANISATION_NAME,
+  missingAdepSettings,
+  type AdepConfig,
+} from '@/types/adep-settings';
 import type { BrandingConfig } from '@/types/branding';
 import type { InterviewConfig } from '@/types/interview-settings';
 import type { VivierConfig } from '@/types/vivier-settings';
@@ -108,16 +112,29 @@ export function interviewSummary(s: SummarySource): SectionState {
  * Identité du cabinet : le NOM d'abord (il est repris dans chaque message au
  * candidat), puis l'apparence. Le nom vit dans cette section depuis le
  * 02/10/2026 ; il était avant avec l'agenda.
+ *
+ * Nom ABSENT ⇒ `warn` : l'Apec refuse l'offre (c'est son « enseigne »), et les
+ * messages au candidat signent d'un nom générique. L'alerte vit ICI, là où se
+ * fait la correction — « Y aller » doit mener au champ, pas aux intégrations.
  */
 export function brandingSummary(s: SummarySource): SectionState {
-  const org = s.interviewConfig.organisationName.trim() || 'organisation non nommée';
+  const name = s.interviewConfig.organisationName.trim();
   const bits = [
     s.brandingConfig.logoUrl ? 'logo' : null,
     s.brandingConfig.accentColor ? 'couleur' : null,
   ].filter((b): b is string => b !== null);
+  const look = bits.length === 0 ? 'apparence par défaut' : `personnalisée : ${bits.join(' + ')}`;
+  if (!name) {
+    return {
+      summary: `Nom de l’organisation non renseigné · ${look}`,
+      status: 'warn',
+      missing:
+        'Nom de l’organisation absent : l’Apec refuse la publication (c’est l’enseigne de l’annonce) et les messages au candidat signent d’un nom générique',
+    };
+  }
   return bits.length === 0
-    ? { summary: `${org} · apparence par défaut`, status: 'neutral' }
-    : { summary: `${org} · personnalisée : ${bits.join(' + ')}`, status: 'ok' };
+    ? { summary: `${name} · ${look}`, status: 'neutral' }
+    : { summary: `${name} · ${look}`, status: 'ok' };
 }
 
 export function vivierSummary(s: SummarySource): SectionState {
@@ -136,7 +153,17 @@ export function vivierSummary(s: SummarySource): SectionState {
  * en butant sur un bouton désarmé au fond d'une campagne.
  */
 export function channelsSummary(s: SummarySource, total: number): SectionState {
-  const missing = missingAdepSettings(s.adepConfig);
+  const all = missingAdepSettings(s.adepConfig, s.interviewConfig.organisationName);
+  // Le nom de l'organisation est signalé par « Identité du cabinet », où il se
+  // corrige : le compter ici ferait DEUX alertes pour un seul geste, dont une
+  // qui mène au mauvais endroit.
+  const missing = all.filter((m) => m !== MISSING_ORGANISATION_NAME);
+  if (missing.length === 0 && all.length > 0) {
+    return {
+      summary: 'APEC : en attente du nom de l’organisation (Identité du cabinet)',
+      status: 'neutral',
+    };
+  }
   if (missing.length > 0) {
     return {
       summary: `APEC : il manque ${missing.join(', ')}`,

@@ -112,17 +112,26 @@ describe('expéditeur, identité, vivier, intégrations', () => {
     expect(state.summary).toBe('a@x.fr (+2 autres)');
   });
 
-  it('identité : rien de configuré n’est PAS une alerte (c’est facultatif)', () => {
-    expect(brandingSummary(source()).status).toBe('neutral');
-    expect(
-      brandingSummary(source({ brandingConfig: { logoUrl: 'u', accentColor: '#000' } }))
-        .summary,
-    ).toBe('organisation non nommée · personnalisée : logo + couleur');
+  it('identité : l’apparence est facultative, le NOM ne l’est pas', () => {
+    const named = { ...DEFAULT_INTERVIEW_CONFIG, organisationName: 'Qwestinum' };
+    // Apparence par défaut avec un nom : rien à signaler.
+    expect(brandingSummary(source({ interviewConfig: named }))).toEqual({
+      summary: 'Qwestinum · apparence par défaut',
+      status: 'neutral',
+    });
     expect(
       brandingSummary(
-        source({ interviewConfig: { ...DEFAULT_INTERVIEW_CONFIG, organisationName: 'Qwestinum' } }),
+        source({ interviewConfig: named, brandingConfig: { logoUrl: 'u', accentColor: '#000' } }),
       ).summary,
-    ).toBe('Qwestinum · apparence par défaut');
+    ).toBe('Qwestinum · personnalisée : logo + couleur');
+  });
+
+  it('identité : sans nom d’organisation ⇒ alerte, qui dit ce que ça casse (Apec)', () => {
+    const state = brandingSummary(source());
+    expect(state.status).toBe('warn');
+    expect(state.summary).toMatch(/^Nom de l’organisation non renseigné/);
+    expect(state.missing).toMatch(/Apec refuse la publication/);
+    expect(state.missing).toMatch(/enseigne/);
   });
 
   it('vivier : le mode de contact, qui décide si un mail part tout seul', () => {
@@ -145,7 +154,9 @@ describe('countWarnings', () => {
     const states = [
       synthesisSummary(source()),
       resendSummary(source()),
-      brandingSummary(source()),
+      brandingSummary(
+        source({ interviewConfig: { ...DEFAULT_INTERVIEW_CONFIG, organisationName: 'Qwestinum' } }),
+      ),
       vivierSummary(source()),
     ];
     expect(countWarnings(states)).toBe(2);
@@ -168,10 +179,26 @@ describe('channelsSummary — les réglages APEC ne se découvrent pas au fond d
     expect(state.summary).toContain("description de l'entreprise");
   });
 
-  it('ne signale plus rien une fois les deux réglages posés', () => {
-    const state = channelsSummary(source({ adepConfig: READY }), 2);
+  const NAMED = { ...DEFAULT_INTERVIEW_CONFIG, organisationName: 'Qwestinum' };
+
+  it('ne signale plus rien une fois les réglages posés ET le cabinet nommé', () => {
+    const state = channelsSummary(source({ adepConfig: READY, interviewConfig: NAMED }), 2);
     expect(state.status).toBe('ok');
     expect(state.summary).toContain('APEC prêt');
+  });
+
+  it('sans nom d’organisation, l’APEC n’est PAS prêt — mais l’alerte vit dans l’identité', () => {
+    // Avant le 02/10/2026 l'écran disait « APEC prêt » et la vérification de
+    // l'offre répondait « enseigne obligatoire ». Une seule alerte pour un
+    // seul geste : celle d'« Identité du cabinet », où l'on corrige.
+    const state = channelsSummary(source({ adepConfig: READY }), 2);
+    expect(state.summary).not.toContain('APEC prêt');
+    expect(state.summary).toContain('nom de l’organisation');
+    expect(state.status).toBe('neutral');
+    // Avec d'autres manques, ceux-là seulement sont en alerte ici.
+    const both = channelsSummary(source(), 2);
+    expect(both.status).toBe('warn');
+    expect(both.missing).not.toContain('nom de l’organisation');
   });
 
   it('une description trop courte compte comme absente', () => {

@@ -128,8 +128,12 @@ describe('S51 — Paramètres : pliage, recherche, manques', () => {
     const intercept = async (route: Route) => {
       if (route.request().method() !== 'GET') return route.continue();
       const res = await route.fetch();
-      const json = (await res.json()) as { settings: Record<string, unknown> };
+      const json = (await res.json()) as {
+        settings: Record<string, unknown> & { interviewConfig: Record<string, unknown> };
+      };
       json.settings.resendApiKeyConfigured = false;
+      // Le nom de l'organisation est l'« enseigne » exigée par l'Apec.
+      json.settings.interviewConfig = { ...json.settings.interviewConfig, organisationName: '' };
       return route.fulfill({ response: res, json });
     };
     await context.route('**/api/settings', intercept);
@@ -140,11 +144,21 @@ describe('S51 — Paramètres : pliage, recherche, manques', () => {
       const texte = (await alerte.textContent()) ?? '';
       expect(texte).toContain('Clé d’envoi des mails (Resend) absente');
       expect(texte).toContain('Réception & envoi des mails › Service email (Resend)');
+      expect(texte).toContain('Nom de l’organisation absent');
+      expect(texte).toContain('Cabinet et DPO › Identité du cabinet');
+
+      // « Y aller » sur le nom mène au champ, dans l'identité du cabinet.
+      await page.click('[data-settings-goto="identite"]');
+      await page.waitForTimeout(800);
+      expect(await page.getAttribute(sectionButton('identite'), 'aria-expanded')).toBe('true');
+      expect(
+        await page.locator('[data-settings-section="identite"] >> text=Nom de l’organisation').count(),
+      ).toBeGreaterThan(0);
 
       await page.click('[data-settings-goto="resend"]');
       await page.waitForTimeout(800);
       expect(await page.getAttribute(sectionButton('resend'), 'aria-expanded')).toBe('true');
-      expect(await familleOuvertes(page)).toEqual(['Réception & envoi des mails']);
+      expect(await familleOuvertes(page)).toContain('Réception & envoi des mails');
       const dansVue = await page.$eval('[data-settings-section="resend"]', (el) => {
         const r = el.getBoundingClientRect();
         return r.top >= 0 && r.top < window.innerHeight;
