@@ -21,12 +21,9 @@ const INPUT =
 
 export function BrandingManager({
   config,
-  organizationName,
   onSave,
 }: {
   config: BrandingConfig;
-  /** Nom effectif, en LECTURE : édité dans la section « Entretiens ». */
-  organizationName: string | null;
   onSave: (next: BrandingConfig) => void;
 }) {
   const [draft, setDraft] = useState<BrandingConfig>(config ?? DEFAULT_BRANDING_CONFIG);
@@ -34,14 +31,6 @@ export function BrandingManager({
 
   return (
     <div className="flex flex-col gap-4 font-body text-[13px]">
-      <p className="rounded-md bg-stone-50 px-2.5 py-2 text-[12px] text-stone-600">
-        Nom affiché aux candidats :{' '}
-        <strong className="text-stone-800">
-          {organizationName ?? 'non configuré'}
-        </strong>{' '}
-        — modifiable dans « Entretiens — messages candidat ».
-      </p>
-
       <label className="flex flex-col gap-1">
         <span className="font-semibold text-stone-700">Logo (URL)</span>
         <input

@@ -19,6 +19,8 @@ import { useId, type ReactNode } from 'react';
 export type SectionStatus = 'ok' | 'warn' | 'neutral';
 
 export type SettingsSectionProps = {
+  /** Identifiant du registre — ancre DOM (`reglage-<id>`) visée par « Y aller ». */
+  sectionId: string;
   icon: string;
   title: string;
   description: string;
@@ -32,6 +34,7 @@ export type SettingsSectionProps = {
 };
 
 export function SettingsSection({
+  sectionId,
   icon,
   title,
   description,
@@ -44,7 +47,9 @@ export function SettingsSection({
   const panelId = useId();
   return (
     <section
-      className={`rounded-2xl border bg-white shadow-sm transition-colors ${
+      id={`reglage-${sectionId}`}
+      data-settings-section={sectionId}
+      className={`scroll-mt-24 rounded-2xl border bg-white shadow-sm transition-colors ${
         status === 'warn'
           ? 'border-amber-300'
           : open

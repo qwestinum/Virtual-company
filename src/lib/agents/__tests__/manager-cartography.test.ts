@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { MANAGER_CARTOGRAPHY } from '../manager-cartography';
 import { MOTS_BANNIS_A_L_ECRAN } from '@/lib/lexique/phrases-ecran';
+import { settingsFamilies } from '@/lib/settings/sections-registry';
 
 /**
  * LE MANAGER NE PEUT PLUS NOMMER UN ÉCRAN QUI N'EXISTE PAS.
@@ -126,5 +127,15 @@ describe('cartographie du Manager', () => {
         norm(disparu),
       );
     }
+  });
+
+  it('elle nomme chaque famille et chaque section des Paramètres', () => {
+    // Le registre est la source de l'écran : une section renommée ou déplacée
+    // sans retouche ici laisserait le Manager envoyer vers l'ancien nom.
+    const texte = norm(MANAGER_CARTOGRAPHY);
+    const absents = settingsFamilies(true)
+      .flatMap((f) => [f.label, ...f.sections.map((s) => s.title)])
+      .filter((libelle) => !texte.includes(`« ${norm(libelle)} »`));
+    expect(absents).toEqual([]);
   });
 });

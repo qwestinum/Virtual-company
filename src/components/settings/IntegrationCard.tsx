@@ -11,7 +11,7 @@
 
 import { useState } from 'react';
 
-import type { IntegrationConfig } from './SettingsHub';
+import type { IntegrationConfig } from './settings-data';
 
 export type IntegrationCardProps = {
   label: string;

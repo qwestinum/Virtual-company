@@ -23,8 +23,9 @@ import {
 import { createTestRecruiter, deleteTestRecruiter, type TestRecruiter } from './helpers/session';
 
 const FAMILLES = [
-  'Décision & candidats',
-  'Identité & équipe',
+  'Cabinet et DPO',
+  'Modèles de messages',
+  'Équipe et disponibilité',
   'Réception & envoi des mails',
   'Intégrations',
 ];
@@ -47,7 +48,7 @@ describe('S38 — sections pliables', () => {
     if (recruiter) await deleteTestRecruiter(recruiter);
   });
 
-  it('S38.1 — les quatre familles de Réglages se replient', async () => {
+  it('S38.1 — les familles de Réglages se replient', async () => {
     await page.goto(`${BASE_URL}/settings`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-settings-group]', { timeout: 90_000 });
     await attendreHydratation(page, '[data-settings-group]');
@@ -59,7 +60,7 @@ describe('S38 — sections pliables', () => {
 
     for (const famille of FAMILLES) {
       const bouton = `[data-settings-group="${famille}"]`;
-      // REPLIÉES au départ (22/09/2026) : la page s'ouvre sur quatre titres.
+      // REPLIÉES au départ (22/09/2026) : la page s'ouvre sur ses titres de famille.
       expect(await page.getAttribute(bouton, 'aria-expanded'), famille).toBe('false');
       // …bordés du jaune qui les garde repérables, SANS aplat.
       const cadre = await page.$eval(bouton, (b) => {

@@ -29,11 +29,14 @@ export function SettingsGroup({
   open = true,
   onToggle,
   count,
+  locked = false,
   children,
 }: {
   label: string;
   open?: boolean;
   onToggle?: () => void;
+  /** Ouverte et non repliable (pendant une recherche). */
+  locked?: boolean;
   /** Combien de sections la famille contient. */
   count?: number;
   children?: React.ReactNode;
@@ -54,11 +57,12 @@ export function SettingsGroup({
       <h2>
         <button
           type="button"
-          onClick={onToggle}
+          onClick={locked ? undefined : onToggle}
           aria-expanded={open}
+          aria-disabled={locked || undefined}
           aria-controls={panneau}
           data-settings-group={label}
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-display text-[12px] font-bold uppercase tracking-[0.16em] hover:bg-stone-50"
+          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-display text-[12px] font-bold uppercase tracking-[0.16em] ${locked ? 'cursor-default' : 'hover:bg-stone-50'}`}
           style={{
             background: 'transparent',
             border: '1.5px solid var(--dash-famille)',
@@ -82,7 +86,14 @@ export function SettingsGroup({
         </button>
       </h2>
       {open ? (
-        <div id={panneau} className="mt-3 flex flex-col gap-3">
+        // RETRAIT sous le titre de famille (02/10/2026, demande du donneur
+        // d'ordre) : les sections se lisent comme un SOUS-ENSEMBLE de la
+        // famille, rattachées à elle par un filet de la même couleur.
+        <div
+          id={panneau}
+          className="ml-4 mt-3 flex flex-col gap-3 pl-5"
+          style={{ borderLeft: '2px solid var(--dash-famille)' }}
+        >
           {children}
         </div>
       ) : null}

@@ -20,7 +20,16 @@ import type { BrandingConfig } from '@/types/branding';
 import type { InterviewConfig } from '@/types/interview-settings';
 import type { VivierConfig } from '@/types/vivier-settings';
 
-export type SectionState = { summary: string; status: SectionStatus };
+export type SectionState = {
+  summary: string;
+  status: SectionStatus;
+  /**
+   * Quand `status === 'warn'` : CE QUI MANQUE, nommé, et ce que ça casse.
+   * Lu dans la liste en tête de page — « 2 réglages à compléter » sans dire
+   * lesquels obligeait à tout déplier pour trouver le badge.
+   */
+  missing?: string;
+};
 
 /** Ce que le hub connaît sans rien recharger. */
 export type SummarySource = {
@@ -43,12 +52,17 @@ function plural(n: number, one: string, many = `${one}s`): string {
 
 export function synthesisSummary(s: SummarySource): SectionState {
   if (s.synthesisEmails.length === 0) {
-    return { summary: 'Aucune adresse enregistrée', status: 'warn' };
+    return {
+      summary: 'Aucune adresse enregistrée',
+      status: 'warn',
+      missing: 'Aucune adresse de synthèse : les briefings d’entretien ne partent à personne',
+    };
   }
   if (s.synthesisEmailsActive.length === 0) {
     return {
       summary: `${plural(s.synthesisEmails.length, 'adresse')} — aucune cochée, les briefings ne partent nulle part`,
       status: 'warn',
+      missing: 'Aucune adresse de synthèse cochée : les briefings d’entretien ne partent à personne',
     };
   }
   return {
@@ -75,29 +89,35 @@ export function resendSummary(s: SummarySource): SectionState {
     : {
         summary: 'Aucune clé — aucun mail candidat ne peut partir',
         status: 'warn',
+        missing: 'Clé d’envoi des mails (Resend) absente : aucun mail candidat ne peut partir',
       };
 }
 
 export function interviewSummary(s: SummarySource): SectionState {
-  const link = s.interviewConfig.agendaLink.trim();
-  const org = s.interviewConfig.organisationName.trim();
-  const who = org || 'organisation non nommée';
-  return link
-    ? { summary: `${who} · lien d’agenda configuré`, status: 'ok' }
+  return s.interviewConfig.agendaLink.trim()
+    ? { summary: 'Agenda interne · lien d’agenda externe configuré', status: 'ok' }
     : {
-        summary: `${who} · aucun lien d’agenda (hors campagnes en réservation native)`,
+        summary: 'Agenda interne · aucun lien d’agenda externe (hors campagnes en réservation native)',
         status: 'warn',
+        missing:
+          'Lien d’agenda externe absent : les invitations des campagnes encore sur Cal.com sont bloquées',
       };
 }
 
+/**
+ * Identité du cabinet : le NOM d'abord (il est repris dans chaque message au
+ * candidat), puis l'apparence. Le nom vit dans cette section depuis le
+ * 02/10/2026 ; il était avant avec l'agenda.
+ */
 export function brandingSummary(s: SummarySource): SectionState {
+  const org = s.interviewConfig.organisationName.trim() || 'organisation non nommée';
   const bits = [
     s.brandingConfig.logoUrl ? 'logo' : null,
     s.brandingConfig.accentColor ? 'couleur' : null,
   ].filter((b): b is string => b !== null);
   return bits.length === 0
-    ? { summary: 'Apparence par défaut', status: 'neutral' }
-    : { summary: `Personnalisée : ${bits.join(' + ')}`, status: 'ok' };
+    ? { summary: `${org} · apparence par défaut`, status: 'neutral' }
+    : { summary: `${org} · personnalisée : ${bits.join(' + ')}`, status: 'ok' };
 }
 
 export function vivierSummary(s: SummarySource): SectionState {
@@ -121,6 +141,7 @@ export function channelsSummary(s: SummarySource, total: number): SectionState {
     return {
       summary: `APEC : il manque ${missing.join(', ')}`,
       status: 'warn',
+      missing: `Réglages APEC incomplets (${missing.join(', ')}) : publication sur l’APEC impossible`,
     };
   }
   return {
@@ -145,4 +166,41 @@ export function integrationsSummary(configured: number, total: number): SectionS
 /** Compte les signaux d'attention — affiché en tête de page. */
 export function countWarnings(states: SectionState[]): number {
   return states.filter((s) => s.status === 'warn').length;
+}
+
+export type MissingSetting = {
+  sectionId: string;
+  sectionTitle: string;
+  familyLabel: string;
+  message: string;
+};
+
+/**
+ * Les réglages manquants, NOMMÉS et SITUÉS (famille › section), dans l'ordre
+ * de la page.
+ *
+ * ⚠️ Même source que les badges « à configurer » : une section en `warn`
+ * figure ici, une section absente d'ici n'a pas de badge. Deux listes tenues
+ * à part finiraient par dire deux choses différentes.
+ * Une section en `warn` que ce profil ne voit pas (réservée admin) est
+ * omise : on n'envoie personne vers une porte qui n'existe pas pour lui.
+ */
+export function listMissingSettings(
+  states: Record<string, SectionState>,
+  families: { label: string; sections: { id: string; title: string }[] }[],
+): MissingSetting[] {
+  const out: MissingSetting[] = [];
+  for (const family of families) {
+    for (const section of family.sections) {
+      const state = states[section.id];
+      if (state?.status !== 'warn') continue;
+      out.push({
+        sectionId: section.id,
+        sectionTitle: section.title,
+        familyLabel: family.label,
+        message: state.missing ?? state.summary,
+      });
+    }
+  }
+  return out;
 }

@@ -152,15 +152,30 @@ Entrée « Aujourd'hui » : c'est l'écran d'arrivée.
 Entrée « Aujourd'hui ».
 
 ### Réglages globaux (Paramètres)
-Bandeau → « Paramètres ». Les sections sont REPLIÉES : on clique sur le titre
-pour ouvrir celle qu'on veut, et la ligne sous le titre résume l'état courant.
-Sections, dans l'ordre : « Validation humaine (Human in the loop) », « Vivier de
-candidats », « Entretiens — messages candidat », « Comptes rendus d'entretien »
-(administrateurs seulement), « Identité du cabinet »,
-« Agendas & disponibilités », « Recruteurs » (administrateurs seulement),
-« Donneurs d'ordre », « Sites », « Boîtes de réception des CV », « Adresses de
-synthèse », « Adresses expéditeur », « Service email (Resend) », « Intégrations
-— Flux d'arrivée », « Intégrations — Canaux de diffusion ».
+Bandeau → « Paramètres ». La page s'ouvre REPLIÉE : des familles, et dans
+chacune des sections ; on clique sur un titre pour l'ouvrir, et la ligne sous
+le titre résume l'état courant. Un champ de recherche en haut de page mène
+directement à un réglage (on tape « agenda », « refus », « Resend »…). Quand un
+réglage essentiel manque, la page le nomme en tête, avec son emplacement et un
+bouton « Y aller ».
+Familles et sections, dans l'ordre :
+- « Cabinet et DPO » : « Identité du cabinet » (nom de l'organisation,
+  signataire des messages, logo, couleur), « Recherche de profils »
+  (administrateurs seulement), « Vivier de candidats », « Comptes rendus
+  d'entretien » (administrateurs seulement), « Agenda des entretiens ».
+- « Modèles de messages » : un modèle par entrée — « Invitation à l'entretien
+  (candidature retenue) », « Refus sur CV », « Nouveau créneau à choisir »,
+  « Retenu après l'entretien », « Non retenu après l'entretien », « Absent à
+  l'entretien », « Candidature classée sans suite », « Opportunité proposée à
+  un profil du vivier », « Invitation à candidater (présélection du vivier) ».
+- « Équipe et disponibilité » : « Agendas & disponibilités », « Recruteurs »
+  (administrateurs seulement), « Donneurs d'ordre », « Sites ».
+- « Réception & envoi des mails » : « Boîtes de réception des CV », « Adresses
+  de synthèse », « Adresses expéditeur », « Service email (Resend) ».
+- « Intégrations » : « Intégrations — Flux d'arrivée », « Intégrations —
+  Canaux de diffusion ».
+Ce qui envoie une candidature à valider ne se règle PAS dans les Paramètres :
+c'est par campagne (« Campagnes » → « Éditer » → « Seuils de décision »).
 
 ### Déclarer ses disponibilités d'entretien
 Paramètres → « Agendas & disponibilités ». Chacun y règle SES plages, ses

@@ -1,26 +1,38 @@
 'use client';
 
 /**
- * Réglages vivier (Session V3, §9) : mode de contact, template d'invitation,
- * cooldown, plafond de short-list, nom d'organisation. Édition en brouillon
- * local, sauvegarde explicite (le template est long, on évite un PUT par frappe).
+ * Réglages vivier (Session V3, §9) : mode de contact, cooldown, plafond de
+ * short-list, seuil, nom d'organisation. Brouillon local, sauvegarde explicite.
+ *
+ * Le texte de l'invitation à candidater vit dans « Modèles de messages »
+ * (02/10/2026). Ce composant ne rend donc que SES champs, sans le modèle :
+ * l'appelant les fusionne dans la configuration COURANTE — sinon enregistrer
+ * le cooldown remettrait l'ancien texte d'invitation.
  */
 
 import { useState } from 'react';
 
 import { DEFAULT_VIVIER_CONFIG, type VivierConfig } from '@/types/vivier-settings';
 
+export type VivierOwnFields = Omit<VivierConfig, 'invitationTemplate'>;
+
+export function pickVivierOwnFields(c: VivierConfig): VivierOwnFields {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { invitationTemplate, ...own } = c;
+  return own;
+}
+
 export function VivierConfigManager({
   config,
   onSave,
 }: {
   config: VivierConfig;
-  onSave: (next: VivierConfig) => void;
+  onSave: (fields: VivierOwnFields) => void;
 }) {
-  const [draft, setDraft] = useState<VivierConfig>(config);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(config);
+  const [draft, setDraft] = useState<VivierOwnFields>(() => pickVivierOwnFields(config));
+  const dirty = JSON.stringify(draft) !== JSON.stringify(pickVivierOwnFields(config));
 
-  function set<K extends keyof VivierConfig>(key: K, value: VivierConfig[K]) {
+  function set<K extends keyof VivierOwnFields>(key: K, value: VivierOwnFields[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
@@ -103,24 +115,6 @@ export function VivierConfigManager({
           />
         </label>
       </div>
-
-      <label className="flex flex-col gap-1">
-        <span className="font-semibold text-stone-700">
-          Template du message d&apos;invitation
-        </span>
-        <textarea
-          value={draft.invitationTemplate}
-          onChange={(e) => set('invitationTemplate', e.currentTarget.value)}
-          rows={9}
-          className="w-full rounded-md border border-stone-200 px-3 py-2 font-mono text-[12px] text-stone-700 outline-none focus:border-emerald-400"
-        />
-        <span className="text-[11px] text-stone-400">
-          Variables : [prénom], [intitulé du poste], [référence] (l’ID campagne
-          à quoter en objet — indispensable au rattachement), [nom de la
-          campagne], [adresse de réception], [Organisation]. La mention RGPD est
-          ajoutée automatiquement.
-        </span>
-      </label>
 
       <button
         type="button"

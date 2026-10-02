@@ -89,7 +89,7 @@ describe('entretiens', () => {
     expect(state.summary).toMatch(/réservation native/i);
   });
 
-  it('avec lien ⇒ ok, et le nom d’organisation est en tête', () => {
+  it('avec lien ⇒ ok', () => {
     const state = interviewSummary(
       source({
         interviewConfig: {
@@ -100,7 +100,7 @@ describe('entretiens', () => {
       }),
     );
     expect(state.status).toBe('ok');
-    expect(state.summary).toContain('Qwestinum');
+    expect(state.summary).toMatch(/lien d’agenda externe configuré/);
   });
 });
 
@@ -117,7 +117,12 @@ describe('expéditeur, identité, vivier, intégrations', () => {
     expect(
       brandingSummary(source({ brandingConfig: { logoUrl: 'u', accentColor: '#000' } }))
         .summary,
-    ).toBe('Personnalisée : logo + couleur');
+    ).toBe('organisation non nommée · personnalisée : logo + couleur');
+    expect(
+      brandingSummary(
+        source({ interviewConfig: { ...DEFAULT_INTERVIEW_CONFIG, organisationName: 'Qwestinum' } }),
+      ).summary,
+    ).toBe('Qwestinum · apparence par défaut');
   });
 
   it('vivier : le mode de contact, qui décide si un mail part tout seul', () => {
