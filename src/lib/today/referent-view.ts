@@ -29,7 +29,7 @@ import {
   type ReferentOption,
   type ReferentSelection,
 } from '@/lib/referent/filter';
-import type { TodayBoard } from '@/lib/today/board';
+import { oldestWaiting, type TodayBoard } from '@/lib/today/board';
 
 /** Tout ce qui porte un référent sur cet écran. */
 type Porteur = { referent: ReferentInfo | null; campaignId?: string | null };
@@ -39,8 +39,11 @@ const referentOf = (item: Porteur): ReferentInfo | null => item.referent;
 export type TodayReferentView = {
   /** Le tableau tel qu'il doit s'afficher. */
   board: TodayBoard;
-  /** Ce que le filtre masque, section par section. 0 quand « Tous ». */
-  masked: { validation: number; entretiens: number };
+  /**
+   * Ce que le filtre masque. `validation` = à lire + propositions ; le détail
+   * sert l'annonce « · N masqués » de chaque sous-bloc. 0 quand rien ne filtre.
+   */
+  masked: { validation: number; aLire: number; aEcarter: number; entretiens: number };
   /** Entrées du sélecteur, comptées sur TOUT ce qui concerne des candidats. */
   options: ReferentOption[];
   /** Dossiers dont le référent est l'utilisateur — 0 ⇒ pas de raccourci. */
@@ -65,6 +68,7 @@ export function applyReferentFilter(
   // donnerait un chiffre que rien ne permet de retrouver.
   const dossiers: Porteur[] = [
     ...board.validation.aLire.items,
+    ...board.validation.aEcarter.items,
     ...board.entretiens.aConfirmer.items,
     ...board.entretiens.aDecider.items,
   ];
@@ -78,7 +82,7 @@ export function applyReferentFilter(
   if (selection.kind === 'all' && !keepCampaign) {
     return {
       board,
-      masked: { validation: 0, entretiens: 0 },
+      masked: { validation: 0, aLire: 0, aEcarter: 0, entretiens: 0 },
       options,
       myCount,
       emptiedByFilter: false,
@@ -93,15 +97,23 @@ export function applyReferentFilter(
   const aConfirmer = garde(board.entretiens.aConfirmer.items);
   const aDecider = garde(board.entretiens.aDecider.items);
 
-  // ⚠️ « Passer en revue » est une FOURNÉE, pas une liste de lignes : on ne
-  // sait pas, depuis l'écran d'accueil, quels dossiers elle contient. La
-  // filtrer sur un référent afficherait un compte qu'on ne peut pas tenir —
-  // on la laisse donc entière, et le compte « sur N » le dit.
+  // « Passer en revue » est une FOURNÉE, mais ses fiches sont connues (avec
+  // leur campagne) : elle se filtre COMME le reste de la carte (03/10/2026).
+  // La laisser entière faisait masquer les deux « à examiner » d'un référent
+  // pendant que ses treize propositions restaient affichées. La revue groupée
+  // porte le même filtre partagé : on y retrouve ce que l'accueil annonçait.
+  const aEcarter = garde(board.validation.aEcarter.items);
   const filtre: TodayBoard = {
     ...board,
     validation: {
       ...board.validation,
       aLire: { items: aLire, total: aLire.length },
+      aEcarter: {
+        ...board.validation.aEcarter,
+        items: aEcarter,
+        total: aEcarter.length,
+        oldestDays: oldestWaiting(aEcarter),
+      },
     },
     entretiens: {
       ...board.entretiens,
@@ -109,11 +121,23 @@ export function applyReferentFilter(
       aDecider: { items: aDecider, total: aDecider.length },
     },
   };
-  filtre.validation.total = aLire.length + board.validation.aEcarter.total;
-  filtre.entretiens.total = aConfirmer.length + aDecider.length;
+  // ⚠️ LE TOTAL DU SUJET N'EST PAS FILTRÉ (03/10/2026). Le titre de la carte
+  // est une affirmation — « 12 candidatures attendent votre validation » — et
+  // elle doit rester vraie quel que soit le filtre : retirer du total ce que
+  // le filtre masque (dont, par défaut, les campagnes non actives) faisait
+  // annoncer un chiffre faux. Les LIGNES sont filtrées ; les sous-blocs
+  // disent « · N masqués ». Un dossier caché reste compté.
+  filtre.validation.total = board.validation.total;
+  filtre.entretiens.total = board.entretiens.total;
+  const shownValidation = aLire.length + aEcarter.length;
+  const shownEntretiens = aConfirmer.length + aDecider.length;
 
+  const maskedALire = board.validation.aLire.total - aLire.length;
+  const maskedAEcarter = board.validation.aEcarter.total - aEcarter.length;
   const masked = {
-    validation: board.validation.aLire.total - aLire.length,
+    validation: maskedALire + maskedAEcarter,
+    aLire: maskedALire,
+    aEcarter: maskedAEcarter,
     entretiens:
       board.entretiens.aConfirmer.total -
       aConfirmer.length +
@@ -130,8 +154,8 @@ export function applyReferentFilter(
     // situations différentes, et les confondre est le défaut qu'on répare.
     emptiedByFilter:
       !board.allClear &&
-      filtre.validation.total === 0 &&
-      filtre.entretiens.total === 0 &&
+      shownValidation === 0 &&
+      shownEntretiens === 0 &&
       masked.validation + masked.entretiens > 0,
   };
 }

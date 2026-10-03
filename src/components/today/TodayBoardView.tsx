@@ -45,6 +45,7 @@ import { RequeueOrphansButton } from './RequeueOrphansButton';
 import { TodayCard, TodaySubBlock } from './TodayCard';
 import { TodayHeader } from './TodayHeader';
 import { TodayNotice } from './TodayNotice';
+import { TodayMaskedNotice } from './TodayMaskedNotice';
 import { TodayRow } from './TodayRow';
 import { TodaySkeleton } from './TodaySkeleton';
 import { TodayTeamBand } from './TodayTeamBand';
@@ -156,7 +157,13 @@ export function TodayBoardView({
               (o) => referentSelectionKey(o.selection) === referentSelectionKey(referentFilter),
             )?.label,
             state: stateFilter,
-            count: board.validation.aLire.total + board.entretiens.total,
+            // Ce que le filtre LAISSE VOIR, toutes formes d'attente comprises —
+            // les propositions de refus aussi (elles manquaient au compte).
+            count:
+              board.validation.aLire.total +
+              board.validation.aEcarter.total +
+              board.entretiens.aConfirmer.total +
+              board.entretiens.aDecider.total,
             unit: { one: 'candidature qui attend', many: 'candidatures qui attendent' },
           })}
         />
@@ -168,25 +175,18 @@ export function TodayBoardView({
           <TodayTeamBand counts={agentCounts} fenetre={fenetre} onFenetre={onFenetre} />
         </div>
 
-        {vue.emptiedByFilter ? (
-          <p
-            className="font-body"
-            style={{ fontSize: 13, color: 'var(--dash-text-secondary)' }}
-          >
-            Rien ne vous attend pour ce référent —{' '}
-            {vue.masked.validation + vue.masked.entretiens} dossier
-            {vue.masked.validation + vue.masked.entretiens > 1 ? 's' : ''}{' '}
-            attend{vue.masked.validation + vue.masked.entretiens > 1 ? 'ent' : ''}{' '}
-            ailleurs.{' '}
-            <button
-              type="button"
-              onClick={() => setReferentFilter(ALL_REFERENTS)}
-              className="font-semibold underline"
-            >
-              Voir tout
-            </button>
-          </p>
-        ) : null}
+        {/* « Voir tout » dès que le filtre masque QUELQUE CHOSE (03/10/2026),
+            pas seulement quand il masque tout : deux dossiers cachés sous une
+            carte pleine passaient inaperçus. Le bouton lève les DEUX filtres
+            — référent et état de campagne — puisqu'il promet « tout ». */}
+        <TodayMaskedNotice
+          masked={vue.masked.validation + vue.masked.entretiens}
+          emptied={vue.emptiedByFilter}
+          onShowAll={() => {
+            setReferentFilter(ALL_REFERENTS);
+            setStateFilter('all');
+          }}
+        />
 
         {/* SUJET : les candidatures qui attendent une validation.
             Deux verbes en dessous — lire et décider · passer en revue. */}
@@ -209,7 +209,7 @@ export function TodayBoardView({
               count={board.validation.aLire.total}
               title={surTotal(
               PHRASES.aLire.titre(board.validation.aLire.total),
-              vue.masked.validation,
+              vue.masked.aLire,
             )}
               subtitle={PHRASES.aLire.sousTitre}
             >
@@ -232,7 +232,10 @@ export function TodayBoardView({
             <TodaySubBlock
               id="validation.aEcarter"
               count={board.validation.aEcarter.total}
-              title={PHRASES.aEcarter.titre(board.validation.aEcarter.total)}
+              title={surTotal(
+                PHRASES.aEcarter.titre(board.validation.aEcarter.total),
+                vue.masked.aEcarter,
+              )}
               subtitle={PHRASES.aEcarter.sousTitre}
               action={
                 board.validation.aEcarter.total > 0 ? (

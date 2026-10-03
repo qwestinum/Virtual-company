@@ -44,7 +44,15 @@ import { ValidationCard } from './ValidationCard';
 import { ValidationsHistory } from './ValidationsHistory';
 import { useReferentFilter } from '@/components/referent/useReferentFilter';
 
-export function ValidationsHub() {
+export function ValidationsHub({
+  initialTab = null,
+}: {
+  /**
+   * Sous-onglet demandé par l'adresse (`?onglet=`). Il PRIME sur la règle
+   * d'arrivée : le lien qui y mène a promis cet onglet-là.
+   */
+  initialTab?: ValidationSubTab | null;
+} = {}) {
   const {
     state,
     zones,
@@ -128,11 +136,11 @@ export function ValidationsHub() {
   //
   // Ajustement d'état PENDANT le rendu (React le prévoit) : la garde `=== null`
   // ne passe qu'au premier rendu où la file est chargée, donc pas de boucle.
+  const arrival = initialTab ?? defaultValidationSubTab(toExamine.length, proposals.length);
   if (tab === null) {
-    setTab(defaultValidationSubTab(toExamine.length, proposals.length));
+    setTab(arrival);
   }
-  const activeTab =
-    tab ?? defaultValidationSubTab(toExamine.length, proposals.length);
+  const activeTab = tab ?? arrival;
 
   const visibleExamine = filterByReferent(toExamine, referents, referentFilter);
   const visibleProposals = filterByReferent(

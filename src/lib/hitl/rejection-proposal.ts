@@ -123,3 +123,29 @@ export function defaultValidationSubTab(
   if (toExamineCount === 0 && proposalsCount > 0) return 'proposals';
   return 'examine';
 }
+
+/**
+ * Le sous-onglet DEMANDÉ par l'adresse (`?onglet=`) — 03/10/2026.
+ *
+ * Un lien qui annonce « propositions de refus » doit OUVRIR les propositions
+ * de refus : arriver sur « À examiner » et chercher le second sous-onglet est
+ * le geste que le lien prétendait épargner. La valeur de l'adresse est un mot
+ * de l'écran, jamais l'identifiant interne ; toute valeur inconnue vaut
+ * « rien de demandé » (la règle d'arrivée par défaut s'applique alors).
+ */
+const VALIDATION_TAB_SLUGS: Record<ValidationSubTab, string> = {
+  examine: 'a_examiner',
+  proposals: 'propositions',
+};
+
+export function parseValidationSubTab(raw: string | null | undefined): ValidationSubTab | null {
+  const hit = (Object.keys(VALIDATION_TAB_SLUGS) as ValidationSubTab[]).find(
+    (k) => VALIDATION_TAB_SLUGS[k] === raw,
+  );
+  return hit ?? null;
+}
+
+/** L'adresse de la revue de candidature, ouverte sur un sous-onglet. */
+export function validationReviewHref(tab?: ValidationSubTab): string {
+  return tab ? `/candidatures/validation?onglet=${VALIDATION_TAB_SLUGS[tab]}` : '/candidatures/validation';
+}

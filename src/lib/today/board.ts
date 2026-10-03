@@ -20,6 +20,7 @@
 
 import {
   partitionRejectionProposals,
+  validationReviewHref,
   sortRejectionProposals,
 } from '@/lib/hitl/rejection-proposal';
 import type { ValidationCoherence } from '@/lib/hitl/queue-coherence';
@@ -73,6 +74,20 @@ export type InterviewItem = {
   href: string;
 };
 
+/**
+ * Une proposition de refus, dans le lot « passer en revue ». Jamais affichée
+ * en ligne (le geste est groupé) : elle n'est là que pour que le filtre de
+ * lecture s'applique au lot COMME au reste de la carte (03/10/2026 — le lot
+ * restait entier pendant que les lignes voisines étaient filtrées, et la
+ * carte mélangeait un chiffre filtré et un chiffre brut).
+ */
+export type ProposalItem = {
+  id: string;
+  referent: ReferentInfo | null;
+  campaignId: string;
+  waitingDays: number;
+};
+
 export type VerificationItem = {
   key: string;
   message: string;
@@ -109,7 +124,7 @@ export type TodayBoard = {
     /** Verbe « lire et décider » — lignes unitaires. */
     aLire: { items: DecisionItem[]; total: number };
     /** Verbe « passer en revue » — UNE ligne agrégée, jamais une par candidat. */
-    aEcarter: { total: number; oldestDays: number; href: string };
+    aEcarter: { total: number; oldestDays: number; href: string; items: ProposalItem[] };
   };
   entretiens: {
     total: number;
@@ -171,6 +186,11 @@ function isActionable(
   return coherence[v.id]?.kind !== 'settled';
 }
 
+/** L'attente la plus longue d'un lot, en jours — 0 pour un lot vide. */
+export function oldestWaiting(items: { waitingDays: number }[]): number {
+  return items.reduce((max, i) => Math.max(max, i.waitingDays), 0);
+}
+
 export function buildTodayBoard(input: TodayInput): TodayBoard {
   const { proposals, toExamine } = partitionRejectionProposals(
     input.validations,
@@ -201,10 +221,13 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
   const actionableProposals = sortRejectionProposals(proposals).filter((v) =>
     isActionable(v, input.coherenceByValidation),
   );
-  const oldestProposal = actionableProposals.reduce(
-    (max, v) => Math.max(max, daysSince(v.createdAt, input.nowMs)),
-    0,
-  );
+  const proposalItems: ProposalItem[] = actionableProposals.map((v) => ({
+    id: v.id,
+    referent: activeReferentOf(v.campaignId, input.referentByCampaign ?? {}),
+    campaignId: v.campaignId,
+    waitingDays: daysSince(v.createdAt, input.nowMs),
+  }));
+  const oldestProposal = oldestWaiting(proposalItems);
 
   // ── Entretiens : pointer d'abord, donner le verdict ensuite ──────────────
   // L'ordre n'est pas cosmétique : un verdict se pose SUR un entretien pointé.
@@ -260,7 +283,8 @@ export function buildTodayBoard(input: TodayInput): TodayBoard {
       aEcarter: {
         total: actionableProposals.length,
         oldestDays: oldestProposal,
-        href: '/candidatures/validation',
+        href: validationReviewHref('proposals'),
+        items: proposalItems,
       },
     },
     entretiens: {

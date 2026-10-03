@@ -73,7 +73,7 @@ describe('Aujourd’hui — l’état se cumule au référent, sans toucher aux 
   });
   const board = {
     allClear: false,
-    validation: { total: 3, aLire: { items: [item('a', 'C1', 'me'), item('b', 'C2', 'me'), item('c', null, 'me')], total: 3 }, aEcarter: { total: 0 } },
+    validation: { total: 3, aLire: { items: [item('a', 'C1', 'me'), item('b', 'C2', 'me'), item('c', null, 'me')], total: 3 }, aEcarter: { total: 0, items: [] } },
     entretiens: { total: 0, aConfirmer: { items: [], total: 0 }, aDecider: { items: [], total: 0 } },
     verify: { total: 2, items: [] },
   };

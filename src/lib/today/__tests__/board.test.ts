@@ -158,9 +158,11 @@ describe('chaque ligne mène à la vue filtrée annoncée', () => {
     );
   });
 
-  it('les propositions mènent à la revue GROUPÉE, jamais à une liste', () => {
+  it('les propositions mènent à la revue GROUPÉE, OUVERTE sur les propositions', () => {
+    // Arriver sur « À examiner » et chercher le second sous-onglet est le geste
+    // que le lien prétendait épargner (03/10/2026).
     expect(buildTodayBoard(input()).validation.aEcarter.href).toBe(
-      '/candidatures/validation',
+      '/candidatures/validation?onglet=propositions',
     );
   });
 

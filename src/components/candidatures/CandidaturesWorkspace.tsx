@@ -9,6 +9,7 @@
  * reste découplée et reçoit le libellé en prop).
  */
 
+import { validationReviewHref } from '@/lib/hitl/rejection-proposal';
 import type { TrajectoryStep } from '@/lib/reporting/campaign-trajectory';
 import { useCampaignStateFilter } from '@/components/referent/useCampaignStateFilter';
 import { AUCUNE_CAMPAGNE } from '@/lib/candidatures/campaign-perimeter';
@@ -331,7 +332,11 @@ export function CandidaturesWorkspace({
           {filters.stage === 'a_valider' || filters.stage === 'proposition_refus' ? (
             <div className="mt-2 flex justify-end">
               <Link
-                href="/candidatures/validation"
+                // L'onglet de la puce d'où l'on vient : depuis « Propositions
+                // de refus », la revue s'ouvre sur les propositions.
+                href={validationReviewHref(
+                  filters.stage === 'proposition_refus' ? 'proposals' : 'examine',
+                )}
                 className="inline-flex min-h-6 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-2.5 py-1 font-body text-[12px] font-semibold text-stone-700 hover:bg-stone-50"
               >
                 Passer en revue en une fois

@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { PageShell } from '@/components/navigation/PageShell';
 import { ValidationsHub } from '@/components/validations/ValidationsHub';
+import { parseValidationSubTab } from '@/lib/hitl/rejection-proposal';
 
 export const metadata = { title: 'Revue de candidature — QWESTINUM' };
 
@@ -22,7 +23,13 @@ export const metadata = { title: 'Revue de candidature — QWESTINUM' };
  * Le TITRE reprend le mot du lien qu'on vient de cliquer : arriver sur un
  * écran qui porte un autre nom fait douter d'être au bon endroit.
  */
-export default function ValidationReviewPage() {
+export default async function ValidationReviewPage({
+  searchParams,
+}: {
+  /** `?onglet=propositions` | `a_examiner` — le sous-onglet promis par le lien. */
+  searchParams: Promise<{ onglet?: string }>;
+}) {
+  const { onglet } = await searchParams;
   return (
     <PageShell
       title="Revue de candidature"
@@ -35,7 +42,7 @@ export default function ValidationReviewPage() {
       >
         <span aria-hidden>←</span> Les voir une par une
       </Link>
-      <ValidationsHub />
+      <ValidationsHub initialTab={parseValidationSubTab(onglet)} />
     </PageShell>
   );
 }

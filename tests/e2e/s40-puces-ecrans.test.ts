@@ -74,7 +74,7 @@ describe('S40 — puces de Candidatures, Entretiens et Pilotage', () => {
     // l'adresse (comportement antérieur à l'essai, inchangé). On vérifie donc
     // son EFFET : la porte de revue groupée, attachée à « À valider ».
     // Par son libellé : la barre du haut porte un lien vers la même adresse.
-    const porte = 'a[href="/candidatures/validation"]:has-text("Passer en revue en une fois")';
+    const porte = 'a[href^="/candidatures/validation"]:has-text("Passer en revue en une fois")';
     expect(await page.locator(porte).count()).toBe(0);
 
     await page.click('[data-dot-tab="a_valider"]');

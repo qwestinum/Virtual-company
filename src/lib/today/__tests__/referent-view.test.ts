@@ -32,12 +32,30 @@ const entretien = (id: string, referent: ReferentInfo | null, kind: 'a_eu_lieu' 
   href: '#',
 });
 
+const proposition = (id: string, referent: ReferentInfo | null, waitingDays: number) => ({
+  id,
+  referent,
+  campaignId: 'CAMP-1',
+  waitingDays,
+});
+
 function board(over: Partial<TodayBoard> = {}): TodayBoard {
   return {
     validation: {
-      total: 2,
+      total: 7,
       aLire: { total: 2, items: [decision('a', SAMI), decision('b', JANE)] },
-      aEcarter: { total: 5, oldestDays: 10, href: '#' },
+      aEcarter: {
+        total: 5,
+        oldestDays: 10,
+        href: '#',
+        items: [
+          proposition('p1', SAMI, 2),
+          proposition('p2', JANE, 10),
+          proposition('p3', SAMI, 4),
+          proposition('p4', JANE, 1),
+          proposition('p5', SAMI, 3),
+        ],
+      },
     },
     entretiens: {
       total: 2,
@@ -64,7 +82,7 @@ describe('« Tous » ne touche à rien', () => {
     const entree = board();
     const vue = applyReferentFilter(entree, { kind: 'all' }, 'u-sami');
     expect(vue.board).toBe(entree);
-    expect(vue.masked).toEqual({ validation: 0, entretiens: 0 });
+    expect(vue.masked).toEqual({ validation: 0, aLire: 0, aEcarter: 0, entretiens: 0 });
     expect(vue.emptiedByFilter).toBe(false);
   });
 });
@@ -78,9 +96,29 @@ describe('le filtre réduit ce qui s’affiche, et DIT ce qu’il masque', () =>
     expect(vue.board.entretiens.aDecider.items).toEqual([]);
   });
 
-  it('compte ce qui est masqué — un dossier caché reste compté', () => {
-    expect(vue.masked.validation).toBe(1);
+  it('compte ce qui est masqué, sous-bloc par sous-bloc — un dossier caché reste compté', () => {
+    expect(vue.masked.aLire).toBe(1);
+    expect(vue.masked.aEcarter).toBe(2);
+    expect(vue.masked.validation).toBe(3);
     expect(vue.masked.entretiens).toBe(1);
+  });
+
+  it('le TOTAL du sujet n’est pas filtré : le titre de la carte reste vrai', () => {
+    // « N candidatures attendent votre validation » est une affirmation.
+    // Défaut du 03/10/2026 : le filtre (dont « Actives », par défaut) retirait
+    // du total ce qu'il masquait, et l'accueil annonçait un chiffre faux.
+    expect(vue.board.validation.total).toBe(7);
+    expect(vue.board.entretiens.total).toBe(2);
+    // Les LIGNES, elles, sont filtrées.
+    expect(vue.board.validation.aLire.total).toBe(1);
+  });
+
+  it('même un filtre d’ÉTAT de campagne ne retire rien du total', () => {
+    const v = applyReferentFilter(board(), { kind: 'all' }, null, () => false);
+    expect(v.board.validation.total).toBe(7);
+    expect(v.board.validation.aLire.items).toEqual([]);
+    expect(v.board.validation.aEcarter.total).toBe(0);
+    expect(v.masked.validation).toBe(7);
   });
 
   it('« Référent non défini » est une entrée du sélecteur', () => {
@@ -90,7 +128,7 @@ describe('le filtre réduit ce qui s’affiche, et DIT ce qu’il masque', () =>
       validation: {
         total: 1,
         aLire: { total: 1, items: [decision('z', null)] },
-        aEcarter: { total: 0, oldestDays: 0, href: '#' },
+        aEcarter: { total: 0, oldestDays: 0, href: '#', items: [] },
       },
     });
     const v = applyReferentFilter(avecOrphelin, { kind: 'all' }, null);
@@ -112,12 +150,27 @@ describe('« À vérifier » n’est JAMAIS filtré', () => {
   });
 });
 
-describe('la fournée n’est pas filtrée, et le compte le dit', () => {
-  it('« passer en revue » reste entière', () => {
-    // On ne sait pas, depuis l'accueil, quels dossiers elle contient : la
-    // filtrer afficherait un compte qu'on ne peut pas tenir.
+describe('la fournée se filtre COMME le reste de la carte', () => {
+  it('« passer en revue » ne garde que les propositions du référent choisi', () => {
+    // Défaut du 03/10/2026 : le lot restait entier pendant que les lignes
+    // voisines étaient filtrées — deux « à examiner » masqués, treize
+    // propositions du MÊME référent affichées.
     const vue = applyReferentFilter(board(), { kind: 'recruiter', id: 'u-sami' }, 'u-sami');
-    expect(vue.board.validation.aEcarter.total).toBe(5);
+    expect(vue.board.validation.aEcarter.items.map((i) => i.id)).toEqual(['p1', 'p3', 'p5']);
+    expect(vue.board.validation.aEcarter.total).toBe(3);
+  });
+
+  it('l’ancienneté annoncée est celle du lot AFFICHÉ', () => {
+    // La plus ancienne (10 j) est à Jane : sous le filtre « Sami », annoncer
+    // 10 jours renverrait à un dossier qu'on ne voit pas.
+    const vue = applyReferentFilter(board(), { kind: 'recruiter', id: 'u-sami' }, 'u-sami');
+    expect(vue.board.validation.aEcarter.oldestDays).toBe(4);
+  });
+
+  it('les propositions comptent dans « Mes campagnes » et dans les entrées du sélecteur', () => {
+    const vue = applyReferentFilter(board(), { kind: 'all' }, 'u-jane');
+    // 1 à lire (b) + 2 propositions (p2, p4) + 1 entretien (d).
+    expect(vue.myCount).toBe(4);
   });
 });
 
@@ -127,7 +180,7 @@ describe('« il n’y a rien » et « le filtre cache tout » ne se confondent p
       validation: {
         total: 1,
         aLire: { total: 1, items: [decision('b', JANE)] },
-        aEcarter: { total: 0, oldestDays: 0, href: '#' },
+        aEcarter: { total: 0, oldestDays: 0, href: '#', items: [] },
       },
       entretiens: {
         total: 0,
@@ -145,7 +198,7 @@ describe('« il n’y a rien » et « le filtre cache tout » ne se confondent p
       validation: {
         total: 0,
         aLire: { total: 0, items: [] },
-        aEcarter: { total: 0, oldestDays: 0, href: '#' },
+        aEcarter: { total: 0, oldestDays: 0, href: '#', items: [] },
       },
       entretiens: { total: 0, aConfirmer: { total: 0, items: [] }, aDecider: { total: 0, items: [] } },
       verify: { total: 0, items: [] },
