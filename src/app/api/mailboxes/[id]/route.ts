@@ -9,6 +9,12 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import {
+  MAILBOX_CRYPTO_UNAVAILABLE,
+  MAILBOX_SAVE_FAILED,
+  describeMailboxIssues,
+} from '@/lib/mailboxes/form-messages';
+
 import { encryptCredential, MailboxCryptoError } from '@/lib/crypto/mailbox-credentials';
 import { deleteMailbox, patchMailbox } from '@/lib/db/repos/mailboxes';
 import { SupabaseNotConfiguredError } from '@/lib/db/supabase-server';
@@ -39,16 +45,17 @@ export async function PATCH(
 ): Promise<NextResponse> {
   const { id } = await context.params;
   let parsed: z.infer<typeof PatchSchema>;
-  try {
-    parsed = PatchSchema.parse(await request.json());
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: 'invalid_request',
-        message: err instanceof Error ? err.message : 'Invalid request body.',
-      },
-      { status: 400 },
-    );
+  {
+    const body: unknown = await request.json().catch(() => null);
+    const result = PatchSchema.safeParse(body);
+    if (!result.success) {
+      // Une phrase qui nomme le champ, jamais le message brut du validateur.
+      return NextResponse.json(
+        { error: 'invalid_request', message: describeMailboxIssues(result.error.issues) },
+        { status: 400 },
+      );
+    }
+    parsed = result.data;
   }
 
   let encryptedPassword: string | undefined;
@@ -58,12 +65,12 @@ export async function PATCH(
     } catch (err) {
       if (err instanceof MailboxCryptoError) {
         return NextResponse.json(
-          { error: err.code, message: err.message },
+          { error: err.code, message: MAILBOX_CRYPTO_UNAVAILABLE },
           { status: 503 },
         );
       }
       return NextResponse.json(
-        { error: 'crypto_error', message: (err as Error).message },
+        { error: 'crypto_error', message: MAILBOX_CRYPTO_UNAVAILABLE },
         { status: 500 },
       );
     }
@@ -86,8 +93,9 @@ export async function PATCH(
     return NextResponse.json({ mailbox: updated });
   } catch (err) {
     if (err instanceof SupabaseNotConfiguredError) return notConfigured();
+    console.error('[api/mailboxes] enregistrement refusé', err);
     return NextResponse.json(
-      { error: 'db_error', message: (err as Error).message },
+      { error: 'db_error', message: MAILBOX_SAVE_FAILED },
       { status: 500 },
     );
   }

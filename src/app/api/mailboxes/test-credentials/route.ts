@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { testConnection } from '@/lib/imap/client';
+import { describeMailboxIssues } from '@/lib/mailboxes/form-messages';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -21,16 +22,18 @@ const Schema = z.object({
 
 export async function POST(request: Request): Promise<NextResponse> {
   let parsed: z.infer<typeof Schema>;
-  try {
-    parsed = Schema.parse(await request.json());
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: 'invalid_request',
-        message: err instanceof Error ? err.message : 'Invalid request body.',
-      },
-      { status: 400 },
-    );
+  {
+    const body: unknown = await request.json().catch(() => null);
+    const result = Schema.safeParse(body);
+    if (!result.success) {
+      // Même forme que l'échec d'une connexion (`ok:false` + `error`) : le
+      // formulaire affiche `error` — il recevait jusqu'ici « invalid_request ».
+      return NextResponse.json(
+        { ok: false, error: describeMailboxIssues(result.error.issues, 'test') },
+        { status: 400 },
+      );
+    }
+    parsed = result.data;
   }
   const result = await testConnection({
     host: parsed.imapHost,

@@ -1,6 +1,11 @@
 'use client';
 
 import {
+  MAILBOX_FIELD_LABELS,
+  describeMissingFields,
+  missingMailboxFields,
+} from '@/lib/mailboxes/form-messages';
+import {
   CheckCircle2,
   Loader2,
   Mail,
@@ -140,6 +145,14 @@ export function MailboxesManager() {
       });
       return;
     }
+    // Tester exige TOUS les champs de connexion, mot de passe compris.
+    const missingForTest = missingMailboxFields(form, false).filter(
+      (f) => f !== MAILBOX_FIELD_LABELS.label,
+    );
+    if (missingForTest.length > 0) {
+      setTestResult({ ok: false, error: describeMissingFields(missingForTest) });
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     try {
@@ -166,11 +179,19 @@ export function MailboxesManager() {
   }
 
   async function saveForm() {
+    // Les champs vides se disent AVANT l'envoi, nommés comme à l'écran.
+    const missing = missingMailboxFields(form, editingId !== null);
+    if (missing.length > 0) {
+      setFormError(describeMissingFields(missing));
+      return;
+    }
     setSaving(true);
     setFormError(null);
     try {
       const port = parseInt(form.imapPort, 10);
-      if (!Number.isFinite(port)) throw new Error('Port invalide');
+      if (!Number.isFinite(port)) {
+        throw new Error('« Port » doit être un nombre (993 en général, avec SSL/TLS).');
+      }
       const body: Record<string, unknown> = {
         label: form.label,
         imapHost: form.imapHost,
@@ -191,7 +212,10 @@ export function MailboxesManager() {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(data?.message || `HTTP ${res.status}`);
+        throw new Error(
+          data?.message ||
+            'La boîte n’a pas pu être enregistrée. Réessayez dans un instant.',
+        );
       }
       await loadMailboxes();
       closeForm();
